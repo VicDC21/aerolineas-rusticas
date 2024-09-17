@@ -71,12 +71,12 @@ Por ejemplo, los elementos:
 
 ```rs
 pub struct FooStruct {
-    pub a: String
+    pub a: String,
     pub b: i32
 }
 
 pub struct BarStruct {
-    pub c: String
+    pub c: String,
     pub d: i32
 }
 
@@ -120,7 +120,7 @@ pub mod foobar_enum;
 ```
 ```rs
 //! src/enums/foobar_enum.rs
-use crate::foobar::{foo::FooStruct, bar::BarStruct}
+use crate::foobar::{foo::FooStruct, bar::BarStruct};
 
 pub enum FoobarEnum {
     Foo(FooStruct),
@@ -185,7 +185,7 @@ y con la nomenclatura de funciones `test_<num>_<desc>()` sin argumentos y con la
 
 ```rs
 //! src/enums/foobar_enum.rs
-use crate::foobar::{foo::FooStruct, bar::BarStruct}
+use crate::foobar::{foo::FooStruct, bar::BarStruct};
 
 pub enum FoobarEnum {
     Foo(FooStruct),
