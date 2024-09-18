@@ -384,5 +384,5 @@ uno de esos. <br/>
 
 *En lo posible,* tratar de encajar la necesidad en alguna de esa categorías. **Por ejemplo:** un
 reporte de una vulnerabilidad de seguridad podría ir acompañada de una refactorización, entonces
-caería en la categoría 🚧; también, agregar librerías o extensiones para compilar el juego u otras
-operaciones externas bien podrían ser 📚 o 🚀.
+caería en la categoría 🚧; también, agregar librerías o extensiones para compilar el proyecto u
+otras operaciones externas bien podrían ser 📚 o 🚀.
