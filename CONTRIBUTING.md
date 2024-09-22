@@ -195,9 +195,9 @@ pub enum FoobarEnum {
 #[cfg(test)]
 mod tests {
     // Es a este punto que se deben incluir todos los imports relevantes a los tests.
-    // Cuidado que deben ser imports desde la raíz de la librería, y usando el nombre de la misma.
-    use prueba::enums::foobar_enum::FoobarEnum;
-    use prueba::foobar::{foo::FooStruct, bar::BarStruct};
+    // Cuidado que deben ser imports desde la raíz de la librería, y usando el prefijo `crate`.
+    use crate::enums::foobar_enum::FoobarEnum;
+    use crate::foobar::{foo::FooStruct, bar::BarStruct};
 
     #[test]
     fn test_1_es_foo() {
