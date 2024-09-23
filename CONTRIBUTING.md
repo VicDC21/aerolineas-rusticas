@@ -23,6 +23,7 @@ rechazar o invalidad un *Pull Request*/*issue*.</u>
     - [*Tests*](#tests)
         * [*Doctests*](#doctests)
         * [*Tests* Unitarios](#unit-tests)
+        * [*Tests* de integración](#integration-tests)
 
 * [Repositorio de GitHub](#repositorio)
     - [*Pull Requests*](#pull-requests)
@@ -215,6 +216,10 @@ mod tests {
 
 </details>
 
+### *Integration Tests*
+
+
+
 <hr/>
 
 # Repositorio
@@ -365,8 +370,7 @@ $ git branch docs/readme/contributing
 
 ## *Issues*
 
-Las *issues* no son obligatorias de usar, pero dada la ocasión, deberán seguir una plantilla según
-el [caso](./templates/issues/) que convenga.
+Las *issues* deberán seguir una plantilla según el [caso](./templates/issues/) que convenga.
 De no estar contemplado el caso en una plantilla, se puede seguir un
 estilo libre (pero se espera uno similar). <br/>
 
