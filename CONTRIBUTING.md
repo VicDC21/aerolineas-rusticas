@@ -23,6 +23,7 @@ rechazar o invalidad un *Pull Request*/*issue*.</u>
     - [*Tests*](#tests)
         * [*Doctests*](#doctests)
         * [*Tests* Unitarios](#unit-tests)
+        * [*Tests* de integración](#integration-tests)
 
 * [Repositorio de GitHub](#repositorio)
     - [*Pull Requests*](#pull-requests)
@@ -195,9 +196,9 @@ pub enum FoobarEnum {
 #[cfg(test)]
 mod tests {
     // Es a este punto que se deben incluir todos los imports relevantes a los tests.
-    // Cuidado que deben ser imports desde la raíz de la librería, y usando el nombre de la misma.
-    use prueba::enums::foobar_enum::FoobarEnum;
-    use prueba::foobar::{foo::FooStruct, bar::BarStruct};
+    // Cuidado que deben ser imports desde la raíz de la librería, y usando el prefijo `crate`.
+    use crate::enums::foobar_enum::FoobarEnum;
+    use crate::foobar::{foo::FooStruct, bar::BarStruct};
 
     #[test]
     fn test_1_es_foo() {
@@ -214,6 +215,10 @@ mod tests {
 ```
 
 </details>
+
+### *Integration Tests*
+
+
 
 <hr/>
 
@@ -365,8 +370,7 @@ $ git branch docs/readme/contributing
 
 ## *Issues*
 
-Las *issues* no son obligatorias de usar, pero dada la ocasión, deberán seguir una plantilla según
-el [caso](./templates/issues/) que convenga.
+Las *issues* deberán seguir una plantilla según el [caso](./templates/issues/) que convenga.
 De no estar contemplado el caso en una plantilla, se puede seguir un
 estilo libre (pero se espera uno similar). <br/>
 
