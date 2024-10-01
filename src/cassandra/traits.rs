@@ -17,7 +17,7 @@ pub trait Maskable<T: BitOrAssign> {
     fn collapse(&self) -> T;
 
     /// Une todas las máscaras.
-    fn accumulate( masks: &[&Self]) -> T {
+    fn accumulate(masks: &[&Self]) -> T {
         let mut accumulator = Self::base_mask();
         for msk in masks {
             accumulator |= msk.collapse();

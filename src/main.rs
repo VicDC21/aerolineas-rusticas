@@ -1,5 +1,5 @@
-use std::io::stdin;
 use std::env::args;
+use std::io::stdin;
 
 use aerolineas::{client::cli, server::sv};
 
@@ -13,7 +13,7 @@ fn main() {
     match argv[1].as_str() {
         "sv" => {
             let _ = sv::run();
-        },
+        }
 
         "cli" => {
             let _ = cli::run(&mut stdin());

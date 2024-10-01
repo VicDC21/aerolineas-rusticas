@@ -3,7 +3,7 @@
 use crate::cassandra::traits::{Byteable, Maskable};
 
 /// Una flag afecta al frame del mensaje.
-/// 
+///
 /// También se puede acumular las flags en un sólo byte:
 /// ```rust
 /// # use aerolineas::cassandra::flags::Flag;
@@ -25,7 +25,7 @@ pub enum Flag {
     Warning,
 
     /// Indica que se opta por usar una versión del protocolo en estado de desarrollo BETA.
-    Beta
+    Beta,
 }
 
 impl Byteable for Flag {
@@ -35,7 +35,7 @@ impl Byteable for Flag {
             Self::Tracing => &[2],
             Self::CustomPayload => &[4],
             Self::Warning => &[8],
-            Self::Beta => &[16]
+            Self::Beta => &[16],
         }
     }
 }

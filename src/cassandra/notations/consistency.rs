@@ -3,7 +3,7 @@
 use crate::cassandra::traits::Byteable;
 
 /// Nivela los modos de consistencia para los _read request_.
-/// 
+///
 /// TODO: dejar mejores descripciones.
 pub enum Consistency {
     /// Buscar cualquier nodo
@@ -37,7 +37,7 @@ pub enum Consistency {
     LocalSerial,
 
     /// LOCAL_ONE Variant
-    LocalOne
+    LocalOne,
 }
 
 impl Byteable for Consistency {
@@ -53,7 +53,7 @@ impl Byteable for Consistency {
             Self::EachQuorum => &[0, 7],
             Self::Serial => &[0, 8],
             Self::LocalSerial => &[0, 9],
-            Self::LocalOne => &[0, 10]
+            Self::LocalOne => &[0, 10],
         }
     }
 }

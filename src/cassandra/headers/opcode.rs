@@ -3,7 +3,7 @@
 use crate::cassandra::traits::Byteable;
 
 /// Describe la operación a utilizar en el protocolo.
-/// 
+///
 /// TODO: [Mejores descripciones]
 pub enum Opcode {
     /// Error Variant
@@ -52,9 +52,8 @@ pub enum Opcode {
     AuthResponse,
 
     /// AuthSuccess Variant
-    AuthSuccess
+    AuthSuccess,
 }
-
 
 impl Byteable for Opcode {
     fn as_bytes(&self) -> &[u8] {
@@ -74,7 +73,7 @@ impl Byteable for Opcode {
             Self::Batch => &[13],
             Self::AuthChallenge => &[14],
             Self::AuthResponse => &[15],
-            Self::AuthSuccess => &[16]
+            Self::AuthSuccess => &[16],
         }
     }
 }

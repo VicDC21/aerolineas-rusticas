@@ -2,7 +2,7 @@
 
 use std::io::Result;
 use std::io::{BufRead, BufReader, Read};
-use std::net::{TcpListener, SocketAddrV4, Ipv4Addr};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
 
 /// Corrida de prueba para un servidor.
 pub fn run() -> Result<()> {

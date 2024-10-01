@@ -26,7 +26,7 @@ pub enum QueryFlag {
     WithKeyspace,
 
     /// ***(Opcional)*** Indica el tiempo actual de la _query_. Diseñada para casos de _testing_.
-    WithNowInSeconds
+    WithNowInSeconds,
 }
 
 impl Byteable for QueryFlag {
@@ -39,7 +39,7 @@ impl Byteable for QueryFlag {
             Self::WithSerialConsistency => &[0, 16],
             Self::WithDefaultTimestamp => &[0, 32],
             Self::WithKeyspace => &[0, 64],
-            Self::WithNowInSeconds => &[0, 128]
+            Self::WithNowInSeconds => &[0, 128],
         }
     }
 }
