@@ -41,19 +41,19 @@ pub enum Consistency {
 }
 
 impl Byteable for Consistency {
-    fn as_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> Vec<u8> {
         match self {
-            Self::Any => &[0, 0],
-            Self::One => &[0, 1],
-            Self::Two => &[0, 2],
-            Self::Three => &[0, 3],
-            Self::Quorum => &[0, 4],
-            Self::All => &[0, 5],
-            Self::LocalQuorum => &[0, 6],
-            Self::EachQuorum => &[0, 7],
-            Self::Serial => &[0, 8],
-            Self::LocalSerial => &[0, 9],
-            Self::LocalOne => &[0, 10],
+            Self::Any => vec![0, 0],
+            Self::One => vec![0, 1],
+            Self::Two => vec![0, 2],
+            Self::Three => vec![0, 3],
+            Self::Quorum => vec![0, 4],
+            Self::All => vec![0, 5],
+            Self::LocalQuorum => vec![0, 6],
+            Self::EachQuorum => vec![0, 7],
+            Self::Serial => vec![0, 8],
+            Self::LocalSerial => vec![0, 9],
+            Self::LocalOne => vec![0, 10],
         }
     }
 }

@@ -6,10 +6,11 @@ use crate::cassandra::traits::{Byteable, Maskable};
 ///
 /// También se puede acumular las flags en un sólo byte:
 /// ```rust
-/// # use aerolineas::cassandra::flags::Flag;
-/// let flags = [Flag::Compression, Flag::Tracing, Flag::Beta];
-/// let expected = 19; // 00000001 | 00000010 | 00010000 = 00010011
-/// assert_eq!(Flag::mask(&flags), expected);
+/// # use aerolineas::cassandra::headers::flags::Flag;
+/// # use aerolineas::cassandra::traits::Maskable;
+/// let flags = [&Flag::Compression, &Flag::Tracing, &Flag::Beta];
+/// let expected: u8 = 19; // 00000001 | 00000010 | 00010000 = 00010011
+/// assert_eq!(Flag::accumulate(&flags[..]), expected);
 /// ```
 pub enum Flag {
     /// El body del frame es comprimido.
@@ -29,13 +30,13 @@ pub enum Flag {
 }
 
 impl Byteable for Flag {
-    fn as_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> Vec<u8> {
         match self {
-            Self::Compression => &[1],
-            Self::Tracing => &[2],
-            Self::CustomPayload => &[4],
-            Self::Warning => &[8],
-            Self::Beta => &[16],
+            Self::Compression => vec![1],
+            Self::Tracing => vec![2],
+            Self::CustomPayload => vec![4],
+            Self::Warning => vec![8],
+            Self::Beta => vec![16],
         }
     }
 }

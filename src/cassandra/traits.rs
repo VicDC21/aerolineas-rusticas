@@ -4,8 +4,8 @@ use std::ops::BitOrAssign;
 
 /// Colapsa una propiedad en una colección de bytes.
 pub trait Byteable {
-    /// Transforma el objeto en una colección de bytes.
-    fn as_bytes(&self) -> &[u8];
+    /// Transforma el objeto en un vector de bytes.
+    fn as_bytes(&self) -> Vec<u8>;
 }
 
 /// Une muchas propiedades (pensadas como máscaras) en un sólo número.

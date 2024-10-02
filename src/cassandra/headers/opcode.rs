@@ -56,24 +56,24 @@ pub enum Opcode {
 }
 
 impl Byteable for Opcode {
-    fn as_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> Vec<u8> {
         match self {
-            Self::Error => &[0],
-            Self::Startup => &[1],
-            Self::Ready => &[2],
-            Self::Authenticate => &[3],
-            Self::Options => &[5],
-            Self::Supported => &[6],
-            Self::Query => &[7],
-            Self::Result => &[8],
-            Self::Prepare => &[9],
-            Self::Execute => &[10],
-            Self::Register => &[11],
-            Self::Event => &[12],
-            Self::Batch => &[13],
-            Self::AuthChallenge => &[14],
-            Self::AuthResponse => &[15],
-            Self::AuthSuccess => &[16],
+            Self::Error => vec![0],
+            Self::Startup => vec![1],
+            Self::Ready => vec![2],
+            Self::Authenticate => vec![3],
+            Self::Options => vec![5],
+            Self::Supported => vec![6],
+            Self::Query => vec![7],
+            Self::Result => vec![8],
+            Self::Prepare => vec![9],
+            Self::Execute => vec![10],
+            Self::Register => vec![11],
+            Self::Event => vec![12],
+            Self::Batch => vec![13],
+            Self::AuthChallenge => vec![14],
+            Self::AuthResponse => vec![15],
+            Self::AuthSuccess => vec![16],
         }
     }
 }

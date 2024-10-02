@@ -25,14 +25,14 @@ pub enum Version {
 }
 
 impl Byteable for Version {
-    fn as_bytes(&self) -> &[u8] {
+    fn as_bytes(&self) -> Vec<u8> {
         match self {
-            Self::RequestV3 => &[3],
-            Self::ResponseV3 => &[131],
-            Self::RequestV4 => &[4],
-            Self::ResponseV4 => &[132],
-            Self::RequestV5 => &[5],
-            Self::ResponseV5 => &[133],
+            Self::RequestV3 => vec![3],
+            Self::ResponseV3 => vec![131],
+            Self::RequestV4 => vec![4],
+            Self::ResponseV4 => vec![132],
+            Self::RequestV5 => vec![5],
+            Self::ResponseV5 => vec![133],
         }
     }
 }
