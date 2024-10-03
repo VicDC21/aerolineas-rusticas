@@ -17,7 +17,7 @@ pub enum Error {
     AuthenticationError(String),
 
     /// Un nodo no se encontraba disponible para responder a la query.
-    /// 
+    ///
     /// El resto del mensaje es `<cl><required><alive>`, donde:
     /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
     /// * `<required>` es un número ([u32]) que representa la cantidad de nodos que deberían estar disponibles para respetar `<cl>`.
@@ -35,7 +35,7 @@ pub enum Error {
     TruncateError(String),
 
     /// Timeout exception durante un request de escritura.
-    /// 
+    ///
     /// El resto del mensaje es `<cl><received><blockfor><writeType><contentions>`, donde:
     /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
     /// * `<received>` es un número ([u32]) que representa la cantidad de nodos que han reconocido la request.
@@ -55,7 +55,7 @@ pub enum Error {
     WriteTimeout(String, Consistency, u32, u32, String, Option<u16>),
 
     /// Timeout exception durante un request de lectura.
-    /// 
+    ///
     /// El resto del mensaje es `<cl><received><blockfor><data_present>`, donde:
     /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
     /// * `<received>` es un número ([u32]) que representa la cantidad de nodos que han respondido a la request.
@@ -64,7 +64,7 @@ pub enum Error {
     ReadTimeout(String, Consistency, u32, u32, u8),
 
     /// Una excepción de lectura que no fue ocasionada por un timeout.
-    /// 
+    ///
     /// El resto del mensaje es `<cl><received><blockfor><reasonmap><data_present>`, donde:
     /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
     /// * `<received>` es un número ([u32]) que representa la cantidad de nodos que han respondido a la request.
@@ -74,7 +74,7 @@ pub enum Error {
     ReadFailure(String, Consistency, u32, u32, (u32, Map<IpAddr, u8>), u8),
 
     /// Una función (definida por el usuario) falló durante su ejecución.
-    /// 
+    ///
     /// El resto del mensaje es `<keyspace><function><arg_types>`, donde:
     /// * `<keyspace>` es un [String] representando el _keyspace_ en el que se encuentra la función.
     /// * `<function>` es un [String] representando el nombre de la función.
@@ -82,7 +82,7 @@ pub enum Error {
     FunctionFailure(String, String, String, Vec<String>),
 
     /// Una excepción de escritura que no fue ocasionada por un timeout.
-    /// 
+    ///
     /// El resto del mensaje es `<cl><received><blockfor><reasonmap><write_type>`, donde:
     /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
     /// * `<received>` es un número ([u32]) que representa la cantidad de nodos que han respondido a la request.
@@ -99,13 +99,20 @@ pub enum Error {
     ///     * "CDC": El timeout ocurrió cuando la cantidad total de espacio en disco (en MB) que se puede utilizar para almacenar los logs de CDC (Change Data Capture) fue excedida cuando se intentaba escribir en dicho logs.
     ///
     /// TODO: _Quizás meter writeType en un enum._
-    WriteFailure(String, Consistency, u32, u32, (u32, Map<IpAddr, u8>), String),
+    WriteFailure(
+        String,
+        Consistency,
+        u32,
+        u32,
+        (u32, Map<IpAddr, u8>),
+        String,
+    ),
 
     /// _En la documentación del protocolo de Cassandra figura como TODO_.
     CDCWriteFailure(String),
 
     /// Una excepción ocurrida debido a una operación _Compare And Set write/update_ en contención. La operación CAS fue completada solo parcialmente y la operación puede o no ser completada por la escritura CAS contenedora o la lectura SERIAL/LOCAL_SERIAL.
-    /// 
+    ///
     /// El resto del mensaje es `<cl><received><blockfor>`, donde:
     /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
     /// * `<received>` es un número ([u32]) que representa la cantidad de nodos que han reconocido la request.
@@ -125,7 +132,7 @@ pub enum Error {
     ConfigError(String),
 
     /// La query intentó crear un _keyspace_ o una tabla que ya existía.
-    /// 
+    ///
     /// El resto del mensaje es `<ks><table>`, donde:
     /// * `<ks>` es un [String] representando el _keyspace_ que ya existía, o el _keyspace_ al que pertenece la tabla que ya existía.
     /// * `<table>` es un [String] representando el nombre de la tabla que ya existía. Si la query intentó crear un _keyspace_, <table> estará presente pero será el string vacío.
