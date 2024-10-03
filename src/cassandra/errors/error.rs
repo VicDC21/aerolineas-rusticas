@@ -142,3 +142,283 @@ pub enum Error {
     /// El resto del mensaje es `<id>`, `id` siendo un número ([u8]) representando el ID desconocido.
     Unprepared(String, u8),
 }
+
+impl Error {
+    fn parse_string_to_bytes(string: &str) -> Vec<u8> {
+        let string_bytes = string.as_bytes();
+        // litle endian para que los dos bytes menos significativos (los únicos que nos interesa
+        // para un [u16]) estén al principio
+        let bytes_len = string_bytes.len().to_le_bytes();
+        let mut bytes_vec: Vec<u8> = vec![
+            bytes_len[1],
+            bytes_len[0], // Longitud del string
+        ];
+        bytes_vec.extend_from_slice(string_bytes);
+        bytes_vec
+    }
+
+    fn parse_hashmap_to_bytes(hashmap: &HashMap<IpAddr, u16>) -> Vec<u8> {
+        let mut bytes_vec: Vec<u8> = vec![];
+        let hashmap_len = hashmap.len().to_le_bytes();
+        bytes_vec.extend_from_slice(&[hashmap_len[3], hashmap_len[2], hashmap_len[1], hashmap_len[0]]);
+        for (ip, code) in hashmap {
+            let ip_bytes = match ip {
+                IpAddr::V4(ipv4) => ipv4.octets().to_vec(),
+                IpAddr::V6(ipv6) => ipv6.octets().to_vec(),
+            };
+            let ip_len = ip_bytes.len().to_le_bytes();
+            bytes_vec.extend_from_slice(&[ip_len[1], ip_len[0]]);
+            bytes_vec.extend(ip_bytes);
+            bytes_vec.extend(code.to_be_bytes());
+        }
+        bytes_vec
+    }
+}
+
+impl Byteable for Error {
+    fn as_bytes(&self) -> Vec<u8> {
+        match self {
+            Self::ServerError(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    0,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::ProtocolError(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    0,
+                    10, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::AuthenticationError(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    1,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::UnavailableException(msg, cl, required, alive) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    16,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(cl.as_bytes());
+                bytes_vec.extend(required.to_be_bytes());
+                bytes_vec.extend(alive.to_be_bytes());
+                bytes_vec
+            },
+            Self::Overloaded(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    16,
+                    1, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::IsBootstrapping(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    16,
+                    2, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::TruncateError(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    16,
+                    3, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::WriteTimeout(msg, cl, received, blockfor, write_type, contentions) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    17,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(cl.as_bytes());
+                bytes_vec.extend(received.to_be_bytes());
+                bytes_vec.extend(blockfor.to_be_bytes());
+                bytes_vec.extend(Error::parse_string_to_bytes(write_type));
+                if write_type == "CAS" {
+                    if let Some(content) = contentions {
+                        bytes_vec.extend(content.to_be_bytes());
+                    }
+                }
+                bytes_vec
+            },
+            Self::ReadTimeout(msg, cl, received, blockfor, data_present) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    18,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(cl.as_bytes());
+                bytes_vec.extend(received.to_be_bytes());
+                bytes_vec.extend(blockfor.to_be_bytes());
+                bytes_vec.push(*data_present);
+                bytes_vec
+            },
+            Self::ReadFailure(msg, cl, received, blockfor, reasonmap, data_present) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    19,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(cl.as_bytes());
+                bytes_vec.extend(received.to_be_bytes());
+                bytes_vec.extend(blockfor.to_be_bytes());
+                bytes_vec.extend(Error::parse_hashmap_to_bytes(reasonmap));
+                bytes_vec.push(*data_present);
+                bytes_vec
+            },
+            Self::FunctionFailure(msg, keyspace, function, arg_types) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    20,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(Error::parse_string_to_bytes(keyspace));
+                bytes_vec.extend(Error::parse_string_to_bytes(function));
+
+                let list_len = arg_types.len().to_le_bytes();
+                bytes_vec.extend_from_slice(&[list_len[1], list_len[0]]);
+                for string in arg_types {
+                    bytes_vec.extend(Error::parse_string_to_bytes(string));
+                }
+
+                bytes_vec
+            },
+            Self::WriteFailure(msg, cl, received, blockfor, reasonmap, string) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    21,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(cl.as_bytes());
+                bytes_vec.extend(received.to_be_bytes());
+                bytes_vec.extend(blockfor.to_be_bytes());
+                bytes_vec.extend(Error::parse_hashmap_to_bytes(reasonmap));
+                bytes_vec.extend(Error::parse_string_to_bytes(string));
+                bytes_vec
+            },
+            Self::CDCWriteFailure(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    22,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::CASWriteUnknown(msg, cl, received, blockfor) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    23,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(cl.as_bytes());
+                bytes_vec.extend(received.to_be_bytes());
+                bytes_vec.extend(blockfor.to_be_bytes());
+                bytes_vec
+            },
+            Self::SyntaxError(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    32,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::Unauthorized(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    33,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::Invalid(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    34,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::ConfigError(msg) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    35,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec
+            },
+            Self::AlreadyExists(msg, ks, table) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    36,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(Error::parse_string_to_bytes(ks));
+                bytes_vec.extend(Error::parse_string_to_bytes(table));
+                bytes_vec
+            },
+            Self::Unprepared(msg, id) => {
+                let mut bytes_vec: Vec<u8> = vec![
+                    0,
+                    0,
+                    37,
+                    0, // ID
+                ];
+                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.push(*id);
+                bytes_vec
+            },
+        }
+    }
+}
