@@ -1,5 +1,6 @@
 //! Paquete maestro de objetos de Cassandra.
 
+pub mod aliases;
 pub mod errors;
 pub mod headers;
 pub mod messages;
