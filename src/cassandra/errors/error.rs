@@ -4,6 +4,7 @@ use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result},
     net::IpAddr,
+    backtrace::Backtrace,
 };
 
 use crate::cassandra::{notations::consistency::Consistency, traits::Byteable};
@@ -363,6 +364,34 @@ impl Byteable for Error {
                 bytes_vec.extend(ids);
                 bytes_vec
             }
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let backtrace = Backtrace::capture();
+        match self {
+            Error::ServerError(msg) => write!(f, "{:?}\nServerError: {}\n", backtrace, msg),
+            Error::ProtocolError(msg) => write!(f, "{:?}\nProtocolError: {}\n", backtrace, msg),
+            Error::AuthenticationError(msg) => write!(f, "{:?}\nAuthenticationError: {}\n", backtrace, msg),
+            Error::UnavailableException(msg, _, _, _) => write!(f, "{:?}\nUnavailableException: {}\n", backtrace, msg),
+            Error::Overloaded(msg) => write!(f, "{:?}\nOverloaded: {}\n", backtrace, msg),
+            Error::IsBootstrapping(msg) => write!(f, "{:?}\nIsBootstrapping: {}\n", backtrace, msg),
+            Error::TruncateError(msg) => write!(f, "{:?}\nTruncateError: {}\n", backtrace, msg),
+            Error::WriteTimeout(msg, _, _, _, _, _) => write!(f, "{:?}\nWriteTimeout: {}\n", backtrace, msg),
+            Error::ReadTimeout(msg, _, _, _, _) => write!(f, "{:?}\nReadTimeout: {}\n", backtrace, msg),
+            Error::ReadFailure(msg, _, _, _, _, _) => write!(f, "{:?}\nReadFailure: {}\n", backtrace, msg),
+            Error::FunctionFailure(msg, _, _, _) => write!(f, "{:?}\nFunctionFailure: {}\n", backtrace, msg),
+            Error::WriteFailure(msg, _, _, _, _, _) => write!(f, "{:?}\nWriteFailure: {}\n", backtrace, msg),
+            Error::CDCWriteFailure(msg) => write!(f, "{:?}\nCDCWriteFailure: {}\n", backtrace, msg),
+            Error::CASWriteUnknown(msg, _, _, _) => write!(f, "{:?}\nCASWriteUnknown: {}\n", backtrace, msg),
+            Error::SyntaxError(msg) => write!(f, "{:?}\nSyntaxError: {}\n", backtrace, msg),
+            Error::Unauthorized(msg) => write!(f, "{:?}\nUnauthorized: {}\n", backtrace, msg),
+            Error::Invalid(msg) => write!(f, "{:?}\nInvalid: {}\n", backtrace, msg),
+            Error::ConfigError(msg) => write!(f, "{:?}\nConfigError: {}\n", backtrace, msg),
+            Error::AlreadyExists(msg, _, _) => write!(f, "{:?}\nAlreadyExists: {}\n", backtrace, msg),
+            Error::Unprepared(msg, _) => write!(f, "{:?}\nUnprepared: {}\n", backtrace, msg),
         }
     }
 }
