@@ -21,8 +21,7 @@ pub enum Error {
     /// El resto del mensaje es `<cl><required><alive>`, donde:
     /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
     /// * `<required>` es un número ([u32]) que representa la cantidad de nodos que deberían estar disponibles para respetar `<cl>`.
-    /// * `<alive>` es un número ([u32]) que representa la cantidad de réplicas que se sabía que estaban disponibles.
-    /// cuando el request había sido procesado (como se lanzó ésta excepción, se sabe que `<alive> < <required>`).
+    /// * `<alive>` es un número ([u32]) que representa la cantidad de réplicas que se sabía que estaban disponibles cuando el request había sido procesado (como se lanzó ésta excepción, se sabe que `<alive> < <required>`).
     UnavailableException(String, Consistency, u32, u32),
 
     /// El request no puede ser procesado porque el nodo coordinador está sobrecargado.
