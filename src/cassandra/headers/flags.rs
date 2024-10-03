@@ -50,3 +50,17 @@ impl Maskable<u8> for Flag {
         self.as_bytes()[0]
     }
 }
+
+impl TryFrom<u8> for Flag {
+    type Error = ();
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0x01 => Ok(Flag::Compression),
+            0x02 => Ok(Flag::Tracing),
+            0x04 => Ok(Flag::CustomPayload),
+            0x08 => Ok(Flag::Warning),
+            0x10 => Ok(Flag::Beta),
+            _ => Err(()), // Todo: Este caso deberia devolver una flag standard, porque los demas casos se ignoran
+        }
+    }
+}

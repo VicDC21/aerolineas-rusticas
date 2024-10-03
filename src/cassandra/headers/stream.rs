@@ -17,3 +17,11 @@ impl Stream {
         self.id.to_be_bytes()
     }
 }
+
+impl TryFrom<[u8; 2]> for Stream {
+    type Error = ();
+    fn try_from(short: [u8; 2]) -> Result<Self, Self::Error> {
+        let value = i16::from_be_bytes(short);
+        Ok(Stream { id: value })
+    }
+}

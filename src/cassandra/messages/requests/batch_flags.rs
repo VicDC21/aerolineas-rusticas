@@ -1,5 +1,6 @@
 //! Módulo para las flags de una instrucción BATCH.
 
+use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
 /// Flags para una instrucción de tipo BATCH.
@@ -42,6 +43,26 @@ impl Byteable for BatchFlag {
             Self::WithNamesForValues => vec![0, 0, 0, 64],
             Self::WithKeyspace => vec![0, 0, 0, 128],
             Self::WithNowInSeconds => vec![0, 0, 1, 0],
+        }
+    }
+}
+
+impl TryFrom<[u8; 4]> for BatchFlag {
+    type Error = Error;
+    fn try_from(int: [u8; 4]) -> Result<Self, Self::Error> {
+        let value = i32::from_be_bytes(int);
+        match value {
+            0x0010 => Ok(BatchFlag::WithSerialConsistency),
+            0x0020 => Ok(BatchFlag::WithDefaultTimestamp),
+            0x0040 => Ok(BatchFlag::WithNamesForValues),
+            0x0080 => Ok(BatchFlag::WithKeyspace),
+            0x0100 => Ok(BatchFlag::WithNowInSeconds),
+            n if n < 0x0010 => Err(Error::ConfigError(
+                "Las flags de batch deben tener los 4 bits mas a la derecha en 0".to_string(),
+            )),
+            _ => Err(Error::ConfigError(
+                "La flag indicada para batch no existe".to_string(),
+            )),
         }
     }
 }
