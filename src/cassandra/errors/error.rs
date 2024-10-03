@@ -136,8 +136,8 @@ pub enum Error {
 
     /// Puede ser lanzado mientras una expresión preparada intenta ser ejecutada si el ID de la misma no es conocido por este host.
     ///
-    /// El resto del mensaje es `<id>`, `id` siendo un número ([u8]) representando el ID desconocido.
-    Unprepared(String, u8),
+    /// El resto del mensaje es `<id>`, `id` siendo una lista de números ([u8]) representando el ID desconocido.
+    Unprepared(String, Vec<u8>),
 }
 
 impl Error {
@@ -353,12 +353,14 @@ impl Byteable for Error {
                 bytes_vec.extend(Error::parse_string_to_bytes(table));
                 bytes_vec
             }
-            Self::Unprepared(msg, id) => {
+            Self::Unprepared(msg, ids) => {
                 let mut bytes_vec: Vec<u8> = vec![
                     0, 0, 37, 0, // ID
                 ];
                 bytes_vec.extend(Error::parse_string_to_bytes(msg));
-                bytes_vec.push(*id);
+                let ids_len = ids.len().to_le_bytes();
+                bytes_vec.extend(&[ids_len[1], ids_len[0]]);
+                bytes_vec.extend(ids);
                 bytes_vec
             }
         }
