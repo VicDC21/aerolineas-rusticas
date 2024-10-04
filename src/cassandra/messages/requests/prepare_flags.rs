@@ -20,15 +20,21 @@ impl Byteable for PrepareFlag {
 impl TryFrom<Vec<u8>> for PrepareFlag {
     type Error = Error;
     fn try_from(int: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 4] = match int.try_into(){
+        let bytes_array: [u8; 4] = match int.try_into() {
             Ok(bytes_array) => bytes_array,
-            Err(_e) => return Err(Error::ConfigError("No se pudo castear el vector de bytes en un array en PrepareFlag".to_string()))
+            Err(_e) => {
+                return Err(Error::ConfigError(
+                    "No se pudo castear el vector de bytes en un array en PrepareFlag".to_string(),
+                ))
+            }
         };
 
         let value = i32::from_be_bytes(bytes_array);
         match value {
             0x0001 => Ok(PrepareFlag::WithKeyspace),
-            _ => Err(Error::ConfigError("La flag indicada para prepare no existe".to_string())),         
+            _ => Err(Error::ConfigError(
+                "La flag indicada para prepare no existe".to_string(),
+            )),
         }
     }
 }

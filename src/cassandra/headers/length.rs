@@ -24,11 +24,13 @@ impl Length {
 impl TryFrom<Vec<u8>> for Length {
     type Error = Error;
     fn try_from(integer_in_bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 4] =  match integer_in_bytes.try_into(){
+        let bytes_array: [u8; 4] = match integer_in_bytes.try_into() {
             Ok(bytes_array) => bytes_array,
-            Err(_e) => return Err(Error::ConfigError(
-                "No se pudo castear el vector de bytes en un array en Lenght".to_string()
-            ))
+            Err(_e) => {
+                return Err(Error::ConfigError(
+                    "No se pudo castear el vector de bytes en un array en Lenght".to_string(),
+                ))
+            }
         };
         let value = u32::from_be_bytes(bytes_array);
         let bytes_lenght_limit = 0x10000000; // limite del frame de 256 MB

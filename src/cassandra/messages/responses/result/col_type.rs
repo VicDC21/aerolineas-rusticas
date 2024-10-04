@@ -107,7 +107,6 @@ pub enum ColType {
     /// Si es negativa todos los números deben ser negativos o cero.
     Duration,
 
-
     /// Una lista de tipos de columna, que bien pueden referirse a otros tipos de éstos.
     List(Box<Self>),
 
@@ -242,25 +241,24 @@ impl Byteable for ColType {
     }
 }
 
-
-
 impl TryFrom<Vec<u8>> for ColType {
     type Error = Error;
     fn try_from(mut short_in_bytes: Vec<u8>) -> Result<Self, Self::Error> {
-
         if short_in_bytes.len() < 2 {
             return Err(Error::ConfigError("Se esperaban 2 bytes".to_string()));
         }
 
         let col_type_body: Vec<u8> = short_in_bytes.split_off(2);
 
-        let bytes_array: [u8; 2] =  match short_in_bytes.try_into(){
+        let bytes_array: [u8; 2] = match short_in_bytes.try_into() {
             Ok(bytes_array) => bytes_array,
-            Err(_e) => return Err(Error::ConfigError(
-                "No se pudo castear el vector de bytes en un array en Lenght".to_string()
-            ))
+            Err(_e) => {
+                return Err(Error::ConfigError(
+                    "No se pudo castear el vector de bytes en un array en Lenght".to_string(),
+                ))
+            }
         };
-        
+
         let value = u16::from_be_bytes(bytes_array);
 
         let ret = match value {
@@ -291,16 +289,14 @@ impl TryFrom<Vec<u8>> for ColType {
             0x0030 => Self::deserialize_udt_type(col_type_body)?,
             0x0031 => Self::deserialize_tuple_type(col_type_body)?,
 
-
             _ => return Err(Error::ConfigError("".to_string())),
         };
         Ok(ret)
     }
 }
 
-
-trait DeserializeColumnType{
-    fn deserialize_custom_type(col_type_body: Vec<u8>)-> Result<ColType, Error>;
+trait DeserializeColumnType {
+    fn deserialize_custom_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
 
     fn deserialize_list_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
 
@@ -313,11 +309,12 @@ trait DeserializeColumnType{
     fn deserialize_tuple_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
 }
 
-impl DeserializeColumnType for ColType{
-    fn deserialize_custom_type(mut col_type_body: Vec<u8>)-> Result<Self, Error> {
-
+impl DeserializeColumnType for ColType {
+    fn deserialize_custom_type(mut col_type_body: Vec<u8>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
-            return Err(Error::ConfigError("Se esperaban 2 bytes Que indiquen el tamaño del string a formar".to_string()));
+            return Err(Error::ConfigError(
+                "Se esperaban 2 bytes Que indiquen el tamaño del string a formar".to_string(),
+            ));
         }
         let mut string_lenght: Vec<u8> = Vec::new();
         string_lenght.extend(col_type_body.drain(0..2));
@@ -334,17 +331,23 @@ impl DeserializeColumnType for ColType{
         // };
         // REVISAR es necesario verificar que el string recibido es de X tamaño? porque los primeros 2 bytes
         // que recibo nunca van a superar el limite admitido, xq es lo maximo que pueden representar.
-        let custom_body = match str::from_utf8(&col_type_body){
+        let custom_body = match str::from_utf8(&col_type_body) {
             Ok(str) => str,
-            Err(_e) => return Err(Error::ConfigError("El cuerpo del string no se pudo parsear".to_string()))
+            Err(_e) => {
+                return Err(Error::ConfigError(
+                    "El cuerpo del string no se pudo parsear".to_string(),
+                ))
+            }
         };
 
         Ok(ColType::Custom(custom_body.to_string()))
     }
-    
+
     fn deserialize_list_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
         if col_type_body.len() < 4 {
-            return Err(Error::ConfigError("Se esperaban al menos 4 bytes para la lista".to_string()));
+            return Err(Error::ConfigError(
+                "Se esperaban al menos 4 bytes para la lista".to_string(),
+            ));
         }
         let inner_type = ColType::try_from(col_type_body[2..].to_vec())?;
         Ok(ColType::List(Box::new(inner_type)))
@@ -352,7 +355,9 @@ impl DeserializeColumnType for ColType{
 
     fn deserialize_map_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
         if col_type_body.len() < 6 {
-            return Err(Error::ConfigError("Se esperaban al menos 6 bytes para el map".to_string()));
+            return Err(Error::ConfigError(
+                "Se esperaban al menos 6 bytes para el map".to_string(),
+            ));
         }
         let key_type = ColType::try_from(col_type_body[2..4].to_vec())?;
         let value_type = ColType::try_from(col_type_body[4..].to_vec())?;
@@ -366,10 +371,8 @@ impl DeserializeColumnType for ColType{
     fn deserialize_udt_type(_col_type_body: Vec<u8>) -> Result<Self, Error> {
         Err(Error::ConfigError("".to_string())) // Todo: falta implementar
     }
-    
+
     fn deserialize_tuple_type(_col_type_body: Vec<u8>) -> Result<Self, Error> {
         Err(Error::ConfigError("".to_string())) // Todo: falta implementar
     }
-
-    
 }

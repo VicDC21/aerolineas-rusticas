@@ -23,11 +23,13 @@ impl Stream {
 impl TryFrom<Vec<u8>> for Stream {
     type Error = Error;
     fn try_from(short: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 2] =  match short.try_into(){
+        let bytes_array: [u8; 2] = match short.try_into() {
             Ok(bytes_array) => bytes_array,
-            Err(_e) => return Err(Error::ConfigError(
-                "No se pudo castear el vector de bytes en un array en Stream".to_string()
-            ))
+            Err(_e) => {
+                return Err(Error::ConfigError(
+                    "No se pudo castear el vector de bytes en un array en Stream".to_string(),
+                ))
+            }
         };
         let value = i16::from_be_bytes(bytes_array);
         Ok(Stream { id: value })
