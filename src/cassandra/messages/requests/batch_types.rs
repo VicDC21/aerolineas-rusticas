@@ -29,9 +29,9 @@ impl TryFrom<u8> for BatchType {
     type Error = Error;
     fn try_from(byte: u8) -> Result<Self, Self::Error> {
         match byte {
-            0x0 => Ok(BatchType::Logged),
-            0x1 => Ok(BatchType::Unlogged),
-            0x2 => Ok(BatchType::Counter),
+            0x00 => Ok(BatchType::Logged),
+            0x01 => Ok(BatchType::Unlogged),
+            0x02 => Ok(BatchType::Counter),
             _ => Err(Error::ConfigError("Tipo de Batch no existente".to_string())),
         }
     }

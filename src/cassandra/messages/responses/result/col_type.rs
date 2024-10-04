@@ -1,5 +1,8 @@
 //! Módulo para los tipos de columnas en una _response_ con filas.
 
+use std::str;
+
+use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::Byteable;
 
 /// Tipo nativo de columna, a ser incluido en la _spec_ del cuerpo de la _response_.
@@ -75,6 +78,36 @@ pub enum ColType {
     /// Una secuencia de 4 o 16 bytes ([u32], [u128] o [IpAddr](std::net::IpAddr)) denotado una dirección IPv4 o IPv6 respectivamente..
     Inet,
 
+    /// Un numero integer que representa los dias con la epoca centrada en 2^31.
+    /// (unix epoch 1ro de Enero de 1970).
+    /// Algunos ejemplos:
+    /// 0:    -5877641-06-23
+    /// 2^31: 1970-1-1
+    /// 2^32: 5881580-07-11
+    Date,
+
+    /// Numero de 8 bytes en complemento a dos ([i64]) que representa nanosegundos desde la medianoche.
+    /// Los valores validos van desde 0 a 86399999999999.
+    Time,
+
+    /// Un numero de 2 bytes complemento a 2 ([i16]).
+    Smallint,
+
+    /// Un numero de 1 byte complemento a 2 ([i8]).
+    Tinyint,
+
+    /// Una duración está compuesta de 3 enteros de longitud variable con signo ([vint])
+    /// El primer [vint] representa una cantidad de meses
+    /// El segundo [vint] representa una cantidad de días
+    /// Y el tercer [vint] representa una cantidad de nanosegundos
+    /// Tanto la cantidad de meses como de días deben ser un entero de 32 bits válido
+    /// Mientras que la cantidad de nanosegundos debe ser un entero de 64 bits válido
+    /// Una duración puede ser tanto positiva como negativa
+    /// Si una duración es positiva todos los enteros deben ser positivos o cero
+    /// Si es negativa todos los números deben ser negativos o cero.
+    Duration,
+
+
     /// Una lista de tipos de columna, que bien pueden referirse a otros tipos de éstos.
     List(Box<Self>),
 
@@ -136,6 +169,11 @@ impl Byteable for ColType {
             Self::Varint => vec![0, 14],
             Self::Timeuuid => vec![0, 15],
             Self::Inet => vec![0, 16],
+            Self::Date => vec![0, 17],
+            Self::Time => vec![0, 18],
+            Self::Smallint => vec![0, 19],
+            Self::Tinyint => vec![0, 20],
+            Self::Duration => vec![0, 21],
             Self::List(boxed) => {
                 let mut bytes_vec: Vec<u8> = vec![
                     0, 32, // ID
@@ -202,4 +240,136 @@ impl Byteable for ColType {
             }
         }
     }
+}
+
+
+
+impl TryFrom<Vec<u8>> for ColType {
+    type Error = Error;
+    fn try_from(mut short_in_bytes: Vec<u8>) -> Result<Self, Self::Error> {
+
+        if short_in_bytes.len() < 2 {
+            return Err(Error::ConfigError("Se esperaban 2 bytes".to_string()));
+        }
+
+        let col_type_body: Vec<u8> = short_in_bytes.split_off(2);
+
+        let bytes_array: [u8; 2] =  match short_in_bytes.try_into(){
+            Ok(bytes_array) => bytes_array,
+            Err(_e) => return Err(Error::ConfigError(
+                "No se pudo castear el vector de bytes en un array en Lenght".to_string()
+            ))
+        };
+        
+        let value = u16::from_be_bytes(bytes_array);
+
+        let ret = match value {
+            0x0000 => Self::deserialize_custom_type(col_type_body)?,
+            0x0001 => ColType::Ascii,
+            0x0002 => ColType::Bigint,
+            0x0003 => ColType::Blob,
+            0x0004 => ColType::Boolean,
+            0x0005 => ColType::Counter,
+            0x0006 => ColType::Decimal,
+            0x0007 => ColType::Double,
+            0x0008 => ColType::Float,
+            0x0009 => ColType::Int,
+            0x000B => ColType::Timestamp,
+            0x000C => ColType::Uuid,
+            0x000D => ColType::Varchar,
+            0x000E => ColType::Varint,
+            0x000F => ColType::Timeuuid,
+            0x0010 => ColType::Inet,
+            0x0011 => ColType::Date,
+            0x0012 => ColType::Time,
+            0x0013 => ColType::Smallint,
+            0x0014 => ColType::Tinyint,
+            0x0015 => ColType::Duration,
+            0x0020 => Self::deserialize_list_type(col_type_body)?,
+            0x0021 => Self::deserialize_map_type(col_type_body)?,
+            0x0022 => Self::deserialize_set_type(col_type_body)?,
+            0x0030 => Self::deserialize_udt_type(col_type_body)?,
+            0x0031 => Self::deserialize_tuple_type(col_type_body)?,
+
+
+            _ => return Err(Error::ConfigError("".to_string())),
+        };
+        Ok(ret)
+    }
+}
+
+
+trait DeserializeColumnType{
+    fn deserialize_custom_type(col_type_body: Vec<u8>)-> Result<ColType, Error>;
+
+    fn deserialize_list_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+
+    fn deserialize_map_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+
+    fn deserialize_set_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+
+    fn deserialize_udt_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+
+    fn deserialize_tuple_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+}
+
+impl DeserializeColumnType for ColType{
+    fn deserialize_custom_type(mut col_type_body: Vec<u8>)-> Result<Self, Error> {
+
+        if col_type_body.len() < 2 {
+            return Err(Error::ConfigError("Se esperaban 2 bytes Que indiquen el tamaño del string a formar".to_string()));
+        }
+        let mut string_lenght: Vec<u8> = Vec::new();
+        string_lenght.extend(col_type_body.drain(0..2));
+
+        // let bytes_array: [u8; 2] =  match string_lenght.try_into(){
+        //     Ok(bytes_array) => bytes_array,
+        //     Err(_e) => return Err(Errors::ConfigError(
+        //         "No se pudo castear el vector de bytes en un array en Stream".to_string()
+        //     ))
+        // };
+        // let value = u16::from_be_bytes(bytes_array);
+        // if value > 0xFFFF{
+        //     return Err(Errors::ConfigError("El tamaño del string en ColType Custom no deberia superar ".to_string()));
+        // };
+        // REVISAR es necesario verificar que el string recibido es de X tamaño? porque los primeros 2 bytes
+        // que recibo nunca van a superar el limite admitido, xq es lo maximo que pueden representar.
+        let custom_body = match str::from_utf8(&col_type_body){
+            Ok(str) => str,
+            Err(_e) => return Err(Error::ConfigError("El cuerpo del string no se pudo parsear".to_string()))
+        };
+
+        Ok(ColType::Custom(custom_body.to_string()))
+    }
+    
+    fn deserialize_list_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
+        if col_type_body.len() < 4 {
+            return Err(Error::ConfigError("Se esperaban al menos 4 bytes para la lista".to_string()));
+        }
+        let inner_type = ColType::try_from(col_type_body[2..].to_vec())?;
+        Ok(ColType::List(Box::new(inner_type)))
+    }
+
+    fn deserialize_map_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
+        if col_type_body.len() < 6 {
+            return Err(Error::ConfigError("Se esperaban al menos 6 bytes para el map".to_string()));
+        }
+        let key_type = ColType::try_from(col_type_body[2..4].to_vec())?;
+        let value_type = ColType::try_from(col_type_body[4..].to_vec())?;
+        Ok(ColType::Map((Box::new(key_type), Box::new(value_type))))
+    }
+
+    fn deserialize_set_type(_col_type_body: Vec<u8>) -> Result<Self, Error> {
+        Err(Error::ConfigError("".to_string())) // Todo: falta implementar
+    }
+
+    fn deserialize_udt_type(_col_type_body: Vec<u8>) -> Result<Self, Error> {
+        Err(Error::ConfigError("".to_string())) // Todo: falta implementar
+    }
+    
+    fn deserialize_tuple_type(_col_type_body: Vec<u8>) -> Result<Self, Error> {
+        Err(Error::ConfigError("".to_string())) // Todo: falta implementar
+    }
+
+    
 }
