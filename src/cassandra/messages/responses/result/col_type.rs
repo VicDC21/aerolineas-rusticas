@@ -310,26 +310,12 @@ trait DeserializeColumnType {
 }
 
 impl DeserializeColumnType for ColType {
-    fn deserialize_custom_type(mut col_type_body: Vec<u8>) -> Result<Self, Error> {
+    fn deserialize_custom_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
                 "Se esperaban 2 bytes Que indiquen el tamaño del string a formar".to_string(),
             ));
         }
-        let _string_lenght: Vec<u8> = col_type_body.drain(0..2).collect();
-
-        // let bytes_array: [u8; 2] =  match string_lenght.try_into(){
-        //     Ok(bytes_array) => bytes_array,
-        //     Err(_e) => return Err(Errors::ConfigError(
-        //         "No se pudo castear el vector de bytes en un array en Stream".to_string()
-        //     ))
-        // };
-        // let value = u16::from_be_bytes(bytes_array);
-        // if value > 0xFFFF{
-        //     return Err(Errors::ConfigError("El tamaño del string en ColType Custom no deberia superar ".to_string()));
-        // };
-        // REVISAR es necesario verificar que el string recibido es de X tamaño? porque los primeros 2 bytes
-        // que recibo nunca van a superar el limite admitido, xq es lo maximo que pueden representar.
         let custom_body = match str::from_utf8(&col_type_body) {
             Ok(str) => str,
             Err(_e) => {
