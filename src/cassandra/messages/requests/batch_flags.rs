@@ -1,5 +1,6 @@
 //! Módulo para las flags de una instrucción BATCH.
 
+use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
 /// Flags para una instrucción de tipo BATCH.
@@ -42,6 +43,35 @@ impl Byteable for BatchFlag {
             Self::WithNamesForValues => vec![0, 0, 0, 64],
             Self::WithKeyspace => vec![0, 0, 0, 128],
             Self::WithNowInSeconds => vec![0, 0, 1, 0],
+        }
+    }
+}
+
+impl TryFrom<Vec<u8>> for BatchFlag {
+    type Error = Error;
+    fn try_from(int: Vec<u8>) -> Result<Self, Self::Error> {
+        let bytes_array: [u8; 4] = match int.try_into() {
+            Ok(bytes_array) => bytes_array,
+            Err(_e) => {
+                return Err(Error::ConfigError(
+                    "No se pudo castear el vector de bytes en un array en BatchFlag".to_string(),
+                ))
+            }
+        };
+
+        let value = i32::from_be_bytes(bytes_array);
+        match value {
+            0x0010 => Ok(BatchFlag::WithSerialConsistency),
+            0x0020 => Ok(BatchFlag::WithDefaultTimestamp),
+            0x0040 => Ok(BatchFlag::WithNamesForValues),
+            0x0080 => Ok(BatchFlag::WithKeyspace),
+            0x0100 => Ok(BatchFlag::WithNowInSeconds),
+            n if n < 0x0010 => Err(Error::ConfigError(
+                "Las flags de batch deben tener los 4 bits mas a la derecha en 0".to_string(),
+            )),
+            _ => Err(Error::ConfigError(
+                "La flag indicada para batch no existe".to_string(),
+            )),
         }
     }
 }

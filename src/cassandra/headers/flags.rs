@@ -1,5 +1,6 @@
 //! Módulo para las flags de un mensaje.
 
+use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
 /// Una flag afecta al frame del mensaje.
@@ -27,6 +28,9 @@ pub enum Flag {
 
     /// Indica que se opta por usar una versión del protocolo en estado de desarrollo BETA.
     Beta,
+
+    /// Flag estandar a devolver para otro caso distinto a los esperados
+    Default,
 }
 
 impl Byteable for Flag {
@@ -37,6 +41,7 @@ impl Byteable for Flag {
             Self::CustomPayload => vec![4],
             Self::Warning => vec![8],
             Self::Beta => vec![16],
+            Self::Default => vec![],
         }
     }
 }
@@ -48,5 +53,19 @@ impl Maskable<u8> for Flag {
 
     fn collapse(&self) -> u8 {
         self.as_bytes()[0]
+    }
+}
+
+impl TryFrom<u8> for Flag {
+    type Error = Error;
+    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+        match byte {
+            0x01 => Ok(Flag::Compression),
+            0x02 => Ok(Flag::Tracing),
+            0x04 => Ok(Flag::CustomPayload),
+            0x08 => Ok(Flag::Warning),
+            0x10 => Ok(Flag::Beta),
+            _ => Ok(Flag::Default),
+        }
     }
 }

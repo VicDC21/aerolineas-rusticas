@@ -1,5 +1,6 @@
 //! Módulo para las flags de un _query_ en un _request_.
 
+use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
 /// Flags específicas a mandar con un _query_.
@@ -54,6 +55,36 @@ impl Byteable for QueryFlag {
             Self::WithNamesForValues => vec![0, 0, 0, 64],
             Self::WithKeyspace => vec![0, 0, 0, 128],
             Self::WithNowInSeconds => vec![0, 0, 1, 0],
+        }
+    }
+}
+
+impl TryFrom<Vec<u8>> for QueryFlag {
+    type Error = Error;
+    fn try_from(int: Vec<u8>) -> Result<Self, Self::Error> {
+        let bytes_array: [u8; 4] = match int.try_into() {
+            Ok(bytes_array) => bytes_array,
+            Err(_e) => {
+                return Err(Error::ConfigError(
+                    "No se pudo castear el vector de bytes en un array en QueryFlag".to_string(),
+                ))
+            }
+        };
+
+        let value = i32::from_be_bytes(bytes_array);
+        match value {
+            0x0001 => Ok(QueryFlag::Values),
+            0x0002 => Ok(QueryFlag::SkipMetadata),
+            0x0004 => Ok(QueryFlag::PageSize),
+            0x0008 => Ok(QueryFlag::WithPagingState),
+            0x0010 => Ok(QueryFlag::WithSerialConsistency),
+            0x0020 => Ok(QueryFlag::WithDefaultTimestamp),
+            0x0040 => Ok(QueryFlag::WithNamesForValues),
+            0x0080 => Ok(QueryFlag::WithKeyspace),
+            0x0100 => Ok(QueryFlag::WithNowInSeconds),
+            _ => Err(Error::ConfigError(
+                "La flag indicada para query no existe".to_string(),
+            )),
         }
     }
 }
