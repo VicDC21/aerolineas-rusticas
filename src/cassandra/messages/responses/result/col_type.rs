@@ -2,6 +2,7 @@
 
 use std::str;
 
+use crate::cassandra::utils::parse_bytes_to_string;
 use crate::cassandra::aliases::types::{Byte, Short};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::Byteable;
@@ -245,14 +246,14 @@ impl Byteable for ColType {
 
 impl TryFrom<&mut Vec<Byte>> for ColType {
     type Error = Error;
-    fn try_from(short_in_bytes: &mut Vec<Byte>) -> Result<Self, Self::Error> {
-        if short_in_bytes.len() < 2 {
+    fn try_from(bytes_vec: &mut Vec<Byte>) -> Result<Self, Self::Error> {
+        if bytes_vec.len() < 2 {
             return Err(Error::ConfigError("Se esperaban 2 bytes".to_string()));
         }
 
-        let col_type_body: Vec<Byte> = short_in_bytes.split_off(2);
+        let col_type_body: Vec<Byte> = bytes_vec.split_off(2);
 
-        let bytes_array: [Byte; 2] = match (**short_in_bytes).try_into() {
+        let bytes_arr: [Byte; 2] = match (**bytes_vec).try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -261,10 +262,10 @@ impl TryFrom<&mut Vec<Byte>> for ColType {
             }
         };
 
-        let value = Short::from_be_bytes(bytes_array);
+        let value = Short::from_be_bytes(bytes_arr);
 
         let ret = match value {
-            0x0000 => Self::deserialize_custom_type(col_type_body)?,
+            0x0000 => ColType::Custom(parse_bytes_to_string(&col_type_body[..], &mut 0)?),
             0x0001 => ColType::Ascii,
             0x0002 => ColType::Bigint,
             0x0003 => ColType::Blob,
@@ -290,38 +291,21 @@ impl TryFrom<&mut Vec<Byte>> for ColType {
             0x0022 => Self::deserialize_set_type(col_type_body)?,
             0x0030 => Self::deserialize_udt_type(col_type_body)?,
             0x0031 => Self::deserialize_tuple_type(col_type_body)?,
-            _ => return Err(Error::ConfigError("".to_string())),
+            _ => return Err(Error::ConfigError("El ID dado no corresponde a ninguna variante".to_string())),
         };
         Ok(ret)
     }
 }
 
 impl ColType {
-    fn deserialize_custom_type(col_type_body: Vec<Byte>) -> Result<Self, Error> {
-        if col_type_body.len() < 2 {
-            return Err(Error::ConfigError(
-                "Se esperaban 2 bytes Que indiquen el tamaño del string a formar".to_string(),
-            ));
-        }
-        let custom_body = match str::from_utf8(&col_type_body) {
-            Ok(str) => str,
-            Err(_e) => {
-                return Err(Error::ConfigError(
-                    "El cuerpo del string no se pudo parsear".to_string(),
-                ))
-            }
-        };
-
-        Ok(ColType::Custom(custom_body.to_string()))
-    }
 
     fn deserialize_list_type(col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
-                "Se esperaban al menos 2 bytes para la lista".to_string(),
+                "Se esperaban al menos 2 bytes para el tipo de la lista".to_string(),
             ));
         }
-        let inner_type = ColType::try_from(&mut col_type_body[2..].to_vec())?;
+        let inner_type = ColType::try_from(&mut col_type_body[..].to_vec())?;
         Ok(ColType::List(Box::new(inner_type)))
     }
 
@@ -331,8 +315,9 @@ impl ColType {
                 "Se esperaban al menos 4 bytes para el map".to_string(),
             ));
         }
-        let key_type = ColType::try_from(&mut col_type_body[2..4].to_vec())?;
-        let value_type = ColType::try_from(&mut col_type_body[4..].to_vec())?;
+        let key_type = ColType::try_from(&mut col_type_body[..].to_vec())?;
+        let key_len = key_type.as_bytes().len();
+        let value_type = ColType::try_from(&mut col_type_body[key_len..].to_vec())?;
         Ok(ColType::Map((Box::new(key_type), Box::new(value_type))))
     }
 
@@ -342,7 +327,7 @@ impl ColType {
                 "Se esperaban al menos 2 bytes para la lista".to_string(),
             ));
         }
-        let inner_type = ColType::try_from(&mut col_type_body[2..].to_vec())?;
+        let inner_type = ColType::try_from(&mut col_type_body[..].to_vec())?;
         Ok(ColType::Set(Box::new(inner_type)))
     }
 
@@ -374,10 +359,11 @@ impl ColType {
                 "Se esperaban al menos 2 bytes para la tupla".to_string(),
             ));
         }
-        let n: usize = get_size_short(&mut col_type_body)?;
+        let n = Short::from_be_bytes([col_type_body[0], col_type_body[1]]);
         let mut types: Vec<Box<Self>> = Vec::new();
-        for _i in 0..n {
-            let col_type: ColType = ColType::try_from(&mut col_type_body)?;
+        for _ in 0..n {
+            let col_type: ColType = ColType::try_from(&mut col_type_body[..].to_vec())?;
+            col_type_body = col_type_body.split_off(col_type.as_bytes().len());
             types.push(Box::new(col_type));
         }
         Ok(ColType::Tuple(types))
