@@ -16,7 +16,7 @@ use crate::cassandra::traits::{Byteable, Maskable};
 /// let b_flags = [&BatchFlag::WithSerialConsistency, &BatchFlag::WithKeySpace];
 /// let expected: Int = 0b1001000; // 00010000 | 10000000 = 10010000
 /// assert_eq!(QueryFlag::accumulate(&b_flags[..]), expected);
-/// ```
+
 pub enum BatchFlag {
     /// Usa consistencia del tipo [SERIAL](crate::cassandra::notations::consistency::Consistency::Serial) o [LOCAL_SERIAL](crate::cassandra::notations::consistency::Consistency::LocalSerial).
     WithSerialConsistency,

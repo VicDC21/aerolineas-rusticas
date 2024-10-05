@@ -26,7 +26,7 @@ pub enum Error {
     /// Un nodo no se encontraba disponible para responder a la query.
     ///
     /// El resto del mensaje es `<cl><required><alive>`, donde:
-    /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
+    /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<required>` es un número ([Int]) que representa la cantidad de nodos que deberían estar disponibles para respetar `<cl>`.
     /// * `<alive>` es un número ([Int]) que representa la cantidad de réplicas que se sabía que estaban disponibles cuando el request había sido procesado (como se lanzó ésta excepción, se sabe que `<alive> < <required>`).
     UnavailableException(String, Consistency, Int, Int),
@@ -43,7 +43,7 @@ pub enum Error {
     /// Timeout exception durante un request de escritura.
     ///
     /// El resto del mensaje es `<cl><received><blockfor><writeType><contentions>`, donde:
-    /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
+    /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han reconocido la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya confirmación es necesaria para cumplir `<cl>`.
     /// * `<writeType>` es un [String] que representa el tipo de escritura que se estaba intentando realizar. El valor puede ser:
@@ -55,7 +55,7 @@ pub enum Error {
     ///     * "CAS": El timeout ocurrió durante el Compare And Set write/update (escritura/actualización).
     ///     * "VIEW": El timeout ocurrió durante una escritura que involucra una actualización de VIEW (vista) y falló en adquirir el lock de vista local (MV) para la clave dentro del timeout.
     ///     * "CDC": El timeout ocurrió cuando la cantidad total de espacio en disco (en MB) que se puede utilizar para almacenar los logs de CDC (Change Data Capture) fue excedida cuando se intentaba escribir en dicho logs.
-    /// * `<contentions>` es un número ([Short]) que representa la cantidad de contenciones ocurridas durante la operación CAS. Este campo solo se presenta cuando el <writeType> es "CAS".
+    /// * `<contentions>` es un número ([Short]) que representa la cantidad de contenciones ocurridas durante la operación CAS. Este campo solo se presenta cuando el writeType es "CAS".
     ///
     /// TODO: _Quizás meter writeType en un enum._
     WriteTimeout(String, Consistency, Int, Int, String, Option<Short>),
@@ -63,19 +63,19 @@ pub enum Error {
     /// Timeout exception durante un request de lectura.
     ///
     /// El resto del mensaje es `<cl><received><blockfor><data_present>`, donde:
-    /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
+    /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han respondido a la request.
-    /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya respuesta es necesaria para cumplir `<cl>`. Notar que es posible tener `<received> >= <blockfor>` si <data_present> es false. También en el caso (improbable) donde <cl> se cumple pero el nodo coordinador sufre un timeout mientras esperaba por la confirmación de un read-repair.
+    /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya respuesta es necesaria para cumplir `cl`. Notar que es posible tener `<received> >= <blockfor>` si <data_present> es false. También en el caso (improbable) donde cl se cumple pero el nodo coordinador sufre un timeout mientras esperaba por la confirmación de un read-repair.
     /// * `<data_present>` es un [Byte] (representa un booleano: 0 es false, distinto de 0 es true) que indica si el nodo al que se le hizo el pedido de la data respondió o no.
     ReadTimeout(String, Consistency, Int, Int, Byte),
 
     /// Una excepción de lectura que no fue ocasionada por un timeout.
     ///
     /// El resto del mensaje es `<cl><received><blockfor><reasonmap><data_present>`, donde:
-    /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
+    /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han respondido a la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya respuesta es necesaria para cumplir `<cl>`.
-    /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de <endpoint><failurecode> donde <endpoint> es un [IpAddr](std::net::IpAddr) y <failurecode> es un [Short].
+    /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint,failurecode donde endpoint es un [IpAddr] y failurecode es un [Short].
     /// * `<data_present>` es un [Byte] (representa un booleano: 0 es false, distinto de 0 es true) que indica si el nodo al que se le hizo el pedido de la data respondió o no.
     ReadFailure(String, Consistency, Int, Int, HashMap<IpAddr, Short>, Byte),
 
@@ -90,10 +90,10 @@ pub enum Error {
     /// Una excepción de escritura que no fue ocasionada por un timeout.
     ///
     /// El resto del mensaje es `<cl><received><blockfor><reasonmap><write_type>`, donde:
-    /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
+    /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han respondido a la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya confirmación es necesaria para cumplir `<cl>`.
-    /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de <endpoint><failurecode> donde <endpoint> es un [IpAddr](std::net::IpAddr) y <failurecode> es un [Short].
+    /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint, failurecode donde endpoint es un [IpAddr] y failurecode es un [Short].
     /// * `<writeType>` es un [String] que representa el tipo de escritura que se estaba intentando realizar. El valor puede ser:
     ///     * "SIMPLE": La escritura no fue de tipo batch ni de tipo counter.
     ///     * "BATCH": La escritura fue de tipo batch (logged). Esto signifca que el log del batch fue escrito correctamente, caso contrario, se debería haber enviado el tipo "BATCH_LOG".
@@ -120,7 +120,7 @@ pub enum Error {
     /// Una excepción ocurrida debido a una operación _Compare And Set write/update_ en contención. La operación CAS fue completada solo parcialmente y la operación puede o no ser completada por la escritura CAS contenedora o la lectura SERIAL/LOCAL_SERIAL.
     ///
     /// El resto del mensaje es `<cl><received><blockfor>`, donde:
-    /// * `<cl>` es el nivel de [Consistency](crate::cassandra::notations::consistency::Consistency) de la query que lanzó esta excepción.
+    /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han reconocido la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya confirmación es necesaria para cumplir `<cl>`.
     CASWriteUnknown(String, Consistency, Int, Int),
@@ -141,7 +141,7 @@ pub enum Error {
     ///
     /// El resto del mensaje es `<ks><table>`, donde:
     /// * `<ks>` es un [String] representando el _keyspace_ que ya existía, o el _keyspace_ al que pertenece la tabla que ya existía.
-    /// * `<table>` es un [String] representando el nombre de la tabla que ya existía. Si la query intentó crear un _keyspace_, <table> estará presente pero será el string vacío.
+    /// * `<table>` es un [String] representando el nombre de la tabla que ya existía. Si la query intentó crear un _keyspace_, table estará presente pero será el string vacío.
     AlreadyExists(String, String, String),
 
     /// Puede ser lanzado mientras una expresión preparada intenta ser ejecutada si el ID de la misma no es conocido por este host.

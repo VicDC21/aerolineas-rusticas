@@ -14,7 +14,7 @@ pub enum ColType {
     /// Secuencia de bytes ([ [Byte] ]) en rango ASCII [0, 127].
     Ascii,
 
-    /// Un número de 8 bytes en complemento a dos ([Long]).
+    /// Un número de 8 bytes en complemento a dos ([i64]).
     Bigint,
 
     /// Una secuencia de bytes "crudos" ([ [Byte] ]).
@@ -97,10 +97,10 @@ pub enum ColType {
     /// Un numero de 1 byte complemento a 2 ([i8]).
     Tinyint,
 
-    /// Una duración está compuesta de 3 enteros de longitud variable con signo ([vint])
-    /// El primer [vint] representa una cantidad de meses
-    /// El segundo [vint] representa una cantidad de días
-    /// Y el tercer [vint] representa una cantidad de nanosegundos
+    /// Una duración está compuesta de 3 enteros de longitud variable con signo (vint)
+    /// El primer (vint) representa una cantidad de meses
+    /// El segundo (vint) representa una cantidad de días
+    /// Y el tercer (vint) representa una cantidad de nanosegundos
     /// Tanto la cantidad de meses como de días deben ser un entero de 32 bits válido
     /// Mientras que la cantidad de nanosegundos debe ser un entero de 64 bits válido
     /// Una duración puede ser tanto positiva como negativa
