@@ -504,12 +504,7 @@ impl TryFrom<Vec<u8>> for Error {
                         bytes_vec[i + 4],
                     ]);
                     i += 5;
-
-                    let write_type = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                        Ok(string) => string,
-                        Err(err) => return Err(err),
-                    };
-
+                    let write_type = Error::parse_bytes_to_string(&bytes_vec[i..])?;
                     let contentions = if write_type == "CAS" {
                         if i + write_type.len() + 3 >= bytes_vec.len() {
                             return Err(Error::SyntaxError("Se esperaban 3 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
@@ -579,10 +574,7 @@ impl TryFrom<Vec<u8>> for Error {
                         bytes_vec[i + 4],
                     ]);
                     i += 5;
-                    let reasonmap = match Error::parse_bytes_to_hashmap(&bytes_vec, &mut i) {
-                        Ok(hashmap) => hashmap,
-                        Err(err) => return Err(err),
-                    };
+                    let reasonmap = Error::parse_bytes_to_hashmap(&bytes_vec, &mut i)?;
                     let data_present = bytes_vec[i];
                     Ok(Error::ReadFailure(
                         msg,
@@ -642,14 +634,8 @@ impl TryFrom<Vec<u8>> for Error {
                         bytes_vec[i + 4],
                     ]);
                     i += 5;
-                    let reasonmap = match Error::parse_bytes_to_hashmap(&bytes_vec, &mut i) {
-                        Ok(hashmap) => hashmap,
-                        Err(err) => return Err(err),
-                    };
-                    let write_type = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                        Ok(string) => string,
-                        Err(err) => return Err(err),
-                    };
+                    let reasonmap = Error::parse_bytes_to_hashmap(&bytes_vec, &mut i)?;
+                    let write_type = Error::parse_bytes_to_string(&bytes_vec[i..])?;
                     Ok(Error::WriteFailure(
                         msg, cl, received, blockfor, reasonmap, write_type,
                     ))
