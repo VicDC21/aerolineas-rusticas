@@ -1,29 +1,30 @@
 //! Módulo para un header de stream.
 
+use crate::cassandra::aliases::types::{Byte, Short};
 use crate::cassandra::errors::error::Error;
 
 /// Cada frame tiene un stream id para hacer coincidir el IDs entre las requests y responses.
 pub struct Stream {
     /// El ID del stream.
-    id: i16,
+    id: Short,
 }
 
 impl Stream {
     /// Crea un nuevo header de Stream.
-    pub fn new(id: i16) -> Self {
+    pub fn new(id: Short) -> Self {
         Self { id }
     }
 
     /// Transforma el ID en una secuencia de dos bytes.
-    pub fn as_bytes(&self) -> [u8; 2] {
-        self.id.to_be_bytes()
+    pub fn as_bytes(&self) -> Vec<Byte> {
+        self.id.to_be_bytes().to_vec()
     }
 }
 
-impl TryFrom<Vec<u8>> for Stream {
+impl TryFrom<Vec<Byte>> for Stream {
     type Error = Error;
-    fn try_from(short: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 2] = match short.try_into() {
+    fn try_from(short: Vec<Byte>) -> Result<Self, Self::Error> {
+        let bytes_array: [Byte; 2] = match short.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -31,7 +32,7 @@ impl TryFrom<Vec<u8>> for Stream {
                 ))
             }
         };
-        let value = i16::from_be_bytes(bytes_array);
+        let value = Short::from_be_bytes(bytes_array);
         Ok(Stream { id: value })
     }
 }

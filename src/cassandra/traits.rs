@@ -2,10 +2,12 @@
 
 use std::ops::{BitAndAssign, BitOrAssign};
 
+use crate::cassandra::aliases::types::Byte;
+
 /// Colapsa una propiedad en una colección de bytes.
 pub trait Byteable {
     /// Transforma el objeto en un vector de bytes.
-    fn as_bytes(&self) -> Vec<u8>;
+    fn as_bytes(&self) -> Vec<Byte>;
 }
 
 /// Une muchas propiedades (pensadas como máscaras) en un sólo número.

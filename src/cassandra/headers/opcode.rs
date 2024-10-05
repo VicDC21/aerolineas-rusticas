@@ -1,5 +1,6 @@
 //! Módulo para el opcode del mensaje el protocolo.
 
+use crate::cassandra::aliases::types::Byte;
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::Byteable;
 
@@ -57,31 +58,31 @@ pub enum Opcode {
 }
 
 impl Byteable for Opcode {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::OpCodeError => vec![0],
-            Self::Startup => vec![1],
-            Self::Ready => vec![2],
-            Self::Authenticate => vec![3],
-            Self::Options => vec![5],
-            Self::Supported => vec![6],
-            Self::Query => vec![7],
-            Self::Result => vec![8],
-            Self::Prepare => vec![9],
-            Self::Execute => vec![10],
-            Self::Register => vec![11],
-            Self::Event => vec![12],
-            Self::Batch => vec![13],
-            Self::AuthChallenge => vec![14],
-            Self::AuthResponse => vec![15],
-            Self::AuthSuccess => vec![16],
+            Self::OpCodeError => vec![0x0],
+            Self::Startup => vec![0x1],
+            Self::Ready => vec![0x2],
+            Self::Authenticate => vec![0x3],
+            Self::Options => vec![0x5],
+            Self::Supported => vec![0x6],
+            Self::Query => vec![0x7],
+            Self::Result => vec![0x8],
+            Self::Prepare => vec![0x9],
+            Self::Execute => vec![0xA],
+            Self::Register => vec![0xB],
+            Self::Event => vec![0xC],
+            Self::Batch => vec![0xD],
+            Self::AuthChallenge => vec![0xE],
+            Self::AuthResponse => vec![0xF],
+            Self::AuthSuccess => vec![0x10],
         }
     }
 }
 
-impl TryFrom<u8> for Opcode {
+impl TryFrom<Byte> for Opcode {
     type Error = Error;
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+    fn try_from(byte: Byte) -> Result<Self, Self::Error> {
         match byte {
             0x00 => Ok(Opcode::OpCodeError),
             0x01 => Ok(Opcode::Startup),

@@ -3,6 +3,7 @@
 use crate::cassandra::errors::error::Error;
 use std::convert::TryFrom;
 
+use crate::cassandra::aliases::types::Byte;
 use crate::cassandra::traits::Byteable;
 
 /// La 'versión' indica tanto la versión del protocolo a usar,
@@ -28,21 +29,21 @@ pub enum Version {
 }
 
 impl Byteable for Version {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::RequestV3 => vec![3],
-            Self::ResponseV3 => vec![131],
-            Self::RequestV4 => vec![4],
-            Self::ResponseV4 => vec![132],
-            Self::RequestV5 => vec![5],
-            Self::ResponseV5 => vec![133],
+            Self::RequestV3 => vec![0x3],
+            Self::ResponseV3 => vec![0x83],
+            Self::RequestV4 => vec![0x4],
+            Self::ResponseV4 => vec![0x84],
+            Self::RequestV5 => vec![0x5],
+            Self::ResponseV5 => vec![0x85],
         }
     }
 }
 
-impl TryFrom<u8> for Version {
+impl TryFrom<Byte> for Version {
     type Error = Error;
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+    fn try_from(byte: Byte) -> Result<Self, Self::Error> {
         match byte {
             0x03 => Ok(Version::RequestV3),
             0x83 => Ok(Version::ResponseV3),

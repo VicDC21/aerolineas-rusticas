@@ -1,5 +1,6 @@
 //! Módulo para las flags de un mensaje.
 
+use crate::cassandra::aliases::types::Byte;
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
@@ -9,8 +10,9 @@ use crate::cassandra::traits::{Byteable, Maskable};
 /// ```rust
 /// # use aerolineas::cassandra::headers::flags::Flag;
 /// # use aerolineas::cassandra::traits::Maskable;
+/// # use aerolineas::cassandra::aliases::types::Byte;
 /// let flags = [&Flag::Compression, &Flag::Tracing, &Flag::Beta];
-/// let expected: u8 = 19; // 00000001 | 00000010 | 00010000 = 00010011
+/// let expected: Byte = 0b00010011; // 00000001 | 00000010 | 00010000 = 00010011
 /// assert_eq!(Flag::accumulate(&flags[..]), expected);
 /// ```
 pub enum Flag {
@@ -34,31 +36,31 @@ pub enum Flag {
 }
 
 impl Byteable for Flag {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::Compression => vec![1],
-            Self::Tracing => vec![2],
-            Self::CustomPayload => vec![4],
-            Self::Warning => vec![8],
-            Self::Beta => vec![16],
+            Self::Compression => vec![0x1],
+            Self::Tracing => vec![0x2],
+            Self::CustomPayload => vec![0x4],
+            Self::Warning => vec![0x8],
+            Self::Beta => vec![0x10],
             Self::Default => vec![],
         }
     }
 }
 
-impl Maskable<u8> for Flag {
-    fn base_mask() -> u8 {
+impl Maskable<Byte> for Flag {
+    fn base_mask() -> Byte {
         0
     }
 
-    fn collapse(&self) -> u8 {
+    fn collapse(&self) -> Byte {
         self.as_bytes()[0]
     }
 }
 
-impl TryFrom<u8> for Flag {
+impl TryFrom<Byte> for Flag {
     type Error = Error;
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+    fn try_from(byte: Byte) -> Result<Self, Self::Error> {
         match byte {
             0x01 => Ok(Flag::Compression),
             0x02 => Ok(Flag::Tracing),
