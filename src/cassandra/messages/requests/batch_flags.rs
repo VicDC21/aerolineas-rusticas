@@ -1,5 +1,6 @@
 //! Módulo para las flags de una instrucción BATCH.
 
+use crate::cassandra::aliases::types::{Byte, Int};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
@@ -11,8 +12,9 @@ use crate::cassandra::traits::{Byteable, Maskable};
 /// /// ```rust
 /// # use aerolineas::cassandra::messages::requests::batch_flags::BatchFlag;
 /// # use aerolineas::cassandra::traits::Maskable;
+/// # use aerolineas::cassandra::aliases::types::Int;
 /// let b_flags = [&BatchFlag::WithSerialConsistency, &BatchFlag::WithKeySpace];
-/// let expected: i32 = 144; // 00010000 | 10000000 = 10010000
+/// let expected: Int = 0b1001000; // 00010000 | 10000000 = 10010000
 /// assert_eq!(QueryFlag::accumulate(&b_flags[..]), expected);
 /// ```
 pub enum BatchFlag {
@@ -36,21 +38,21 @@ pub enum BatchFlag {
 }
 
 impl Byteable for BatchFlag {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::WithSerialConsistency => vec![0, 0, 0, 16],
-            Self::WithDefaultTimestamp => vec![0, 0, 0, 32],
-            Self::WithNamesForValues => vec![0, 0, 0, 64],
-            Self::WithKeyspace => vec![0, 0, 0, 128],
-            Self::WithNowInSeconds => vec![0, 0, 1, 0],
+            Self::WithSerialConsistency => vec![0x0, 0x0, 0x0, 0x10],
+            Self::WithDefaultTimestamp => vec![0x0, 0x0, 0x0, 0x20],
+            Self::WithNamesForValues => vec![0x0, 0x0, 0x0, 0x40],
+            Self::WithKeyspace => vec![0x0, 0x0, 0x0, 0x80],
+            Self::WithNowInSeconds => vec![0x0, 0x0, 0x1, 0x0],
         }
     }
 }
 
-impl TryFrom<Vec<u8>> for BatchFlag {
+impl TryFrom<Vec<Byte>> for BatchFlag {
     type Error = Error;
-    fn try_from(int: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 4] = match int.try_into() {
+    fn try_from(int: Vec<Byte>) -> Result<Self, Self::Error> {
+        let bytes_array: [Byte; 4] = match int.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -59,7 +61,7 @@ impl TryFrom<Vec<u8>> for BatchFlag {
             }
         };
 
-        let value = i32::from_be_bytes(bytes_array);
+        let value = Int::from_be_bytes(bytes_array);
         match value {
             0x0010 => Ok(BatchFlag::WithSerialConsistency),
             0x0020 => Ok(BatchFlag::WithDefaultTimestamp),
@@ -76,13 +78,13 @@ impl TryFrom<Vec<u8>> for BatchFlag {
     }
 }
 
-impl Maskable<i32> for BatchFlag {
-    fn base_mask() -> i32 {
+impl Maskable<Int> for BatchFlag {
+    fn base_mask() -> Int {
         0
     }
 
-    fn collapse(&self) -> i32 {
+    fn collapse(&self) -> Int {
         let bytes = self.as_bytes();
-        i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        Int::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }

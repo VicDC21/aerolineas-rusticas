@@ -1,5 +1,6 @@
 //! Módulo para las flags de un _query_ en un _request_.
 
+use crate::cassandra::aliases::types::{Byte, Int};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
@@ -9,8 +10,9 @@ use crate::cassandra::traits::{Byteable, Maskable};
 /// ```rust
 /// # use aerolineas::cassandra::messages::requests::query_flags::QueryFlag;
 /// # use aerolineas::cassandra::traits::Maskable;
+/// # use aerolineas::cassandra::aliases::types::Int;
 /// let q_flags = [&QueryFlag::Values, &QueryFlag::SkipMetadata, &QueryFlag::WithKeyspace];
-/// let expected: i32 = 131; // 00000001 | 00000010 | 10000000 = 10000011
+/// let expected: Int = 0b10000011; // 00000001 | 00000010 | 10000000 = 10000011
 /// assert_eq!(QueryFlag::accumulate(&q_flags[..]), expected);
 /// ```
 pub enum QueryFlag {
@@ -44,25 +46,25 @@ pub enum QueryFlag {
 }
 
 impl Byteable for QueryFlag {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::Values => vec![0, 0, 0, 1],
-            Self::SkipMetadata => vec![0, 0, 0, 2],
-            Self::PageSize => vec![0, 0, 0, 4],
-            Self::WithPagingState => vec![0, 0, 0, 8],
-            Self::WithSerialConsistency => vec![0, 0, 0, 16],
-            Self::WithDefaultTimestamp => vec![0, 0, 0, 32],
-            Self::WithNamesForValues => vec![0, 0, 0, 64],
-            Self::WithKeyspace => vec![0, 0, 0, 128],
-            Self::WithNowInSeconds => vec![0, 0, 1, 0],
+            Self::Values => vec![0x0, 0x0, 0x0, 0x1],
+            Self::SkipMetadata => vec![0x0, 0x0, 0x0, 0x2],
+            Self::PageSize => vec![0x0, 0x0, 0x0, 0x4],
+            Self::WithPagingState => vec![0x0, 0x0, 0x0, 0x8],
+            Self::WithSerialConsistency => vec![0x0, 0x0, 0x0, 0x10],
+            Self::WithDefaultTimestamp => vec![0x0, 0x0, 0x0, 0x20],
+            Self::WithNamesForValues => vec![0x0, 0x0, 0x0, 0x40],
+            Self::WithKeyspace => vec![0x0, 0x0, 0x0, 0x80],
+            Self::WithNowInSeconds => vec![0x0, 0x0, 0x1, 0x0],
         }
     }
 }
 
-impl TryFrom<Vec<u8>> for QueryFlag {
+impl TryFrom<Vec<Byte>> for QueryFlag {
     type Error = Error;
-    fn try_from(int: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 4] = match int.try_into() {
+    fn try_from(int: Vec<Byte>) -> Result<Self, Self::Error> {
+        let bytes_array: [Byte; 4] = match int.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -71,7 +73,7 @@ impl TryFrom<Vec<u8>> for QueryFlag {
             }
         };
 
-        let value = i32::from_be_bytes(bytes_array);
+        let value = Int::from_be_bytes(bytes_array);
         match value {
             0x0001 => Ok(QueryFlag::Values),
             0x0002 => Ok(QueryFlag::SkipMetadata),
@@ -89,13 +91,13 @@ impl TryFrom<Vec<u8>> for QueryFlag {
     }
 }
 
-impl Maskable<i32> for QueryFlag {
-    fn base_mask() -> i32 {
+impl Maskable<Int> for QueryFlag {
+    fn base_mask() -> Int {
         0
     }
 
-    fn collapse(&self) -> i32 {
+    fn collapse(&self) -> Int {
         let bytes = self.as_bytes();
-        i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        Int::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }

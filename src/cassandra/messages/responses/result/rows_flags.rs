@@ -1,5 +1,6 @@
 //! Flags para una _response_ RESULT de filas.
 
+use crate::cassandra::aliases::types::{Byte, Int};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
@@ -16,19 +17,19 @@ pub enum RowsFlag {
 }
 
 impl Byteable for RowsFlag {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::GlobalTablesSpec => vec![0, 0, 0, 1],
-            Self::HasMorePages => vec![0, 0, 0, 2],
-            Self::NoMetadata => vec![0, 0, 0, 4],
+            Self::GlobalTablesSpec => vec![0x0, 0x0, 0x0, 0x1],
+            Self::HasMorePages => vec![0x0, 0x0, 0x0, 0x2],
+            Self::NoMetadata => vec![0x0, 0x0, 0x0, 0x4],
         }
     }
 }
 
-impl TryFrom<Vec<u8>> for RowsFlag {
+impl TryFrom<Vec<Byte>> for RowsFlag {
     type Error = Error;
-    fn try_from(int: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 4] = match int.try_into() {
+    fn try_from(int: Vec<Byte>) -> Result<Self, Self::Error> {
+        let bytes_array: [Byte; 4] = match int.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -37,7 +38,7 @@ impl TryFrom<Vec<u8>> for RowsFlag {
             }
         };
 
-        let value = i32::from_be_bytes(bytes_array);
+        let value = Int::from_be_bytes(bytes_array);
         match value {
             0x0001 => Ok(RowsFlag::GlobalTablesSpec),
             0x0002 => Ok(RowsFlag::HasMorePages),
@@ -49,13 +50,13 @@ impl TryFrom<Vec<u8>> for RowsFlag {
     }
 }
 
-impl Maskable<i32> for RowsFlag {
-    fn base_mask() -> i32 {
+impl Maskable<Int> for RowsFlag {
+    fn base_mask() -> Int {
         0
     }
 
-    fn collapse(&self) -> i32 {
+    fn collapse(&self) -> Int {
         let bytes = self.as_bytes();
-        i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        Int::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }

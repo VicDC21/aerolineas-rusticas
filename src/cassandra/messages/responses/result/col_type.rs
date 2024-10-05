@@ -2,6 +2,7 @@
 
 use std::str;
 
+use crate::cassandra::aliases::types::{Byte, Short};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::Byteable;
 
@@ -10,16 +11,16 @@ pub enum ColType {
     /// Un tipo personalizado. El nombre de dicho tipo es el valor.
     Custom(String),
 
-    /// Secuencia de bytes ([ [u8] ]) en rango ASCII [0, 127].
+    /// Secuencia de bytes ([ [Byte] ]) en rango ASCII [0, 127].
     Ascii,
 
-    /// Un número de 8 bytes en complemento a dos ([i64]).
+    /// Un número de 8 bytes en complemento a dos ([Long]).
     Bigint,
 
-    /// Una secuencia de bytes "crudos" ([ [u8] ]).
+    /// Una secuencia de bytes "crudos" ([ [Byte] ]).
     Blob,
 
-    /// Un byte único ([u8] o [bool]) que denota un valor booleano:
+    /// Un byte único ([Byte] o [bool]) que denota un valor booleano:
     ///
     /// * Un valor de `0` indica `false`.
     /// * Cualquier otro valor indica `true`, pero igual se recomienda usar `1`.
@@ -30,30 +31,30 @@ pub enum ColType {
 
     /// Número decimal de precisión arbitraria.
     ///
-    /// Primero es precedido por un exponente ([i32]), y la base en formato [Varint](crate::cassandra::messages::responses::result::col_type::ColType::Varint).
+    /// Primero es precedido por un exponente ([Int](crate::cassandra::aliases::types::Int)), y la base en formato [Varint](crate::cassandra::messages::responses::result::col_type::ColType::Varint).
     Decimal,
 
-    /// Un número de 8 bytes en formato IEEE 754 (Binary64) de precisión doble ([f64]).
+    /// Un número de 8 bytes en formato IEEE 754 (Binary64) de precisión doble ([Double](crate::cassandra::aliases::types::Double)).
     Double,
 
-    /// Un número de 4 bytes en formato IEEE 754 (Binary32) de precisión simple ([f32]).
+    /// Un número de 4 bytes en formato IEEE 754 (Binary32) de precisión simple ([Float](crate::cassandra::aliases::types::Float)).
     Float,
 
-    /// Un número de 4 bytes en complemento a dos ([i32]).
+    /// Un número de 4 bytes en complemento a dos ([Int](crate::cassandra::aliases::types::Int)).
     Int,
 
-    /// Número de 8 bytes en complemento a dos ([i64]) indicando el tiempo en milisegundos desde la
+    /// Número de 8 bytes en complemento a dos ([Long](crate::cassandra::aliases::types::Long)) indicando el tiempo en milisegundos desde la
     /// _unix epoch_ (1ro de Enero de 1970, 00:00:00).
     ///
     /// Valores negativos indican una diferencia negativa a esa época.
     Timestamp,
 
-    /// Número de 16 bytes (asumimos ([u128])) representando cualquier versión de un UUID.
+    /// Número de 16 bytes (asumimos ([Uuid](crate::cassandra::aliases::types::Uuid))) representando cualquier versión de un UUID.
     Uuid,
 
     /// Un alias para el tipo "Text".
     ///
-    /// Representa una secuencia de bytes ([ [u8] ]) en formato UTF-8.
+    /// Representa una secuencia de bytes ([ [Byte] ]) en formato UTF-8.
     Varchar,
 
     /// Número de complemento a dos de longitud variable de un _integer_ con signo.
@@ -72,7 +73,7 @@ pub enum ColType {
     /// -129 |   0xFF7F
     Varint,
 
-    /// Número de 16 bytes (asumimos [u128]) representando un UUID (Versión 1) tal y como está especificado en RFC 4122.
+    /// Número de 16 bytes (asumimos [Uuid](crate::cassandra::aliases::types::Uuid)) representando un UUID (Versión 1) tal y como está especificado en RFC 4122.
     Timeuuid,
 
     /// Una secuencia de 4 o 16 bytes ([u32], [u128] o [IpAddr](std::net::IpAddr)) denotado una dirección IPv4 o IPv6 respectivamente..
@@ -86,11 +87,11 @@ pub enum ColType {
     /// 2^32: 5881580-07-11
     Date,
 
-    /// Numero de 8 bytes en complemento a dos ([i64]) que representa nanosegundos desde la medianoche.
+    /// Numero de 8 bytes en complemento a dos ([Long](crate::cassandra::aliases::types::Long)) que representa nanosegundos desde la medianoche.
     /// Los valores validos van desde 0 a 86399999999999.
     Time,
 
-    /// Un numero de 2 bytes complemento a 2 ([i16]).
+    /// Un numero de 2 bytes complemento a 2 ([Short]).
     Smallint,
 
     /// Un numero de 1 byte complemento a 2 ([i8]).
@@ -121,76 +122,76 @@ pub enum ColType {
     ///
     /// * `<ks>` es un [String] representado el _keyspace_ al que pertenece este UDT.
     /// * `<udt_name>` es un [String] representando el nombre del UDT.
-    /// * `<n>` es un número de 2 bytes ([u16]) que representa la cantidad de campos a continuación.
+    /// * `<n>` es un número de 2 bytes ([Short]) que representa la cantidad de campos a continuación.
     /// * `<name_i>` es un [String] representando el nombre del i-ésimo campo del UDT.
     /// * `<value_i>` es una tipo de los especificados en este [Enum](crate::cassandra::messages::responses::result::col_type::ColType), tal que el i-ésimo campo del UDT tiene valor de ese tipo.
     ///
     /// TODO: _Quizás meter eso en un struct en el futuro._
-    Udt((String, String, u16, Vec<(String, Box<Self>)>)),
+    Udt((String, String, Short, Vec<(String, Box<Self>)>)),
 
     /// El valor tiene la forma `<n><type_1>...<type_n>` donde:
     ///
-    /// * `<n>` es un número de 2 bytes ([u16]) representando el número de elementos.
+    /// * `<n>` es un número de 2 bytes ([Short]) representando el número de elementos.
     /// * `<type_i>` es el [tipo](crate::cassandra::messages::responses::result::col_type::ColType) del i-ésimo valor de la tupla.
     Tuple(Vec<Box<Self>>),
 }
 
 impl Byteable for ColType {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         // OJO que esto devuelve los bytes de los posibles valores.
         match self {
             Self::Custom(nombre) => {
                 let nombre_bytes = nombre.as_bytes();
                 // litle endian para que los dos bytes menos significativos (los únicos que nos interesa
-                // para un [u16]) estén al principio
+                // para un [Short]) estén al principio
                 let bytes_len = nombre_bytes.len().to_le_bytes();
-                let mut bytes_vec: Vec<u8> = vec![
-                    0,
-                    0, // ID
+                let mut bytes_vec: Vec<Byte> = vec![
+                    0x0,
+                    0x0, // ID
                     bytes_len[1],
                     bytes_len[0], // Longitud del nombre
                 ];
                 bytes_vec.extend_from_slice(nombre_bytes);
                 bytes_vec
             }
-            Self::Ascii => vec![0, 1],
-            Self::Bigint => vec![0, 2],
-            Self::Blob => vec![0, 3],
-            Self::Boolean => vec![0, 4],
-            Self::Counter => vec![0, 5],
-            Self::Decimal => vec![0, 6],
-            Self::Double => vec![0, 7],
-            Self::Float => vec![0, 8],
-            Self::Int => vec![0, 9],
-            Self::Timestamp => vec![0, 11], // Sí, salteamos el 10 (`0xA`) a propósito
-            Self::Uuid => vec![0, 12],
-            Self::Varchar => vec![0, 13],
-            Self::Varint => vec![0, 14],
-            Self::Timeuuid => vec![0, 15],
-            Self::Inet => vec![0, 16],
-            Self::Date => vec![0, 17],
-            Self::Time => vec![0, 18],
-            Self::Smallint => vec![0, 19],
-            Self::Tinyint => vec![0, 20],
-            Self::Duration => vec![0, 21],
+            Self::Ascii => vec![0x0, 0x1],
+            Self::Bigint => vec![0x0, 0x2],
+            Self::Blob => vec![0x0, 0x3],
+            Self::Boolean => vec![0x0, 0x4],
+            Self::Counter => vec![0x0, 0x5],
+            Self::Decimal => vec![0x0, 0x6],
+            Self::Double => vec![0x0, 0x7],
+            Self::Float => vec![0x0, 0x8],
+            Self::Int => vec![0x0, 0x9],
+            Self::Timestamp => vec![0x0, 0xB], // Sí, salteamos el `0xA` a propósito
+            Self::Uuid => vec![0x0, 0xC],
+            Self::Varchar => vec![0x0, 0xD],
+            Self::Varint => vec![0x0, 0xE],
+            Self::Timeuuid => vec![0x0, 0xF],
+            Self::Inet => vec![0x0, 0x10],
+            Self::Date => vec![0x0, 0x11],
+            Self::Time => vec![0x0, 0x12],
+            Self::Smallint => vec![0x0, 0x13],
+            Self::Tinyint => vec![0x0, 0x14],
+            Self::Duration => vec![0x0, 0x15],
             Self::List(boxed) => {
-                let mut bytes_vec: Vec<u8> = vec![
-                    0, 32, // ID
+                let mut bytes_vec: Vec<Byte> = vec![
+                    0x0, 0x20, // ID
                 ];
                 bytes_vec.extend((**boxed).as_bytes());
                 bytes_vec
             }
             Self::Map((box_key, box_val)) => {
-                let mut bytes_vec: Vec<u8> = vec![
-                    0, 33, // ID
+                let mut bytes_vec: Vec<Byte> = vec![
+                    0x0, 0x21, // ID
                 ];
                 bytes_vec.extend((**box_key).as_bytes());
                 bytes_vec.extend((**box_val).as_bytes());
                 bytes_vec
             }
             Self::Set(boxed) => {
-                let mut bytes_vec: Vec<u8> = vec![
-                    0, 34, // ID
+                let mut bytes_vec: Vec<Byte> = vec![
+                    0, 0x22, // ID
                 ];
                 bytes_vec.extend((**boxed).as_bytes());
                 bytes_vec
@@ -199,9 +200,9 @@ impl Byteable for ColType {
                 let ks_bytes = ks.as_bytes();
                 let ks_bytes_len = ks_bytes.len().to_le_bytes();
 
-                let mut bytes_vec: Vec<u8> = vec![
-                    0,
-                    48, // ID,
+                let mut bytes_vec: Vec<Byte> = vec![
+                    0x0,
+                    0x30, // ID,
                     ks_bytes_len[1],
                     ks_bytes_len[0], // ks
                 ];
@@ -227,9 +228,9 @@ impl Byteable for ColType {
             }
             Self::Tuple(types_vec) => {
                 let types_vec_len = types_vec.len().to_le_bytes();
-                let mut bytes_vec: Vec<u8> = vec![
-                    0,
-                    49, // ID
+                let mut bytes_vec: Vec<Byte> = vec![
+                    0x0,
+                    0x31, // ID
                     types_vec_len[1],
                     types_vec_len[0], // longitud de la tupla
                 ];
@@ -242,16 +243,16 @@ impl Byteable for ColType {
     }
 }
 
-impl TryFrom<&mut Vec<u8>> for ColType {
+impl TryFrom<&mut Vec<Byte>> for ColType {
     type Error = Error;
-    fn try_from(short_in_bytes: &mut Vec<u8>) -> Result<Self, Self::Error> {
+    fn try_from(short_in_bytes: &mut Vec<Byte>) -> Result<Self, Self::Error> {
         if short_in_bytes.len() < 2 {
             return Err(Error::ConfigError("Se esperaban 2 bytes".to_string()));
         }
 
-        let col_type_body: Vec<u8> = short_in_bytes.split_off(2);
+        let col_type_body: Vec<Byte> = short_in_bytes.split_off(2);
 
-        let bytes_array: [u8; 2] = match (**short_in_bytes).try_into() {
+        let bytes_array: [Byte; 2] = match (**short_in_bytes).try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -260,7 +261,7 @@ impl TryFrom<&mut Vec<u8>> for ColType {
             }
         };
 
-        let value = u16::from_be_bytes(bytes_array);
+        let value = Short::from_be_bytes(bytes_array);
 
         let ret = match value {
             0x0000 => Self::deserialize_custom_type(col_type_body)?,
@@ -296,21 +297,21 @@ impl TryFrom<&mut Vec<u8>> for ColType {
 }
 
 trait DeserializeColumnType {
-    fn deserialize_custom_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+    fn deserialize_custom_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
 
-    fn deserialize_list_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+    fn deserialize_list_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
 
-    fn deserialize_map_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+    fn deserialize_map_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
 
-    fn deserialize_set_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+    fn deserialize_set_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
 
-    fn deserialize_udt_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+    fn deserialize_udt_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
 
-    fn deserialize_tuple_type(col_type_body: Vec<u8>) -> Result<ColType, Error>;
+    fn deserialize_tuple_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
 }
 
 impl DeserializeColumnType for ColType {
-    fn deserialize_custom_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
+    fn deserialize_custom_type(col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
                 "Se esperaban 2 bytes Que indiquen el tamaño del string a formar".to_string(),
@@ -328,7 +329,7 @@ impl DeserializeColumnType for ColType {
         Ok(ColType::Custom(custom_body.to_string()))
     }
 
-    fn deserialize_list_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
+    fn deserialize_list_type(col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
                 "Se esperaban al menos 2 bytes para la lista".to_string(),
@@ -338,7 +339,7 @@ impl DeserializeColumnType for ColType {
         Ok(ColType::List(Box::new(inner_type)))
     }
 
-    fn deserialize_map_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
+    fn deserialize_map_type(col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 4 {
             return Err(Error::ConfigError(
                 "Se esperaban al menos 4 bytes para el map".to_string(),
@@ -349,7 +350,7 @@ impl DeserializeColumnType for ColType {
         Ok(ColType::Map((Box::new(key_type), Box::new(value_type))))
     }
 
-    fn deserialize_set_type(col_type_body: Vec<u8>) -> Result<Self, Error> {
+    fn deserialize_set_type(col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
                 "Se esperaban al menos 2 bytes para la lista".to_string(),
@@ -359,7 +360,7 @@ impl DeserializeColumnType for ColType {
         Ok(ColType::Set(Box::new(inner_type)))
     }
 
-    fn deserialize_udt_type(mut col_type_body: Vec<u8>) -> Result<Self, Error> {
+    fn deserialize_udt_type(mut col_type_body: Vec<Byte>) -> Result<Self, Error> {
         let ks_lenght: usize = get_size_short(&mut col_type_body)?;
         let ks: String = get_string_from_bytes_with_lenght(&mut col_type_body, ks_lenght)?;
 
@@ -367,7 +368,7 @@ impl DeserializeColumnType for ColType {
         let udt_name: String =
             get_string_from_bytes_with_lenght(&mut col_type_body, udt_name_lenght)?;
 
-        let n: u16 = get_size_short(&mut col_type_body)? as u16;
+        let n: Short = get_size_short(&mut col_type_body)? as Short;
 
         let mut fields: Vec<(String, Box<Self>)> = Vec::new();
         for _i in 0..n {
@@ -381,7 +382,7 @@ impl DeserializeColumnType for ColType {
         Ok(ColType::Udt((ks, udt_name, n, fields)))
     }
 
-    fn deserialize_tuple_type(mut col_type_body: Vec<u8>) -> Result<Self, Error> {
+    fn deserialize_tuple_type(mut col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
                 "Se esperaban al menos 2 bytes para la tupla".to_string(),
@@ -398,7 +399,7 @@ impl DeserializeColumnType for ColType {
 }
 
 fn get_string_from_bytes_with_lenght(
-    col_type_body: &mut Vec<u8>,
+    col_type_body: &mut Vec<Byte>,
     ks_lenght: usize,
 ) -> Result<String, Error> {
     if col_type_body.len() < ks_lenght {
@@ -406,7 +407,7 @@ fn get_string_from_bytes_with_lenght(
             "Se esperaban mas bytes en ColType".to_string(),
         ));
     }
-    let ks: Vec<u8> = col_type_body.drain(0..ks_lenght).collect();
+    let ks: Vec<Byte> = col_type_body.drain(0..ks_lenght).collect();
     let ks = match str::from_utf8(&ks) {
         Ok(str) => str,
         Err(_e) => {
@@ -418,14 +419,14 @@ fn get_string_from_bytes_with_lenght(
     Ok(ks.to_string())
 }
 
-fn get_size_short(col_type_body: &mut Vec<u8>) -> Result<usize, Error> {
+fn get_size_short(col_type_body: &mut Vec<Byte>) -> Result<usize, Error> {
     if col_type_body.len() < 2 {
         return Err(Error::ConfigError(
             "Se esperaban 2 bytes Que indiquen el tamaño del string a formar".to_string(),
         ));
     }
-    let lenght: Vec<u8> = (col_type_body.drain(0..2)).collect();
-    let bytes_array: [u8; 2] = match lenght.try_into() {
+    let lenght: Vec<Byte> = (col_type_body.drain(0..2)).collect();
+    let bytes_array: [Byte; 2] = match lenght.try_into() {
         Ok(bytes_array) => bytes_array,
         Err(_e) => {
             return Err(Error::ConfigError(
@@ -433,6 +434,6 @@ fn get_size_short(col_type_body: &mut Vec<u8>) -> Result<usize, Error> {
             ))
         }
     };
-    let lenght: usize = u16::from_be_bytes(bytes_array) as usize;
+    let lenght: usize = Short::from_be_bytes(bytes_array) as usize;
     Ok(lenght)
 }

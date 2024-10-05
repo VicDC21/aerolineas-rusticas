@@ -22,3 +22,9 @@ pub type Short = u16;
 
 /// Un entero de 16 bytes que emula un UUID (asumimos no tiene signo).
 pub type Uuid = u128;
+
+/// Un número de punto flotante IEEE 754 (Binary32) de precisión simple.
+pub type Float = f32;
+
+/// Un número de punto flotante IEEE 754 (Binary64) de precisión doble.
+pub type Double = f64;

@@ -1,5 +1,6 @@
 //! Módulo para los tipos de _responses_ de tipo RESULT.
 
+use crate::cassandra::aliases::types::{Byte, Int};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::Byteable;
 
@@ -22,21 +23,21 @@ pub enum ResultKind {
 }
 
 impl Byteable for ResultKind {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::Void => vec![0, 0, 0, 1],
-            Self::Rows => vec![0, 0, 0, 2],
-            Self::SetKeyspace => vec![0, 0, 0, 3],
-            Self::Prepared => vec![0, 0, 0, 4],
-            Self::SchemaChange => vec![0, 0, 0, 5],
+            Self::Void => vec![0x0, 0x0, 0x0, 0x1],
+            Self::Rows => vec![0x0, 0x0, 0x0, 0x2],
+            Self::SetKeyspace => vec![0x0, 0x0, 0x0, 0x3],
+            Self::Prepared => vec![0x0, 0x0, 0x0, 0x4],
+            Self::SchemaChange => vec![0x0, 0x0, 0x0, 0x5],
         }
     }
 }
 
-impl TryFrom<Vec<u8>> for ResultKind {
+impl TryFrom<Vec<Byte>> for ResultKind {
     type Error = Error;
-    fn try_from(integer_in_bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 4] = match integer_in_bytes.try_into() {
+    fn try_from(integer_in_bytes: Vec<Byte>) -> Result<Self, Self::Error> {
+        let bytes_array: [Byte; 4] = match integer_in_bytes.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -44,7 +45,7 @@ impl TryFrom<Vec<u8>> for ResultKind {
                 ))
             }
         };
-        let value = u32::from_be_bytes(bytes_array);
+        let value = Int::from_be_bytes(bytes_array);
         let res = match value {
             0x01 => ResultKind::Void,
             0x02 => ResultKind::Rows,

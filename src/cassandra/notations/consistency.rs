@@ -1,5 +1,6 @@
 //! Módulo para enumerar niveles de consistencia.
 
+use crate::cassandra::aliases::types::{Byte, Short};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::Byteable;
 
@@ -42,27 +43,27 @@ pub enum Consistency {
 }
 
 impl Byteable for Consistency {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::Any => vec![0, 0],
-            Self::One => vec![0, 1],
-            Self::Two => vec![0, 2],
-            Self::Three => vec![0, 3],
-            Self::Quorum => vec![0, 4],
-            Self::All => vec![0, 5],
-            Self::LocalQuorum => vec![0, 6],
-            Self::EachQuorum => vec![0, 7],
-            Self::Serial => vec![0, 8],
-            Self::LocalSerial => vec![0, 9],
-            Self::LocalOne => vec![0, 10],
+            Self::Any => vec![0x0, 0x0],
+            Self::One => vec![0x0, 0x1],
+            Self::Two => vec![0x0, 0x2],
+            Self::Three => vec![0x0, 0x3],
+            Self::Quorum => vec![0x0, 0x4],
+            Self::All => vec![0x0, 0x5],
+            Self::LocalQuorum => vec![0x0, 0x6],
+            Self::EachQuorum => vec![0x0, 0x7],
+            Self::Serial => vec![0x0, 0x8],
+            Self::LocalSerial => vec![0x0, 0x9],
+            Self::LocalOne => vec![0x0, 0xA],
         }
     }
 }
 
-impl TryFrom<Vec<u8>> for Consistency {
+impl TryFrom<Vec<Byte>> for Consistency {
     type Error = Error;
-    fn try_from(short: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 2] = match short.try_into() {
+    fn try_from(short: Vec<Byte>) -> Result<Self, Self::Error> {
+        let bytes_array: [Byte; 2] = match short.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -70,7 +71,7 @@ impl TryFrom<Vec<u8>> for Consistency {
                 ))
             }
         };
-        let value = u16::from_be_bytes(bytes_array);
+        let value = Short::from_be_bytes(bytes_array);
         match value {
             0x0000 => Ok(Consistency::Any),
             0x0001 => Ok(Consistency::One),
