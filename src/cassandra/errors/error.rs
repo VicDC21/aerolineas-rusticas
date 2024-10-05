@@ -4,8 +4,8 @@ use std::{
     backtrace::Backtrace,
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
-    result::Result as StdResult,
     net::IpAddr,
+    result::Result as StdResult,
 };
 
 use crate::cassandra::{notations::consistency::Consistency, traits::Byteable};
@@ -180,12 +180,16 @@ impl Error {
 
     fn parse_bytes_to_string(bytes: &[u8]) -> StdResult<String, Error> {
         if bytes.len() < 2 {
-            return Err(Error::SyntaxError("Se esperaban 2 bytes que indiquen el tamaño del string a formar".to_string()));
+            return Err(Error::SyntaxError(
+                "Se esperaban 2 bytes que indiquen el tamaño del string a formar".to_string(),
+            ));
         }
         let len = u16::from_le_bytes([bytes[1], bytes[0]]) as usize;
         match String::from_utf8(bytes[2..len + 2].to_vec()) {
             Ok(string) => Ok(string),
-            Err(_) => Err(Error::Invalid("El cuerpo del string no se pudo parsear".to_string())),
+            Err(_) => Err(Error::Invalid(
+                "El cuerpo del string no se pudo parsear".to_string(),
+            )),
         }
     }
 }
@@ -385,376 +389,366 @@ impl TryFrom<Vec<u8>> for Error {
     fn try_from(bytes_vec: Vec<u8>) -> StdResult<Self, Self> {
         let mut i = 4;
         match bytes_vec[..i] {
-            [0, 0, 0, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::ServerError(msg)),
-                    Err(err) => Err(err),
+            [0, 0, 0, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::ServerError(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 0, 10] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::ProtocolError(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 1, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::AuthenticationError(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 16, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let required = i32::from_be_bytes([
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                        bytes_vec[i + 5],
+                    ]);
+                    i += 5;
+                    let alive = i32::from_be_bytes([
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                    ]);
+                    Ok(Error::UnavailableException(msg, cl, required, alive))
                 }
-            }
-            [0, 0, 0, 10] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::ProtocolError(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 1, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::AuthenticationError(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 16, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
-                        let required = i32::from_be_bytes([
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                            bytes_vec[i + 5],
-                        ]);
-                        i += 5;
-                        let alive = i32::from_be_bytes([
-                            bytes_vec[i + 1],
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                        ]);
-                        Ok(Error::UnavailableException(msg, cl, required, alive))
-                    }
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 16, 1] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::Overloaded(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 16, 2] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::IsBootstrapping(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 16, 3] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::TruncateError(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 17, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
-                        let received = i32::from_be_bytes([
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                            bytes_vec[i + 5],
-                        ]);
-                        i += 5;
-                        let blockfor = i32::from_be_bytes([
-                            bytes_vec[i + 1],
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                        ]);
-                        i += 5;
+                Err(err) => Err(err),
+            },
+            [0, 0, 16, 1] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::Overloaded(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 16, 2] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::IsBootstrapping(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 16, 3] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::TruncateError(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 17, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let received = i32::from_be_bytes([
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                        bytes_vec[i + 5],
+                    ]);
+                    i += 5;
+                    let blockfor = i32::from_be_bytes([
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                    ]);
+                    i += 5;
 
-                        let write_type = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                            Ok(string) => string,
-                            Err(err) => return Err(err),
-                        };
+                    let write_type = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                        Ok(string) => string,
+                        Err(err) => return Err(err),
+                    };
 
-                        let contentions = if write_type == "CAS" {
-                            if i + write_type.len() + 3 >= bytes_vec.len() {
-                                return Err(Error::SyntaxError("Se esperaban 3 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
-                            }
-                            Some(u16::from_be_bytes([
-                                bytes_vec[i + write_type.len() + 2],
-                                bytes_vec[i + write_type.len() + 3],
-                            ]))
-                        } else {
-                            None
-                        };
-                        Ok(Error::WriteTimeout(msg, cl, received, blockfor, write_type, contentions))
-                    }
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 18, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
-                        let received = i32::from_be_bytes([
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                            bytes_vec[i + 5],
-                        ]);
-                        i += 5;
-                        let blockfor = i32::from_be_bytes([
-                            bytes_vec[i + 1],
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                        ]);
-                        i += 5;
-                        let data_present = bytes_vec[i];
-                        Ok(Error::ReadTimeout(msg, cl, received, blockfor, data_present))
-                    }
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 19, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
-                        let received = i32::from_be_bytes([
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                            bytes_vec[i + 5],
-                        ]);
-                        i += 5;
-                        let blockfor = i32::from_be_bytes([
-                            bytes_vec[i + 1],
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                        ]);
-                        i += 5;
-                        let reasonmap_len = u32::from_le_bytes([
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 1],
-                            bytes_vec[i],
-                        ]) as usize;
-                        i += 4;
-                        let mut reasonmap: HashMap<IpAddr, u16> = HashMap::new();
-                        for _ in 0..reasonmap_len {
-                            let ip_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
-                            i += 2;
-                            let ip = match ip_len {
-                                4 => IpAddr::V4(std::net::Ipv4Addr::new(
-                                    bytes_vec[i],
-                                    bytes_vec[i + 1],
-                                    bytes_vec[i + 2],
-                                    bytes_vec[i + 3],
-                                )),
-                                16 => IpAddr::V6(std::net::Ipv6Addr::new(
-                                    u16::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]),
-                                    u16::from_be_bytes([bytes_vec[i + 2], bytes_vec[i + 3]]),
-                                    u16::from_be_bytes([bytes_vec[i + 4], bytes_vec[i + 5]]),
-                                    u16::from_be_bytes([bytes_vec[i + 6], bytes_vec[i + 7]]),
-                                    u16::from_be_bytes([bytes_vec[i + 8], bytes_vec[i + 9]]),
-                                    u16::from_be_bytes([bytes_vec[i + 10], bytes_vec[i + 11]]),
-                                    u16::from_be_bytes([bytes_vec[i + 12], bytes_vec[i + 13]]),
-                                    u16::from_be_bytes([bytes_vec[i + 14], bytes_vec[i + 15]]),
-                                )),
-                                _ => return Err(Error::Invalid("La longitud de la dirección IP no es válida".to_string())),
-                            };
-                            i += ip_len as usize;
-                            let code = u16::from_be_bytes([bytes_vec[i + 1], bytes_vec[i]]);
-                            i += 2;
-                            reasonmap.insert(ip, code);
+                    let contentions = if write_type == "CAS" {
+                        if i + write_type.len() + 3 >= bytes_vec.len() {
+                            return Err(Error::SyntaxError("Se esperaban 3 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
                         }
-                        let data_present = bytes_vec[i];
-                        Ok(Error::ReadFailure(msg, cl, received, blockfor, reasonmap, data_present))
-                    }
-                    Err(err) => Err(err),
+                        Some(u16::from_be_bytes([
+                            bytes_vec[i + write_type.len() + 2],
+                            bytes_vec[i + write_type.len() + 3],
+                        ]))
+                    } else {
+                        None
+                    };
+                    Ok(Error::WriteTimeout(
+                        msg,
+                        cl,
+                        received,
+                        blockfor,
+                        write_type,
+                        contentions,
+                    ))
                 }
-            }
-            [0, 0, 20, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let keyspace = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                            Ok(string) => string,
-                            Err(err) => return Err(err),
-                        };
-                        i += keyspace.len() + 2;
-                        let function = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                            Ok(string) => string,
-                            Err(err) => return Err(err),
-                        };
-                        i += function.len() + 2;
-                        let arg_types_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
+                Err(err) => Err(err),
+            },
+            [0, 0, 18, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let received = i32::from_be_bytes([
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                        bytes_vec[i + 5],
+                    ]);
+                    i += 5;
+                    let blockfor = i32::from_be_bytes([
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                    ]);
+                    i += 5;
+                    let data_present = bytes_vec[i];
+                    Ok(Error::ReadTimeout(
+                        msg,
+                        cl,
+                        received,
+                        blockfor,
+                        data_present,
+                    ))
+                }
+                Err(err) => Err(err),
+            },
+            [0, 0, 19, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let received = i32::from_be_bytes([
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                        bytes_vec[i + 5],
+                    ]);
+                    i += 5;
+                    let blockfor = i32::from_be_bytes([
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                    ]);
+                    i += 5;
+                    let reasonmap_len = u32::from_le_bytes([
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 1],
+                        bytes_vec[i],
+                    ]) as usize;
+                    i += 4;
+                    let mut reasonmap: HashMap<IpAddr, u16> = HashMap::new();
+                    for _ in 0..reasonmap_len {
+                        let ip_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
                         i += 2;
-                        let mut arg_types: Vec<String> = vec![];
-                        for _ in 0..arg_types_len {
-                            match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                                Ok(string) => {
-                                    i += string.len() + 2;
-                                    arg_types.push(string)
-                                },
-                                Err(err) => return Err(err),
+                        let ip = match ip_len {
+                            4 => IpAddr::V4(std::net::Ipv4Addr::new(
+                                bytes_vec[i],
+                                bytes_vec[i + 1],
+                                bytes_vec[i + 2],
+                                bytes_vec[i + 3],
+                            )),
+                            16 => IpAddr::V6(std::net::Ipv6Addr::new(
+                                u16::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]),
+                                u16::from_be_bytes([bytes_vec[i + 2], bytes_vec[i + 3]]),
+                                u16::from_be_bytes([bytes_vec[i + 4], bytes_vec[i + 5]]),
+                                u16::from_be_bytes([bytes_vec[i + 6], bytes_vec[i + 7]]),
+                                u16::from_be_bytes([bytes_vec[i + 8], bytes_vec[i + 9]]),
+                                u16::from_be_bytes([bytes_vec[i + 10], bytes_vec[i + 11]]),
+                                u16::from_be_bytes([bytes_vec[i + 12], bytes_vec[i + 13]]),
+                                u16::from_be_bytes([bytes_vec[i + 14], bytes_vec[i + 15]]),
+                            )),
+                            _ => {
+                                return Err(Error::Invalid(
+                                    "La longitud de la dirección IP no es válida".to_string(),
+                                ))
                             }
-                        }
-                        Ok(Error::FunctionFailure(msg, keyspace, function, arg_types))
-                    }
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 21, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
-                        let received = i32::from_be_bytes([
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                            bytes_vec[i + 5],
-                        ]);
-                        i += 5;
-                        let blockfor = i32::from_be_bytes([
-                            bytes_vec[i + 1],
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                        ]);
-                        i += 5;
-                        let reasonmap_len = u32::from_le_bytes([
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 1],
-                            bytes_vec[i],
-                        ]) as usize;
-                        i += 4;
-                        let mut reasonmap: HashMap<IpAddr, u16> = HashMap::new();
-                        for _ in 0..reasonmap_len {
-                            let ip_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
-                            i += 2;
-                            let ip = match ip_len {
-                                4 => IpAddr::V4(std::net::Ipv4Addr::new(
-                                    bytes_vec[i],
-                                    bytes_vec[i + 1],
-                                    bytes_vec[i + 2],
-                                    bytes_vec[i + 3],
-                                )),
-                                16 => IpAddr::V6(std::net::Ipv6Addr::new(
-                                    u16::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]),
-                                    u16::from_be_bytes([bytes_vec[i + 2], bytes_vec[i + 3]]),
-                                    u16::from_be_bytes([bytes_vec[i + 4], bytes_vec[i + 5]]),
-                                    u16::from_be_bytes([bytes_vec[i + 6], bytes_vec[i + 7]]),
-                                    u16::from_be_bytes([bytes_vec[i + 8], bytes_vec[i + 9]]),
-                                    u16::from_be_bytes([bytes_vec[i + 10], bytes_vec[i + 11]]),
-                                    u16::from_be_bytes([bytes_vec[i + 12], bytes_vec[i + 13]]),
-                                    u16::from_be_bytes([bytes_vec[i + 14], bytes_vec[i + 15]]),
-                                )),
-                                _ => return Err(Error::Invalid("La longitud de la dirección IP no es válida".to_string())),
-                            };
-                            i += ip_len as usize;
-                            let code = u16::from_be_bytes([bytes_vec[i + 1], bytes_vec[i]]);
-                            i += 2;
-                            reasonmap.insert(ip, code);
-                        }
-                        let write_type = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                            Ok(string) => string,
-                            Err(err) => return Err(err),
                         };
-                        Ok(Error::WriteFailure(msg, cl, received, blockfor, reasonmap, write_type))
-                    }
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 22, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::CDCWriteFailure(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 23, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
-                        let received = i32::from_be_bytes([
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                            bytes_vec[i + 5],
-                        ]);
-                        i += 5;
-                        let blockfor = i32::from_be_bytes([
-                            bytes_vec[i + 1],
-                            bytes_vec[i + 2],
-                            bytes_vec[i + 3],
-                            bytes_vec[i + 4],
-                        ]);
-                        Ok(Error::CASWriteUnknown(msg, cl, received, blockfor))
-                    }
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 32, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::SyntaxError(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 33, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::Unauthorized(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 34, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::Invalid(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 35, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => Ok(Error::ConfigError(msg)),
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 36, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let ks = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                            Ok(string) => string,
-                            Err(err) => return Err(err),
-                        };
-                        i += ks.len() + 2;
-                        let table = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                            Ok(string) => string,
-                            Err(err) => return Err(err),
-                        };
-                        Ok(Error::AlreadyExists(msg, ks, table))
-                    }
-                    Err(err) => Err(err),
-                }
-            }
-            [0, 0, 37, 0] => {
-                match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                    Ok(msg) => {
-                        i += msg.len() + 2;
-                        let ids_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
+                        i += ip_len as usize;
+                        let code = u16::from_be_bytes([bytes_vec[i + 1], bytes_vec[i]]);
                         i += 2;
-                        let mut ids: Vec<u8> = vec![];
-                        for _ in 0..ids_len {
-                            ids.push(bytes_vec[i]);
-                            i += 1;
-                        }
-                        Ok(Error::Unprepared(msg, ids))
+                        reasonmap.insert(ip, code);
                     }
-                    Err(err) => Err(err),
+                    let data_present = bytes_vec[i];
+                    Ok(Error::ReadFailure(
+                        msg,
+                        cl,
+                        received,
+                        blockfor,
+                        reasonmap,
+                        data_present,
+                    ))
                 }
-            }
+                Err(err) => Err(err),
+            },
+            [0, 0, 20, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let keyspace = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                        Ok(string) => string,
+                        Err(err) => return Err(err),
+                    };
+                    i += keyspace.len() + 2;
+                    let function = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                        Ok(string) => string,
+                        Err(err) => return Err(err),
+                    };
+                    i += function.len() + 2;
+                    let arg_types_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
+                    i += 2;
+                    let mut arg_types: Vec<String> = vec![];
+                    for _ in 0..arg_types_len {
+                        match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                            Ok(string) => {
+                                i += string.len() + 2;
+                                arg_types.push(string)
+                            }
+                            Err(err) => return Err(err),
+                        }
+                    }
+                    Ok(Error::FunctionFailure(msg, keyspace, function, arg_types))
+                }
+                Err(err) => Err(err),
+            },
+            [0, 0, 21, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let received = i32::from_be_bytes([
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                        bytes_vec[i + 5],
+                    ]);
+                    i += 5;
+                    let blockfor = i32::from_be_bytes([
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                    ]);
+                    i += 5;
+                    let reasonmap_len = u32::from_le_bytes([
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 1],
+                        bytes_vec[i],
+                    ]) as usize;
+                    i += 4;
+                    let mut reasonmap: HashMap<IpAddr, u16> = HashMap::new();
+                    for _ in 0..reasonmap_len {
+                        let ip_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
+                        i += 2;
+                        let ip = match ip_len {
+                            4 => IpAddr::V4(std::net::Ipv4Addr::new(
+                                bytes_vec[i],
+                                bytes_vec[i + 1],
+                                bytes_vec[i + 2],
+                                bytes_vec[i + 3],
+                            )),
+                            16 => IpAddr::V6(std::net::Ipv6Addr::new(
+                                u16::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]),
+                                u16::from_be_bytes([bytes_vec[i + 2], bytes_vec[i + 3]]),
+                                u16::from_be_bytes([bytes_vec[i + 4], bytes_vec[i + 5]]),
+                                u16::from_be_bytes([bytes_vec[i + 6], bytes_vec[i + 7]]),
+                                u16::from_be_bytes([bytes_vec[i + 8], bytes_vec[i + 9]]),
+                                u16::from_be_bytes([bytes_vec[i + 10], bytes_vec[i + 11]]),
+                                u16::from_be_bytes([bytes_vec[i + 12], bytes_vec[i + 13]]),
+                                u16::from_be_bytes([bytes_vec[i + 14], bytes_vec[i + 15]]),
+                            )),
+                            _ => {
+                                return Err(Error::Invalid(
+                                    "La longitud de la dirección IP no es válida".to_string(),
+                                ))
+                            }
+                        };
+                        i += ip_len as usize;
+                        let code = u16::from_be_bytes([bytes_vec[i + 1], bytes_vec[i]]);
+                        i += 2;
+                        reasonmap.insert(ip, code);
+                    }
+                    let write_type = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                        Ok(string) => string,
+                        Err(err) => return Err(err),
+                    };
+                    Ok(Error::WriteFailure(
+                        msg, cl, received, blockfor, reasonmap, write_type,
+                    ))
+                }
+                Err(err) => Err(err),
+            },
+            [0, 0, 22, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::CDCWriteFailure(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 23, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let received = i32::from_be_bytes([
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                        bytes_vec[i + 5],
+                    ]);
+                    i += 5;
+                    let blockfor = i32::from_be_bytes([
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                        bytes_vec[i + 4],
+                    ]);
+                    Ok(Error::CASWriteUnknown(msg, cl, received, blockfor))
+                }
+                Err(err) => Err(err),
+            },
+            [0, 0, 32, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::SyntaxError(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 33, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::Unauthorized(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 34, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::Invalid(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 35, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => Ok(Error::ConfigError(msg)),
+                Err(err) => Err(err),
+            },
+            [0, 0, 36, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let ks = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                        Ok(string) => string,
+                        Err(err) => return Err(err),
+                    };
+                    i += ks.len() + 2;
+                    let table = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                        Ok(string) => string,
+                        Err(err) => return Err(err),
+                    };
+                    Ok(Error::AlreadyExists(msg, ks, table))
+                }
+                Err(err) => Err(err),
+            },
+            [0, 0, 37, 0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+                Ok(msg) => {
+                    i += msg.len() + 2;
+                    let ids_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
+                    i += 2;
+                    let mut ids: Vec<u8> = vec![];
+                    for _ in 0..ids_len {
+                        ids.push(bytes_vec[i]);
+                        i += 1;
+                    }
+                    Ok(Error::Unprepared(msg, ids))
+                }
+                Err(err) => Err(err),
+            },
             _ => Err(Error::Invalid("El ID del error no es válido".to_string())),
         }
     }
-} 
+}
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
