@@ -296,21 +296,7 @@ impl TryFrom<&mut Vec<Byte>> for ColType {
     }
 }
 
-trait DeserializeColumnType {
-    fn deserialize_custom_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
-
-    fn deserialize_list_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
-
-    fn deserialize_map_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
-
-    fn deserialize_set_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
-
-    fn deserialize_udt_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
-
-    fn deserialize_tuple_type(col_type_body: Vec<Byte>) -> Result<ColType, Error>;
-}
-
-impl DeserializeColumnType for ColType {
+impl ColType {
     fn deserialize_custom_type(col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
