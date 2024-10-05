@@ -9,6 +9,10 @@ use std::{
 };
 
 use crate::cassandra::aliases::types::{Byte, Int, Short};
+use crate::cassandra::utils::{
+    encode_reasonmap_to_bytes, encode_string_to_bytes, parse_bytes_to_reasonmap,
+    parse_bytes_to_string,
+};
 use crate::cassandra::{notations::consistency::Consistency, traits::Byteable};
 
 /// La forma del mensaje de error es `<code><message>[...]`.
@@ -66,8 +70,8 @@ pub enum Error {
     /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han respondido a la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya respuesta es necesaria para cumplir `cl`. Notar que es posible tener `<received> >= <blockfor>` si <data_present> es false. También en el caso (improbable) donde cl se cumple pero el nodo coordinador sufre un timeout mientras esperaba por la confirmación de un read-repair.
-    /// * `<data_present>` es un [Byte] (representa un booleano: 0 es false, distinto de 0 es true) que indica si el nodo al que se le hizo el pedido de la data respondió o no.
-    ReadTimeout(String, Consistency, Int, Int, Byte),
+    /// * `<data_present>` es un [bool] que indica si el nodo al que se le hizo el pedido de la data respondió o no.
+    ReadTimeout(String, Consistency, Int, Int, bool),
 
     /// Una excepción de lectura que no fue ocasionada por un timeout.
     ///
@@ -76,8 +80,8 @@ pub enum Error {
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han respondido a la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya respuesta es necesaria para cumplir `<cl>`.
     /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint,failurecode donde endpoint es un [IpAddr] y failurecode es un [Short].
-    /// * `<data_present>` es un [Byte] (representa un booleano: 0 es false, distinto de 0 es true) que indica si el nodo al que se le hizo el pedido de la data respondió o no.
-    ReadFailure(String, Consistency, Int, Int, HashMap<IpAddr, Short>, Byte),
+    /// * `<data_present>` es un [bool] que indica si el nodo al que se le hizo el pedido de la data respondió o no.
+    ReadFailure(String, Consistency, Int, Int, HashMap<IpAddr, Short>, bool),
 
     /// Una función (definida por el usuario) falló durante su ejecución.
     ///
@@ -150,110 +154,6 @@ pub enum Error {
     Unprepared(String, Vec<Byte>),
 }
 
-impl Error {
-    fn parse_string_to_bytes(string: &str) -> Vec<Byte> {
-        let string_bytes = string.as_bytes();
-        // litle endian para que los dos bytes menos significativos (los únicos que nos interesa
-        // para un [Short]) estén al principio
-        let bytes_len = string_bytes.len().to_le_bytes();
-        let mut bytes_vec: Vec<Byte> = vec![
-            bytes_len[1],
-            bytes_len[0], // Longitud del string
-        ];
-        bytes_vec.extend_from_slice(string_bytes);
-        bytes_vec
-    }
-
-    fn parse_hashmap_to_bytes(hashmap: &HashMap<IpAddr, Short>) -> Vec<Byte> {
-        let mut bytes_vec: Vec<Byte> = vec![];
-        let hashmap_len = hashmap.len().to_le_bytes();
-        bytes_vec.extend_from_slice(&[
-            hashmap_len[3],
-            hashmap_len[2],
-            hashmap_len[1],
-            hashmap_len[0],
-        ]);
-        for (ip, code) in hashmap {
-            let ip_bytes = match ip {
-                IpAddr::V4(ipv4) => ipv4.octets().to_vec(),
-                IpAddr::V6(ipv6) => ipv6.octets().to_vec(),
-            };
-            let ip_len = ip_bytes.len().to_le_bytes();
-            bytes_vec.extend_from_slice(&[ip_len[1], ip_len[0]]);
-            bytes_vec.extend(ip_bytes);
-            bytes_vec.extend(code.to_be_bytes());
-        }
-        bytes_vec
-    }
-
-    fn parse_bytes_to_string(bytes_vec: &[Byte]) -> StdResult<String, Error> {
-        if bytes_vec.len() < 2 {
-            return Err(Error::SyntaxError(
-                "Se esperaban 2 bytes que indiquen el tamaño del string a formar".to_string(),
-            ));
-        }
-        let string_len = Short::from_le_bytes([bytes_vec[1], bytes_vec[0]]) as usize;
-        match String::from_utf8(bytes_vec[2..string_len + 2].to_vec()) {
-            Ok(string) => Ok(string),
-            Err(_) => Err(Error::Invalid(
-                "El cuerpo del string no se pudo parsear".to_string(),
-            )),
-        }
-    }
-
-    fn parse_bytes_to_hashmap(
-        bytes_vec: &[Byte],
-        i: &mut usize,
-    ) -> StdResult<HashMap<IpAddr, Short>, Error> {
-        if bytes_vec.len() < 4 {
-            return Err(Error::SyntaxError(
-                "Se esperaban 4 bytes que indiquen el tamaño del reasonmap a formar".to_string(),
-            ));
-        }
-        let hashmap_len = Int::from_le_bytes([
-            bytes_vec[*i + 3],
-            bytes_vec[*i + 2],
-            bytes_vec[*i + 1],
-            bytes_vec[*i],
-        ]) as usize;
-        *i += 4;
-
-        let mut reasonmap: HashMap<IpAddr, Short> = HashMap::new();
-        for _ in 0..hashmap_len {
-            let ip_len = Short::from_le_bytes([bytes_vec[*i + 1], bytes_vec[*i]]);
-            *i += 2;
-            let ip = match ip_len {
-                4 => IpAddr::V4(std::net::Ipv4Addr::new(
-                    bytes_vec[*i],
-                    bytes_vec[*i + 1],
-                    bytes_vec[*i + 2],
-                    bytes_vec[*i + 3],
-                )),
-                16 => IpAddr::V6(std::net::Ipv6Addr::new(
-                    Short::from_be_bytes([bytes_vec[*i], bytes_vec[*i + 1]]),
-                    Short::from_be_bytes([bytes_vec[*i + 2], bytes_vec[*i + 3]]),
-                    Short::from_be_bytes([bytes_vec[*i + 4], bytes_vec[*i + 5]]),
-                    Short::from_be_bytes([bytes_vec[*i + 6], bytes_vec[*i + 7]]),
-                    Short::from_be_bytes([bytes_vec[*i + 8], bytes_vec[*i + 9]]),
-                    Short::from_be_bytes([bytes_vec[*i + 10], bytes_vec[*i + 11]]),
-                    Short::from_be_bytes([bytes_vec[*i + 12], bytes_vec[*i + 13]]),
-                    Short::from_be_bytes([bytes_vec[*i + 14], bytes_vec[*i + 15]]),
-                )),
-                _ => {
-                    return Err(Error::Invalid(
-                        "La longitud de la dirección IP no es válida".to_string(),
-                    ))
-                }
-            };
-            *i += ip_len as usize;
-            let code = Short::from_be_bytes([bytes_vec[*i + 1], bytes_vec[*i]]);
-            *i += 2;
-            reasonmap.insert(ip, code);
-        }
-        Ok(reasonmap)
-    }
-}
-
 impl Byteable for Error {
     fn as_bytes(&self) -> Vec<Byte> {
         match self {
@@ -261,28 +161,28 @@ impl Byteable for Error {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x0, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::ProtocolError(msg) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x0, 0xA, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::AuthenticationError(msg) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x1, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::UnavailableException(msg, cl, required, alive) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x10, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec.extend(cl.as_bytes());
                 bytes_vec.extend(required.to_be_bytes());
                 bytes_vec.extend(alive.to_be_bytes());
@@ -292,32 +192,32 @@ impl Byteable for Error {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x10, 0x1, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::IsBootstrapping(msg) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x10, 0x2, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::TruncateError(msg) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x10, 0x3, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::WriteTimeout(msg, cl, received, blockfor, write_type, contentions) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x11, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec.extend(cl.as_bytes());
                 bytes_vec.extend(received.to_be_bytes());
                 bytes_vec.extend(blockfor.to_be_bytes());
-                bytes_vec.extend(Error::parse_string_to_bytes(write_type));
+                bytes_vec.extend(encode_string_to_bytes(write_type));
                 if write_type == "CAS" {
                     if let Some(content) = contentions {
                         bytes_vec.extend(content.to_be_bytes());
@@ -329,37 +229,37 @@ impl Byteable for Error {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x12, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec.extend(cl.as_bytes());
                 bytes_vec.extend(received.to_be_bytes());
                 bytes_vec.extend(blockfor.to_be_bytes());
-                bytes_vec.push(*data_present);
+                bytes_vec.push(if *data_present { 0x1 } else { 0x0 });
                 bytes_vec
             }
             Self::ReadFailure(msg, cl, received, blockfor, reasonmap, data_present) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x13, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec.extend(cl.as_bytes());
                 bytes_vec.extend(received.to_be_bytes());
                 bytes_vec.extend(blockfor.to_be_bytes());
-                bytes_vec.extend(Error::parse_hashmap_to_bytes(reasonmap));
-                bytes_vec.push(*data_present);
+                bytes_vec.extend(encode_reasonmap_to_bytes(reasonmap));
+                bytes_vec.push(if *data_present { 0x1 } else { 0x0 });
                 bytes_vec
             }
             Self::FunctionFailure(msg, keyspace, function, arg_types) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x14, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
-                bytes_vec.extend(Error::parse_string_to_bytes(keyspace));
-                bytes_vec.extend(Error::parse_string_to_bytes(function));
+                bytes_vec.extend(encode_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(keyspace));
+                bytes_vec.extend(encode_string_to_bytes(function));
 
                 let list_len = arg_types.len().to_le_bytes();
                 bytes_vec.extend_from_slice(&[list_len[1], list_len[0]]);
                 for string in arg_types {
-                    bytes_vec.extend(Error::parse_string_to_bytes(string));
+                    bytes_vec.extend(encode_string_to_bytes(string));
                 }
 
                 bytes_vec
@@ -368,26 +268,26 @@ impl Byteable for Error {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x15, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec.extend(cl.as_bytes());
                 bytes_vec.extend(received.to_be_bytes());
                 bytes_vec.extend(blockfor.to_be_bytes());
-                bytes_vec.extend(Error::parse_hashmap_to_bytes(reasonmap));
-                bytes_vec.extend(Error::parse_string_to_bytes(string));
+                bytes_vec.extend(encode_reasonmap_to_bytes(reasonmap));
+                bytes_vec.extend(encode_string_to_bytes(string));
                 bytes_vec
             }
             Self::CDCWriteFailure(msg) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x16, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::CASWriteUnknown(msg, cl, received, blockfor) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x17, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec.extend(cl.as_bytes());
                 bytes_vec.extend(received.to_be_bytes());
                 bytes_vec.extend(blockfor.to_be_bytes());
@@ -397,44 +297,44 @@ impl Byteable for Error {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x20, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::Unauthorized(msg) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x21, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::Invalid(msg) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x22, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::ConfigError(msg) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x23, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 bytes_vec
             }
             Self::AlreadyExists(msg, ks, table) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x24, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
-                bytes_vec.extend(Error::parse_string_to_bytes(ks));
-                bytes_vec.extend(Error::parse_string_to_bytes(table));
+                bytes_vec.extend(encode_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(ks));
+                bytes_vec.extend(encode_string_to_bytes(table));
                 bytes_vec
             }
             Self::Unprepared(msg, ids) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x25, 0x0, // ID
                 ];
-                bytes_vec.extend(Error::parse_string_to_bytes(msg));
+                bytes_vec.extend(encode_string_to_bytes(msg));
                 let ids_len = ids.len().to_le_bytes();
                 bytes_vec.extend(&[ids_len[1], ids_len[0]]);
                 bytes_vec.extend(ids);
@@ -446,81 +346,79 @@ impl Byteable for Error {
 
 impl TryFrom<Vec<Byte>> for Error {
     type Error = Error;
-    fn try_from(bytes_vec: Vec<Byte>) -> StdResult<Self, Self> {
+    fn try_from(bytes_vec: Vec<Byte>) -> StdResult<Self, Self::Error> {
         let mut i = 4;
         match bytes_vec[..i] {
-            [0x0, 0x0, 0x0, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x0, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::ServerError(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x0, 0xA] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x0, 0xA] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::ProtocolError(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x1, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x1, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::AuthenticationError(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x10, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x10, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
                     let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    i += 2;
                     let required = Int::from_be_bytes([
-                        bytes_vec[i + 2],
-                        bytes_vec[i + 3],
-                        bytes_vec[i + 4],
-                        bytes_vec[i + 5],
-                    ]);
-                    i += 5;
-                    let alive = Int::from_be_bytes([
+                        bytes_vec[i],
                         bytes_vec[i + 1],
                         bytes_vec[i + 2],
                         bytes_vec[i + 3],
-                        bytes_vec[i + 4],
+                    ]);
+                    i += 4;
+                    let alive = Int::from_be_bytes([
+                        bytes_vec[i],
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
                     ]);
                     Ok(Error::UnavailableException(msg, cl, required, alive))
                 }
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x10, 0x1] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x10, 0x1] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::Overloaded(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x10, 0x2] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x10, 0x2] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::IsBootstrapping(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x10, 0x3] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x10, 0x3] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::TruncateError(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x11, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x11, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
                     let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    i += 2;
                     let received = Int::from_be_bytes([
-                        bytes_vec[i + 2],
-                        bytes_vec[i + 3],
-                        bytes_vec[i + 4],
-                        bytes_vec[i + 5],
-                    ]);
-                    i += 5;
-                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
                         bytes_vec[i + 1],
                         bytes_vec[i + 2],
                         bytes_vec[i + 3],
-                        bytes_vec[i + 4],
                     ]);
-                    i += 5;
-                    let write_type = Error::parse_bytes_to_string(&bytes_vec[i..])?;
+                    i += 4;
+                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                    ]);
+                    i += 4;
+                    let write_type = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
                     let contentions = if write_type == "CAS" {
-                        if i + write_type.len() + 3 >= bytes_vec.len() {
-                            return Err(Error::SyntaxError("Se esperaban 3 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
+                        if i + 2 >= bytes_vec.len() {
+                            return Err(Error::SyntaxError("Se esperaban 2 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
                         }
-                        Some(Short::from_be_bytes([
-                            bytes_vec[i + write_type.len() + 2],
-                            bytes_vec[i + write_type.len() + 3],
-                        ]))
+                        let cont = Short::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]);
+                        Some(cont)
                     } else {
                         None
                     };
@@ -535,25 +433,25 @@ impl TryFrom<Vec<Byte>> for Error {
                 }
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x12, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x12, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
                     let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    i += 2;
                     let received = Int::from_be_bytes([
-                        bytes_vec[i + 2],
-                        bytes_vec[i + 3],
-                        bytes_vec[i + 4],
-                        bytes_vec[i + 5],
-                    ]);
-                    i += 5;
-                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
                         bytes_vec[i + 1],
                         bytes_vec[i + 2],
                         bytes_vec[i + 3],
-                        bytes_vec[i + 4],
                     ]);
-                    i += 5;
-                    let data_present = bytes_vec[i];
+                    i += 4;
+                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                    ]);
+                    i += 4;
+                    let data_present = bytes_vec[i] != 0x0;
                     Ok(Error::ReadTimeout(
                         msg,
                         cl,
@@ -564,26 +462,26 @@ impl TryFrom<Vec<Byte>> for Error {
                 }
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x13, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x13, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
                     let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    i += 2;
                     let received = Int::from_be_bytes([
-                        bytes_vec[i + 2],
-                        bytes_vec[i + 3],
-                        bytes_vec[i + 4],
-                        bytes_vec[i + 5],
-                    ]);
-                    i += 5;
-                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
                         bytes_vec[i + 1],
                         bytes_vec[i + 2],
                         bytes_vec[i + 3],
-                        bytes_vec[i + 4],
                     ]);
-                    i += 5;
-                    let reasonmap = Error::parse_bytes_to_hashmap(&bytes_vec, &mut i)?;
-                    let data_present = bytes_vec[i];
+                    i += 4;
+                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                    ]);
+                    i += 4;
+                    let reasonmap = parse_bytes_to_reasonmap(&bytes_vec[i..], &mut i)?;
+                    let data_present = bytes_vec[i] != 0x0;
                     Ok(Error::ReadFailure(
                         msg,
                         cl,
@@ -595,28 +493,16 @@ impl TryFrom<Vec<Byte>> for Error {
                 }
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x14, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x14, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
-                    let keyspace = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                        Ok(string) => string,
-                        Err(err) => return Err(err),
-                    };
-                    i += keyspace.len() + 2;
-                    let function = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                        Ok(string) => string,
-                        Err(err) => return Err(err),
-                    };
-                    i += function.len() + 2;
+                    let keyspace = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
+                    let function = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
                     let arg_types_len = Short::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
                     i += 2;
                     let mut arg_types: Vec<String> = vec![];
                     for _ in 0..arg_types_len {
-                        match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                            Ok(string) => {
-                                i += string.len() + 2;
-                                arg_types.push(string)
-                            }
+                        match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
+                            Ok(string) => arg_types.push(string),
                             Err(err) => return Err(err),
                         }
                     }
@@ -624,92 +510,83 @@ impl TryFrom<Vec<Byte>> for Error {
                 }
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x15, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x15, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
                     let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    i += 2;
                     let received = Int::from_be_bytes([
-                        bytes_vec[i + 2],
-                        bytes_vec[i + 3],
-                        bytes_vec[i + 4],
-                        bytes_vec[i + 5],
-                    ]);
-                    i += 5;
-                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
                         bytes_vec[i + 1],
                         bytes_vec[i + 2],
                         bytes_vec[i + 3],
-                        bytes_vec[i + 4],
                     ]);
-                    i += 5;
-                    let reasonmap = Error::parse_bytes_to_hashmap(&bytes_vec, &mut i)?;
-                    let write_type = Error::parse_bytes_to_string(&bytes_vec[i..])?;
+                    i += 4;
+                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
+                    ]);
+                    i += 4;
+                    let reasonmap = parse_bytes_to_reasonmap(&bytes_vec[..], &mut i)?;
+                    let write_type = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
                     Ok(Error::WriteFailure(
                         msg, cl, received, blockfor, reasonmap, write_type,
                     ))
                 }
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x16, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x16, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::CDCWriteFailure(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x17, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x17, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
                     let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    i += 2;
                     let received = Int::from_be_bytes([
-                        bytes_vec[i + 2],
-                        bytes_vec[i + 3],
-                        bytes_vec[i + 4],
-                        bytes_vec[i + 5],
-                    ]);
-                    i += 5;
-                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
                         bytes_vec[i + 1],
                         bytes_vec[i + 2],
                         bytes_vec[i + 3],
-                        bytes_vec[i + 4],
+                    ]);
+                    i += 4;
+                    let blockfor = Int::from_be_bytes([
+                        bytes_vec[i],
+                        bytes_vec[i + 1],
+                        bytes_vec[i + 2],
+                        bytes_vec[i + 3],
                     ]);
                     Ok(Error::CASWriteUnknown(msg, cl, received, blockfor))
                 }
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x20, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x20, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::SyntaxError(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x21, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x21, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::Unauthorized(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x22, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x22, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::Invalid(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x23, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x23, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => Ok(Error::ConfigError(msg)),
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x24, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x24, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
-                    let ks = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                        Ok(string) => string,
-                        Err(err) => return Err(err),
-                    };
-                    i += ks.len() + 2;
-                    let table = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
-                        Ok(string) => string,
-                        Err(err) => return Err(err),
-                    };
+                    let ks = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
+                    let table = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
                     Ok(Error::AlreadyExists(msg, ks, table))
                 }
                 Err(err) => Err(err),
             },
-            [0x0, 0x0, 0x25, 0x0] => match Error::parse_bytes_to_string(&bytes_vec[i..]) {
+            [0x0, 0x0, 0x25, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    i += msg.len() + 2;
                     let ids_len = Short::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
                     i += 2;
                     let mut ids: Vec<Byte> = vec![];

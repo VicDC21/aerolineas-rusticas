@@ -1,10 +1,7 @@
 //! Módulo para aliases de tipos de datos explicados en el protocolo de Cassandra.
 
-use crate::cassandra::errors::error::Error;
-use std::result;
-
-/// Resultado que envuelve un error personalizado del protocolo.
-pub type Result<T> = result::Result<T, Error>;
+use std::collections::HashMap;
+use std::net::IpAddr;
 
 // Definiciones de notaciones
 
@@ -28,3 +25,8 @@ pub type Float = f32;
 
 /// Un número de punto flotante IEEE 754 (Binary64) de precisión doble.
 pub type Double = f64;
+
+// Abreviaciones auxiliares
+
+/// Un mapa de endpoints con códigos de errores.
+pub type ReasonMap = HashMap<IpAddr, Short>;
