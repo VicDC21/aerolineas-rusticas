@@ -219,6 +219,7 @@ impl Byteable for ColType {
                     let nombre_bytes = nombre_campo.as_bytes();
                     let nombre_bytes_len = nombre_bytes.len().to_le_bytes();
                     bytes_vec.extend_from_slice(&[nombre_bytes_len[1], nombre_bytes_len[0]]);
+                    bytes_vec.extend_from_slice(nombre_bytes);
                     bytes_vec.extend((**tipo_campo).as_bytes());
                 }
 
