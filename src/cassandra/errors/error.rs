@@ -193,7 +193,10 @@ impl Error {
         }
     }
 
-    fn parse_bytes_to_hashmap(bytes_vec: &[u8], i: &mut usize) -> StdResult<HashMap<IpAddr, u16>, Error> {
+    fn parse_bytes_to_hashmap(
+        bytes_vec: &[u8],
+        i: &mut usize,
+    ) -> StdResult<HashMap<IpAddr, u16>, Error> {
         if bytes_vec.len() < 4 {
             return Err(Error::SyntaxError(
                 "Se esperaban 4 bytes que indiquen el tamaño del reasonmap a formar".to_string(),
