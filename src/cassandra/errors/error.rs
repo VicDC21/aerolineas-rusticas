@@ -178,19 +178,68 @@ impl Error {
         bytes_vec
     }
 
-    fn parse_bytes_to_string(bytes: &[u8]) -> StdResult<String, Error> {
-        if bytes.len() < 2 {
+    fn parse_bytes_to_string(bytes_vec: &[u8]) -> StdResult<String, Error> {
+        if bytes_vec.len() < 2 {
             return Err(Error::SyntaxError(
                 "Se esperaban 2 bytes que indiquen el tamaño del string a formar".to_string(),
             ));
         }
-        let len = u16::from_le_bytes([bytes[1], bytes[0]]) as usize;
-        match String::from_utf8(bytes[2..len + 2].to_vec()) {
+        let string_len = u16::from_le_bytes([bytes_vec[1], bytes_vec[0]]) as usize;
+        match String::from_utf8(bytes_vec[2..string_len + 2].to_vec()) {
             Ok(string) => Ok(string),
             Err(_) => Err(Error::Invalid(
                 "El cuerpo del string no se pudo parsear".to_string(),
             )),
         }
+    }
+
+    fn parse_bytes_to_hashmap(bytes_vec: &[u8], i: &mut usize) -> StdResult<HashMap<IpAddr, u16>, Error> {
+        if bytes_vec.len() < 4 {
+            return Err(Error::SyntaxError(
+                "Se esperaban 4 bytes que indiquen el tamaño del reasonmap a formar".to_string(),
+            ));
+        }
+        let hashmap_len = u32::from_le_bytes([
+            bytes_vec[*i + 3],
+            bytes_vec[*i + 2],
+            bytes_vec[*i + 1],
+            bytes_vec[*i],
+        ]) as usize;
+        *i += 4;
+
+        let mut reasonmap: HashMap<IpAddr, u16> = HashMap::new();
+        for _ in 0..hashmap_len {
+            let ip_len = u16::from_le_bytes([bytes_vec[*i + 1], bytes_vec[*i]]);
+            *i += 2;
+            let ip = match ip_len {
+                4 => IpAddr::V4(std::net::Ipv4Addr::new(
+                    bytes_vec[*i],
+                    bytes_vec[*i + 1],
+                    bytes_vec[*i + 2],
+                    bytes_vec[*i + 3],
+                )),
+                16 => IpAddr::V6(std::net::Ipv6Addr::new(
+                    u16::from_be_bytes([bytes_vec[*i], bytes_vec[*i + 1]]),
+                    u16::from_be_bytes([bytes_vec[*i + 2], bytes_vec[*i + 3]]),
+                    u16::from_be_bytes([bytes_vec[*i + 4], bytes_vec[*i + 5]]),
+                    u16::from_be_bytes([bytes_vec[*i + 6], bytes_vec[*i + 7]]),
+                    u16::from_be_bytes([bytes_vec[*i + 8], bytes_vec[*i + 9]]),
+                    u16::from_be_bytes([bytes_vec[*i + 10], bytes_vec[*i + 11]]),
+                    u16::from_be_bytes([bytes_vec[*i + 12], bytes_vec[*i + 13]]),
+                    u16::from_be_bytes([bytes_vec[*i + 14], bytes_vec[*i + 15]]),
+                )),
+                _ => {
+                    return Err(Error::Invalid(
+                        "La longitud de la dirección IP no es válida".to_string(),
+                    ))
+                }
+            };
+            *i += ip_len as usize;
+            let code = u16::from_be_bytes([bytes_vec[*i + 1], bytes_vec[*i]]);
+            *i += 2;
+            reasonmap.insert(ip, code);
+        }
+        Ok(reasonmap)
     }
 }
 
@@ -527,45 +576,10 @@ impl TryFrom<Vec<u8>> for Error {
                         bytes_vec[i + 4],
                     ]);
                     i += 5;
-                    let reasonmap_len = u32::from_le_bytes([
-                        bytes_vec[i + 3],
-                        bytes_vec[i + 2],
-                        bytes_vec[i + 1],
-                        bytes_vec[i],
-                    ]) as usize;
-                    i += 4;
-                    let mut reasonmap: HashMap<IpAddr, u16> = HashMap::new();
-                    for _ in 0..reasonmap_len {
-                        let ip_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
-                        i += 2;
-                        let ip = match ip_len {
-                            4 => IpAddr::V4(std::net::Ipv4Addr::new(
-                                bytes_vec[i],
-                                bytes_vec[i + 1],
-                                bytes_vec[i + 2],
-                                bytes_vec[i + 3],
-                            )),
-                            16 => IpAddr::V6(std::net::Ipv6Addr::new(
-                                u16::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]),
-                                u16::from_be_bytes([bytes_vec[i + 2], bytes_vec[i + 3]]),
-                                u16::from_be_bytes([bytes_vec[i + 4], bytes_vec[i + 5]]),
-                                u16::from_be_bytes([bytes_vec[i + 6], bytes_vec[i + 7]]),
-                                u16::from_be_bytes([bytes_vec[i + 8], bytes_vec[i + 9]]),
-                                u16::from_be_bytes([bytes_vec[i + 10], bytes_vec[i + 11]]),
-                                u16::from_be_bytes([bytes_vec[i + 12], bytes_vec[i + 13]]),
-                                u16::from_be_bytes([bytes_vec[i + 14], bytes_vec[i + 15]]),
-                            )),
-                            _ => {
-                                return Err(Error::Invalid(
-                                    "La longitud de la dirección IP no es válida".to_string(),
-                                ))
-                            }
-                        };
-                        i += ip_len as usize;
-                        let code = u16::from_be_bytes([bytes_vec[i + 1], bytes_vec[i]]);
-                        i += 2;
-                        reasonmap.insert(ip, code);
-                    }
+                    let reasonmap = match Error::parse_bytes_to_hashmap(&bytes_vec, &mut i) {
+                        Ok(hashmap) => hashmap,
+                        Err(err) => return Err(err),
+                    };
                     let data_present = bytes_vec[i];
                     Ok(Error::ReadFailure(
                         msg,
@@ -625,45 +639,10 @@ impl TryFrom<Vec<u8>> for Error {
                         bytes_vec[i + 4],
                     ]);
                     i += 5;
-                    let reasonmap_len = u32::from_le_bytes([
-                        bytes_vec[i + 3],
-                        bytes_vec[i + 2],
-                        bytes_vec[i + 1],
-                        bytes_vec[i],
-                    ]) as usize;
-                    i += 4;
-                    let mut reasonmap: HashMap<IpAddr, u16> = HashMap::new();
-                    for _ in 0..reasonmap_len {
-                        let ip_len = u16::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
-                        i += 2;
-                        let ip = match ip_len {
-                            4 => IpAddr::V4(std::net::Ipv4Addr::new(
-                                bytes_vec[i],
-                                bytes_vec[i + 1],
-                                bytes_vec[i + 2],
-                                bytes_vec[i + 3],
-                            )),
-                            16 => IpAddr::V6(std::net::Ipv6Addr::new(
-                                u16::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]),
-                                u16::from_be_bytes([bytes_vec[i + 2], bytes_vec[i + 3]]),
-                                u16::from_be_bytes([bytes_vec[i + 4], bytes_vec[i + 5]]),
-                                u16::from_be_bytes([bytes_vec[i + 6], bytes_vec[i + 7]]),
-                                u16::from_be_bytes([bytes_vec[i + 8], bytes_vec[i + 9]]),
-                                u16::from_be_bytes([bytes_vec[i + 10], bytes_vec[i + 11]]),
-                                u16::from_be_bytes([bytes_vec[i + 12], bytes_vec[i + 13]]),
-                                u16::from_be_bytes([bytes_vec[i + 14], bytes_vec[i + 15]]),
-                            )),
-                            _ => {
-                                return Err(Error::Invalid(
-                                    "La longitud de la dirección IP no es válida".to_string(),
-                                ))
-                            }
-                        };
-                        i += ip_len as usize;
-                        let code = u16::from_be_bytes([bytes_vec[i + 1], bytes_vec[i]]);
-                        i += 2;
-                        reasonmap.insert(ip, code);
-                    }
+                    let reasonmap = match Error::parse_bytes_to_hashmap(&bytes_vec, &mut i) {
+                        Ok(hashmap) => hashmap,
+                        Err(err) => return Err(err),
+                    };
                     let write_type = match Error::parse_bytes_to_string(&bytes_vec[i..]) {
                         Ok(string) => string,
                         Err(err) => return Err(err),
