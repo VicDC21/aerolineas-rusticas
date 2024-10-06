@@ -1,5 +1,6 @@
 //! Módulo para las flags de un opcode PREPARE.
 
+use crate::cassandra::aliases::types::{Byte, Int};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::{Byteable, Maskable};
 
@@ -10,17 +11,17 @@ pub enum PrepareFlag {
 }
 
 impl Byteable for PrepareFlag {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::WithKeyspace => vec![0, 0, 0, 1],
+            Self::WithKeyspace => vec![0x0, 0x0, 0x0, 0x1],
         }
     }
 }
 
-impl TryFrom<Vec<u8>> for PrepareFlag {
+impl TryFrom<Vec<Byte>> for PrepareFlag {
     type Error = Error;
-    fn try_from(int: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 4] = match int.try_into() {
+    fn try_from(int: Vec<Byte>) -> Result<Self, Self::Error> {
+        let bytes_array: [Byte; 4] = match int.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(
@@ -29,7 +30,7 @@ impl TryFrom<Vec<u8>> for PrepareFlag {
             }
         };
 
-        let value = i32::from_be_bytes(bytes_array);
+        let value = Int::from_be_bytes(bytes_array);
         match value {
             0x0001 => Ok(PrepareFlag::WithKeyspace),
             _ => Err(Error::ConfigError(
@@ -39,13 +40,13 @@ impl TryFrom<Vec<u8>> for PrepareFlag {
     }
 }
 
-impl Maskable<i32> for PrepareFlag {
-    fn base_mask() -> i32 {
+impl Maskable<Int> for PrepareFlag {
+    fn base_mask() -> Int {
         0
     }
 
-    fn collapse(&self) -> i32 {
+    fn collapse(&self) -> Int {
         let bytes = self.as_bytes();
-        i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        Int::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }

@@ -1,5 +1,6 @@
 //! Módulo para el header Length.
 
+use crate::cassandra::aliases::types::Byte;
 use crate::cassandra::errors::error::Error;
 
 /// Este header indica qué tan largo es el cuerpo del frame.
@@ -16,15 +17,15 @@ impl Length {
     }
 
     /// Transforma el length en una secuencia de cuatro bytes.
-    pub fn as_bytes(&self) -> [u8; 4] {
-        self.len.to_be_bytes()
+    pub fn as_bytes(&self) -> Vec<Byte> {
+        self.len.to_be_bytes().to_vec()
     }
 }
 
-impl TryFrom<Vec<u8>> for Length {
+impl TryFrom<Vec<Byte>> for Length {
     type Error = Error;
-    fn try_from(integer_in_bytes: Vec<u8>) -> Result<Self, Self::Error> {
-        let bytes_array: [u8; 4] = match integer_in_bytes.try_into() {
+    fn try_from(integer_in_bytes: Vec<Byte>) -> Result<Self, Self::Error> {
+        let bytes_array: [Byte; 4] = match integer_in_bytes.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {
                 return Err(Error::ConfigError(

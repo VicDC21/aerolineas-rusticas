@@ -1,5 +1,6 @@
 //! Tipos de _requests_ de tipo BATCH.
 
+use crate::cassandra::aliases::types::Byte;
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::Byteable;
 
@@ -16,18 +17,18 @@ pub enum BatchType {
 }
 
 impl Byteable for BatchType {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::Logged => vec![0],
-            Self::Unlogged => vec![1],
-            Self::Counter => vec![2],
+            Self::Logged => vec![0x0],
+            Self::Unlogged => vec![0x1],
+            Self::Counter => vec![0x2],
         }
     }
 }
 
-impl TryFrom<u8> for BatchType {
+impl TryFrom<Byte> for BatchType {
     type Error = Error;
-    fn try_from(byte: u8) -> Result<Self, Self::Error> {
+    fn try_from(byte: Byte) -> Result<Self, Self::Error> {
         match byte {
             0x00 => Ok(BatchType::Logged),
             0x01 => Ok(BatchType::Unlogged),
