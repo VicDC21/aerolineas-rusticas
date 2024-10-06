@@ -2,13 +2,11 @@
 
 use std::{
     backtrace::Backtrace,
-    collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
-    net::IpAddr,
     result::Result as StdResult,
 };
 
-use crate::cassandra::aliases::types::{Byte, Int, Short};
+use crate::cassandra::aliases::types::{Byte, Int, ReasonMap, Short};
 use crate::cassandra::errors::write_type::WriteType;
 use crate::cassandra::utils::{
     encode_reasonmap_to_bytes, encode_string_to_bytes, parse_bytes_to_reasonmap,
@@ -72,7 +70,7 @@ pub enum Error {
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya respuesta es necesaria para cumplir `<cl>`.
     /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint,failurecode donde endpoint es un [IpAddr] y failurecode es un [Short].
     /// * `<data_present>` es un [bool] que indica si el nodo al que se le hizo el pedido de la data respondió o no.
-    ReadFailure(String, Consistency, Int, Int, HashMap<IpAddr, Short>, bool),
+    ReadFailure(String, Consistency, Int, Int, ReasonMap, bool),
 
     /// Una función (definida por el usuario) falló durante su ejecución.
     ///
@@ -90,14 +88,7 @@ pub enum Error {
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya confirmación es necesaria para cumplir `<cl>`.
     /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint, failurecode donde endpoint es un [IpAddr] y failurecode es un [Short].
     /// * `<writeType>` es un [WriteType] que representa el tipo de escritura que se estaba intentando realizar.
-    WriteFailure(
-        String,
-        Consistency,
-        Int,
-        Int,
-        HashMap<IpAddr, Short>,
-        WriteType,
-    ),
+    WriteFailure(String, Consistency, Int, Int, ReasonMap, WriteType),
 
     /// _En la documentación del protocolo de Cassandra figura como TODO_.
     CDCWriteFailure(String),
