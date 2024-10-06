@@ -9,6 +9,7 @@ use std::{
 };
 
 use crate::cassandra::aliases::types::{Byte, Int, Short};
+use crate::cassandra::errors::write_type::WriteType;
 use crate::cassandra::utils::{
     encode_reasonmap_to_bytes, encode_string_to_bytes, parse_bytes_to_reasonmap,
     parse_bytes_to_string,
@@ -50,19 +51,9 @@ pub enum Error {
     /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han reconocido la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya confirmación es necesaria para cumplir `<cl>`.
-    /// * `<writeType>` es un [String] que representa el tipo de escritura que se estaba intentando realizar. El valor puede ser:
-    ///     * "SIMPLE": La escritura no fue de tipo batch ni de tipo counter.
-    ///     * "BATCH": La escritura fue de tipo batch (logged). Esto signifca que el log del batch fue escrito correctamente, caso contrario, se debería haber enviado el tipo "BATCH_LOG".
-    ///     * "UNLOGGED_BATCH": La escritura fue de tipo batch (unlogged). No hubo intento de escritura en el log del batch.
-    ///     * "COUNTER": La escritura fue de tipo counter (batch o no).
-    ///     * "BATCH_LOG": El timeout ocurrió durante la escritura en el log del batch cuando una escritura de batch (logged) fue pedida.
-    ///     * "CAS": El timeout ocurrió durante el Compare And Set write/update (escritura/actualización).
-    ///     * "VIEW": El timeout ocurrió durante una escritura que involucra una actualización de VIEW (vista) y falló en adquirir el lock de vista local (MV) para la clave dentro del timeout.
-    ///     * "CDC": El timeout ocurrió cuando la cantidad total de espacio en disco (en MB) que se puede utilizar para almacenar los logs de CDC (Change Data Capture) fue excedida cuando se intentaba escribir en dicho logs.
+    /// * `<writeType>` es un [WriteType] que representa el tipo de escritura que se estaba intentando realizar.
     /// * `<contentions>` es un número ([Short]) que representa la cantidad de contenciones ocurridas durante la operación CAS. Este campo solo se presenta cuando el writeType es "CAS".
-    ///
-    /// TODO: _Quizás meter writeType en un enum._
-    WriteTimeout(String, Consistency, Int, Int, String, Option<Short>),
+    WriteTimeout(String, Consistency, Int, Int, WriteType, Option<Short>),
 
     /// Timeout exception durante un request de lectura.
     ///
@@ -98,24 +89,14 @@ pub enum Error {
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han respondido a la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya confirmación es necesaria para cumplir `<cl>`.
     /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint, failurecode donde endpoint es un [IpAddr] y failurecode es un [Short].
-    /// * `<writeType>` es un [String] que representa el tipo de escritura que se estaba intentando realizar. El valor puede ser:
-    ///     * "SIMPLE": La escritura no fue de tipo batch ni de tipo counter.
-    ///     * "BATCH": La escritura fue de tipo batch (logged). Esto signifca que el log del batch fue escrito correctamente, caso contrario, se debería haber enviado el tipo "BATCH_LOG".
-    ///     * "UNLOGGED_BATCH": La escritura fue de tipo batch (unlogged). No hubo intento de escritura en el log del batch.
-    ///     * "COUNTER": La escritura fue de tipo counter (batch o no).
-    ///     * "BATCH_LOG": El timeout ocurrió durante la escritura en el log del batch cuando una escritura de batch (logged) fue pedida.
-    ///     * "CAS": El timeout ocurrió durante el _Compare And Set write/update_ (escritura/actualización).
-    ///     * "VIEW": El timeout ocurrió durante una escritura que involucra una actualización de VIEW (vista) y falló en adquirir el lock de vista local (MV) para la clave dentro del timeout.
-    ///     * "CDC": El timeout ocurrió cuando la cantidad total de espacio en disco (en MB) que se puede utilizar para almacenar los logs de CDC (Change Data Capture) fue excedida cuando se intentaba escribir en dicho logs.
-    ///
-    /// TODO: _Quizás meter writeType en un enum._
+    /// * `<writeType>` es un [WriteType] que representa el tipo de escritura que se estaba intentando realizar.
     WriteFailure(
         String,
         Consistency,
         Int,
         Int,
         HashMap<IpAddr, Short>,
-        String,
+        WriteType,
     ),
 
     /// _En la documentación del protocolo de Cassandra figura como TODO_.
@@ -217,8 +198,8 @@ impl Byteable for Error {
                 bytes_vec.extend(cl.as_bytes());
                 bytes_vec.extend(received.to_be_bytes());
                 bytes_vec.extend(blockfor.to_be_bytes());
-                bytes_vec.extend(encode_string_to_bytes(write_type));
-                if write_type == "CAS" {
+                bytes_vec.extend(write_type.as_bytes());
+                if matches!(write_type, WriteType::Cas) {
                     if let Some(content) = contentions {
                         bytes_vec.extend(content.to_be_bytes());
                     }
@@ -264,7 +245,7 @@ impl Byteable for Error {
 
                 bytes_vec
             }
-            Self::WriteFailure(msg, cl, received, blockfor, reasonmap, string) => {
+            Self::WriteFailure(msg, cl, received, blockfor, reasonmap, write_type) => {
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0, 0x0, 0x15, 0x0, // ID
                 ];
@@ -273,7 +254,7 @@ impl Byteable for Error {
                 bytes_vec.extend(received.to_be_bytes());
                 bytes_vec.extend(blockfor.to_be_bytes());
                 bytes_vec.extend(encode_reasonmap_to_bytes(reasonmap));
-                bytes_vec.extend(encode_string_to_bytes(string));
+                bytes_vec.extend(write_type.as_bytes());
                 bytes_vec
             }
             Self::CDCWriteFailure(msg) => {
@@ -350,15 +331,15 @@ impl TryFrom<Vec<Byte>> for Error {
         let mut i = 4;
         match bytes_vec[..i] {
             [0x0, 0x0, 0x0, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::ServerError(msg)),
+                Ok(msg) => Ok(Self::ServerError(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x0, 0xA] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::ProtocolError(msg)),
+                Ok(msg) => Ok(Self::ProtocolError(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x1, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::AuthenticationError(msg)),
+                Ok(msg) => Ok(Self::AuthenticationError(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x10, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
@@ -378,20 +359,20 @@ impl TryFrom<Vec<Byte>> for Error {
                         bytes_vec[i + 2],
                         bytes_vec[i + 3],
                     ]);
-                    Ok(Error::UnavailableException(msg, cl, required, alive))
+                    Ok(Self::UnavailableException(msg, cl, required, alive))
                 }
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x10, 0x1] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::Overloaded(msg)),
+                Ok(msg) => Ok(Self::Overloaded(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x10, 0x2] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::IsBootstrapping(msg)),
+                Ok(msg) => Ok(Self::IsBootstrapping(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x10, 0x3] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::TruncateError(msg)),
+                Ok(msg) => Ok(Self::TruncateError(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x11, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
@@ -412,17 +393,18 @@ impl TryFrom<Vec<Byte>> for Error {
                         bytes_vec[i + 3],
                     ]);
                     i += 4;
-                    let write_type = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
-                    let contentions = if write_type == "CAS" {
+                    let write_type = WriteType::try_from(&bytes_vec[i..])?;
+                    i += write_type.as_bytes().len();
+                    let contentions = if matches!(write_type, WriteType::Cas) {
                         if i + 2 >= bytes_vec.len() {
-                            return Err(Error::SyntaxError("Se esperaban 2 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
+                            return Err(Self::SyntaxError("Se esperaban 2 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
                         }
                         let cont = Short::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]);
                         Some(cont)
                     } else {
                         None
                     };
-                    Ok(Error::WriteTimeout(
+                    Ok(Self::WriteTimeout(
                         msg,
                         cl,
                         received,
@@ -452,13 +434,7 @@ impl TryFrom<Vec<Byte>> for Error {
                     ]);
                     i += 4;
                     let data_present = bytes_vec[i] != 0x0;
-                    Ok(Error::ReadTimeout(
-                        msg,
-                        cl,
-                        received,
-                        blockfor,
-                        data_present,
-                    ))
+                    Ok(Self::ReadTimeout(msg, cl, received, blockfor, data_present))
                 }
                 Err(err) => Err(err),
             },
@@ -482,7 +458,7 @@ impl TryFrom<Vec<Byte>> for Error {
                     i += 4;
                     let reasonmap = parse_bytes_to_reasonmap(&bytes_vec[i..], &mut i)?;
                     let data_present = bytes_vec[i] != 0x0;
-                    Ok(Error::ReadFailure(
+                    Ok(Self::ReadFailure(
                         msg,
                         cl,
                         received,
@@ -506,7 +482,7 @@ impl TryFrom<Vec<Byte>> for Error {
                             Err(err) => return Err(err),
                         }
                     }
-                    Ok(Error::FunctionFailure(msg, keyspace, function, arg_types))
+                    Ok(Self::FunctionFailure(msg, keyspace, function, arg_types))
                 }
                 Err(err) => Err(err),
             },
@@ -529,15 +505,15 @@ impl TryFrom<Vec<Byte>> for Error {
                     ]);
                     i += 4;
                     let reasonmap = parse_bytes_to_reasonmap(&bytes_vec[..], &mut i)?;
-                    let write_type = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
-                    Ok(Error::WriteFailure(
+                    let write_type = WriteType::try_from(&bytes_vec[i..])?;
+                    Ok(Self::WriteFailure(
                         msg, cl, received, blockfor, reasonmap, write_type,
                     ))
                 }
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x16, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::CDCWriteFailure(msg)),
+                Ok(msg) => Ok(Self::CDCWriteFailure(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x17, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
@@ -557,31 +533,31 @@ impl TryFrom<Vec<Byte>> for Error {
                         bytes_vec[i + 2],
                         bytes_vec[i + 3],
                     ]);
-                    Ok(Error::CASWriteUnknown(msg, cl, received, blockfor))
+                    Ok(Self::CASWriteUnknown(msg, cl, received, blockfor))
                 }
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x20, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::SyntaxError(msg)),
+                Ok(msg) => Ok(Self::SyntaxError(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x21, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::Unauthorized(msg)),
+                Ok(msg) => Ok(Self::Unauthorized(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x22, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::Invalid(msg)),
+                Ok(msg) => Ok(Self::Invalid(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x23, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
-                Ok(msg) => Ok(Error::ConfigError(msg)),
+                Ok(msg) => Ok(Self::ConfigError(msg)),
                 Err(err) => Err(err),
             },
             [0x0, 0x0, 0x24, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
                     let ks = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
                     let table = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
-                    Ok(Error::AlreadyExists(msg, ks, table))
+                    Ok(Self::AlreadyExists(msg, ks, table))
                 }
                 Err(err) => Err(err),
             },
@@ -594,11 +570,11 @@ impl TryFrom<Vec<Byte>> for Error {
                         ids.push(bytes_vec[i]);
                         i += 1;
                     }
-                    Ok(Error::Unprepared(msg, ids))
+                    Ok(Self::Unprepared(msg, ids))
                 }
                 Err(err) => Err(err),
             },
-            _ => Err(Error::Invalid("El ID del error no es válido".to_string())),
+            _ => Err(Self::Invalid("El ID del error no es válido".to_string())),
         }
     }
 }
@@ -607,44 +583,44 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let backtrace = Backtrace::capture();
         match self {
-            Error::ServerError(msg) => write!(f, "{:?}\nServerError: {}\n", backtrace, msg),
-            Error::ProtocolError(msg) => write!(f, "{:?}\nProtocolError: {}\n", backtrace, msg),
-            Error::AuthenticationError(msg) => {
+            Self::ServerError(msg) => write!(f, "{:?}\nServerError: {}\n", backtrace, msg),
+            Self::ProtocolError(msg) => write!(f, "{:?}\nProtocolError: {}\n", backtrace, msg),
+            Self::AuthenticationError(msg) => {
                 write!(f, "{:?}\nAuthenticationError: {}\n", backtrace, msg)
             }
-            Error::UnavailableException(msg, _, _, _) => {
+            Self::UnavailableException(msg, _, _, _) => {
                 write!(f, "{:?}\nUnavailableException: {}\n", backtrace, msg)
             }
-            Error::Overloaded(msg) => write!(f, "{:?}\nOverloaded: {}\n", backtrace, msg),
-            Error::IsBootstrapping(msg) => write!(f, "{:?}\nIsBootstrapping: {}\n", backtrace, msg),
-            Error::TruncateError(msg) => write!(f, "{:?}\nTruncateError: {}\n", backtrace, msg),
-            Error::WriteTimeout(msg, _, _, _, _, _) => {
+            Self::Overloaded(msg) => write!(f, "{:?}\nOverloaded: {}\n", backtrace, msg),
+            Self::IsBootstrapping(msg) => write!(f, "{:?}\nIsBootstrapping: {}\n", backtrace, msg),
+            Self::TruncateError(msg) => write!(f, "{:?}\nTruncateError: {}\n", backtrace, msg),
+            Self::WriteTimeout(msg, _, _, _, _, _) => {
                 write!(f, "{:?}\nWriteTimeout: {}\n", backtrace, msg)
             }
-            Error::ReadTimeout(msg, _, _, _, _) => {
+            Self::ReadTimeout(msg, _, _, _, _) => {
                 write!(f, "{:?}\nReadTimeout: {}\n", backtrace, msg)
             }
-            Error::ReadFailure(msg, _, _, _, _, _) => {
+            Self::ReadFailure(msg, _, _, _, _, _) => {
                 write!(f, "{:?}\nReadFailure: {}\n", backtrace, msg)
             }
-            Error::FunctionFailure(msg, _, _, _) => {
+            Self::FunctionFailure(msg, _, _, _) => {
                 write!(f, "{:?}\nFunctionFailure: {}\n", backtrace, msg)
             }
-            Error::WriteFailure(msg, _, _, _, _, _) => {
+            Self::WriteFailure(msg, _, _, _, _, _) => {
                 write!(f, "{:?}\nWriteFailure: {}\n", backtrace, msg)
             }
-            Error::CDCWriteFailure(msg) => write!(f, "{:?}\nCDCWriteFailure: {}\n", backtrace, msg),
-            Error::CASWriteUnknown(msg, _, _, _) => {
+            Self::CDCWriteFailure(msg) => write!(f, "{:?}\nCDCWriteFailure: {}\n", backtrace, msg),
+            Self::CASWriteUnknown(msg, _, _, _) => {
                 write!(f, "{:?}\nCASWriteUnknown: {}\n", backtrace, msg)
             }
-            Error::SyntaxError(msg) => write!(f, "{:?}\nSyntaxError: {}\n", backtrace, msg),
-            Error::Unauthorized(msg) => write!(f, "{:?}\nUnauthorized: {}\n", backtrace, msg),
-            Error::Invalid(msg) => write!(f, "{:?}\nInvalid: {}\n", backtrace, msg),
-            Error::ConfigError(msg) => write!(f, "{:?}\nConfigError: {}\n", backtrace, msg),
-            Error::AlreadyExists(msg, _, _) => {
+            Self::SyntaxError(msg) => write!(f, "{:?}\nSyntaxError: {}\n", backtrace, msg),
+            Self::Unauthorized(msg) => write!(f, "{:?}\nUnauthorized: {}\n", backtrace, msg),
+            Self::Invalid(msg) => write!(f, "{:?}\nInvalid: {}\n", backtrace, msg),
+            Self::ConfigError(msg) => write!(f, "{:?}\nConfigError: {}\n", backtrace, msg),
+            Self::AlreadyExists(msg, _, _) => {
                 write!(f, "{:?}\nAlreadyExists: {}\n", backtrace, msg)
             }
-            Error::Unprepared(msg, _) => write!(f, "{:?}\nUnprepared: {}\n", backtrace, msg),
+            Self::Unprepared(msg, _) => write!(f, "{:?}\nUnprepared: {}\n", backtrace, msg),
         }
     }
 }
