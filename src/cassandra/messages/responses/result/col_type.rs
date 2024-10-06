@@ -1,11 +1,10 @@
 //! Módulo para los tipos de columnas en una _response_ con filas.
 
-use std::str;
-
-use crate::cassandra::utils::parse_bytes_to_string;
 use crate::cassandra::aliases::types::{Byte, Short};
 use crate::cassandra::errors::error::Error;
 use crate::cassandra::traits::Byteable;
+use crate::cassandra::user::udt_type::UdtType;
+use crate::cassandra::utils::parse_bytes_to_string;
 
 /// Tipo nativo de columna, a ser incluido en la _spec_ del cuerpo de la _response_.
 pub enum ColType {
@@ -127,8 +126,8 @@ pub enum ColType {
     /// * `<name_i>` es un [String] representando el nombre del i-ésimo campo del UDT.
     /// * `<value_i>` es una tipo de los especificados en este [Enum](crate::cassandra::messages::responses::result::col_type::ColType), tal que el i-ésimo campo del UDT tiene valor de ese tipo.
     ///
-    /// TODO: _Quizás meter eso en un struct en el futuro._
-    Udt((String, String, Short, Vec<(String, Box<Self>)>)),
+    /// Toda la info está guardada en [UdtType].
+    Udt(UdtType),
 
     /// El valor tiene la forma `<n><type_1>...<type_n>` donde:
     ///
@@ -197,36 +196,7 @@ impl Byteable for ColType {
                 bytes_vec.extend((**boxed).as_bytes());
                 bytes_vec
             }
-            Self::Udt((ks, udt_name, n, vec_campos)) => {
-                let ks_bytes = ks.as_bytes();
-                let ks_bytes_len = ks_bytes.len().to_le_bytes();
-
-                let mut bytes_vec: Vec<Byte> = vec![
-                    0x0,
-                    0x30, // ID,
-                    ks_bytes_len[1],
-                    ks_bytes_len[0], // ks
-                ];
-                bytes_vec.extend_from_slice(ks_bytes);
-
-                let udt_name_bytes = udt_name.as_bytes();
-                let udt_name_bytes_len = udt_name_bytes.len().to_le_bytes();
-                bytes_vec.extend_from_slice(&[udt_name_bytes_len[1], udt_name_bytes_len[0]]);
-                bytes_vec.extend_from_slice(udt_name_bytes);
-
-                let n_bytes = n.to_le_bytes();
-                bytes_vec.extend_from_slice(&[n_bytes[1], n_bytes[0]]);
-
-                for (nombre_campo, tipo_campo) in vec_campos {
-                    let nombre_bytes = nombre_campo.as_bytes();
-                    let nombre_bytes_len = nombre_bytes.len().to_le_bytes();
-                    bytes_vec.extend_from_slice(&[nombre_bytes_len[1], nombre_bytes_len[0]]);
-                    bytes_vec.extend_from_slice(nombre_bytes);
-                    bytes_vec.extend((**tipo_campo).as_bytes());
-                }
-
-                bytes_vec
-            }
+            Self::Udt(udt_type) => udt_type.as_bytes(),
             Self::Tuple(types_vec) => {
                 let types_vec_len = types_vec.len().to_le_bytes();
                 let mut bytes_vec: Vec<Byte> = vec![
@@ -289,16 +259,19 @@ impl TryFrom<&mut Vec<Byte>> for ColType {
             0x0020 => Self::deserialize_list_type(col_type_body)?,
             0x0021 => Self::deserialize_map_type(col_type_body)?,
             0x0022 => Self::deserialize_set_type(col_type_body)?,
-            0x0030 => Self::deserialize_udt_type(col_type_body)?,
+            0x0040 => ColType::Udt(UdtType::try_from(&col_type_body[..])?),
             0x0031 => Self::deserialize_tuple_type(col_type_body)?,
-            _ => return Err(Error::ConfigError("El ID dado no corresponde a ninguna variante".to_string())),
+            _ => {
+                return Err(Error::ConfigError(
+                    "El ID dado no corresponde a ninguna variante".to_string(),
+                ))
+            }
         };
         Ok(ret)
     }
 }
 
 impl ColType {
-
     fn deserialize_list_type(col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
@@ -331,28 +304,6 @@ impl ColType {
         Ok(ColType::Set(Box::new(inner_type)))
     }
 
-    fn deserialize_udt_type(mut col_type_body: Vec<Byte>) -> Result<Self, Error> {
-        let ks_lenght: usize = get_size_short(&mut col_type_body)?;
-        let ks: String = get_string_from_bytes_with_lenght(&mut col_type_body, ks_lenght)?;
-
-        let udt_name_lenght: usize = get_size_short(&mut col_type_body)?;
-        let udt_name: String =
-            get_string_from_bytes_with_lenght(&mut col_type_body, udt_name_lenght)?;
-
-        let n: Short = get_size_short(&mut col_type_body)? as Short;
-
-        let mut fields: Vec<(String, Box<Self>)> = Vec::new();
-        for _i in 0..n {
-            let lenght: usize = get_size_short(&mut col_type_body)?;
-
-            let name_i: String = get_string_from_bytes_with_lenght(&mut col_type_body, lenght)?;
-            let col_type = ColType::try_from(&mut col_type_body)?;
-            let type_i = Box::new(col_type);
-            fields.push((name_i, type_i));
-        }
-        Ok(ColType::Udt((ks, udt_name, n, fields)))
-    }
-
     fn deserialize_tuple_type(mut col_type_body: Vec<Byte>) -> Result<Self, Error> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
@@ -368,44 +319,4 @@ impl ColType {
         }
         Ok(ColType::Tuple(types))
     }
-}
-
-fn get_string_from_bytes_with_lenght(
-    col_type_body: &mut Vec<Byte>,
-    ks_lenght: usize,
-) -> Result<String, Error> {
-    if col_type_body.len() < ks_lenght {
-        return Err(Error::ConfigError(
-            "Se esperaban mas bytes en ColType".to_string(),
-        ));
-    }
-    let ks: Vec<Byte> = col_type_body.drain(0..ks_lenght).collect();
-    let ks = match str::from_utf8(&ks) {
-        Ok(str) => str,
-        Err(_e) => {
-            return Err(Error::ConfigError(
-                "El cuerpo del string no se pudo parsear".to_string(),
-            ))
-        }
-    };
-    Ok(ks.to_string())
-}
-
-fn get_size_short(col_type_body: &mut Vec<Byte>) -> Result<usize, Error> {
-    if col_type_body.len() < 2 {
-        return Err(Error::ConfigError(
-            "Se esperaban 2 bytes Que indiquen el tamaño del string a formar".to_string(),
-        ));
-    }
-    let lenght: Vec<Byte> = (col_type_body.drain(0..2)).collect();
-    let bytes_array: [Byte; 2] = match lenght.try_into() {
-        Ok(bytes_array) => bytes_array,
-        Err(_e) => {
-            return Err(Error::ConfigError(
-                "No se pudo castear el vector de bytes en un array en udt".to_string(),
-            ))
-        }
-    };
-    let lenght: usize = Short::from_be_bytes(bytes_array) as usize;
-    Ok(lenght)
 }
