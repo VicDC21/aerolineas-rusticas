@@ -33,6 +33,9 @@ pub fn ddl_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlSta
 }
 
 pub fn use_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlStatement>, Error> {
+    // if _lista[0] == "USE"{
+
+    // }
     Ok(None)
 }
 

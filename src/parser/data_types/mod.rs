@@ -1,5 +1,4 @@
 pub mod collection_type;
-pub mod constants;
 pub mod cql_type;
 pub mod native_types;
 pub mod collection_literal;
@@ -17,3 +16,7 @@ pub mod tuple_literal;
 pub mod function_call;
 pub mod vector_literal;
 pub mod type_hint;
+pub mod identifier;
+pub mod option;
+pub mod constant;
+pub mod keyspace_name;

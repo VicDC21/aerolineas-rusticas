@@ -1,4 +1,4 @@
-use super::constants::Constant;
+use super::constant::Constant;
 use super::literal::Literal;
 use super::function_call::FunctionCall;
 use super::type_hint::TypeHint;
