@@ -1,5 +1,9 @@
+use super::dml_statement::dml_statement;
+
 pub enum ddl_statement{
-    use_statement,
+    use_statement{
+        campo: Box<dml_statement>
+    },
     create_keyspace_statement,
     alter_keyspace_statement,
     drop_keyspace_statement,
