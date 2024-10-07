@@ -20,3 +20,5 @@ pub mod identifier;
 pub mod option;
 pub mod constant;
 pub mod keyspace_name;
+pub mod unquoted_name;
+pub mod quoted_name;

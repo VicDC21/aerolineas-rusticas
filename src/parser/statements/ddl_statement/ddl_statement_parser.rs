@@ -1,7 +1,7 @@
-use crate::cassandra::errors::error::Error;
+use crate::{cassandra::errors::error::Error, parser::data_types::{keyspace_name::KeyspaceName, quoted_name::QuotedName, unquoted_name::UnquotedName}};
 
 pub enum DdlStatement {
-    UseStatement,
+    UseStatement(KeyspaceName),
     CreateKeyspaceStatement,
     AlterKeyspaceStatement,
     DropKeyspaceStatement,
@@ -13,7 +13,8 @@ pub enum DdlStatement {
 
 pub fn ddl_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlStatement>, Error> {
     if let Some(_x) = use_statement(_lista, _index)? {
-        return Ok(Some(DdlStatement::UseStatement));
+        return Ok(Some(_x))
+        // return Ok(Some(DdlStatement::UseStatement(KeyspaceName)));
     } else if let Some(_x) = create_keyspace_statement(_lista, _index)? {
         return Ok(Some(DdlStatement::CreateKeyspaceStatement));
     } else if let Some(_x) = alter_keyspace_statement(_lista, _index)? {
@@ -33,9 +34,15 @@ pub fn ddl_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlSta
 }
 
 pub fn use_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlStatement>, Error> {
-    // if _lista[0] == "USE"{
-
-    // }
+    if _lista[0] == "USE"{
+        if _lista[1] == "\""{
+            let keyspace = DdlStatement::UseStatement(KeyspaceName::QuotedName(UnquotedName::new(_lista[2].clone())?));
+            return Ok(Some(keyspace))
+        } else {
+            let keyspace = DdlStatement::UseStatement(KeyspaceName::UnquotedName(UnquotedName::new(_lista[1].clone())?));
+            return Ok(Some(keyspace))
+        }
+    }
     Ok(None)
 }
 
