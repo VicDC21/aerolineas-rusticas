@@ -1,1 +1,1 @@
-pub mod ddl_statement;
+pub mod ddl_statement_parser;

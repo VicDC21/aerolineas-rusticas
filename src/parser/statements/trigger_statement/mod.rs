@@ -1,1 +1,1 @@
-pub mod trigger_statement;
+pub mod trigger_statement_parser;

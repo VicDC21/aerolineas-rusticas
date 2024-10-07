@@ -1,1 +1,1 @@
-pub mod secondary_index_statement;
+pub mod secondary_index_statement_parser;

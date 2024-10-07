@@ -6,34 +6,34 @@ pub enum UdtStatement {
     DropTypeStatement,
 }
 
-pub fn udt_statement(lista: &mut Vec<String>, index: i32) -> Result<Option<UdtStatement>, Error> {
-    if let Some(_x) = create_type_statement(lista, index)? {
+pub fn udt_statement(_lista: &mut [String], _index: i32) -> Result<Option<UdtStatement>, Error> {
+    if let Some(_x) = create_type_statement(_lista, _index)? {
         return Ok(Some(UdtStatement::CreateTypeStatement));
-    } else if let Some(_x) = alter_type_statement(lista, index)? {
+    } else if let Some(_x) = alter_type_statement(_lista, _index)? {
         return Ok(Some(UdtStatement::AlterTypeStatement));
-    } else if let Some(_x) = drop_type_statement(lista, index)? {
+    } else if let Some(_x) = drop_type_statement(_lista, _index)? {
         return Ok(Some(UdtStatement::DropTypeStatement));
     }
     Ok(None)
 }
 
 pub fn create_type_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<UdtStatement>, Error> {
     Ok(None)
 }
 
 pub fn alter_type_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<UdtStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_type_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<UdtStatement>, Error> {
     Ok(None)
 }

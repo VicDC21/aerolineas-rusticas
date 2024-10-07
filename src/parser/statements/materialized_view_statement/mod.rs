@@ -1,1 +1,1 @@
-pub mod materialized_view_statement;
+pub mod materialized_view_statement_parser;

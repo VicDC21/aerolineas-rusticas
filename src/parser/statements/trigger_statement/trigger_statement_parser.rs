@@ -6,27 +6,27 @@ pub enum TriggerStatement {
 }
 
 pub fn trigger_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<TriggerStatement>, Error> {
-    if let Some(_x) = create_trigger_statement(lista, index)? {
+    if let Some(_x) = create_trigger_statement(_lista, _index)? {
         return Ok(Some(TriggerStatement::CreateTriggerStatement));
-    } else if let Some(_x) = drop_trigger_statement(lista, index)? {
+    } else if let Some(_x) = drop_trigger_statement(_lista, _index)? {
         return Ok(Some(TriggerStatement::DropTriggerStatement));
     }
     Ok(None)
 }
 
 pub fn create_trigger_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<TriggerStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_trigger_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<TriggerStatement>, Error> {
     Ok(None)
 }

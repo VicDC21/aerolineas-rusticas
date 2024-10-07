@@ -6,14 +6,14 @@ pub enum MaterializedViewStatement {
 }
 
 pub fn materialized_view_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<MaterializedViewStatement>, Error> {
-    if let Some(_x) = create_materialized_view_statement(lista, index)? {
+    if let Some(_x) = create_materialized_view_statement(_lista, _index)? {
         return Ok(Some(
             MaterializedViewStatement::CreateMaterializedViewStatement,
         ));
-    } else if let Some(_x) = drop_materialized_view_statement(lista, index)? {
+    } else if let Some(_x) = drop_materialized_view_statement(_lista, _index)? {
         return Ok(Some(
             MaterializedViewStatement::DropMaterializedViewStatement,
         ));
@@ -22,15 +22,15 @@ pub fn materialized_view_statement(
 }
 
 pub fn create_materialized_view_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<MaterializedViewStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_materialized_view_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<MaterializedViewStatement>, Error> {
     Ok(None)
 }

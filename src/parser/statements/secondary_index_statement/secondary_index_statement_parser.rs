@@ -6,27 +6,27 @@ pub enum SecondaryIndexStatement {
 }
 
 pub fn secondary_index_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<SecondaryIndexStatement>, Error> {
-    if let Some(_x) = create_index_statement(lista, index)? {
+    if let Some(_x) = create_index_statement(_lista, _index)? {
         return Ok(Some(SecondaryIndexStatement::CreateIndexStatement));
-    } else if let Some(_x) = drop_index_statement(lista, index)? {
+    } else if let Some(_x) = drop_index_statement(_lista, _index)? {
         return Ok(Some(SecondaryIndexStatement::DropIndexStatement));
     }
     Ok(None)
 }
 
 pub fn create_index_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<SecondaryIndexStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_index_statement(
-    lista: &mut Vec<String>,
-    index: i32,
+    _lista: &mut [String],
+    _index: i32,
 ) -> Result<Option<SecondaryIndexStatement>, Error> {
     Ok(None)
 }
