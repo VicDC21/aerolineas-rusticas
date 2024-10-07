@@ -1,4 +1,3 @@
-pub mod ddl_statement;
 pub mod dml_statement;
 pub mod materialized_view_statement;
 pub mod role_or_permission_statement;
@@ -7,3 +6,9 @@ pub mod statement;
 pub mod udf_statement;
 pub mod trigger_statement;
 pub mod udt_statement;
+pub mod ddl_statement;
+pub mod constants;
+pub mod terms;
+pub mod cql_type;
+pub mod native_types;
+pub mod collection;
