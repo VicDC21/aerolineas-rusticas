@@ -1,4 +1,4 @@
-pub enum NativeType{
+pub enum NativeType {
     /// ASCII character string
     Ascii,
 
@@ -63,5 +63,5 @@ pub enum NativeType{
     Varint,
 
     /// A fixed length non-null, flattened array of float values CASSANDRA-18504 added this data type to Cassandra 5.0.
-    Vector
+    Vector,
 }

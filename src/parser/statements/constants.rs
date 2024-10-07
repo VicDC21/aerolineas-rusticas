@@ -1,4 +1,4 @@
-pub enum Constant{
+pub enum Constant {
     Constant,
     String,
     Integer,
@@ -6,5 +6,5 @@ pub enum Constant{
     Boolean,
     Uuid,
     Hex,
-    Blob
+    Blob,
 }

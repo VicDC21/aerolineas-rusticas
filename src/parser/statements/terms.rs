@@ -1,4 +1,4 @@
-pub enum Term{
+pub enum Term {
     /// constant | literal | function_call | arithmetic_operation | type_hint | bind_marker
     Term,
 
@@ -13,7 +13,7 @@ pub enum Term{
 
     /// '(' cql_type ')' term
     TypeHint,
-    
+
     /// '?' | ':' identifier
-    BindMaker
+    BindMaker,
 }

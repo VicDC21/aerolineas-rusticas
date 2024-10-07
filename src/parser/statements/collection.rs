@@ -1,4 +1,4 @@
-pub enum Collection{
+pub enum Collection {
     /// MAP '<' cql_type',' cql_type'>'
     Map,
 
@@ -6,5 +6,5 @@ pub enum Collection{
     Set,
 
     /// LIST '<' cql_type'>'
-    List
+    List,
 }

@@ -1,9 +1,16 @@
 use crate::cassandra::errors::error::Error;
-use super::statements::{ddl_statement::ddl_statement, statement::Statement};
+use crate::parser::statements::ddl_statement::ddl_statement::ddl_statement;
+use crate::parser::statements::dml_statement::dml_statement::dml_statement;
+use crate::parser::statements::materialized_view_statement::materialized_view_statement::materialized_view_statement;
+use crate::parser::statements::role_or_permission_statement::role_or_permission_statement::role_or_permission_statement;
+use crate::parser::statements::secondary_index_statement::secondary_index_statement::secondary_index_statement;
+use crate::parser::statements::statement::Statement;
+use crate::parser::statements::trigger_statement::trigger_statement::trigger_statement;
+use crate::parser::statements::udf_statement::udf_statement::udf_statement;
+use crate::parser::statements::udt_statement::udt_statement::udt_statement;
 
-
-pub fn make_parse(lista: &mut Vec<String>) -> Result<CqlStatement, Error> {
-    let tree: CqlStatement = match cql_statement(lista)? {
+pub fn make_parse(lista: &mut Vec<String>) -> Result<Statement, Error> {
+    let tree: Statement = match cql_statement(lista)? {
         Some(value) => value,
         None => return Err(Error::ConfigError("dsa".to_string())),
     };
@@ -17,71 +24,22 @@ fn cql_statement(lista: &mut Vec<String>) -> Result<Option<Statement>, Error> {
 fn statement(lista: &mut Vec<String>) -> Result<Option<Statement>, Error> {
     let index = 0;
 
-    if ddl_statement(&mut lista, index)?.is_some(){
-
-    } else if dml_statement(&mut lista, index){
-
-    } else if secondary_index_statement(&mut lista, index){
-        
-    } else if materialized_view_statement(&mut lista, index){
-        
-    } else if role_or_permission_statement(&mut lista, index){
-        
+    if let Some(x) = ddl_statement(lista, index)? {
+        return Ok(Some(Statement::DdlStatement(x)));
+    } else if let Some(x) = dml_statement(lista, index)? {
+        return Ok(Some(Statement::DmlStatement(x)));
+    } else if let Some(x) = secondary_index_statement(lista, index)? {
+        return Ok(Some(Statement::SecondaryIndexStatement(x)));
+    } else if let Some(x) = materialized_view_statement(lista, index)? {
+        return Ok(Some(Statement::MaterializedViewStatement(x)));
+    } else if let Some(x) = role_or_permission_statement(lista, index)? {
+        return Ok(Some(Statement::RoleOrPermissionStatement(x)));
+    } else if let Some(x) = udf_statement(lista, index)? {
+        return Ok(Some(Statement::UdfStatement(x)));
+    } else if let Some(x) = udt_statement(lista, index)? {
+        return Ok(Some(Statement::UdtStatement(x)));
+    } else if let Some(x) = trigger_statement(lista, index)? {
+        return Ok(Some(Statement::TriggerStatement(x)));
     }
-    Ok(None)
-}
-
-pub fn ddl_statement(lista: &mut Vec<String>, index: i32) -> Result<Option<ddl_statement>, Error>{
-    // if use_statement(lista) | create_keyspace_statement(lista) | alter_keyspace_statement(lista){
-    //     return Ok(None)
-    // };
-
-    Ok(Some(ddl_statement::alter_keyspace_statement))
-
-}
-
-pub fn use_statement() -> Result<Option<ddl_statement>, Error>{
-
-
-    Ok(None)
-}
-
-
-pub fn dml_statement(lista: &mut Vec<String>, index: i32) -> Result<Option<DmlStatement>, Error>{
-    // if !is_use_statement(lista) | !is_create_keyspace_statement(lista) | is_alter_keyspace_statement(lista){
-    //     return None
-    // };
-
-    // Ok(Some(DmlStatement::))
-    Ok(None)
-}
-
-
-pub fn secondary_index_statement(lista: &mut Vec<String>, index: i32) -> Result<Option<SecondaryIndexStatement>, Error>{
-    // if use_statement(lista) | create_keyspace_statement(lista) | alter_keyspace_statement(lista){
-    //     return Ok(None)
-    // };
-
-    // Ok(Some(SecondaryIndexStatement::))
-    Ok(None)
-}
-
-pub fn materialized_view_statement(lista: &mut Vec<String>, index: i32) -> Result<Option<MaterializedViewStatement>, Error>{
-    // if use_statement(lista) | create_keyspace_statement(lista) | alter_keyspace_statement(lista){
-    //     return Ok(None)
-    // };
-
-
-    // Ok(Some(MaterializedViewStatement::))
-    Ok(None)
-}
-
-pub fn role_or_permission_statement(lista: &mut Vec<String>, index: i32) -> Result<Option<RoleOrPermissionStatement>, Error>{
-    // if use_statement(lista) | create_keyspace_statement(lista) | alter_keyspace_statement(lista){
-    //     return Ok(None)
-    // };
-
-
-    // Ok(Some(RoleOrPermissionStatement::))
     Ok(None)
 }

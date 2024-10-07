@@ -1,7 +1,7 @@
-pub enum CQLType{
+pub enum CQLType {
     NativeType,
     CollectionType,
     UserDefinedType,
     TupleType,
-    CustomType
+    CustomType,
 }
