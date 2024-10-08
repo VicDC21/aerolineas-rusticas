@@ -11,7 +11,7 @@ pub enum DdlStatement {
     TruncateStatement,
 }
 
-pub fn ddl_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlStatement>, Error> {
+pub fn ddl_statement(_lista: &mut [String], _index: usize) -> Result<Option<DdlStatement>, Error> {
     if let Some(_x) = use_statement(_lista, _index)? {
         return Ok(Some(_x))
         // return Ok(Some(DdlStatement::UseStatement(KeyspaceName)));
@@ -33,7 +33,7 @@ pub fn ddl_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlSta
     Ok(None)
 }
 
-pub fn use_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlStatement>, Error> {
+pub fn use_statement(_lista: &mut [String], _index: usize) -> Result<Option<DdlStatement>, Error> {
     if _lista[0] == "USE"{
         if _lista[1] == "\""{
             let keyspace = DdlStatement::UseStatement(KeyspaceName::QuotedName(UnquotedName::new(_lista[2].clone())?));
@@ -48,49 +48,49 @@ pub fn use_statement(_lista: &mut [String], _index: i32) -> Result<Option<DdlSta
 
 pub fn create_keyspace_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }
 
 pub fn alter_keyspace_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_keyspace_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }
 
 pub fn create_table_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }
 
 pub fn alter_table_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_table_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }
 
 pub fn truncate_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }

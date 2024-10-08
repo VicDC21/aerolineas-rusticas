@@ -18,7 +18,7 @@ pub enum RoleOrPermissionStatement {
 
 pub fn role_or_permission_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     if let Some(_x) = create_role_statement(_lista, _index)? {
         return Ok(Some(RoleOrPermissionStatement::CreateRoleStatement));
@@ -52,91 +52,91 @@ pub fn role_or_permission_statement(
 
 pub fn create_role_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn alter_role_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_role_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn grant_role_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn revoke_role_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn list_roles_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn grant_permission_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn revoke_permission_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn list_permissions_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn create_user_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn alter_user_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_user_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn list_users_statement(
     _lista: &mut [String],
-    _index: i32,
+    _index: usize,
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
