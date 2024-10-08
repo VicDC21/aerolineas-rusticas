@@ -8,3 +8,4 @@ pub mod select;
 pub mod selector;
 pub mod statements;
 pub mod r#where;
+pub mod order_by;

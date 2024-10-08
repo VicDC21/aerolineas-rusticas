@@ -1,4 +1,4 @@
-use super::data_types::keyspace_name::KeyspaceName;
+use super::{data_types::keyspace_name::KeyspaceName, order_by::OrderBy};
 use crate::parser::{
     group_by::GroupBy, limit::Limit, per_partition_limit::PerPartitionLimit, r#where::Where,
 };
@@ -8,6 +8,7 @@ pub struct Select {
     from: KeyspaceName,
     the_where: Option<Where>,
     group_by: Option<GroupBy>,
+    order_by: Option<OrderBy>,
     per_partition_limit: Option<PerPartitionLimit>,
     limit: Option<Limit>,
     allow_filtering: Option<bool>,
@@ -19,6 +20,7 @@ impl Select {
         from: KeyspaceName,
         the_where: Option<Where>,
         group_by: Option<GroupBy>,
+        order_by: Option<OrderBy>,
         per_partition_limit: Option<PerPartitionLimit>,
         limit: Option<Limit>,
         allow_filtering: Option<bool>,
@@ -28,6 +30,7 @@ impl Select {
             from,
             the_where,
             group_by,
+            order_by,
             per_partition_limit,
             limit,
             allow_filtering,
@@ -40,6 +43,7 @@ pub struct SelectBuilder {
     from: KeyspaceName,
     the_where: Option<Where>,
     group_by: Option<GroupBy>,
+    order_by: Option<OrderBy>,
     per_partition_limit: Option<PerPartitionLimit>,
     limit: Option<Limit>, // ver como crear los structs
     allow_filtering: Option<bool>,
@@ -58,6 +62,9 @@ impl SelectBuilder {
     fn set_group_by(&mut self, group_by: Option<GroupBy>) {
         self.group_by = group_by;
     }
+    fn set_order_by(&mut self, order_by: Option<OrderBy>) {
+        self.order_by = order_by;
+    }
     fn set_per_partition_limit(&mut self, per_partition_limit: Option<PerPartitionLimit>) {
         self.per_partition_limit = per_partition_limit;
     }
@@ -73,6 +80,7 @@ impl SelectBuilder {
             self.from,
             self.the_where,
             self.group_by,
+            self.order_by,
             self.per_partition_limit,
             self.limit,
             self.allow_filtering,

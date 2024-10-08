@@ -1,4 +1,4 @@
-use crate::{cassandra::errors::error::Error, parser::r#where::Where, parser::select::Select};
+use crate::{cassandra::errors::error::Error, parser::{group_by::GroupBy, order_by::OrderBy, select::Select, r#where::Where }};
 
 pub enum DmlStatement {
     SelectStatement,
@@ -26,16 +26,17 @@ pub fn dml_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Er
 pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
     let index = 0;
     if lista[index] == "SELECT" {
+        lista.remove(0);
         // Podria hacer un builder que cree los campos poco a poco?
         if lista[index] == "*" {
             // Select{
 
             // };
         } else {
-            return Err(Error::SyntaxError("Falta la tabla".to_string()));
+            let res = select_clause(lista);
         }
         if lista[index] == "WHERE" {
-            let res = select_clause(lista);
+            let res = where_clause(lista);
             // aca completar el builder poco a poco
         } else {
             return Ok(None); // al builder pasarle esto
@@ -54,9 +55,67 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
     Ok(None)
 }
 
-pub fn select_clause(lista: &mut Vec<String>) -> Option<Where> {
+pub fn select_clause(lista: &mut Vec<String>) -> Option<String> {
+    while lista[0] != "FROM"{
+        let sel = selector(lista);
+
+    }
+
+
+
+
     None
 }
+
+pub fn selector(lista: &mut Vec<String>) -> Option<Where> {
+    if lista[0] == "column_name"{
+
+    } else if lista[0] == "term"{
+
+    } else if lista[0] == "CAST" && lista[1] == "("{
+        selector(lista);
+        if lista[0] != "AS"{
+            // Error
+        }
+        cql_type(lista);
+
+
+
+    }
+
+
+    None
+}
+
+pub fn cql_type(lista: &mut Vec<String>){
+
+}
+
+
+pub fn where_clause(lista: &mut Vec<String>) -> Option<Where> {
+    None
+}
+
+pub fn relation(lista: &mut Vec<String>) -> Option<Where> {
+    None
+}
+
+pub fn operator(lista: &mut Vec<String>) -> Option<Where> {
+    None
+}
+
+pub fn group_by_clause(lista: &mut Vec<String>) -> Option<GroupBy> {
+    None
+}
+
+pub fn ordering_clause(lista: &mut Vec<String>) -> Option<OrderBy> {
+    None
+}
+
+
+
+
+
 
 pub fn insert_statement(lista: &mut [String]) -> Result<Option<DmlStatement>, Error> {
     if lista[0] == "INSERT" {}

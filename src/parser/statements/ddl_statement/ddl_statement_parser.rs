@@ -1,5 +1,5 @@
 use crate::{
-    cassandra::errors::error::Error,
+    cassandra::{errors::error::Error, traits::Byteable},
     parser::data_types::{
         keyspace_name::KeyspaceName, quoted_name::QuotedName, unquoted_name::UnquotedName,
     },
@@ -15,6 +15,7 @@ pub enum DdlStatement {
     DropTableStatement,
     TruncateStatement,
 }
+
 
 pub fn ddl_statement(lista: &mut [String]) -> Result<Option<DdlStatement>, Error> {
     if let Some(_x) = use_statement(lista)? {
