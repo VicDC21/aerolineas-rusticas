@@ -1,12 +1,14 @@
 use super::data_types::keyspace_name::KeyspaceName;
-use super::r#where::Where;
+use crate::parser::{
+    group_by::GroupBy, limit::Limit, per_partition_limit::PerPartitionLimit, r#where::Where,
+};
 
 pub struct Select {
     select_clause: String,
     from: KeyspaceName,
-    the_where: Option<Where>,
-    // group_by: Option<GroupBy>,
-    // per_partition_limit: Option<PerPartitionLimit>,
-    // limit: Option<Limit>,  // ver como crear los structs
+    where_clause: Option<Where>,
+    group_by: Option<GroupBy>,
+    per_partition_limit: Option<PerPartitionLimit>,
+    limit: Option<Limit>,
     allow_filtering: Option<bool>,
 }
