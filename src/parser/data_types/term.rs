@@ -1,6 +1,6 @@
 use super::constant::Constant;
-use super::literal::Literal;
 use super::function_call::FunctionCall;
+use super::literal::Literal;
 use super::type_hint::TypeHint;
 
 /// constant | literal | function_call | arithmetic_operation | type_hint | bind_marker

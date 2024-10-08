@@ -1,4 +1,4 @@
-pub enum Operator{
+pub enum Operator {
     Equal,
     Minor,
     Mayor,
@@ -7,5 +7,5 @@ pub enum Operator{
     Distinct,
     In,
     Contains,
-    ContainsKey
+    ContainsKey,
 }

@@ -1,6 +1,4 @@
-
-
-pub enum Constant{
+pub enum Constant {
     String(String),
     // Integer(Integer),
     // Float(Float),
@@ -9,5 +7,3 @@ pub enum Constant{
     // Blob(Blob),
     // NULL
 }
-
-

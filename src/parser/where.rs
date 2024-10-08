@@ -1,3 +1,1 @@
-pub struct Where{
-    
-}
+pub struct Where {}

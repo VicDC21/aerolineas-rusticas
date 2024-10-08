@@ -1,5 +1,3 @@
 /// tuple_literal::= '(' term( ',' term )* ')'
 
-pub struct TupleLiteral{
-
-}
+pub struct TupleLiteral {}

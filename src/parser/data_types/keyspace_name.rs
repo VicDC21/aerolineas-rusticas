@@ -1,6 +1,6 @@
 use super::unquoted_name::UnquotedName;
 
-pub enum KeyspaceName{
+pub enum KeyspaceName {
     UnquotedName(UnquotedName),
-    QuotedName(UnquotedName)
+    QuotedName(UnquotedName),
 }

@@ -1,3 +1,1 @@
-pub struct MapLiteral{
-    
-}
+pub struct MapLiteral {}

@@ -1,7 +1,6 @@
-use super::set_literal::SetLiteral;
 use super::list_literal::ListLiteral;
 use super::map_literal::MapLiteral;
-
+use super::set_literal::SetLiteral;
 
 pub enum CollectionLiteral {
     /// MAP '<' cql_type',' cql_type'>'

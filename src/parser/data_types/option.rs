@@ -4,8 +4,8 @@ use super::{constant::Constant, identifier::Identifier, map_literal::MapLiteral}
 // option::= identifier '=' ( identifier
 // 	| constant
 // 	| map_literal )
-pub enum Option{
+pub enum Option {
     Identifier(Identifier),
     Constant(Constant),
-    MapLiteral(MapLiteral)
+    MapLiteral(MapLiteral),
 }

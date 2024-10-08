@@ -1,3 +1,1 @@
-pub struct ListLiteral{
-    
-}
+pub struct ListLiteral {}

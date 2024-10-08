@@ -1,4 +1,1 @@
-
-pub struct FunctionCall{
-
-}
+pub struct FunctionCall {}

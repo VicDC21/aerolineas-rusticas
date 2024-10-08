@@ -1,3 +1,1 @@
-pub struct TypeHint{
-    
-}
+pub struct TypeHint {}

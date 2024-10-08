@@ -1,5 +1,5 @@
-pub enum Selector{
+pub enum Selector {
     ColumnName,
     Term,
-    Cast
+    Cast,
 }

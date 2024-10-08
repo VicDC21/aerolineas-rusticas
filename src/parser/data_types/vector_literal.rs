@@ -1,3 +1,1 @@
-pub struct VectorLiteral{
-    
-}
+pub struct VectorLiteral {}
