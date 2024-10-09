@@ -101,3 +101,50 @@ impl Maskable<Int> for QueryFlag {
         Int::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::{errors::error::Error, traits::Byteable};
+    use super::QueryFlag;
+
+    #[test]
+    fn test_1_serializar() {
+        let query_flags = [
+            QueryFlag::Values,
+            QueryFlag::WithPagingState,
+            QueryFlag::WithSerialConsistency,
+            QueryFlag::WithDefaultTimestamp,
+            QueryFlag::WithNowInSeconds,
+        ];
+        let expected = [
+            vec![0x0, 0x0, 0x0, 0x1],
+            vec![0x0, 0x0, 0x0, 0x8],
+            vec![0x0, 0x0, 0x0, 0x10],
+            vec![0x0, 0x0, 0x0, 0x20],
+            vec![0x0, 0x0, 0x1, 0x0],
+        ];
+        for i in 0..expected.len() {
+            assert_eq!(query_flags[i].as_bytes(), expected[i]);
+        }
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let query_res = QueryFlag::try_from(vec![0x0, 0x0, 0x0, 0x2]);
+
+        assert!(query_res.is_ok());
+        if let Ok(query) = query_res {
+            assert!(matches!(query, QueryFlag::SkipMetadata));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let query_res = QueryFlag::try_from(vec![0x0, 0x0, 0x0, 0x3, 0x0, 0x0]);
+
+        assert!(query_res.is_err());
+        if let Err(err) = query_res {
+            assert!(matches!(err, Error::ConfigError(_)));
+        }
+    }
+}

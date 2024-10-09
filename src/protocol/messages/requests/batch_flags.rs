@@ -9,14 +9,14 @@ use crate::protocol::traits::{Byteable, Maskable};
 /// Es similar a una Flag de una QUERY, sólo que las flags `0x01`, `0x02`, `0x04` y `0x08`
 /// son aquí omitidas porque no tienen sentido en el contexto de un BATCH.
 ///
-/// /// ```rust
+/// ```rust
 /// # use aerolineas::protocol::messages::requests::batch_flags::BatchFlag;
 /// # use aerolineas::protocol::traits::Maskable;
 /// # use aerolineas::protocol::aliases::types::Int;
-/// let b_flags = [&BatchFlag::WithSerialConsistency, &BatchFlag::WithKeySpace];
-/// let expected: Int = 0b1001000; // 00010000 | 10000000 = 10010000
-/// assert_eq!(QueryFlag::accumulate(&b_flags[..]), expected);
-
+/// let b_flags = [&BatchFlag::WithSerialConsistency, &BatchFlag::WithKeyspace];
+/// let expected: Int = 0b10010000; // 00010000 | 10000000 = 10010000
+/// assert_eq!(BatchFlag::accumulate(&b_flags[..]), expected);
+/// ```
 pub enum BatchFlag {
     /// Usa consistencia del tipo [SERIAL](crate::protocol::notations::consistency::Consistency::Serial) o [LOCAL_SERIAL](crate::protocol::notations::consistency::Consistency::LocalSerial).
     WithSerialConsistency,
@@ -86,5 +86,52 @@ impl Maskable<Int> for BatchFlag {
     fn collapse(&self) -> Int {
         let bytes = self.as_bytes();
         Int::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::traits::Byteable;
+    use super::BatchFlag;
+
+    #[test]
+    fn test_1_serializar() {
+        let batch_flags = [
+            BatchFlag::WithSerialConsistency,
+            BatchFlag::WithDefaultTimestamp,
+            BatchFlag::WithNamesForValues,
+            BatchFlag::WithKeyspace,
+            BatchFlag::WithNowInSeconds,
+        ];
+        let expected_bytes = [
+            [0x0, 0x0, 0x0, 0x10],
+            [0x0, 0x0, 0x0, 0x20],
+            [0x0, 0x0, 0x0, 0x40],
+            [0x0, 0x0, 0x0, 0x80],
+            [0x0, 0x0, 0x1, 0x0],
+        ];
+
+        for i in 0..expected_bytes.len() {
+            let serialized = batch_flags[i].as_bytes();
+            assert_eq!(serialized.len(), 4);
+            assert_eq!(serialized, expected_bytes[i]);
+        }
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let batch_res = BatchFlag::try_from([0x0, 0x0, 0x0, 0x20].to_vec());
+
+        assert!(batch_res.is_ok());
+        if let Ok(batch) = batch_res {
+            assert!(matches!(batch, BatchFlag::WithDefaultTimestamp));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let batch_res = BatchFlag::try_from([0x0, 0x0, 0x0, 0xF, 0x0, 0x0].to_vec());
+
+        assert!(batch_res.is_err());
     }
 }

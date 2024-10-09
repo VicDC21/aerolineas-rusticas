@@ -50,3 +50,38 @@ impl Maskable<Int> for PrepareFlag {
         Int::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::{errors::error::Error, traits::Byteable};
+    use super::PrepareFlag;
+
+    #[test]
+    fn test_1_serializar() {
+        let prepare_flags = [PrepareFlag::WithKeyspace];
+        let expected = vec![0x0, 0x0, 0x0, 0x1];
+        for flag in prepare_flags.iter() {
+            assert_eq!(flag.as_bytes(), expected);
+        }
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let prepare_res = PrepareFlag::try_from(vec![0x0, 0x0, 0x0, 0x1]);
+
+        assert!(prepare_res.is_ok());
+        if let Ok(prepare) = prepare_res {
+            assert!(matches!(prepare, PrepareFlag::WithKeyspace));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let prepare_res = PrepareFlag::try_from(vec![0x0, 0x0, 0x0, 0x2, 0x3]);
+
+        assert!(prepare_res.is_err());
+        if let Err(err) = prepare_res {
+            assert!(matches!(err, Error::ConfigError(_)));
+        }
+    }
+}

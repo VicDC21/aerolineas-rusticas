@@ -37,3 +37,48 @@ impl TryFrom<Byte> for BatchType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::{errors::error::Error, traits::Byteable};
+    use super::BatchType;
+
+    #[test]
+    fn test_1_serializar() {
+        let batch_types = [
+            BatchType::Logged,
+            BatchType::Unlogged,
+            BatchType::Counter,
+        ];
+
+        let expected = [
+            vec![0x0],
+            vec![0x1],
+            vec![0x2],
+        ];
+
+        for i in 0..expected.len() {
+            assert_eq!(batch_types[i].as_bytes(), expected[i]);
+        }
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let batch_res = BatchType::try_from(0x01);
+
+        assert!(batch_res.is_ok());
+        if let Ok(batch) = batch_res {
+            assert!(matches!(batch, BatchType::Unlogged));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let batch_res = BatchType::try_from(0x03);
+
+        assert!(batch_res.is_err());
+        if let Err(err) = batch_res {
+            assert!(matches!(err, Error::ConfigError(_)));
+        }
+    }
+}
