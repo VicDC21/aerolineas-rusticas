@@ -54,9 +54,9 @@ impl Display for SchemaChangeType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::traits::Byteable;
     use crate::protocol::errors::error::Error;
     use crate::protocol::messages::responses::events::schema_changes::types::SchemaChangeType;
+    use crate::protocol::traits::Byteable;
 
     #[test]
     fn test_1_mostrar() {
@@ -71,9 +71,18 @@ mod tests {
         let update = SchemaChangeType::Updated;
         let drop = SchemaChangeType::Dropped;
 
-        assert_eq!(create.as_bytes(), [0x0, 0x7, 0x43, 0x52, 0x45, 0x41, 0x54, 0x45, 0x44]);
-        assert_eq!(update.as_bytes(), [0x0, 0x7, 0x55, 0x50, 0x44, 0x41, 0x54, 0x45, 0x44]);
-        assert_eq!(drop.as_bytes(), [0x0, 0x7, 0x44, 0x52, 0x4F, 0x50, 0x50, 0x45, 0x44]);
+        assert_eq!(
+            create.as_bytes(),
+            [0x0, 0x7, 0x43, 0x52, 0x45, 0x41, 0x54, 0x45, 0x44]
+        );
+        assert_eq!(
+            update.as_bytes(),
+            [0x0, 0x7, 0x55, 0x50, 0x44, 0x41, 0x54, 0x45, 0x44]
+        );
+        assert_eq!(
+            drop.as_bytes(),
+            [0x0, 0x7, 0x44, 0x52, 0x4F, 0x50, 0x50, 0x45, 0x44]
+        );
     }
 
     #[test]

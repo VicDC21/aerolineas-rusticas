@@ -64,17 +64,26 @@ impl Display for SchemaChangeTarget {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::traits::Byteable;
     use crate::protocol::errors::error::Error;
     use crate::protocol::messages::responses::events::schema_changes::targets::SchemaChangeTarget;
+    use crate::protocol::traits::Byteable;
 
     #[test]
     fn test_1_mostrar() {
-        assert_eq!(SchemaChangeTarget::Keyspace.to_string(), "KEYSPACE".to_string());
+        assert_eq!(
+            SchemaChangeTarget::Keyspace.to_string(),
+            "KEYSPACE".to_string()
+        );
         assert_eq!(SchemaChangeTarget::Table.to_string(), "TABLE".to_string());
         assert_eq!(SchemaChangeTarget::Type.to_string(), "TYPE".to_string());
-        assert_eq!(SchemaChangeTarget::Function.to_string(), "FUNCTION".to_string());
-        assert_eq!(SchemaChangeTarget::Aggregate.to_string(), "AGGREGATE".to_string());
+        assert_eq!(
+            SchemaChangeTarget::Function.to_string(),
+            "FUNCTION".to_string()
+        );
+        assert_eq!(
+            SchemaChangeTarget::Aggregate.to_string(),
+            "AGGREGATE".to_string()
+        );
     }
 
     #[test]
@@ -91,7 +100,9 @@ mod tests {
             vec![0x0, 0x5, 0x54, 0x41, 0x42, 0x4C, 0x45],
             vec![0x0, 0x4, 0x54, 0x59, 0x50, 0x45],
             vec![0x0, 0x8, 0x46, 0x55, 0x4E, 0x43, 0x54, 0x49, 0x4F, 0x4E],
-            vec![0x0, 0x9, 0x41, 0x47, 0x47, 0x52, 0x45, 0x47, 0x41, 0x54, 0x45],
+            vec![
+                0x0, 0x9, 0x41, 0x47, 0x47, 0x52, 0x45, 0x47, 0x41, 0x54, 0x45,
+            ],
         ];
 
         for i in 0..targets.len() {
@@ -104,7 +115,11 @@ mod tests {
 
     #[test]
     fn test_3_deserializar() {
-        let target_res = SchemaChangeTarget::try_from(&[0x0, 0x9, 0x41, 0x47, 0x47, 0x52, 0x45, 0x47, 0x41, 0x54, 0x45][..]);
+        let target_res = SchemaChangeTarget::try_from(
+            &[
+                0x0, 0x9, 0x41, 0x47, 0x47, 0x52, 0x45, 0x47, 0x41, 0x54, 0x45,
+            ][..],
+        );
 
         assert!(target_res.is_ok());
         if let Ok(target) = target_res {
@@ -114,7 +129,12 @@ mod tests {
 
     #[test]
     fn test_4_serial_incorrecto() {
-        let dont_decode = SchemaChangeTarget::try_from(&[0x0, 0x17, 0x4E, 0x65, 0x76, 0x65, 0x72, 0x20, 0x67, 0x6F, 0x6E, 0x6E, 0x61, 0x20, 0x67, 0x69, 0x76, 0x65, 0x20, 0x79, 0x6F, 0x75, 0x20, 0x75, 0x70][..]);
+        let dont_decode = SchemaChangeTarget::try_from(
+            &[
+                0x0, 0x17, 0x4E, 0x65, 0x76, 0x65, 0x72, 0x20, 0x67, 0x6F, 0x6E, 0x6E, 0x61, 0x20,
+                0x67, 0x69, 0x76, 0x65, 0x20, 0x79, 0x6F, 0x75, 0x20, 0x75, 0x70,
+            ][..],
+        );
 
         assert!(dont_decode.is_err());
         if let Err(err) = dont_decode {

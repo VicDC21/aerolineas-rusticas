@@ -324,24 +324,70 @@ impl ColType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::traits::Byteable;
     use crate::protocol::aliases::types::Byte;
     use crate::protocol::errors::error::Error;
     use crate::protocol::messages::responses::result::col_type::ColType;
+    use crate::protocol::traits::Byteable;
 
     #[test]
     fn test_1_serializar() {
-        let simple_types: Vec<ColType> = vec![ColType::Ascii, ColType::Bigint, ColType::Blob, ColType::Boolean, ColType::Counter, ColType::Decimal, ColType::Double, ColType::Float, ColType::Int, ColType::Timestamp, ColType::Uuid, ColType::Varchar, ColType::Varint, ColType::Timeuuid, ColType::Inet, ColType::Date, ColType::Time, ColType::Smallint, ColType::Tinyint, ColType::Duration];
-        let simple_ids: Vec<[Byte; 2]> = vec![[0x0, 0x1], [0x0, 0x2], [0x0, 0x3], [0x0, 0x4], [0x0, 0x5], [0x0, 0x6], [0x0, 0x7], [0x0, 0x8], [0x0, 0x9], [0x0, 0xB], [0x0, 0xC], [0x0, 0xD], [0x0, 0xE], [0x0, 0xF], [0x0, 0x10], [0x0, 0x11], [0x0, 0x12], [0x0, 0x13], [0x0, 0x14], [0x0, 0x15]];
+        let simple_types: Vec<ColType> = vec![
+            ColType::Ascii,
+            ColType::Bigint,
+            ColType::Blob,
+            ColType::Boolean,
+            ColType::Counter,
+            ColType::Decimal,
+            ColType::Double,
+            ColType::Float,
+            ColType::Int,
+            ColType::Timestamp,
+            ColType::Uuid,
+            ColType::Varchar,
+            ColType::Varint,
+            ColType::Timeuuid,
+            ColType::Inet,
+            ColType::Date,
+            ColType::Time,
+            ColType::Smallint,
+            ColType::Tinyint,
+            ColType::Duration,
+        ];
+        let simple_ids: Vec<[Byte; 2]> = vec![
+            [0x0, 0x1],
+            [0x0, 0x2],
+            [0x0, 0x3],
+            [0x0, 0x4],
+            [0x0, 0x5],
+            [0x0, 0x6],
+            [0x0, 0x7],
+            [0x0, 0x8],
+            [0x0, 0x9],
+            [0x0, 0xB],
+            [0x0, 0xC],
+            [0x0, 0xD],
+            [0x0, 0xE],
+            [0x0, 0xF],
+            [0x0, 0x10],
+            [0x0, 0x11],
+            [0x0, 0x12],
+            [0x0, 0x13],
+            [0x0, 0x14],
+            [0x0, 0x15],
+        ];
 
         for i in 0..simple_types.len() {
             assert_eq!(simple_types[i].as_bytes(), simple_ids[i]);
         }
 
         let custom = ColType::Custom("Tipo Custom".to_string());
-        assert_eq!(custom.as_bytes(),
-                   [0x0, 0x0,
-                    0x0, 0xB, 0x54, 0x69, 0x70, 0x6F, 0x20, 0x43, 0x75, 0x73, 0x74, 0x6F, 0x6D]);
+        assert_eq!(
+            custom.as_bytes(),
+            [
+                0x0, 0x0, 0x0, 0xB, 0x54, 0x69, 0x70, 0x6F, 0x20, 0x43, 0x75, 0x73, 0x74, 0x6F,
+                0x6D
+            ]
+        );
     }
 
     #[test]

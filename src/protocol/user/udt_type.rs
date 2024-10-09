@@ -37,8 +37,7 @@ impl UdtType {
 impl Byteable for UdtType {
     fn as_bytes(&self) -> Vec<Byte> {
         let mut bytes_vec: Vec<Byte> = vec![
-            0x0,
-            0x30, // ID
+            0x0, 0x30, // ID
         ];
         bytes_vec.extend(encode_string_to_bytes(&self.ks));
         bytes_vec.extend(encode_string_to_bytes(&self.udt_name));
@@ -61,11 +60,17 @@ impl TryFrom<&[Byte]> for UdtType {
         let mut i: usize = 0;
         let bytes_len = bytes_vec.len();
         if bytes_len < 2 {
-            return Err(Error::ProtocolError(format!("Se esperaban por lo menos 2 bytes para denotar la longitud del mensaje, no {}.", bytes_len)));
+            return Err(Error::ProtocolError(format!(
+                "Se esperaban por lo menos 2 bytes para denotar la longitud del mensaje, no {}.",
+                bytes_len
+            )));
         }
         let udt_id = &[bytes_vec[i], bytes_vec[i + 1]];
         if udt_id != &[0x0, 0x30] {
-            return Err(Error::ProtocolError(format!("ID {:?} incorrecto para un UdtType.", udt_id)));
+            return Err(Error::ProtocolError(format!(
+                "ID {:?} incorrecto para un UdtType.",
+                udt_id
+            )));
         }
         i += 2;
 
@@ -89,38 +94,43 @@ impl TryFrom<&[Byte]> for UdtType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::traits::Byteable;
     use crate::protocol::errors::error::Error;
-    use crate::protocol::user::udt_type::UdtType;
     use crate::protocol::messages::responses::result::col_type::ColType;
+    use crate::protocol::traits::Byteable;
+    use crate::protocol::user::udt_type::UdtType;
 
     #[test]
     fn test_1_serializar() {
-        let udt = UdtType::new("keyspace_feo".to_string(),
-                              "UDT chulo".to_string(),
-                                        vec![
-                                            ("booleano".to_string(), Box::new(ColType::Boolean)),
-                                            ("entero".to_string(), Box::new(ColType::Int)),
-                                        ]);
+        let udt = UdtType::new(
+            "keyspace_feo".to_string(),
+            "UDT chulo".to_string(),
+            vec![
+                ("booleano".to_string(), Box::new(ColType::Boolean)),
+                ("entero".to_string(), Box::new(ColType::Int)),
+            ],
+        );
 
-        assert_eq!(udt.as_bytes(),
-                   [0x0, 0x30,
-                    0x0, 0xC, 0x6B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5F, 0x66, 0x65, 0x6F,
-                    0x0, 0x9, 0x55, 0x44, 0x54, 0x20, 0x63, 0x68, 0x75, 0x6C, 0x6F,
-                    0x0, 0x2,
-                    0x0, 0x8, 0x62, 0x6F, 0x6F, 0x6C, 0x65, 0x61, 0x6E, 0x6F, 0x0, 0x4,
-                    0x0, 0x6, 0x65, 0x6E, 0x74, 0x65, 0x72, 0x6F, 0x0, 0x9]);
+        assert_eq!(
+            udt.as_bytes(),
+            [
+                0x0, 0x30, 0x0, 0xC, 0x6B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5F, 0x66,
+                0x65, 0x6F, 0x0, 0x9, 0x55, 0x44, 0x54, 0x20, 0x63, 0x68, 0x75, 0x6C, 0x6F, 0x0,
+                0x2, 0x0, 0x8, 0x62, 0x6F, 0x6F, 0x6C, 0x65, 0x61, 0x6E, 0x6F, 0x0, 0x4, 0x0, 0x6,
+                0x65, 0x6E, 0x74, 0x65, 0x72, 0x6F, 0x0, 0x9
+            ]
+        );
     }
 
     #[test]
     fn test_2_deserializar() {
-        let udt_res = UdtType::try_from(&[
-            0x0, 0x30,
-            0x0, 0xC, 0x6B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5F, 0x66, 0x65, 0x6F,
-            0x0, 0x9, 0x55, 0x44, 0x54, 0x20, 0x63, 0x68, 0x75, 0x6C, 0x6F,
-            0x0, 0x2,
-            0x0, 0x8, 0x62, 0x6F, 0x6F, 0x6C, 0x65, 0x61, 0x6E, 0x6F, 0x0, 0x4,
-            0x0, 0x6, 0x65, 0x6E, 0x74, 0x65, 0x72, 0x6F, 0x0, 0x9][..]);
+        let udt_res = UdtType::try_from(
+            &[
+                0x0, 0x30, 0x0, 0xC, 0x6B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65, 0x5F, 0x66,
+                0x65, 0x6F, 0x0, 0x9, 0x55, 0x44, 0x54, 0x20, 0x63, 0x68, 0x75, 0x6C, 0x6F, 0x0,
+                0x2, 0x0, 0x8, 0x62, 0x6F, 0x6F, 0x6C, 0x65, 0x61, 0x6E, 0x6F, 0x0, 0x4, 0x0, 0x6,
+                0x65, 0x6E, 0x74, 0x65, 0x72, 0x6F, 0x0, 0x9,
+            ][..],
+        );
 
         assert!(udt_res.is_ok());
         if let Ok(udt) = udt_res {
@@ -130,7 +140,7 @@ mod tests {
             let (bool_name, bool_type) = &udt.fields[0];
             assert_eq!(bool_name.as_str(), "booleano");
             assert!(matches!(**bool_type, ColType::Boolean));
-            
+
             let (int_name, int_type) = &udt.fields[1];
             assert_eq!(int_name.as_str(), "entero");
             assert!(matches!(**int_type, ColType::Int));
