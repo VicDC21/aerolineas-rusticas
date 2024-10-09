@@ -125,3 +125,78 @@ impl TryFrom<&[Byte]> for EventType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use crate::protocol::errors::error::Error;
+    use crate::protocol::messages::responses::events::event_types::EventType;
+    use crate::protocol::traits::Byteable;
+
+    #[test]
+    fn test_1_serializar() {
+        assert_eq!(
+            EventType::TopologyChange(
+                "NEW_NODE".to_string(),
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))
+            )
+            .as_bytes(),
+            [0x0, 0x8, 0x4E, 0x45, 0x57, 0x5F, 0x4E, 0x4F, 0x44, 0x45, 0x4, 0x7F, 0x0, 0x0, 0x1]
+        );
+        assert_eq!(
+            EventType::TopologyChange(
+                "REMOVED_NODE".to_string(),
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2))
+            )
+            .as_bytes(),
+            [
+                0x0, 0xC, 0x52, 0x45, 0x4D, 0x4F, 0x56, 0x45, 0x44, 0x5F, 0x4E, 0x4F, 0x44, 0x45,
+                0x4, 0x7F, 0x0, 0x0, 0x2
+            ]
+        );
+
+        assert_eq!(
+            EventType::StatusChange("UP".to_string(), IpAddr::V4(Ipv4Addr::new(127, 0, 0, 3)))
+                .as_bytes(),
+            [0x0, 0x2, 0x55, 0x50, 0x4, 0x7F, 0x0, 0x0, 0x3]
+        );
+        assert_eq!(
+            EventType::StatusChange("DOWN".to_string(), IpAddr::V4(Ipv4Addr::new(127, 0, 0, 4)))
+                .as_bytes(),
+            [0x0, 0x4, 0x44, 0x4F, 0x57, 0x4E, 0x4, 0x7F, 0x0, 0x0, 0x4]
+        );
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let new_node_res = EventType::try_from(
+            &[
+                0x0, 0xF, 0x54, 0x4F, 0x50, 0x4F, 0x4C, 0x4F, 0x47, 0x59, 0x5F, 0x43, 0x48, 0x41,
+                0x4E, 0x47, 0x45, 0x0, 0x8, 0x4E, 0x45, 0x57, 0x5F, 0x4E, 0x4F, 0x44, 0x45, 0x4,
+                0x7F, 0x0, 0x0, 0x1,
+            ][..],
+        );
+
+        assert!(new_node_res.is_ok());
+        if let Ok(new_node) = new_node_res {
+            assert!((matches!(new_node, EventType::TopologyChange(_, _))));
+        }
+    }
+
+    #[test]
+    fn test_3_serial_incorrecto() {
+        let mal = EventType::try_from(
+            &[
+                0x0, 0xF, 0x69, 0x4F, 0x50, 0x4F, 0x4C, 0x4F, 0x47, 0x59, 0x5F, 0x43, 0x48, 0x41,
+                0x4E, 0x47, 0x45, 0x0, 0x8, 0x4E, 0x45, 0x57, 0x5F, 0x4E, 0x4F, 0x44, 0x45, 0x4,
+                0x7F, 0x0, 0x0, 0x1,
+            ][..],
+        );
+
+        assert!(mal.is_err());
+        if let Err(err) = mal {
+            assert!(matches!(err, Error::ConfigError(_)))
+        }
+    }
+}

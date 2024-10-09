@@ -24,7 +24,7 @@ use crate::protocol::errors::error::Error;
 pub fn encode_string_to_bytes(string: &str) -> Vec<Byte> {
     let string_bytes = string.as_bytes();
     // litle endian para que los dos bytes menos significativos (los únicos que nos interesa
-    // para un Short estén al principio
+    // para un Short) estén al principio
     let bytes_len = string_bytes.len().to_le_bytes();
     let mut bytes_vec: Vec<Byte> = vec![
         bytes_len[1],
