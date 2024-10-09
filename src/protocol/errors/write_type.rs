@@ -76,3 +76,53 @@ impl TryFrom<&[Byte]> for WriteType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::WriteType;
+    use crate::protocol::{errors::error::Error, traits::Byteable};
+
+    #[test]
+    fn test_1_serializar() {
+        let write_types = [
+            WriteType::Simple,
+            WriteType::UnloggedBatch,
+            WriteType::Counter,
+            WriteType::Cdc,
+        ];
+
+        let expected = [
+            vec![0x0, 0x6, 0x53, 0x49, 0x4D, 0x50, 0x4C, 0x45],
+            vec![
+                0x0, 0xE, 0x55, 0x4E, 0x4C, 0x4F, 0x47, 0x47, 0x45, 0x44, 0x5F, 0x42, 0x41, 0x54,
+                0x43, 0x48,
+            ],
+            vec![0x0, 0x7, 0x43, 0x4F, 0x55, 0x4E, 0x54, 0x45, 0x52],
+            vec![0x0, 0x3, 0x43, 0x44, 0x43],
+        ];
+
+        for i in 0..expected.len() {
+            assert_eq!(write_types[i].as_bytes(), expected[i]);
+        }
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let write_res = WriteType::try_from(&[0x0, 0x6, 0x53, 0x49, 0x4D, 0x50, 0x4C, 0x45][..]);
+
+        assert!(write_res.is_ok());
+        if let Ok(write) = write_res {
+            assert!(matches!(write, WriteType::Simple));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let write_res = WriteType::try_from(&[0x0, 0x0, 0x0, 0x0][..]);
+
+        assert!(write_res.is_err());
+        if let Err(err) = write_res {
+            assert!(matches!(err, Error::ConfigError(_)));
+        }
+    }
+}
