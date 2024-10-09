@@ -112,29 +112,160 @@ pub fn ordering_clause(lista: &mut Vec<String>) -> Option<OrderBy> {
     None
 }
 
+pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+    let index = 0;
+    if lista[index] == "INSERT" && lista[index + 1] == "INTO" {
+        lista.remove(index);
+        lista.remove(index);
 
+        if lista[index] == "file_name" {
+            lista.remove(index);
+            // Chequeo si es un archivo válido
+            if lista[index] == "JSON" {
+                // Chequeo si la sintaxis JSON es válida
+            } else {
+                // Chequeo si la sintaxis de las columnas es válida (o crear si no existe alguna)
+            }
+        } else {
+            return Ok(None);
+        }
 
+        if lista[index] == "IF" {
+            lista.remove(index);
+            // Chequeo de la sintaxis de IF NOT EXISTS
+        } 
 
+        if lista[index] == "VALUES" {
+            lista.remove(index);
+            // Chequeo/match de valores con columnas 
+        } else {
+            return Ok(None);
+        }
 
+        if lista[index] == "USING" {
+            lista.remove(index);
+            // Chequeo de la sintaxis de USING
+        } else {
+            return Ok(None);
+        }
 
-pub fn insert_statement(lista: &mut [String]) -> Result<Option<DmlStatement>, Error> {
-    if lista[0] == "INSERT" {}
+    }
+    Ok(None)
+}
+
+pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+    let index: usize = 0;
+    if lista[index] == "DELETE" {
+        lista.remove(index);
+
+        if lista[index] == "col_name" {
+            lista.remove(index);
+            // Chequeo de columnas específicas
+        } 
+
+        if lista[index] == "FROM" {
+            lista.remove(index);
+            if lista[index] == "file_name" {
+                lista.remove(index);
+                // Chequeo si es un archivo válido
+            } else {
+                return Ok(None);
+            }        
+        } else {
+            return Ok(None);
+        }
+
+        if lista[index] == "USING" {
+            lista.remove(index);
+            // Chequeo de la sintaxis de USING
+        } else {
+            return Ok(None);
+        }
+
+        if lista[index] == "WHERE" {
+            lista.remove(index);
+            let res = where_clause(lista);
+            if lista[index] == "IF" {
+                lista.remove(index);
+                // Chequeo sintaxis de condicionales para la query
+            } else {
+                return Ok(None);
+            }
+        } else {
+            return Ok(None); 
+        }
+    }
+    Ok(None)
+}
+
+pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+    let index = 0;
+    if lista[0] == "UPDATE" {
+        lista.remove(index);
+        if lista[index] == "file_name" {
+            lista.remove(index);
+            // Chequeo si es un archivo válido
+        } else {
+            return Ok(None);
+        }
+
+        if lista[index] == "USING" {
+            lista.remove(index);
+            // Chequeo de la sintaxis de USING
+        } else {
+            return Ok(None);
+        }
+
+        if lista[index] == "SET" {
+            lista.remove(index);
+            // Chequeo de la sintaxis de SET
+        } else {
+            return Ok(None);
+        }
+
+        if lista[index] == "WHERE" {
+            lista.remove(index);
+            let res = where_clause(lista);
+            if lista[index] == "IF" {
+                lista.remove(index);
+                // Chequeo sintaxis de condicionales para la query
+            } else {
+                return Ok(None);
+            }
+        } else {
+            return Ok(None); 
+        }
+    }
 
     Ok(None)
 }
 
-pub fn delete_statement(lista: &mut [String]) -> Result<Option<DmlStatement>, Error> {
-    if lista[0] == "DELETE" {}
-    Ok(None)
-}
-
-pub fn update_statement(lista: &mut [String]) -> Result<Option<DmlStatement>, Error> {
-    if lista[0] == "UPDATE" {}
-    Ok(None)
-}
-
-pub fn batch_statement(lista: &mut [String]) -> Result<Option<DmlStatement>, Error> {
-    if lista[0] == "BATCH" {}
+pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+    let index = 0;
+    if lista[0] == "BEGIN" {
+        lista.remove(index);
+        if lista[index] == "UNLOGGED" {
+            lista.remove(index);
+            // Lógica para el Unlogged Batch -> Aplicación parcial del batch
+        } else if lista[index] == "COUNTER" {
+            lista.remove(index);
+            // Lógica para el Counter Batch -> Aplicación parcial del batch
+        } else {
+            lista.remove(index);
+            // Lógica para el Logged Batch -> Por defecto aplicación total o no aplicación
+            if lista[index] == "INSERT" {
+                insert_statement(lista)?;
+            } else if lista[index] == "UPDATE" {
+                update_statement(lista)?;
+            } else if lista[index] == "DELETE" {
+                delete_statement(lista)?;
+            } else if lista[index] == "SELECT" {
+                select_statement(lista)?;
+            } else {
+                return Ok(None);   
+            }
+        }
+    }
 
     Ok(None)
 }
