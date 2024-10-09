@@ -22,11 +22,7 @@ pub enum SchemaChangeType {
 
 impl Byteable for SchemaChangeType {
     fn as_bytes(&self) -> Vec<Byte> {
-        match self {
-            Self::Created => encode_string_to_bytes("CREATED"),
-            Self::Updated => encode_string_to_bytes("UPDATED"),
-            Self::Dropped => encode_string_to_bytes("DROPPED"),
-        }
+        encode_string_to_bytes(&self.to_string())
     }
 }
 
@@ -52,6 +48,76 @@ impl Display for SchemaChangeType {
             Self::Created => write!(f, "CREATED"),
             Self::Updated => write!(f, "UPDATED"),
             Self::Dropped => write!(f, "DROPPED"),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::errors::error::Error;
+    use crate::protocol::messages::responses::events::schema_changes::types::SchemaChangeType;
+    use crate::protocol::traits::Byteable;
+
+    #[test]
+    fn test_1_mostrar() {
+        assert_eq!(SchemaChangeType::Created.to_string(), "CREATED".to_string());
+        assert_eq!(SchemaChangeType::Updated.to_string(), "UPDATED".to_string());
+        assert_eq!(SchemaChangeType::Dropped.to_string(), "DROPPED".to_string());
+    }
+
+    #[test]
+    fn test_2_serializar() {
+        let create = SchemaChangeType::Created;
+        let update = SchemaChangeType::Updated;
+        let drop = SchemaChangeType::Dropped;
+
+        assert_eq!(
+            create.as_bytes(),
+            [0x0, 0x7, 0x43, 0x52, 0x45, 0x41, 0x54, 0x45, 0x44]
+        );
+        assert_eq!(
+            update.as_bytes(),
+            [0x0, 0x7, 0x55, 0x50, 0x44, 0x41, 0x54, 0x45, 0x44]
+        );
+        assert_eq!(
+            drop.as_bytes(),
+            [0x0, 0x7, 0x44, 0x52, 0x4F, 0x50, 0x50, 0x45, 0x44]
+        );
+    }
+
+    #[test]
+    fn test_3_deserializar() {
+        let cr = [0x0, 0x7, 0x43, 0x52, 0x45, 0x41, 0x54, 0x45, 0x44];
+        let up = [0x0, 0x7, 0x55, 0x50, 0x44, 0x41, 0x54, 0x45, 0x44];
+        let dr = [0x0, 0x7, 0x44, 0x52, 0x4F, 0x50, 0x50, 0x45, 0x44];
+
+        let cr_res = SchemaChangeType::try_from(&cr[..]);
+        assert!(cr_res.is_ok());
+        if let Ok(created) = cr_res {
+            assert!(matches!(created, SchemaChangeType::Created));
+        }
+
+        let up_res = SchemaChangeType::try_from(&up[..]);
+        assert!(up_res.is_ok());
+        if let Ok(updated) = up_res {
+            assert!(matches!(updated, SchemaChangeType::Updated));
+        }
+
+        let dr_res = SchemaChangeType::try_from(&dr[..]);
+        assert!(dr_res.is_ok());
+        if let Ok(dropped) = dr_res {
+            assert!(matches!(dropped, SchemaChangeType::Dropped));
+        }
+    }
+
+    #[test]
+    fn test_4_serial_incorrecto() {
+        let mal = [0x0, 0x3, 0x4C, 0x4F, 0x4C];
+
+        let err_res = SchemaChangeType::try_from(&mal[..]);
+        assert!(err_res.is_err());
+        if let Err(err) = err_res {
+            assert!(matches!(err, Error::ConfigError(_)));
         }
     }
 }
