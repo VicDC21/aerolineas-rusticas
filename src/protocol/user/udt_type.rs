@@ -79,7 +79,7 @@ impl TryFrom<&[Byte]> for UdtType {
         for _ in 0..n {
             let name = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
 
-            let col_type = ColType::try_from(&mut bytes_vec[i..].to_vec())?;
+            let col_type = ColType::try_from(&bytes_vec[i..])?;
             i += col_type.as_bytes().len();
             fields.push((name, Box::new(col_type)));
         }
@@ -89,8 +89,8 @@ impl TryFrom<&[Byte]> for UdtType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
     use crate::protocol::traits::Byteable;
+    use crate::protocol::errors::error::Error;
     use crate::protocol::user::udt_type::UdtType;
     use crate::protocol::messages::responses::result::col_type::ColType;
 
