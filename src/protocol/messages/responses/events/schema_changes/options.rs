@@ -68,17 +68,17 @@ impl TryFrom<(&SchemaChangeTarget, &[Byte])> for SchemaChangeOption {
         let mut i = 0;
         match target {
             SchemaChangeTarget::Keyspace => {
-                let keyspace_name = parse_bytes_to_string(bytes, &mut i)?;
+                let keyspace_name = parse_bytes_to_string(&bytes[i..], &mut i)?;
                 Ok(Self::Keyspace(keyspace_name))
             }
             SchemaChangeTarget::Table | SchemaChangeTarget::Type => {
-                let keyspace_name = parse_bytes_to_string(bytes, &mut i)?;
-                let elem_name = parse_bytes_to_string(bytes, &mut i)?;
+                let keyspace_name = parse_bytes_to_string(&bytes[i..], &mut i)?;
+                let elem_name = parse_bytes_to_string(&bytes[i..], &mut i)?;
                 Ok(Self::TableOrType(keyspace_name, elem_name))
             }
             SchemaChangeTarget::Function | SchemaChangeTarget::Aggregate => {
-                let keyspace_name = parse_bytes_to_string(bytes, &mut i)?;
-                let func_name = parse_bytes_to_string(bytes, &mut i)?;
+                let keyspace_name = parse_bytes_to_string(&bytes[i..], &mut i)?;
+                let func_name = parse_bytes_to_string(&bytes[i..], &mut i)?;
                 let list_len = Short::from_be_bytes([bytes[i], bytes[i + 1]]);
                 i += 2;
                 let mut arg_types: Vec<String> = vec![];
@@ -92,6 +92,51 @@ impl TryFrom<(&SchemaChangeTarget, &[Byte])> for SchemaChangeOption {
                     arg_types,
                 ))
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::aliases::types::Byte;
+    use crate::protocol::traits::Byteable;
+    use crate::protocol::messages::responses::events::schema_changes::{targets::SchemaChangeTarget, options::SchemaChangeOption};
+
+    #[test]
+    fn test_1_serializar() {
+        let keyspace = SchemaChangeOption::Keyspace("Bonito Keyspace".to_string());
+        let tabl_typ = SchemaChangeOption::TableOrType("Otro Keyspace".to_string(), "valor bien feo".to_string());
+        let func_agg = SchemaChangeOption::FunctionOrAggregate("keyspace de func".to_string(), "func bien fea".to_string(), vec![
+            "Boolean".to_string(),
+            "BigInt".to_string(),
+            "Cornucopia".to_string(),
+        ]);
+
+        assert_eq!(keyspace.as_bytes(), [0x0, 0xF, 0x42, 0x6F, 0x6E, 0x69, 0x74, 0x6F, 0x20, 0x4B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65]);
+        assert_eq!(tabl_typ.as_bytes(), [0x0, 0xD, 0x4F, 0x74, 0x72, 0x6F, 0x20, 0x4B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65,
+                                         0x0, 0xE, 0x76, 0x61, 0x6C, 0x6F, 0x72, 0x20, 0x62, 0x69, 0x65, 0x6E, 0x20, 0x66, 0x65, 0x6F]);
+        assert_eq!(func_agg.as_bytes(), [0x0, 0x10, 0x6B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65, 0x20, 0x64, 0x65, 0x20, 0x66, 0x75, 0x6E, 0x63,
+                                         0x0, 0xD, 0x66, 0x75, 0x6E, 0x63, 0x20, 0x62, 0x69, 0x65, 0x6E, 0x20, 0x66, 0x65, 0x61,
+                                         0x0, 0x3,
+                                         0x0, 0x7, 0x42, 0x6F, 0x6F, 0x6C, 0x65, 0x61, 0x6E,
+                                         0x0, 0x6, 0x42, 0x69, 0x67, 0x49, 0x6E, 0x74,
+                                         0x0, 0xA, 0x43, 0x6F, 0x72, 0x6E, 0x75, 0x63, 0x6F, 0x70, 0x69, 0x61]);
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let func_agg_bytes: Vec<Byte> = vec![0x0, 0x10, 0x6B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65, 0x20, 0x64, 0x65, 0x20, 0x66, 0x75, 0x6E, 0x63,
+                                             0x0, 0xD, 0x66, 0x75, 0x6E, 0x63, 0x20, 0x62, 0x69, 0x65, 0x6E, 0x20, 0x66, 0x65, 0x61,
+                                             0x0, 0x3,
+                                             0x0, 0x7, 0x42, 0x6F, 0x6F, 0x6C, 0x65, 0x61, 0x6E,
+                                             0x0, 0x6, 0x42, 0x69, 0x67, 0x49, 0x6E, 0x74,
+                                             0x0, 0xA, 0x43, 0x6F, 0x72, 0x6E, 0x75, 0x63, 0x6F, 0x70, 0x69, 0x61];
+
+        let func_agg_res = SchemaChangeOption::try_from((&SchemaChangeTarget::Function, &func_agg_bytes[..]));
+
+        assert!(func_agg_res.is_ok());
+        if let Ok(func_agg) = func_agg_res {
+            assert!(matches!(func_agg, SchemaChangeOption::FunctionOrAggregate(_, _, _)));
         }
     }
 }
