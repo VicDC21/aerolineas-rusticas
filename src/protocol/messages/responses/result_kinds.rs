@@ -61,3 +61,48 @@ impl TryFrom<Vec<Byte>> for ResultKind {
         Ok(res)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::errors::error::Error;
+    use crate::protocol::messages::responses::result_kinds::ResultKind;
+    use crate::protocol::traits::Byteable;
+
+    #[test]
+    fn test_1_serializar() {
+        let result_kinds = [ResultKind::Void, ResultKind::Rows, ResultKind::SetKeyspace, ResultKind::Prepared, ResultKind::SchemaChange];
+        let expected_bytes = [
+            vec![0x0, 0x0, 0x0, 0x1],
+            vec![0x0, 0x0, 0x0, 0x2],
+            vec![0x0, 0x0, 0x0, 0x3],
+            vec![0x0, 0x0, 0x0, 0x4],
+            vec![0x0, 0x0, 0x0, 0x5],
+        ];
+
+        for i in 0..expected_bytes.len() {
+            let serialized = result_kinds[i].as_bytes();
+            assert_eq!(serialized.len(), 4);
+            assert_eq!(serialized, expected_bytes[i]);
+        }
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let keyspace_res = ResultKind::try_from(vec![0x0, 0x0, 0x0, 0x3]);
+        
+        assert!(keyspace_res.is_ok());
+        if let Ok(void) = keyspace_res {
+            assert!(matches!(void, ResultKind::SetKeyspace));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let err_res = ResultKind::try_from(vec![0x0, 0x0, 0x0, 0x6]);
+
+        assert!(err_res.is_err());
+        if let Err(err) = err_res {
+            assert!(matches!(err, Error::Invalid(_)));
+        }
+    }
+}

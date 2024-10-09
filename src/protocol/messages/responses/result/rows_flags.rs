@@ -5,6 +5,14 @@ use crate::protocol::errors::error::Error;
 use crate::protocol::traits::{Byteable, Maskable};
 
 /// Las flags a ser incluidas en el mensaje de una _response_ RESULT de tipo [ROWS](crate::protocol::messages::responses::result_kinds::ResultKind::Rows).
+/// ```rust
+/// # use aerolineas::protocol::messages::responses::result::rows_flags::RowsFlag;
+/// # use aerolineas::protocol::traits::Maskable;
+/// # use aerolineas::protocol::aliases::types::Int;
+/// let b_flags = [&RowsFlag::GlobalTablesSpec, &RowsFlag::HasMorePages];
+/// let expected: Int = 0b00000011; // 00000001 | 00000010 = 00000011
+/// assert_eq!(RowsFlag::accumulate(&b_flags[..]), expected);
+/// ```
 pub enum RowsFlag {
     /// Sólo un table spec es provisto.
     GlobalTablesSpec,
@@ -58,5 +66,50 @@ impl Maskable<Int> for RowsFlag {
     fn collapse(&self) -> Int {
         let bytes = self.as_bytes();
         Int::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::{errors::error::Error, traits::Byteable};
+    use super::RowsFlag;
+
+    #[test]
+    fn test_1_serializar() {
+        let rows_flags = [
+            RowsFlag::GlobalTablesSpec,
+            RowsFlag::HasMorePages,
+            RowsFlag::NoMetadata,
+        ];
+        let expected = [
+            vec![0x0, 0x0, 0x0, 0x1],
+            vec![0x0, 0x0, 0x0, 0x2],
+            vec![0x0, 0x0, 0x0, 0x4],
+        ];
+
+        for i in 0..expected.len() {
+            let serialized = rows_flags[i].as_bytes();
+            assert_eq!(serialized.len(), 4);
+            assert_eq!(serialized, expected[i]);
+        }
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let rows_res = RowsFlag::try_from(vec![0x0, 0x0, 0x0, 0x2]);
+        assert!(rows_res.is_ok());
+        if let Ok(void) = rows_res {
+            assert!(matches!(void, RowsFlag::HasMorePages));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let rows_res = RowsFlag::try_from(vec![0x0, 0x0, 0x0, 0x3]);
+
+        assert!(rows_res.is_err());
+        if let Err(err) = rows_res {
+            assert!(matches!(err, Error::ConfigError(_)));
+        }
     }
 }
