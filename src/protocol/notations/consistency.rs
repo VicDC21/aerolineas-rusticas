@@ -60,18 +60,16 @@ impl Byteable for Consistency {
     }
 }
 
-impl TryFrom<Vec<Byte>> for Consistency {
+impl TryFrom<&[Byte]> for Consistency {
     type Error = Error;
-    fn try_from(short: Vec<Byte>) -> Result<Self, Self::Error> {
-        let bytes_array: [Byte; 2] = match short.try_into() {
-            Ok(bytes_array) => bytes_array,
-            Err(_e) => {
-                return Err(Error::ConfigError(
-                    "No se pudo castear el vector de bytes en un array en Consistency".to_string(),
-                ))
-            }
-        };
-        let value = Short::from_be_bytes(bytes_array);
+    fn try_from(short: &[Byte]) -> Result<Self, Self::Error> {
+        if short.len() < 2 {
+            return Err(Error::ConfigError(
+                "El vector de bytes no tiene 2 bytes".to_string(),
+            ));
+        }
+
+        let value = Short::from_be_bytes([short[0], short[1]]);
         match value {
             0x0000 => Ok(Consistency::Any),
             0x0001 => Ok(Consistency::One),
@@ -117,7 +115,7 @@ mod tests {
 
     #[test]
     fn test_2_deserializar() {
-        let consistency_res = Consistency::try_from([0x0, 0x3].to_vec());
+        let consistency_res = Consistency::try_from(&[0x0, 0x3][..]);
 
         assert!(consistency_res.is_ok());
         if let Ok(consistency) = consistency_res {
@@ -127,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_3_deserializar_error() {
-        let consistency_res = Consistency::try_from([0x0, 0xF].to_vec());
+        let consistency_res = Consistency::try_from(&[0x0, 0xF][..]);
 
         assert!(consistency_res.is_err());
         if let Err(err) = consistency_res {
