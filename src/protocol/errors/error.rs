@@ -335,7 +335,7 @@ impl TryFrom<Vec<Byte>> for Error {
             },
             [0x0, 0x0, 0x10, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let cl = Consistency::try_from(&bytes_vec[i..])?;
                     i += 2;
                     let required = Int::from_be_bytes([
                         bytes_vec[i],
@@ -368,7 +368,7 @@ impl TryFrom<Vec<Byte>> for Error {
             },
             [0x0, 0x0, 0x11, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let cl = Consistency::try_from(&bytes_vec[i..])?;
                     i += 2;
                     let received = Int::from_be_bytes([
                         bytes_vec[i],
@@ -387,7 +387,7 @@ impl TryFrom<Vec<Byte>> for Error {
                     let write_type = WriteType::try_from(&bytes_vec[i..])?;
                     i += write_type.as_bytes().len();
                     let contentions = if matches!(write_type, WriteType::Cas) {
-                        if i + 2 >= bytes_vec.len() {
+                        if i + 1 >= bytes_vec.len() {
                             return Err(Self::SyntaxError("Se esperaban 2 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
                         }
                         let cont = Short::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]);
@@ -408,7 +408,7 @@ impl TryFrom<Vec<Byte>> for Error {
             },
             [0x0, 0x0, 0x12, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let cl = Consistency::try_from(&bytes_vec[i..])?;
                     i += 2;
                     let received = Int::from_be_bytes([
                         bytes_vec[i],
@@ -431,7 +431,7 @@ impl TryFrom<Vec<Byte>> for Error {
             },
             [0x0, 0x0, 0x13, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let cl = Consistency::try_from(&bytes_vec[i..])?;
                     i += 2;
                     let received = Int::from_be_bytes([
                         bytes_vec[i],
@@ -479,7 +479,7 @@ impl TryFrom<Vec<Byte>> for Error {
             },
             [0x0, 0x0, 0x15, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let cl = Consistency::try_from(&bytes_vec[i..])?;
                     i += 2;
                     let received = Int::from_be_bytes([
                         bytes_vec[i],
@@ -495,7 +495,7 @@ impl TryFrom<Vec<Byte>> for Error {
                         bytes_vec[i + 3],
                     ]);
                     i += 4;
-                    let reasonmap = parse_bytes_to_reasonmap(&bytes_vec[..], &mut i)?;
+                    let reasonmap = parse_bytes_to_reasonmap(&bytes_vec[i..], &mut i)?;
                     let write_type = WriteType::try_from(&bytes_vec[i..])?;
                     Ok(Self::WriteFailure(
                         msg, cl, received, blockfor, reasonmap, write_type,
@@ -509,7 +509,7 @@ impl TryFrom<Vec<Byte>> for Error {
             },
             [0x0, 0x0, 0x17, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    let cl = Consistency::try_from(bytes_vec[i..].to_vec())?;
+                    let cl = Consistency::try_from(&bytes_vec[i..])?;
                     i += 2;
                     let received = Int::from_be_bytes([
                         bytes_vec[i],
@@ -613,5 +613,363 @@ impl Display for Error {
             }
             Self::Unprepared(msg, _) => write!(f, "{:?}\nUnprepared: {}\n", backtrace, msg),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr};
+
+    use super::Error;
+    use crate::protocol::{
+        aliases::types::ReasonMap, errors::write_type::WriteType,
+        notations::consistency::Consistency, traits::Byteable,
+    };
+
+    #[test]
+    fn test_1_serializar() {
+        let error = Error::ServerError("Error".to_string());
+        let expected = vec![
+            0x0, 0x0, 0x0, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::UnavailableException("Error".to_string(), Consistency::Three, 3, 2);
+        let expected = vec![
+            0x0, 0x0, 0x10, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // required
+            0x0, 0x0, 0x0, 0x2, // alive
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::WriteTimeout(
+            "Error".to_string(),
+            Consistency::Three,
+            3,
+            2,
+            WriteType::Simple,
+            None,
+        );
+        let expected = vec![
+            0x0, 0x0, 0x11, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x0, 0x6, 0x53, 0x49, 0x4D, 0x50, 0x4C, 0x45, // writeType
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::WriteTimeout(
+            "Error".to_string(),
+            Consistency::Three,
+            3,
+            2,
+            WriteType::Cas,
+            Some(2),
+        );
+        let expected = vec![
+            0x0, 0x0, 0x11, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x0, 0x3, 0x43, 0x41, 0x53, // writeType
+            0x0, 0x2, // contentions
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::ReadTimeout("Error".to_string(), Consistency::Three, 3, 2, true);
+        let expected = vec![
+            0x0, 0x0, 0x12, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x1, // data_present
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::ReadFailure(
+            "Error".to_string(),
+            Consistency::Three,
+            3,
+            2,
+            ReasonMap::from([(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0x00)]),
+            true,
+        );
+        let expected = vec![
+            0x0, 0x0, 0x13, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x0, 0x0, 0x0, 0x1, // reasonmap len
+            0x4, 0x7F, 0x0, 0x0, 0x1, 0x0, 0x0, // endpoint, failurecode
+            0x1, // data_present
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::FunctionFailure(
+            "Error".to_string(),
+            "keyspace".to_string(),
+            "function".to_string(),
+            vec!["arg1".to_string(), "arg2".to_string()],
+        );
+        let expected = vec![
+            0x0, 0x0, 0x14, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x8, // len keyspace
+            0x6B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65, // keyspace
+            0x0, 0x8, // len function
+            0x66, 0x75, 0x6E, 0x63, 0x74, 0x69, 0x6F, 0x6E, // function
+            0x0, 0x2, // arg_types len
+            0x0, 0x4, // len arg1
+            0x61, 0x72, 0x67, 0x31, // arg1
+            0x0, 0x4, // len arg2
+            0x61, 0x72, 0x67, 0x32, // arg2
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::WriteFailure(
+            "Error".to_string(),
+            Consistency::Three,
+            3,
+            2,
+            ReasonMap::from([(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0x00)]),
+            WriteType::Simple,
+        );
+        let expected = vec![
+            0x0, 0x0, 0x15, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x0, 0x0, 0x0, 0x1, // reasonmap len
+            0x4, 0x7F, 0x0, 0x0, 0x1, 0x0, 0x0, // endpoint, failurecode
+            0x0, 0x6, 0x53, 0x49, 0x4D, 0x50, 0x4C, 0x45, // writeType
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::CASWriteUnknown("Error".to_string(), Consistency::Three, 3, 2);
+        let expected = vec![
+            0x0, 0x0, 0x17, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error =
+            Error::AlreadyExists("Error".to_string(), "ks".to_string(), "table".to_string());
+        let expected = vec![
+            0x0, 0x0, 0x24, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x2, // len ks
+            0x6B, 0x73, // ks
+            0x0, 0x5, // len table
+            0x74, 0x61, 0x62, 0x6C, 0x65, // table
+        ];
+        assert_eq!(error.as_bytes(), expected);
+
+        let error = Error::Unprepared("Error".to_string(), vec![0x1, 0x2]);
+        let expected = vec![
+            0x0, 0x0, 0x25, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x2, // len ids
+            0x1, 0x2, // ids
+        ];
+        assert_eq!(error.as_bytes(), expected);
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let bytes = vec![
+            0x0, 0x0, 0x0, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(matches!(error, Ok(Error::ServerError(msg)) if msg == "Error"));
+
+        let bytes = vec![
+            0x0, 0x0, 0x10, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // required
+            0x0, 0x0, 0x0, 0x2, // alive
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::UnavailableException(msg, cl, required, alive)) if msg == "Error" && matches!(cl, Consistency::Three) && required == 3 && alive == 2)
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x11, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x0, 0x6, 0x53, 0x49, 0x4D, 0x50, 0x4C, 0x45, // writeType
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::WriteTimeout(msg, cl, received, blockfor, write_type, None)) if msg == "Error" && matches!(cl, Consistency::Three) && received == 3 && blockfor == 2 && matches!(write_type, WriteType::Simple))
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x11, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x0, 0x3, 0x43, 0x41, 0x53, // writeType
+            0x0, 0x2, // contentions
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::WriteTimeout(msg, cl, received, blockfor, write_type, contentions)) if msg == "Error" && matches!(cl, Consistency::Three) && received == 3 && blockfor == 2 && matches!(write_type, WriteType::Cas) && contentions == Some(2))
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x12, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x1, // data_present
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::ReadTimeout(msg, cl, received, blockfor, data_present)) if msg == "Error" && matches!(cl, Consistency::Three) && received == 3 && blockfor == 2 && data_present)
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x13, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x0, 0x0, 0x0, 0x1, // reasonmap len
+            0x4, 0x7F, 0x0, 0x0, 0x1, 0x0, 0x0, // endpoint, failurecode
+            0x1, // data_present
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::ReadFailure(msg, cl, received, blockfor, reasonmap, data_present)) if msg == "Error" && matches!(cl, Consistency::Three) && received == 3 && blockfor == 2 && reasonmap == ReasonMap::from([(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0x00)]) && data_present)
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x14, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x8, // len keyspace
+            0x6B, 0x65, 0x79, 0x73, 0x70, 0x61, 0x63, 0x65, // keyspace
+            0x0, 0x8, // len function
+            0x66, 0x75, 0x6E, 0x63, 0x74, 0x69, 0x6F, 0x6E, // function
+            0x0, 0x2, // arg_types len
+            0x0, 0x4, // len arg1
+            0x61, 0x72, 0x67, 0x31, // arg1
+            0x0, 0x4, // len arg2
+            0x61, 0x72, 0x67, 0x32, // arg2
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::FunctionFailure(msg, keyspace, function, arg_types)) if msg == "Error" && keyspace == "keyspace" && function == "function" && arg_types == vec!["arg1".to_string(), "arg2".to_string()])
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x15, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+            0x0, 0x0, 0x0, 0x1, // reasonmap len
+            0x4, 0x7F, 0x0, 0x0, 0x1, 0x0, 0x0, // endpoint, failurecode
+            0x0, 0x6, 0x53, 0x49, 0x4D, 0x50, 0x4C, 0x45, // writeType
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::WriteFailure(msg, cl, received, blockfor, reasonmap, write_type)) if msg == "Error" && matches!(cl, Consistency::Three) && received == 3 && blockfor == 2 && reasonmap == ReasonMap::from([(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0x00)]) && matches!(write_type, WriteType::Simple))
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x17, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x3, // cl
+            0x0, 0x0, 0x0, 0x3, // received
+            0x0, 0x0, 0x0, 0x2, // blockfor
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::CASWriteUnknown(msg, cl, received, blockfor)) if msg == "Error" && matches!(cl, Consistency::Three) && received == 3 && blockfor == 2)
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x24, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x2, // len ks
+            0x6B, 0x73, // ks
+            0x0, 0x5, // len table
+            0x74, 0x61, 0x62, 0x6C, 0x65, // table
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::AlreadyExists(msg, ks, table)) if msg == "Error" && ks == "ks" && table == "table")
+        );
+
+        let bytes = vec![
+            0x0, 0x0, 0x25, 0x0, // ID
+            0x0, 0x5, // len msg
+            0x45, 0x72, 0x72, 0x6F, 0x72, // msg
+            0x0, 0x2, // len ids
+            0x1, 0x2, // ids
+        ];
+        let error = Error::try_from(bytes);
+        assert!(error.is_ok());
+        assert!(
+            matches!(error, Ok(Error::Unprepared(msg, ids)) if msg == "Error" && ids == vec![0x1, 0x2])
+        );
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let bytes = vec![0x0, 0xFF, 0x0, 0xFF];
+        let error = Error::try_from(bytes);
+        assert!(error.is_err());
+        assert!(matches!(error, Err(Error::Invalid(_))));
     }
 }
