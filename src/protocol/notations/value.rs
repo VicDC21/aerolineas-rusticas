@@ -65,6 +65,63 @@ impl TryFrom<Vec<Byte>> for Value {
                 }
             }
         }
-        Ok(Self::Regular(bytes_vec[5..].to_vec()))
+        Ok(Self::Regular(bytes_vec[4..].to_vec()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::errors::error::Error;
+    use crate::protocol::notations::value::Value;
+    use crate::protocol::traits::Byteable;
+
+    #[test]
+    fn test_1_serializar() {
+        let value = Value::Regular(vec![0x0, 0x2, 0x0, 0x1]);
+        let serialized = value.as_bytes();
+        assert_eq!(serialized.len(), 8);
+        assert_eq!(serialized, [0x0, 0x0, 0x0, 0x4, 0x0, 0x2, 0x0, 0x1]);
+
+        let value = Value::Null;
+        let serialized = value.as_bytes();
+        assert_eq!(serialized.len(), 4);
+        assert_eq!(serialized, [0xFF, 0xFF, 0xFF, 0xFF]);
+
+        let value = Value::NotSet;
+        let serialized = value.as_bytes();
+        assert_eq!(serialized.len(), 4);
+        assert_eq!(serialized, [0xFF, 0xFF, 0xFF, 0xFE]);
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let value_res = Value::try_from([0x0, 0x0, 0x0, 0x4, 0x0, 0x2, 0x0, 0x1].to_vec());
+        assert!(value_res.is_ok());
+        if let Ok(Value::Regular(bytes)) = value_res {
+            assert_eq!(bytes.len(), 4);
+            assert_eq!(bytes, [0x0, 0x2, 0x0, 0x1]);
+        }
+
+        let value_res = Value::try_from([0xFF, 0xFF, 0xFF, 0xFF].to_vec());
+        assert!(value_res.is_ok());
+        if let Ok(value_ok) = value_res {
+            assert!(matches!(value_ok, Value::Null));
+        }
+
+        let value_res = Value::try_from([0xFF, 0xFF, 0xFF, 0xFE].to_vec());
+        assert!(value_res.is_ok());
+        if let Ok(value_ok) = value_res {
+            assert!(matches!(value_ok, Value::NotSet));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let value_res = Value::try_from([0xFF, 0x2, 0x0, 0x1].to_vec());
+
+        assert!(value_res.is_err());
+        if let Err(err) = value_res {
+            assert!(matches!(err, Error::ProtocolError(_)));
+        }
     }
 }

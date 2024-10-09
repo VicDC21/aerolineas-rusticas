@@ -90,3 +90,48 @@ impl TryFrom<Vec<Byte>> for Consistency {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::protocol::errors::error::Error;
+    use crate::protocol::notations::consistency::Consistency;
+    use crate::protocol::traits::Byteable;
+
+    #[test]
+    fn test_1_serializar() {
+        let consistencys = [
+            Consistency::One,
+            Consistency::Two,
+            Consistency::Three,
+            Consistency::Quorum,
+            Consistency::LocalQuorum,
+        ];
+        let expected_bytes = [[0x0, 0x1], [0x0, 0x2], [0x0, 0x3], [0x0, 0x4], [0x0, 0x6]];
+
+        for i in 0..expected_bytes.len() {
+            let serialized = consistencys[i].as_bytes();
+            assert_eq!(serialized.len(), 2);
+            assert_eq!(serialized, expected_bytes[i]);
+        }
+    }
+
+    #[test]
+    fn test_2_deserializar() {
+        let consistency_res = Consistency::try_from([0x0, 0x3].to_vec());
+
+        assert!(consistency_res.is_ok());
+        if let Ok(consistency) = consistency_res {
+            assert!(matches!(consistency, Consistency::Three));
+        }
+    }
+
+    #[test]
+    fn test_3_deserializar_error() {
+        let consistency_res = Consistency::try_from([0x0, 0xF].to_vec());
+
+        assert!(consistency_res.is_err());
+        if let Err(err) = consistency_res {
+            assert!(matches!(err, Error::ConfigError(_)));
+        }
+    }
+}
