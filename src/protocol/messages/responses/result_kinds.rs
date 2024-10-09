@@ -70,7 +70,13 @@ mod tests {
 
     #[test]
     fn test_1_serializar() {
-        let result_kinds = [ResultKind::Void, ResultKind::Rows, ResultKind::SetKeyspace, ResultKind::Prepared, ResultKind::SchemaChange];
+        let result_kinds = [
+            ResultKind::Void,
+            ResultKind::Rows,
+            ResultKind::SetKeyspace,
+            ResultKind::Prepared,
+            ResultKind::SchemaChange,
+        ];
         let expected_bytes = [
             vec![0x0, 0x0, 0x0, 0x1],
             vec![0x0, 0x0, 0x0, 0x2],
@@ -89,7 +95,7 @@ mod tests {
     #[test]
     fn test_2_deserializar() {
         let keyspace_res = ResultKind::try_from(vec![0x0, 0x0, 0x0, 0x3]);
-        
+
         assert!(keyspace_res.is_ok());
         if let Ok(void) = keyspace_res {
             assert!(matches!(void, ResultKind::SetKeyspace));

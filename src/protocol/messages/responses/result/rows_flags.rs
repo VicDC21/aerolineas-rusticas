@@ -71,8 +71,8 @@ impl Maskable<Int> for RowsFlag {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{errors::error::Error, traits::Byteable};
     use super::RowsFlag;
+    use crate::protocol::{errors::error::Error, traits::Byteable};
 
     #[test]
     fn test_1_serializar() {

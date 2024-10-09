@@ -104,8 +104,8 @@ impl Maskable<Int> for QueryFlag {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{errors::error::Error, traits::Byteable};
     use super::QueryFlag;
+    use crate::protocol::{errors::error::Error, traits::Byteable};
 
     #[test]
     fn test_1_serializar() {

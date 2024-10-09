@@ -40,22 +40,14 @@ impl TryFrom<Byte> for BatchType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{errors::error::Error, traits::Byteable};
     use super::BatchType;
+    use crate::protocol::{errors::error::Error, traits::Byteable};
 
     #[test]
     fn test_1_serializar() {
-        let batch_types = [
-            BatchType::Logged,
-            BatchType::Unlogged,
-            BatchType::Counter,
-        ];
+        let batch_types = [BatchType::Logged, BatchType::Unlogged, BatchType::Counter];
 
-        let expected = [
-            vec![0x0],
-            vec![0x1],
-            vec![0x2],
-        ];
+        let expected = [vec![0x0], vec![0x1], vec![0x2]];
 
         for i in 0..expected.len() {
             assert_eq!(batch_types[i].as_bytes(), expected[i]);
