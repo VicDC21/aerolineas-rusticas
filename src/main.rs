@@ -1,7 +1,6 @@
 use std::env::args;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-use aerolineas::{client::cli::Client, server::sv};
+use aerolineas::{client::cli::Client, server::sv::Server};
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
@@ -12,12 +11,12 @@ fn main() {
 
     match argv[1].as_str() {
         "sv" => {
-            let _ = sv::run();
+            let server = Server::echo_mode();
+            let _ = server.listen();
         }
 
         "cli" => {
-            let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080));
-            let client = Client::new(addr);
+            let client = Client::new(Server::default_addr());
             let _ = client.echo();
         }
         _ => {
