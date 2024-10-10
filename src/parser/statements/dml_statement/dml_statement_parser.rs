@@ -35,6 +35,12 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
         } else {
             let res = select_clause(lista);
         }
+        if lista[index] != "FROM"{
+            return Err(Error::SyntaxError("Falta el from en la consulta".to_string()))
+        }
+
+
+
         if lista[index] == "WHERE" {
             let res = where_clause(lista);
             // aca completar el builder poco a poco
@@ -55,19 +61,25 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
     Ok(None)
 }
 
-pub fn select_clause(lista: &mut Vec<String>) -> Option<String> {
-    while lista[0] != "FROM"{
-        let sel = selector(lista);
-
+pub fn select_clause(lista: &mut Vec<String>) -> Option<Vec<String>> {
+    if lista[0] != "FROM"{
+        let mut vec: Vec<String> = Vec::new();
+        if let Some(mut sel) = selector(lista){
+            vec.push(sel);
+        }
+        if lista[0] == ","{
+            lista.remove(0);
+            if let Some(mut clasules) = select_clause(lista){
+                vec.append(&mut clasules);
+            };
+        }
+        Some(vec)
+    } else {
+        None
     }
-
-
-
-
-    None
 }
 
-pub fn selector(lista: &mut Vec<String>) -> Option<Where> {
+pub fn selector(lista: &mut Vec<String>) -> Option<String> {
     if lista[0] == "column_name"{
 
     } else if lista[0] == "term"{
