@@ -9,3 +9,7 @@ pub mod selector;
 pub mod statements;
 pub mod r#where;
 pub mod order_by;
+pub mod update_parameter;
+pub mod set_parameter;
+pub mod delete;
+pub mod update;

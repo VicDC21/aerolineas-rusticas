@@ -1,4 +1,4 @@
-use crate::{cassandra::errors::error::Error, parser::{group_by::GroupBy, order_by::OrderBy, select::Select, r#where::Where }};
+use crate::{cassandra::errors::error::Error, parser::{group_by::GroupBy, order_by::OrderBy, select::Select, r#where::Where, update::Update, delete::Delete}};
 
 pub enum DmlStatement {
     SelectStatement,
@@ -254,30 +254,31 @@ pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
 
 pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
     let index = 0;
-    if lista[0] == "BEGIN" {
+
+    if lista[index] == "BEGIN" {
         lista.remove(index);
         if lista[index] == "UNLOGGED" {
-            lista.remove(index);
             // Lógica para el Unlogged Batch -> Aplicación parcial del batch
+            lista.remove(index);
+            lista.remove(index);
         } else if lista[index] == "COUNTER" {
+            // Lógica para el Counter Batch -> Aplicación para contadores
             lista.remove(index);
-            // Lógica para el Counter Batch -> Aplicación parcial del batch
+            lista.remove(index);
         } else {
+            // Lógica para el Logged Batch -> Aplicación total del batch
             lista.remove(index);
-            // Lógica para el Logged Batch -> Por defecto aplicación total o no aplicación
-            if lista[index] == "INSERT" {
-                insert_statement(lista)?;
-            } else if lista[index] == "UPDATE" {
-                update_statement(lista)?;
-            } else if lista[index] == "DELETE" {
-                delete_statement(lista)?;
-            } else if lista[index] == "SELECT" {
-                select_statement(lista)?;
-            } else {
-                return Ok(None);   
-            }
-        }
+        }       
     }
-
-    Ok(None)
+    
+    let mut query = None;    
+    if lista[index] == "INSERT" {
+        query = insert_statement(lista)?;
+    } else if lista[index] == "UPDATE" {
+        query = update_statement(lista)?;
+    } else if lista[index] == "DELETE" {
+        query = delete_statement(lista)?;
+    }
+    
+    Ok(query)
 }
