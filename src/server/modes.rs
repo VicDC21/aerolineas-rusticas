@@ -1,7 +1,8 @@
 //! Módulo para modos de conección al servidor.
 
 /// Indica el modo de conexión al instanciar el servidor.
-pub enum ServerMode {
+#[derive(Clone, Debug)]
+pub enum ConnectionMode {
     /// Modo de prueba para testear conexión.
     Echo,
 

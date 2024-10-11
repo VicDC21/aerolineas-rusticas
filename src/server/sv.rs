@@ -1,48 +1,28 @@
 //! Módulo de servidor.
 
-use std::io::{BufRead, BufReader, Read};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
 
 use crate::protocol::aliases::results::Result;
 use crate::protocol::errors::error::Error;
-use crate::server::sv_modes::ServerMode;
-
-/// Corrida de prueba para un servidor.
-pub fn run() -> std::io::Result<()> {
-    let socket_addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080);
-    let listener = TcpListener::bind(socket_addr)?;
-
-    // bloquea hasta que le entra un request
-    let (mut client_stream, socket_addr) = listener.accept()?;
-
-    println!("La socket addr del client: {:?}", socket_addr);
-    handle_client(&mut client_stream)?;
-    Ok(())
-}
-
-fn handle_client(stream: &mut dyn Read) -> std::io::Result<()> {
-    let reader = BufReader::new(stream);
-    let mut lines = reader.lines();
-    // iteramos las lineas que recibimos de nuestro cliente
-    while let Some(Ok(line)) = lines.next() {
-        println!("Recibido: {:?}", line);
-    }
-    Ok(())
-}
+use crate::server::modes::ConnectionMode;
+use crate::server::nodes::graph::NodeGraph;
 
 /// Estructura principal de servidor.
 pub struct Server {
     /// El endpoint del servidor.
     addr: SocketAddr,
 
-    /// El modo de conexión al servidor.
-    mode: ServerMode,
+    /// El grafo de nodos.
+    graph: NodeGraph,
 }
 
 impl Server {
     /// Crea una nueva instancia del servidor.
-    pub fn new(addr: SocketAddr, mode: ServerMode) -> Self {
-        Self { addr, mode }
+    pub fn new(addr: SocketAddr, mode: ConnectionMode) -> Self {
+        Self {
+            addr,
+            graph: NodeGraph::with_mode(mode),
+        }
     }
 
     /// Genera el endpoint preferido del servidor.
@@ -52,12 +32,12 @@ impl Server {
 
     /// Crea una instancia del servidor en modo de DEBUG.
     pub fn echo_mode() -> Self {
-        Self::new(Self::default_addr(), ServerMode::Echo)
+        Self::new(Self::default_addr(), ConnectionMode::Echo)
     }
 
     /// Crea una instancia del servidor en modo para parsear _queries_.
     pub fn parsing_mode() -> Self {
-        Self::new(Self::default_addr(), ServerMode::Parsing)
+        Self::new(Self::default_addr(), ConnectionMode::Parsing)
     }
 
     /// Escucha por los eventos que recibe.
@@ -80,19 +60,7 @@ impl Server {
                     ))
                 }
                 Ok(tcp_stream) => {
-                    match self.mode {
-                        ServerMode::Echo => {
-                            let reader = BufReader::new(tcp_stream);
-                            let mut lines = reader.lines();
-                            // iteramos las lineas que recibimos de nuestro cliente
-                            while let Some(Ok(line)) = lines.next() {
-                                println!("echo:\t{:?}", line);
-                            }
-                        }
-                        ServerMode::Parsing => {
-                            // Delegar quilombo al grafo de nodos
-                        }
-                    }
+                    // Delegar a nodos
                 }
             }
         }
