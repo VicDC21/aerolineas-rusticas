@@ -1,4 +1,4 @@
-use super::{r#where::Where, update_parameter::UpdateParameter, set_parameter::SetParameter};
+use super::{r#where::Where, set_parameter::SetParameter, update_parameter::UpdateParameter};
 
 pub struct Update {
     table_name: String,
@@ -21,7 +21,7 @@ impl Update {
             update_parameter,
             set_parameter,
             the_where,
-            allow_filtering,  
+            allow_filtering,
         }
     }
 }
@@ -38,7 +38,7 @@ impl UpdateBuilder {
     fn set_table_name(&mut self, table_name: String) {
         self.table_name = table_name;
     }
-        
+
     fn set_update_parameter(&mut self, update_parameter: Option<UpdateParameter>) {
         self.update_parameter = update_parameter;
     }

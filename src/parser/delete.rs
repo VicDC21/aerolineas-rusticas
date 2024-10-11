@@ -1,7 +1,7 @@
 use super::{r#where::Where, update_parameter::UpdateParameter};
 
 pub struct Delete {
-    cols : Vec<String>,
+    cols: Vec<String>,
     from: String,
     the_where: Option<Where>,
     update_parameter: Option<UpdateParameter>,
@@ -18,13 +18,13 @@ impl Delete {
             cols,
             from,
             the_where,
-            update_parameter
+            update_parameter,
         }
     }
 }
 
 pub struct DeleteBuilder {
-    cols : Vec<String>,
+    cols: Vec<String>,
     from: String,
     the_where: Option<Where>,
     update_parameter: Option<UpdateParameter>,
@@ -45,11 +45,6 @@ impl DeleteBuilder {
     }
 
     fn build(self) -> Delete {
-        Delete::new(
-            self.cols,
-            self.from,
-            self.the_where,
-            self.update_parameter,
-        )
+        Delete::new(self.cols, self.from, self.the_where, self.update_parameter)
     }
 }

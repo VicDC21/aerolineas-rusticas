@@ -1,3 +1,1 @@
-pub struct OrderBy{
-    
-}
+pub struct OrderBy {}

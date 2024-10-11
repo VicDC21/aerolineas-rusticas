@@ -1,4 +1,3 @@
-
-pub struct Integer{
-    int: i32
+pub struct Integer {
+    int: i32,
 }

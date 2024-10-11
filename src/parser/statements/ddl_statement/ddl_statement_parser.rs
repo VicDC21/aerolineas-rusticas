@@ -16,7 +16,6 @@ pub enum DdlStatement {
     TruncateStatement,
 }
 
-
 pub fn ddl_statement(lista: &mut [String]) -> Result<Option<DdlStatement>, Error> {
     if let Some(_x) = use_statement(lista)? {
         return Ok(Some(_x));

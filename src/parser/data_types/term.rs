@@ -5,7 +5,6 @@ use super::constant::Constant;
 pub enum Term {
     /// string | integer | float | boolean | uuid | blob | NULL
     Constant(Constant),
-
     // collection_literal | vector_literal | udt_literal | tuple_literal
     // Literal(Literal),
 

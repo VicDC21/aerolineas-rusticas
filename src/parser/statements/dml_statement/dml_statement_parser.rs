@@ -1,4 +1,18 @@
-use crate::{cassandra::errors::error::Error, parser::{data_types::{constant::Constant, cql_type::CQLType, identifier::Identifier, native_types::NativeType, quoted_identifier::QuotedIdentifier, term::Term, unquoted_identifier::UnquotedIdentifier}, group_by::GroupBy, order_by::OrderBy, select::Select, selector::Selector, r#where::Where }};
+use crate::{
+    cassandra::errors::error::Error,
+    parser::{
+        data_types::{
+            constant::Constant, cql_type::CQLType, identifier::Identifier,
+            native_types::NativeType, quoted_identifier::QuotedIdentifier, term::Term,
+            unquoted_identifier::UnquotedIdentifier,
+        },
+        group_by::GroupBy,
+        order_by::OrderBy,
+        r#where::Where,
+        select::Select,
+        selector::Selector,
+    },
+};
 
 pub enum DmlStatement {
     SelectStatement,
@@ -33,13 +47,13 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
 
             // };
         } else {
-            let res = select_clause(lista)?;
+            let res = get_clauses(lista)?;
         }
-        if lista[index] != "FROM"{
-            return Err(Error::SyntaxError("Falta el from en la consulta".to_string()))
+        if lista[index] != "FROM" {
+            return Err(Error::SyntaxError(
+                "Falta el from en la consulta".to_string(),
+            ));
         }
-
-
 
         if lista[index] == "WHERE" {
             let res = where_clause(lista);
@@ -61,16 +75,16 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
     Ok(None)
 }
 
-pub fn select_clause(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
-    if lista[0] != "FROM"{
+pub fn get_clauses(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
+    if lista[0] != "FROM" {
         let mut vec: Vec<Selector> = Vec::new();
-        if let Some(sel) = selector(lista)?{
+        if let Some(sel) = selector(lista)? {
             vec.push(sel);
         }
-        if lista[0] == ","{
+        if lista[0] == "," {
             lista.remove(0);
-            if let Some(mut clasules) = select_clause(lista)?{
-                vec.append(&mut clasules);
+            if let Some(mut clausules) = get_clauses(lista)? {
+                vec.append(&mut clausules);
             };
         }
         Ok(Some(vec))
@@ -80,11 +94,10 @@ pub fn select_clause(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, E
 }
 
 pub fn selector(lista: &mut Vec<String>) -> Result<Option<Selector>, Error> {
-
-    if let Some(column) = is_column_name(lista)?{
+    if let Some(column) = is_column_name(lista)? {
         return Ok(Some(Selector::ColumnName(column)));
     }
-    if let Some(term) = is_term(lista)?{
+    if let Some(term) = is_term(lista)? {
         return Ok(Some(Selector::Term(term)));
     }
     // if let Some(cast) = is_cast(lista)?{
@@ -95,48 +108,45 @@ pub fn selector(lista: &mut Vec<String>) -> Result<Option<Selector>, Error> {
 }
 
 // identifier
-pub fn is_column_name(lista: &mut Vec<String>) -> Result<Option<Identifier>, Error>{
-    if QuotedIdentifier::check_quoted_identifier(&lista[0], &lista[1], &lista[2]){
+pub fn is_column_name(lista: &mut Vec<String>) -> Result<Option<Identifier>, Error> {
+    if QuotedIdentifier::check_quoted_identifier(&lista[0], &lista[1], &lista[2]) {
         lista.remove(0);
         let string = lista.remove(0);
         lista.remove(0);
-        return Ok(Some(Identifier::QuotedIdentifier(QuotedIdentifier::new(string))));
-    } else if UnquotedIdentifier::check_unquoted_identifier(&lista[0]){
+        return Ok(Some(Identifier::QuotedIdentifier(QuotedIdentifier::new(
+            string,
+        ))));
+    } else if UnquotedIdentifier::check_unquoted_identifier(&lista[0]) {
         let string = lista.remove(0);
-        return Ok(Some(Identifier::UnquotedIdentifier(UnquotedIdentifier::new(string))));
+        return Ok(Some(Identifier::UnquotedIdentifier(
+            UnquotedIdentifier::new(string),
+        )));
     }
     Ok(None)
 }
 
-
-pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error>{
-    if Constant::check_string(&lista[0], &lista[2]){
+pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error> {
+    if Constant::check_string(&lista[0], &lista[2]) {
         lista.remove(0);
         let string = Constant::String(lista.remove(0));
         lista.remove(0);
         return Ok(Some(Term::Constant(string)));
-    } else if Constant::check_integer(&lista[0]){
-        let integer_string: String = lista.remove(0);
-        let int = Constant::new_integer(integer_string)?;
-        return Ok(Some(Term::Constant(int)));
-    } else if Constant::check_float(&lista[0]){
-        let float_string = lista.remove(0);
-        let float = Constant::new_float(float_string)?;
-        return Ok(Some(Term::Constant(float)));
-    } else if Constant::check_boolean(&lista[0]){
-        let bool = lista.remove(0);
-        let bool = Constant::new_boolean(bool)?;
-        return Ok(Some(Term::Constant(bool)))
-    } else if Constant::check_uuid(&lista[0]){
-        let uuid = lista.remove(0);
-        let uuid = Constant::new_uuid(uuid)?;
-        return Ok(Some(Term::Constant(uuid)))
-    } else if Constant::check_hex(&lista[0]){
-        let hex = Constant::new_hex(lista.remove(0))?;
-        return Ok(Some(Term::Constant(hex)))
-    } else if Constant::check_blob(&lista[0]){
-        let blob = Constant::new_blob(lista.remove(0))?;
-        return Ok(Some(Term::Constant(blob)))
+    } else if Constant::check_integer(&lista[0]) {
+        return Ok(Some(Term::Constant(Constant::new_integer(
+            lista.remove(0),
+        )?)));
+    } else if Constant::check_float(&lista[0]) {
+        return Ok(Some(Term::Constant(Constant::new_float(lista.remove(0))?)));
+    } else if Constant::check_boolean(&lista[0]) {
+        return Ok(Some(Term::Constant(Constant::new_boolean(
+            lista.remove(0),
+        )?)));
+    } else if Constant::check_uuid(&lista[0]) {
+        return Ok(Some(Term::Constant(Constant::new_uuid(lista.remove(0))?)));
+    } else if Constant::check_hex(&lista[0]) {
+        return Ok(Some(Term::Constant(Constant::new_hex(lista.remove(0))?)));
+    } else if Constant::check_blob(&lista[0]) {
+        return Ok(Some(Term::Constant(Constant::new_blob(lista.remove(0))?)));
     }
 
     Ok(None)
@@ -144,14 +154,10 @@ pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error>{
 
 // pub fn is_cast(lista: &mut Vec<String>) -> Result<Option<Term>, Error>{
 
-
 //     Ok(None)
 // }
 
-pub fn cql_type(lista: &mut Vec<String>){
-
-}
-
+pub fn cql_type(lista: &mut Vec<String>) {}
 
 pub fn where_clause(lista: &mut Vec<String>) -> Option<Where> {
     None
@@ -171,6 +177,55 @@ pub fn group_by_clause(lista: &mut Vec<String>) -> Option<GroupBy> {
 
 pub fn ordering_clause(lista: &mut Vec<String>) -> Option<OrderBy> {
     None
+}
+
+pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+    let index: usize = 0;
+    if lista[index] == "DELETE" {
+        lista.remove(index);
+
+        if lista[index] != "FROM" {
+            let res = get_clauses(lista);
+            match res {
+                Ok(Some(_x)) => {}
+                Ok(None) => return Err(Error::SyntaxError("Columna(s) inválida(s)".to_string())),
+                Err(_x) => {
+                    return Err(Error::SyntaxError(
+                        "Falta el from en la consulta".to_string(),
+                    ))
+                }
+            }
+        }
+
+        lista.remove(index);
+        if lista[index] == "file_name" {
+            lista.remove(index);
+            // Chequeo si es un archivo válido
+        } else {
+            return Ok(None);
+        }
+
+        if lista[index] == "USING" {
+            lista.remove(index);
+            // Chequeo de la sintaxis de USING
+        } else {
+            return Ok(None);
+        }
+
+        if lista[index] == "WHERE" {
+            lista.remove(index);
+            let res = where_clause(lista);
+            if lista[index] == "IF" {
+                lista.remove(index);
+                // Chequeo sintaxis de condicionales para la query
+            } else {
+                return Ok(None);
+            }
+        } else {
+            return Ok(None);
+        }
+    }
+    Ok(None)
 }
 
 pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
@@ -194,11 +249,11 @@ pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
         if lista[index] == "IF" {
             lista.remove(index);
             // Chequeo de la sintaxis de IF NOT EXISTS
-        } 
+        }
 
         if lista[index] == "VALUES" {
             lista.remove(index);
-            // Chequeo/match de valores con columnas 
+            // Chequeo/match de valores con columnas
         } else {
             return Ok(None);
         }
@@ -208,52 +263,6 @@ pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
             // Chequeo de la sintaxis de USING
         } else {
             return Ok(None);
-        }
-
-    }
-    Ok(None)
-}
-
-pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
-    let index: usize = 0;
-    if lista[index] == "DELETE" {
-        lista.remove(index);
-
-        if lista[index] == "col_name" {
-            lista.remove(index);
-            // Chequeo de columnas específicas
-        } 
-
-        if lista[index] == "FROM" {
-            lista.remove(index);
-            if lista[index] == "file_name" {
-                lista.remove(index);
-                // Chequeo si es un archivo válido
-            } else {
-                return Ok(None);
-            }        
-        } else {
-            return Ok(None);
-        }
-
-        if lista[index] == "USING" {
-            lista.remove(index);
-            // Chequeo de la sintaxis de USING
-        } else {
-            return Ok(None);
-        }
-
-        if lista[index] == "WHERE" {
-            lista.remove(index);
-            let res = where_clause(lista);
-            if lista[index] == "IF" {
-                lista.remove(index);
-                // Chequeo sintaxis de condicionales para la query
-            } else {
-                return Ok(None);
-            }
-        } else {
-            return Ok(None); 
         }
     }
     Ok(None)
@@ -294,7 +303,7 @@ pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
                 return Ok(None);
             }
         } else {
-            return Ok(None); 
+            return Ok(None);
         }
     }
 
@@ -317,10 +326,10 @@ pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, 
         } else {
             // Lógica para el Logged Batch -> Aplicación total del batch
             lista.remove(index);
-        }       
+        }
     }
-    
-    let mut query = None;    
+
+    let mut query = None;
     if lista[index] == "INSERT" {
         query = insert_statement(lista)?;
     } else if lista[index] == "UPDATE" {
@@ -328,6 +337,6 @@ pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, 
     } else if lista[index] == "DELETE" {
         query = delete_statement(lista)?;
     }
-    
+
     Ok(query)
 }

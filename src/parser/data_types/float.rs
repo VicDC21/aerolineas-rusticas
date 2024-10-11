@@ -1,3 +1,3 @@
-pub struct Float{
-    float: f32
+pub struct Float {
+    float: f32,
 }
