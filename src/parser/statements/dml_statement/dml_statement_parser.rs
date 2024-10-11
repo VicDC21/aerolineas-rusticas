@@ -1,4 +1,4 @@
-use crate::{cassandra::errors::error::Error, parser::{group_by::GroupBy, order_by::OrderBy, select::Select, r#where::Where, update::Update, delete::Delete}};
+use crate::{cassandra::errors::error::Error, parser::{data_types::{constant::Constant, cql_type::CQLType, identifier::Identifier, native_types::NativeType, quoted_identifier::QuotedIdentifier, term::Term, unquoted_identifier::UnquotedIdentifier}, group_by::GroupBy, order_by::OrderBy, select::Select, selector::Selector, r#where::Where }};
 
 pub enum DmlStatement {
     SelectStatement,
@@ -33,7 +33,7 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
 
             // };
         } else {
-            let res = select_clause(lista);
+            let res = select_clause(lista)?;
         }
         if lista[index] != "FROM"{
             return Err(Error::SyntaxError("Falta el from en la consulta".to_string()))
@@ -61,43 +61,87 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
     Ok(None)
 }
 
-pub fn select_clause(lista: &mut Vec<String>) -> Option<Vec<String>> {
+pub fn select_clause(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
     if lista[0] != "FROM"{
-        let mut vec: Vec<String> = Vec::new();
-        if let Some(mut sel) = selector(lista){
+        let mut vec: Vec<Selector> = Vec::new();
+        if let Some(sel) = selector(lista)?{
             vec.push(sel);
         }
         if lista[0] == ","{
             lista.remove(0);
-            if let Some(mut clasules) = select_clause(lista){
+            if let Some(mut clasules) = select_clause(lista)?{
                 vec.append(&mut clasules);
             };
         }
-        Some(vec)
+        Ok(Some(vec))
     } else {
-        None
+        Ok(None)
     }
 }
 
-pub fn selector(lista: &mut Vec<String>) -> Option<String> {
-    if lista[0] == "column_name"{
+pub fn selector(lista: &mut Vec<String>) -> Result<Option<Selector>, Error> {
 
-    } else if lista[0] == "term"{
+    if let Some(column) = is_column_name(lista)?{
+        return Ok(Some(Selector::ColumnName(column)));
+    }
+    if let Some(term) = is_term(lista)?{
+        return Ok(Some(Selector::Term(term)));
+    }
+    // if let Some(cast) = is_cast(lista)?{
+    //     return Ok(Some(cast));
+    // }
 
-    } else if lista[0] == "CAST" && lista[1] == "("{
-        selector(lista);
-        if lista[0] != "AS"{
-            // Error
-        }
-        cql_type(lista);
+    Ok(None)
+}
+
+// identifier
+pub fn is_column_name(lista: &mut Vec<String>) -> Result<Option<Identifier>, Error>{
+    if QuotedIdentifier::check_quoted_identifier(&lista[0], &lista[1], &lista[2]){
+        lista.remove(0);
+        let string = lista.remove(0);
+        lista.remove(0);
+        return Ok(Some(Identifier::QuotedIdentifier(QuotedIdentifier::new(string))));
+    } else if UnquotedIdentifier::check_unquoted_identifier(&lista[0]){
+        let string = lista.remove(0);
+        return Ok(Some(Identifier::UnquotedIdentifier(UnquotedIdentifier::new(string))));
+    }
+    Ok(None)
+}
 
 
-
+pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error>{
+    if Constant::check_string(&lista[0]){
+        Constant::String(lista.remove(0));
+    } else if Constant::check_integer(&lista[0]){
+        let int: String = lista.remove(0);
+        let int = match int.parse::<i32>(){
+            Ok(value) => value,
+            Err(_e) => return Err(Error::Invalid("".to_string()))
+        };
+        Constant::Integer(int);
+    } else if Constant::check_float(&lista[0]){
+        
+    } else if Constant::check_boolean(&lista[0]){
+        
+    } else if Constant::check_uuid(&lista[0]){
+        
+    } else if Constant::check_hex(&lista[0]){
+        
+    } else if Constant::check_blob(&lista[0]){
+        
+    } else if Constant::check_integer(&lista[0]){
+        
     }
 
 
-    None
+    Ok(None)
 }
+
+// pub fn is_cast(lista: &mut Vec<String>) -> Result<Option<Term>, Error>{
+
+
+//     Ok(None)
+// }
 
 pub fn cql_type(lista: &mut Vec<String>){
 
