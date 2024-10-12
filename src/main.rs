@@ -17,7 +17,9 @@ fn main() {
 
         "cli" => {
             let client = Client::new(Server::default_addr());
-            let _ = client.echo();
+            if let Err(err) = client.echo() {
+                println!("{}", err);
+            }
         }
         _ => {
             println!("Se debe elegir o 'sv' o 'cli', no '{}'...", argv[1]);

@@ -94,7 +94,7 @@ impl Node {
                             let reader = BufReader::new(tcp_stream);
                             let mut lines = reader.lines();
                             while let Some(Ok(line)) = lines.next() {
-                                println!("[{}] echo:\t{:?}", self.id, line);
+                                println!("[{} - ECHO] {:?}", self.id, line);
                             }
                         }
                         ConnectionMode::Parsing => {

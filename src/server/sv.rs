@@ -1,5 +1,4 @@
 //! Módulo de servidor.
-
 use std::io::Read;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
 use std::thread::JoinHandle;
@@ -74,8 +73,8 @@ impl Server {
 
         for handler in handlers {
             if handler.join().is_err() {
-                // Un string caído NO debería interrumpir el dropping de los demás
-                println!("Ocurrió un error mientras se esperaba a que termine un thread hijo.");
+                // Un hilo caído NO debería interrumpir el dropping de los demás
+                println!("Ocurrió un error mientras se esperaba a que termine un hilo hijo.");
             }
         }
 

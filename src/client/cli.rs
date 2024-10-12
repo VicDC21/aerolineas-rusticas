@@ -23,7 +23,7 @@ impl Client {
         match TcpStream::connect(self.addr) {
             Ok(tcp_stream) => Ok(tcp_stream),
             Err(_) => Err(Error::ServerError(format!(
-                "Could not connect to socket '{}'",
+                "No se pudo conectar al socket '{}'",
                 self.addr
             ))),
         }
@@ -41,12 +41,13 @@ impl Client {
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
 
+        println!("ECHO MODE:\n----------\nEscribe lo que necesites.\nCuando salgas de este modo, se mandará todo de una al servidor.\n('q' en una línea sola para salir)\n----------\n");
+
         for line in reader.lines().map_while(|e| e.ok()) {
             if line.eq_ignore_ascii_case("q") {
                 break;
             }
 
-            println!("Enviando: {:?}", line);
             let _ = tcp_stream.write_all(line.as_bytes());
             let _ = tcp_stream.write_all("\n".as_bytes());
         }
