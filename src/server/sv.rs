@@ -1,8 +1,10 @@
 //! Módulo de servidor.
 
+use std::io::Read;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
+use std::thread::JoinHandle;
 
-use crate::protocol::aliases::results::Result;
+use crate::protocol::aliases::{results::Result, types::Byte};
 use crate::protocol::errors::error::Error;
 use crate::server::modes::ConnectionMode;
 use crate::server::nodes::graph::NodeGraph;
@@ -41,7 +43,7 @@ impl Server {
     }
 
     /// Escucha por los eventos que recibe.
-    pub fn listen(&self) -> Result<()> {
+    pub fn listen(&mut self) -> Result<()> {
         let listener = match TcpListener::bind(self.addr) {
             Ok(tcp_listener) => tcp_listener,
             Err(_) => {
@@ -52,6 +54,10 @@ impl Server {
             }
         };
 
+        let mut handlers: Vec<JoinHandle<Result<()>>> = Vec::new();
+        handlers.push(self.graph.beater()?);
+        handlers.extend(self.graph.bootup(5)?);
+
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
                 Err(_) => {
@@ -60,8 +66,16 @@ impl Server {
                     ))
                 }
                 Ok(tcp_stream) => {
-                    // Delegar a nodos
+                    let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
+                    self.graph.send_message(bytes)?;
                 }
+            }
+        }
+
+        for handler in handlers {
+            if handler.join().is_err() {
+                // Un string caído NO debería interrumpir el dropping de los demás
+                println!("Ocurrió un error mientras se esperaba a que termine un thread hijo.");
             }
         }
 

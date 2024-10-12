@@ -7,7 +7,9 @@ use std::net::TcpListener;
 use crate::protocol::aliases::results::Result;
 use crate::protocol::errors::error::Error;
 use crate::server::modes::ConnectionMode;
+use crate::server::nodes::states::appstatus::AppStatus;
 use crate::server::nodes::states::endpoints::EndpointState;
+use crate::server::nodes::states::heartbeat::{GenType, VerType};
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
@@ -33,6 +35,11 @@ impl Node {
         }
     }
 
+    /// Consulta el ID del nodo.
+    pub fn get_id(&self) -> &u8 {
+        &self.id
+    }
+
     /// Ve si el nodo es un nodo "hoja".
     pub fn leaf(&self) -> bool {
         self.neighbours.is_empty()
@@ -41,6 +48,24 @@ impl Node {
     /// Consulta el modo de conexión del nodo.
     pub fn mode(&self) -> &ConnectionMode {
         self.endpoint_state.get_appstate().get_mode()
+    }
+
+    /// Consulta si el nodo todavía esta booteando.
+    pub fn is_bootstraping(&self) -> bool {
+        matches!(
+            self.endpoint_state.get_appstate().get_status(),
+            AppStatus::Bootstrap
+        )
+    }
+
+    /// Consulta el estado de _heartbeat_.
+    pub fn get_beat(&mut self) -> (GenType, VerType) {
+        self.endpoint_state.get_heartbeat().as_tuple()
+    }
+
+    /// Avanza el tiempo para el nodo.
+    pub fn beat(&mut self) -> VerType {
+        self.endpoint_state.beat()
     }
 
     /// Escucha por los eventos que recibe.

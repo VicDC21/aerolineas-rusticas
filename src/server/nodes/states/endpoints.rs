@@ -5,7 +5,11 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use crate::server::modes::ConnectionMode;
 use crate::server::nodes::states::appstatus::AppStatus;
+use crate::server::nodes::states::heartbeat::VerType;
 use crate::server::nodes::states::{application::AppState, heartbeat::HeartbeatState};
+
+/// El puerto preferido para las IPs
+pub const PORT: u16 = 8080;
 
 /// Las propiedades de un nodo.
 pub struct EndpointState {
@@ -22,7 +26,7 @@ pub struct EndpointState {
 impl EndpointState {
     /// Genera un socket basado en un id dado.
     fn generate_ipaddr(id: u8) -> SocketAddr {
-        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, id), 8080))
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, id), PORT))
     }
 
     /// Instancia las propiedades del nodo.
@@ -58,13 +62,18 @@ impl EndpointState {
     }
 
     /// Consulta el estado _Heartbeat_.
-    pub fn get_heartbeat(&self) -> &HeartbeatState {
+    pub fn get_heartbeat(&mut self) -> &HeartbeatState {
         &self.heartbeat
     }
 
     /// Consulta el estado de aplicación.
     pub fn get_appstate(&self) -> &AppState {
         &self.application
+    }
+
+    /// Aumenta el estado de _heartbeat_.
+    pub fn beat(&mut self) -> VerType {
+        self.heartbeat.beat()
     }
 }
 

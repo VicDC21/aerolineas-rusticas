@@ -11,7 +11,7 @@ fn main() {
 
     match argv[1].as_str() {
         "sv" => {
-            let server = Server::echo_mode();
+            let mut server = Server::echo_mode();
             let _ = server.listen();
         }
 

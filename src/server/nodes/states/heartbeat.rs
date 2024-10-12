@@ -28,6 +28,11 @@ impl HeartbeatState {
         self.ver += 1;
         self.ver
     }
+
+    /// Devuelve el estado como una tupla.
+    pub fn as_tuple(&self) -> (GenType, VerType) {
+        (self.gen, self.ver)
+    }
 }
 
 impl Default for HeartbeatState {
