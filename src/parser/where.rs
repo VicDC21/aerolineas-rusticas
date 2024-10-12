@@ -1,15 +1,18 @@
+use super::{expression::Expression, operator::Operator, relation::Relation};
+
 pub struct Where {
-    pub conditions: Vec<(String, String, String)>,
+    pub expression: Option<Box<Expression>>
 }
 
 impl Where {
-    pub fn new() -> Self {
+    pub fn new(expression: Option<Box<Expression>>) -> Self {
         Where {
-            conditions: Vec::new(),
+            expression,
         }
     }
 
-    pub fn add_condition(&mut self, column: String, operator: String, value: String) {
-        self.conditions.push((column, operator, value));
-    }
+    // pub fn add_condition(&mut self, relation: Relation) {
+    //     self.relations.push(relation);
+    // }
 }
+

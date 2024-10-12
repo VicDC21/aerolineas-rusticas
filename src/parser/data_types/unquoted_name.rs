@@ -1,5 +1,7 @@
 use crate::cassandra::errors::error::Error;
 
+#[derive(Default)]
+
 pub struct UnquotedName {
     name: String,
 }
