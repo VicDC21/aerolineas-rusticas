@@ -65,10 +65,12 @@ impl NodeGraph {
     }
 
     /// Agrega un nodo al grafo.
+    /// 
+    /// También devuelve el ID del nodo recién agregado.
     pub fn add_node_id(&mut self) -> u8 {
         self.node_ids.push(self.prox_id);
         self.prox_id += 1;
-        self.prox_id
+        self.prox_id - 1
     }
 
     /// Avanza a cada segundo el estado de _heartbeat_ de los nodos.
@@ -134,6 +136,15 @@ impl NodeGraph {
     /// Manda un mensaje al nodo relevante mediante el _hashing_ del mensaje.
     pub fn send_message(&self, bytes: Vec<Byte>) -> Result<()> {
         Self::send_to_node(self.select_node(&bytes), bytes)
+    }
+
+    /// Apaga todos los nodos.
+    pub fn shutdown(&self) {
+        for node_id in self.get_ids() {
+            if let Err(err) = Self::send_to_node(node_id, SvAction::Exit.as_bytes()) {
+                println!("Ocurrió un error saliendo de un nodo:\n\n{}", err);
+            }
+        }
     }
 }
 
