@@ -1,5 +1,4 @@
 use super::{r#where::Where, set_parameter::SetParameter, update_parameter::UpdateParameter};
-use super::{r#where::Where, set_parameter::SetParameter, update_parameter::UpdateParameter};
 
 pub struct Update {
     table_name: String,

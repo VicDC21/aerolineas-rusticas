@@ -191,8 +191,6 @@ pub fn selector(lista: &mut Vec<String>) -> Result<Option<Selector>, Error> {
 // identifier
 pub fn is_column_name(lista: &mut Vec<String>) -> Result<Option<Identifier>, Error> {
     if QuotedIdentifier::check_quoted_identifier(&lista[0], &lista[1], &lista[2]) {
-pub fn is_column_name(lista: &mut Vec<String>) -> Result<Option<Identifier>, Error> {
-    if QuotedIdentifier::check_quoted_identifier(&lista[0], &lista[1], &lista[2]) {
         lista.remove(0);
         let string = lista.remove(0);
         lista.remove(0);
@@ -200,14 +198,7 @@ pub fn is_column_name(lista: &mut Vec<String>) -> Result<Option<Identifier>, Err
             string,
         ))));
     } else if UnquotedIdentifier::check_unquoted_identifier(&lista[0]) {
-        return Ok(Some(Identifier::QuotedIdentifier(QuotedIdentifier::new(
-            string,
-        ))));
-    } else if UnquotedIdentifier::check_unquoted_identifier(&lista[0]) {
         let string = lista.remove(0);
-        return Ok(Some(Identifier::UnquotedIdentifier(
-            UnquotedIdentifier::new(string),
-        )));
         return Ok(Some(Identifier::UnquotedIdentifier(
             UnquotedIdentifier::new(string),
         )));
@@ -248,31 +239,22 @@ pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error> {
     Ok(None)
 }
 
-// pub fn is_cast(lista: &mut Vec<String>) -> Result<Option<Term>, Error>{
-
-//     Ok(None)
-// }
-
-pub fn cql_type(lista: &mut Vec<String>) {}
-
-pub fn where_clause(lista: &mut Vec<String>) -> Option<Where> {
-    None
-}
-
-pub fn relation(lista: &mut Vec<String>) -> Option<Where> {
-    None
-}
-
-pub fn operator(lista: &mut Vec<String>) -> Option<Where> {
-    None
-}
-
-pub fn group_by_clause(lista: &mut Vec<String>) -> Option<GroupBy> {
-    None
-}
-
-pub fn ordering_clause(lista: &mut Vec<String>) -> Option<OrderBy> {
-    None
+pub fn get_clauses(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> { //cambiaste select_clause por esta funcion no?
+    if lista[0] != "FROM" {
+        let mut vec: Vec<Selector> = Vec::new();
+        if let Some(sel) = selector(lista)? {
+            vec.push(sel);
+        }
+        if lista[0] == "," {
+            lista.remove(0);
+            if let Some(mut clausules) = get_clauses(lista)? {
+                vec.append(&mut clausules);
+            };
+        }
+        Ok(Some(vec))
+    } else {
+        Ok(None)
+    }
 }
 
 pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
