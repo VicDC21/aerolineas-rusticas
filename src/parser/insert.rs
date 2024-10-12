@@ -15,7 +15,7 @@ impl Insert {
         values: Vec<String>,
         if_not_exists: Option<bool>,
         update_parameter: Option<UpdateParameter>,
-        ) -> Insert {
+    ) -> Insert {
         Insert {
             table_name,
             columns,

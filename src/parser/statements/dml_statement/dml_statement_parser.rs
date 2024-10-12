@@ -1,5 +1,3 @@
-use std::thread::Builder;
-
 use crate::{
     cassandra::errors::error::Error,
     parser::{
@@ -9,9 +7,10 @@ use crate::{
             quoted_identifier::QuotedIdentifier, term::Term,
             unquoted_identifier::UnquotedIdentifier,
         },
-        delete::DeleteBuilder,
+        delete::{Delete, DeleteBuilder},
         expression::expression,
         group_by::GroupBy,
+        insert::{Insert, InsertBuilder},
         limit::Limit,
         order_by::OrderBy,
         per_partition_limit::PerPartitionLimit,
@@ -19,40 +18,40 @@ use crate::{
         relation::Relation,
         select::{KindOfColumns, Select, SelectBuilder},
         selector::Selector,
-        update::UpdateBuilder,
+        update::{Update, UpdateBuilder},
     },
 };
 
 pub enum DmlStatement {
-    SelectStatement,
-    InsertStatement,
-    UpdateStatement,
-    DeleteStatement,
+    SelectStatement(Select),
+    InsertStatement(Insert),
+    UpdateStatement(Update),
+    DeleteStatement(Delete),
     BatchStatement,
 }
 
 pub fn dml_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
-    if let Some(_x) = select_statement(lista)? {
-        return Ok(Some(DmlStatement::SelectStatement));
-    } else if let Some(_x) = insert_statement(lista)? {
-        return Ok(Some(DmlStatement::InsertStatement));
-    } else if let Some(_x) = delete_statement(lista)? {
-        return Ok(Some(DmlStatement::UpdateStatement));
-    } else if let Some(_x) = update_statement(lista)? {
-        return Ok(Some(DmlStatement::DeleteStatement));
-    } else if let Some(_x) = batch_statement(lista)? {
+    if let Some(dml_statement) = select_statement(lista)? {
+        return Ok(Some(DmlStatement::SelectStatement(dml_statement)));
+    } else if let Some(dml_statement) = insert_statement(lista)? {
+        return Ok(Some(DmlStatement::InsertStatement(dml_statement)));
+    } else if let Some(dml_statement) = delete_statement(lista)? {
+        return Ok(Some(DmlStatement::DeleteStatement(dml_statement)));
+    } else if let Some(dml_statement) = update_statement(lista)? {
+        return Ok(Some(DmlStatement::UpdateStatement(dml_statement)));
+    } else if let Some(_dml_statement) = batch_statement(lista)? {
         return Ok(Some(DmlStatement::BatchStatement));
     }
     Ok(None)
 }
 
-pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<Select>, Error> {
     let index = 0;
-    if lista[0] == "SELECT" {
-        lista.remove(0);
+    if lista[index] == "SELECT" {
+        lista.remove(index);
         let mut builder = SelectBuilder::default();
-        if lista[0] == "*" {
-            lista.remove(0);
+        if lista[index] == "*" {
+            lista.remove(index);
             builder.set_select_clause(KindOfColumns::All);
         } else {
             let res = match select_clause(lista)? {
@@ -65,17 +64,18 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
             };
             builder.set_select_clause(KindOfColumns::SelectClause(res));
         }
-        from_clause(lista, &mut builder);
+        from_clause(lista, &mut builder)?;
         builder.set_where(where_clause(lista));
-        ordering_clause(lista, &mut builder);
-        per_partition_limit_clause(lista, &mut builder);
-        limit_clause(lista, &mut builder);
-        allow_filtering_clause(lista, &mut builder);
+        ordering_clause(lista, &mut builder)?;
+        per_partition_limit_clause(lista, &mut builder)?;
+        limit_clause(lista, &mut builder)?;
+        allow_filtering_clause(lista.to_vec(), &mut builder);
+        return Ok(Some(builder.build()));
     }
     Ok(None)
 }
 
-pub fn select_clause(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
+fn select_clause(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
     if lista[0] != "FROM" {
         let mut vec: Vec<Selector> = Vec::new();
         if let Some(sel) = selector(lista)? {
@@ -116,18 +116,17 @@ pub fn from_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Resu
 }
 
 pub fn where_clause(lista: &mut Vec<String>) -> Option<Where> {
-    let where_expr: Where;
-    if lista[0] == "WHERE" {
+    let where_expr: Where = if lista[0] == "WHERE" {
         lista.remove(0);
-        where_expr = Where::new(expression(lista).ok()?);
+        Where::new(expression(lista).ok()?)
     } else {
         return Some(Where::new(None));
-    }
+    };
     Some(where_expr)
 }
 
 pub fn relation(lista: &mut Vec<String>) -> Result<Option<Relation>, Error> {
-    if let Some(value) = is_column_name(lista)? {
+    if let Some(_value) = is_column_name(lista)? {
         lista.remove(0);
     }
     Ok(None)
@@ -218,7 +217,7 @@ pub fn limit_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Res
     Ok(())
 }
 pub fn allow_filtering_clause(
-    lista: &mut Vec<String>,
+    lista: Vec<String>,
     builder: &mut SelectBuilder,
 ) -> Option<PerPartitionLimit> {
     if lista[0] == "ALLOW" && lista[1] == "FILTERING" {
@@ -309,7 +308,7 @@ pub fn get_clauses(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Err
     }
 }
 
-pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<Delete>, Error> {
     let index: usize = 0;
     if lista[index] == "DELETE" {
         let mut builder = DeleteBuilder::default();
@@ -347,6 +346,8 @@ pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
             } else {
                 return Ok(None);
             }
+
+            return Ok(Some(builder.build()));
         } else {
             return Ok(None);
         }
@@ -356,12 +357,13 @@ pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
 
 fn check_file_name(file_name: String) {}
 
-pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<Insert>, Error> {
     let index = 0;
     if lista[index] == "INSERT" && lista[index + 1] == "INTO" {
         lista.remove(index);
         lista.remove(index);
 
+        //let mut builder = InsertBuilder::default();
         // Guardar el nombre de la tabla
         let file_name: String = lista.remove(index);
         check_file_name(file_name);
@@ -385,11 +387,12 @@ pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
             lista.remove(index);
             // Chequeo de la sintaxis de USING
         }
+        //return Ok(Some(builder.build()));
     }
     Ok(None)
 }
 
-pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<Update>, Error> {
     let index = 0;
     if lista[0] == "UPDATE" {
         let mut builder = UpdateBuilder::default();
@@ -419,13 +422,15 @@ pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
         } else {
             return Ok(None);
         }
+        return Ok(Some(builder.build()));
     }
 
     Ok(None)
 }
 
-pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<Vec<DmlStatement>>, Error> {
     let index = 0;
+    let query: Vec<DmlStatement> = Vec::new();
 
     if lista[index] == "BEGIN" {
         lista.remove(index);
@@ -439,27 +444,34 @@ pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, 
             // Lógica para el Logged Batch -> Aplicación total del batch
         }
     } else {
-        return Ok(None);
+        return Ok(Some(query));
     }
 
     lista.remove(index);
 
     if lista[index] != "BATCH" {
-        return Ok(None);
+        return Ok(Some(query));
     }
 
-    let mut query = None;
+    let mut query: Vec<DmlStatement> = Vec::new();
     while lista[index] != "APPLY" && lista[index + 1] != "BATCH" {
         if lista.is_empty() {
             break;
         }
         if lista[index] == "INSERT" {
-            query = insert_statement(lista)?;
+            if let Some(insert_stmt) = insert_statement(lista)? {
+                query.push(DmlStatement::InsertStatement(insert_stmt));
+            }
         } else if lista[index] == "UPDATE" {
-            query = update_statement(lista)?;
+            if let Some(update_stmt) = update_statement(lista)? {
+                query.push(DmlStatement::UpdateStatement(update_stmt));
+            }
         } else if lista[index] == "DELETE" {
-            query = delete_statement(lista)?;
+            if let Some(delete_stmt) = delete_statement(lista)? {
+                query.push(DmlStatement::DeleteStatement(delete_stmt));
+            }
         }
+        lista.remove(index);
     }
-    Ok(query)
+    Ok(Some(query))
 }

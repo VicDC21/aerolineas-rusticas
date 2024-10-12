@@ -3,6 +3,7 @@ pub mod data_types;
 pub mod delete;
 pub mod expression;
 pub mod group_by;
+pub mod insert;
 pub mod limit;
 pub mod main_parser;
 pub mod operator;
