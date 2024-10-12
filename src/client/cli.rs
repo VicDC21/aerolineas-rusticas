@@ -5,6 +5,8 @@ use std::net::{SocketAddr, TcpStream};
 
 use crate::protocol::aliases::{results::Result, types::Byte};
 use crate::protocol::errors::error::Error;
+use crate::protocol::traits::Byteable;
+use crate::server::actions::opcode::SvAction;
 
 /// Estructura principal de un cliente.
 pub struct Client {
@@ -41,10 +43,14 @@ impl Client {
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
 
-        println!("ECHO MODE:\n----------\nEscribe lo que necesites.\nCuando salgas de este modo, se mandará todo de una al servidor.\n('q' en una línea sola para salir)\n----------\n");
+        println!("ECHO MODE:\n----------\nEscribe lo que necesites.\nCuando salgas de este modo, se mandará todo de una al servidor.\n----------\n'q' en una línea sola para salir\n'shutdown' para mandar un mensaje de apagado al servidor\n----------\n");
 
         for line in reader.lines().map_while(|e| e.ok()) {
             if line.eq_ignore_ascii_case("q") {
+                break;
+            }
+            if line.eq_ignore_ascii_case("shutdown") {
+                let _ = tcp_stream.write_all(&SvAction::Exit.as_bytes()[..]);
                 break;
             }
 

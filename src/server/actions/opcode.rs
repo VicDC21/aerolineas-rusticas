@@ -34,6 +34,14 @@ impl SvAction {
         let opcode = bytes[0];
         (opcode & ACTION_MASK) == ACTION_MASK
     }
+
+    /// Potencialmente consigue una acción.
+    pub fn get_action(bytes: &[Byte]) -> Option<Self> {
+        match Self::try_from(bytes) {
+            Ok(action) => Some(action),
+            Err(_) => None,
+        }
+    }
 }
 
 impl Byteable for SvAction {

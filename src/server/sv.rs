@@ -5,6 +5,7 @@ use std::thread::JoinHandle;
 
 use crate::protocol::aliases::{results::Result, types::Byte};
 use crate::protocol::errors::error::Error;
+use crate::server::actions::opcode::SvAction;
 use crate::server::modes::ConnectionMode;
 use crate::server::nodes::graph::NodeGraph;
 
@@ -66,7 +67,13 @@ impl Server {
                 }
                 Ok(tcp_stream) => {
                     let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
-                    self.graph.send_message(bytes)?;
+                    match SvAction::get_action(&bytes) {
+                        Some(SvAction::Exit) => {
+                            self.graph.shutdown();
+                            break;
+                        }
+                        _ => self.graph.send_message(bytes)?,
+                    }
                 }
             }
         }

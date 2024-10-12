@@ -12,7 +12,9 @@ fn main() {
     match argv[1].as_str() {
         "sv" => {
             let mut server = Server::echo_mode();
-            let _ = server.listen();
+            if let Err(err) = server.listen() {
+                println!("{}", err);
+            }
         }
 
         "cli" => {

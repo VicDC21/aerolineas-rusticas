@@ -53,7 +53,7 @@ impl NodeGraph {
         let mut handlers: Vec<JoinHandle<Result<()>>> = Vec::new();
         for _ in 0..n {
             let current_id = self.add_node_id();
-            let node = Node::new(current_id, self.preferred_mode.clone());
+            let mut node = Node::new(current_id, self.preferred_mode.clone());
 
             let builder = Builder::new().name(format!("{}", current_id));
             let spawn_res = builder.spawn(move || node.listen());
@@ -65,7 +65,7 @@ impl NodeGraph {
     }
 
     /// Agrega un nodo al grafo.
-    /// 
+    ///
     /// También devuelve el ID del nodo recién agregado.
     pub fn add_node_id(&mut self) -> u8 {
         self.node_ids.push(self.prox_id);

@@ -1,11 +1,12 @@
 //! Módulo de nodos.
 
 use std::cmp::{Ordering, PartialEq, PartialOrd};
-use std::io::{BufRead, BufReader};
+use std::io::Read;
 use std::net::TcpListener;
 
-use crate::protocol::aliases::results::Result;
+use crate::protocol::aliases::{results::Result, types::Byte};
 use crate::protocol::errors::error::Error;
+use crate::server::actions::opcode::SvAction;
 use crate::server::modes::ConnectionMode;
 use crate::server::nodes::states::appstatus::AppStatus;
 use crate::server::nodes::states::endpoints::EndpointState;
@@ -69,7 +70,7 @@ impl Node {
     }
 
     /// Escucha por los eventos que recibe.
-    pub fn listen(&self) -> Result<()> {
+    pub fn listen(&mut self) -> Result<()> {
         let listener = match TcpListener::bind(self.endpoint_state.get_addr()) {
             Ok(tcp_listener) => tcp_listener,
             Err(_) => {
@@ -89,16 +90,30 @@ impl Node {
                     )))
                 }
                 Ok(tcp_stream) => {
-                    match self.mode() {
-                        ConnectionMode::Echo => {
-                            let reader = BufReader::new(tcp_stream);
-                            let mut lines = reader.lines();
-                            while let Some(Ok(line)) = lines.next() {
-                                println!("[{} - ECHO] {:?}", self.id, line);
+                    let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
+                    match SvAction::get_action(&bytes[..]) {
+                        Some(action) => {
+                            match action {
+                                SvAction::Exit => break,
+                                SvAction::Beat => {
+                                    self.beat();
+                                }
+                                SvAction::Gossip => {
+                                    // Implementar ronda de gossip
+                                }
                             }
                         }
-                        ConnectionMode::Parsing => {
-                            // Parsear la query
+                        None => {
+                            match self.mode() {
+                                ConnectionMode::Echo => {
+                                    if let Ok(line) = String::from_utf8(bytes) {
+                                        println!("[{} - ECHO] {}", self.id, line);
+                                    }
+                                }
+                                ConnectionMode::Parsing => {
+                                    // Parsear la query
+                                }
+                            }
                         }
                     }
                 }
