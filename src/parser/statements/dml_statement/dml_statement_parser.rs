@@ -6,7 +6,7 @@ use crate::{
             keyspace_name::KeyspaceName, native_types::NativeType,
             quoted_identifier::QuotedIdentifier, term::Term,
             unquoted_identifier::UnquotedIdentifier,
-        }, expression::expression, group_by::GroupBy, order_by::OrderBy, per_partition_limit::PerPartitionLimit, relation::Relation, select::{KindOfColumns, Select, SelectBuilder}, selector::Selector, r#where::Where
+        }, expression::expression, group_by::GroupBy, limit::Limit, order_by::OrderBy, per_partition_limit::PerPartitionLimit, relation::Relation, select::{KindOfColumns, Select, SelectBuilder}, selector::Selector, r#where::Where
     },
 };
 
@@ -127,12 +127,26 @@ pub fn operator(lista: &mut Vec<String>) -> Option<Where> {
     None
 }
 
-pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Option<GroupBy> {
-    if lista[0] == "GROUP" && lista[0 + 1] == "BY" {
+pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
+    if lista[0] == "GROUP" && lista[1] == "BY" {
+        lista.remove(0);
+        lista.remove(0);
+        let mut columns: Vec<Identifier> = Vec::new();
+        match is_column_name(lista)?{
+            Some(value) => columns.push(value),
+            None => return Err(Error::SyntaxError("Columnas de GROUP BY no encontradas".to_string()))
+        };
+        while lista[0] == "," {
+            match is_column_name(lista)?{
+                Some(value) => columns.push(value),
+                None => return Err(Error::SyntaxError("Columnas de GROUP BY no encontradas".to_string()))
+            };
+        };
+        builder.set_group_by(Some(GroupBy::new(columns)));
     } else {
         builder.set_group_by(None);
     }
-    None
+    Ok(())
 }
 
 pub fn ordering_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
@@ -143,35 +157,51 @@ pub fn ordering_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> 
     } else {
         builder.set_order_by(None);
     }
-    builder.set_order_by(None);
     Ok(())
 }
 
 pub fn per_partition_limit_clause(
     lista: &mut Vec<String>,
     builder: &mut SelectBuilder,
-) -> Option<PerPartitionLimit> {
-    if lista[0] == "PER" && lista[0 + 1] == "PARTITION" && lista[0 + 2] == "LIMIT" {
+) -> Result<(), Error> {
+    if lista[0] == "PER" && lista[1] == "PARTITION" && lista[2] == "LIMIT" {
+        lista.remove(0);
+        lista.remove(0);
+        lista.remove(0);
+        let int = lista.remove(0);
+        let int = match int.parse::<i32>(){
+            Ok(value) => Limit::new(value),
+            Err(_e) => return Err(Error::SyntaxError("El valor brindado al Per Partition Limit no es un int".to_string())),
+        };
+        builder.set_limit(Some(int));
     } else {
         builder.set_per_partition_limit(None);
     }
-    None
+    Ok(())
 }
 pub fn limit_clause(
     lista: &mut Vec<String>,
     builder: &mut SelectBuilder,
-) -> Option<PerPartitionLimit> {
+) -> Result<(), Error> {
     if lista[0] == "LIMIT" {
+        lista.remove(0);
+        let int = lista.remove(0);
+        let int = match int.parse::<i32>(){
+            Ok(value) => Limit::new(value),
+            Err(_e) => return Err(Error::SyntaxError("El valor brindado al Limit no es un int".to_string())),
+        };
+        builder.set_limit(Some(int));
     } else {
         builder.set_limit(None);
     }
-    None
+    Ok(())
 }
 pub fn allow_filtering_clause(
     lista: &mut Vec<String>,
     builder: &mut SelectBuilder,
 ) -> Option<PerPartitionLimit> {
     if lista[0] == "ALLOW" && lista[1] == "FILTERING" {
+        builder.set_allow_filtering(Some(true));
     } else {
         builder.set_allow_filtering(None);
     }
