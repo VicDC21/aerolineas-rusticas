@@ -23,6 +23,7 @@ impl Delete {
     }
 }
 
+#[derive(Default)]
 pub struct DeleteBuilder {
     cols: Vec<String>,
     from: String,
@@ -31,20 +32,20 @@ pub struct DeleteBuilder {
 }
 
 impl DeleteBuilder {
-    fn set_cols(&mut self, cols: Vec<String>) {
+    pub fn set_cols(&mut self, cols: Vec<String>) {
         self.cols = cols;
     }
-    fn set_from(&mut self, table_name: String) {
+    pub fn set_from(&mut self, table_name: String) {
         self.from = table_name;
     }
-    fn set_where(&mut self, r#where: Option<Where>) {
+    pub fn set_where(&mut self, r#where: Option<Where>) {
         self.the_where = r#where;
     }
-    fn set_update_parameter(&mut self, update_parameter: Option<UpdateParameter>) {
+    pub fn set_update_parameter(&mut self, update_parameter: Option<UpdateParameter>) {
         self.update_parameter = update_parameter;
     }
 
-    fn build(self) -> Delete {
+    pub fn build(self) -> Delete {
         Delete::new(self.cols, self.from, self.the_where, self.update_parameter)
     }
 }

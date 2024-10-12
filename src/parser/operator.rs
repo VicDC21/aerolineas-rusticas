@@ -10,9 +10,8 @@ pub enum Operator {
     ContainsKey,
 }
 
-
-impl Operator{
-    pub fn is_operator(operator: &String) -> Option<Operator>{
+impl Operator {
+    pub fn is_operator(operator: &String) -> Option<Operator> {
         if operator == "<" {
             Some(Operator::Minor)
         } else if operator == ">" {

@@ -1,3 +1,5 @@
+use std::thread::Builder;
+
 use crate::{
     cassandra::errors::error::Error,
     parser::{
@@ -6,7 +8,18 @@ use crate::{
             keyspace_name::KeyspaceName, native_types::NativeType,
             quoted_identifier::QuotedIdentifier, term::Term,
             unquoted_identifier::UnquotedIdentifier,
-        }, expression::expression, group_by::GroupBy, limit::Limit, order_by::OrderBy, per_partition_limit::PerPartitionLimit, relation::Relation, select::{KindOfColumns, Select, SelectBuilder}, selector::Selector, r#where::Where
+        },
+        delete::DeleteBuilder,
+        expression::expression,
+        group_by::GroupBy,
+        limit::Limit,
+        order_by::OrderBy,
+        per_partition_limit::PerPartitionLimit,
+        r#where::Where,
+        relation::Relation,
+        select::{KindOfColumns, Select, SelectBuilder},
+        selector::Selector,
+        update::UpdateBuilder,
     },
 };
 
@@ -53,7 +66,7 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
             builder.set_select_clause(KindOfColumns::SelectClause(res));
         }
         from_clause(lista, &mut builder);
-        where_clause(lista, &mut builder);
+        builder.set_where(where_clause(lista));
         ordering_clause(lista, &mut builder);
         per_partition_limit_clause(lista, &mut builder);
         limit_clause(lista, &mut builder);
@@ -102,19 +115,16 @@ pub fn from_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Resu
     Ok(())
 }
 
-pub fn where_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
+pub fn where_clause(lista: &mut Vec<String>) -> Option<Where> {
+    let where_expr: Where;
     if lista[0] == "WHERE" {
         lista.remove(0);
-        let expression = expression(lista)?;
-        Where::new(expression);
-        // let res = where_clause(lista);
+        where_expr = Where::new(expression(lista).ok()?);
     } else {
-        builder.set_where(None);
+        return Some(Where::new(None));
     }
-    Ok(())
+    Some(where_expr)
 }
-
-
 
 pub fn relation(lista: &mut Vec<String>) -> Result<Option<Relation>, Error> {
     if let Some(value) = is_column_name(lista)? {
@@ -132,16 +142,24 @@ pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> 
         lista.remove(0);
         lista.remove(0);
         let mut columns: Vec<Identifier> = Vec::new();
-        match is_column_name(lista)?{
+        match is_column_name(lista)? {
             Some(value) => columns.push(value),
-            None => return Err(Error::SyntaxError("Columnas de GROUP BY no encontradas".to_string()))
+            None => {
+                return Err(Error::SyntaxError(
+                    "Columnas de GROUP BY no encontradas".to_string(),
+                ))
+            }
         };
         while lista[0] == "," {
-            match is_column_name(lista)?{
+            match is_column_name(lista)? {
                 Some(value) => columns.push(value),
-                None => return Err(Error::SyntaxError("Columnas de GROUP BY no encontradas".to_string()))
+                None => {
+                    return Err(Error::SyntaxError(
+                        "Columnas de GROUP BY no encontradas".to_string(),
+                    ))
+                }
             };
-        };
+        }
         builder.set_group_by(Some(GroupBy::new(columns)));
     } else {
         builder.set_group_by(None);
@@ -151,9 +169,7 @@ pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> 
 
 pub fn ordering_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
     if lista[0] == "ORDER" && lista[1] == "BY" {
-        if let Some(value) = is_column_name(lista)?{
-        }
-
+        if let Some(value) = is_column_name(lista)? {}
     } else {
         builder.set_order_by(None);
     }
@@ -169,9 +185,13 @@ pub fn per_partition_limit_clause(
         lista.remove(0);
         lista.remove(0);
         let int = lista.remove(0);
-        let int = match int.parse::<i32>(){
+        let int = match int.parse::<i32>() {
             Ok(value) => Limit::new(value),
-            Err(_e) => return Err(Error::SyntaxError("El valor brindado al Per Partition Limit no es un int".to_string())),
+            Err(_e) => {
+                return Err(Error::SyntaxError(
+                    "El valor brindado al Per Partition Limit no es un int".to_string(),
+                ))
+            }
         };
         builder.set_limit(Some(int));
     } else {
@@ -179,16 +199,17 @@ pub fn per_partition_limit_clause(
     }
     Ok(())
 }
-pub fn limit_clause(
-    lista: &mut Vec<String>,
-    builder: &mut SelectBuilder,
-) -> Result<(), Error> {
+pub fn limit_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
     if lista[0] == "LIMIT" {
         lista.remove(0);
         let int = lista.remove(0);
-        let int = match int.parse::<i32>(){
+        let int = match int.parse::<i32>() {
             Ok(value) => Limit::new(value),
-            Err(_e) => return Err(Error::SyntaxError("El valor brindado al Limit no es un int".to_string())),
+            Err(_e) => {
+                return Err(Error::SyntaxError(
+                    "El valor brindado al Limit no es un int".to_string(),
+                ))
+            }
         };
         builder.set_limit(Some(int));
     } else {
@@ -269,7 +290,8 @@ pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error> {
     Ok(None)
 }
 
-pub fn get_clauses(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> { //cambiaste select_clause por esta funcion no?
+pub fn get_clauses(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
+    //cambiaste select_clause por esta funcion no?
     if lista[0] != "FROM" {
         let mut vec: Vec<Selector> = Vec::new();
         if let Some(sel) = selector(lista)? {
@@ -290,6 +312,7 @@ pub fn get_clauses(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Err
 pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
     let index: usize = 0;
     if lista[index] == "DELETE" {
+        let mut builder = DeleteBuilder::default();
         lista.remove(index);
 
         if lista[index] != "FROM" {
@@ -317,7 +340,7 @@ pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
 
         if lista[index] == "WHERE" {
             lista.remove(index);
-            let res = where_clause(lista);
+            builder.set_where(where_clause(lista));
             if lista[index] == "IF" {
                 lista.remove(index);
                 // Chequeo sintaxis de condicionales para la query
@@ -369,6 +392,7 @@ pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
 pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
     let index = 0;
     if lista[0] == "UPDATE" {
+        let mut builder = UpdateBuilder::default();
         // Guardar el nombre de la tabla
         let file_name: String = lista.remove(index);
         check_file_name(file_name);
@@ -387,7 +411,7 @@ pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
 
         if lista[index] == "WHERE" {
             lista.remove(index);
-            let res = where_clause(lista);
+            builder.set_where(where_clause(lista));
             if lista[index] == "IF" {
                 lista.remove(index);
                 // Chequeo sintaxis de condicionales para la query

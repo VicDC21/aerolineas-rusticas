@@ -26,6 +26,7 @@ impl Update {
     }
 }
 
+#[derive(Default)]
 pub struct UpdateBuilder {
     table_name: String,
     update_parameter: Option<UpdateParameter>,
@@ -35,25 +36,25 @@ pub struct UpdateBuilder {
 }
 
 impl UpdateBuilder {
-    fn set_table_name(&mut self, table_name: String) {
+    pub fn set_table_name(&mut self, table_name: String) {
         self.table_name = table_name;
     }
 
-    fn set_update_parameter(&mut self, update_parameter: Option<UpdateParameter>) {
+    pub fn set_update_parameter(&mut self, update_parameter: Option<UpdateParameter>) {
         self.update_parameter = update_parameter;
     }
-    fn set_set_parameter(&mut self, set_parameter: Option<SetParameter>) {
+    pub fn set_set_parameter(&mut self, set_parameter: Option<SetParameter>) {
         self.set_parameter = set_parameter;
     }
 
-    fn set_where(&mut self, r#where: Option<Where>) {
+    pub fn set_where(&mut self, r#where: Option<Where>) {
         self.the_where = r#where;
     }
-    fn set_if_exists(&mut self, if_exists: Option<bool>) {
+    pub fn set_if_exists(&mut self, if_exists: Option<bool>) {
         self.if_exists = if_exists;
     }
 
-    fn build(self) -> Update {
+    pub fn build(self) -> Update {
         Update::new(
             self.table_name,
             self.update_parameter,

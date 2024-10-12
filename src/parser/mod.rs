@@ -1,5 +1,7 @@
+pub mod and;
 pub mod data_types;
 pub mod delete;
+pub mod expression;
 pub mod group_by;
 pub mod limit;
 pub mod main_parser;
@@ -14,5 +16,3 @@ pub mod statements;
 pub mod update;
 pub mod update_parameter;
 pub mod r#where;
-pub mod expression;
-pub mod and;
