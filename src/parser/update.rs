@@ -5,7 +5,7 @@ pub struct Update {
     update_parameter: Option<UpdateParameter>,
     set_parameter: Option<SetParameter>,
     the_where: Option<Where>,
-    allow_filtering: Option<bool>,
+    if_exists: Option<bool>,
 }
 
 impl Update {
@@ -14,14 +14,14 @@ impl Update {
         update_parameter: Option<UpdateParameter>,
         set_parameter: Option<SetParameter>,
         the_where: Option<Where>,
-        allow_filtering: Option<bool>,
+        if_exists: Option<bool>,
     ) -> Update {
         Update {
             table_name,
             update_parameter,
             set_parameter,
             the_where,
-            allow_filtering,
+            if_exists,
         }
     }
 }
@@ -31,7 +31,7 @@ pub struct UpdateBuilder {
     update_parameter: Option<UpdateParameter>,
     set_parameter: Option<SetParameter>,
     the_where: Option<Where>,
-    allow_filtering: Option<bool>,
+    if_exists: Option<bool>,
 }
 
 impl UpdateBuilder {
@@ -49,8 +49,8 @@ impl UpdateBuilder {
     fn set_where(&mut self, r#where: Option<Where>) {
         self.the_where = r#where;
     }
-    fn set_allow_filtering(&mut self, allow_filtering: Option<bool>) {
-        self.allow_filtering = allow_filtering;
+    fn set_if_exists(&mut self, if_exists: Option<bool>) {
+        self.if_exists = if_exists;
     }
 
     fn build(self) -> Update {
@@ -59,7 +59,7 @@ impl UpdateBuilder {
             self.update_parameter,
             self.set_parameter,
             self.the_where,
-            self.allow_filtering,
+            self.if_exists,
         )
     }
 }

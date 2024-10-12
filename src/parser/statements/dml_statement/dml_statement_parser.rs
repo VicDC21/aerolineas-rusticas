@@ -13,6 +13,7 @@ use crate::{
         selector::Selector,
     },
 };
+use std::fs::File;
 
 pub enum DmlStatement {
     SelectStatement,
@@ -197,13 +198,8 @@ pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
             }
         }
 
-        lista.remove(index);
-        if lista[index] == "file_name" {
-            lista.remove(index);
-            // Chequeo si es un archivo válido
-        } else {
-            return Ok(None);
-        }
+        let file_name: String = lista.remove(index);
+        check_file_name(file_name);
 
         if lista[index] == "USING" {
             lista.remove(index);
@@ -228,41 +224,36 @@ pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
     Ok(None)
 }
 
+fn check_file_name(file_name: String) {}
+
 pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
     let index = 0;
     if lista[index] == "INSERT" && lista[index + 1] == "INTO" {
         lista.remove(index);
         lista.remove(index);
 
-        if lista[index] == "file_name" {
-            lista.remove(index);
-            // Chequeo si es un archivo válido
-            if lista[index] == "JSON" {
-                // Chequeo si la sintaxis JSON es válida
-            } else {
-                // Chequeo si la sintaxis de las columnas es válida (o crear si no existe alguna)
-            }
+        // Guardar el nombre de la tabla
+        let file_name: String = lista.remove(index);
+        check_file_name(file_name);
+
+        if lista[index] == "JSON" {
+            // Chequeo si la sintaxis JSON es válida
         } else {
-            return Ok(None);
+            // Chequeo si la sintaxis de las columnas es válida (o crear si no existe alguna)
         }
 
-        if lista[index] == "IF" {
-            lista.remove(index);
+        if lista[index] == "IF" && lista[index + 1] == "NOT" && lista[index + 2] == "EXISTS" {
             // Chequeo de la sintaxis de IF NOT EXISTS
         }
 
         if lista[index] == "VALUES" {
             lista.remove(index);
             // Chequeo/match de valores con columnas
-        } else {
-            return Ok(None);
         }
 
         if lista[index] == "USING" {
             lista.remove(index);
             // Chequeo de la sintaxis de USING
-        } else {
-            return Ok(None);
         }
     }
     Ok(None)
@@ -271,19 +262,13 @@ pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
 pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
     let index = 0;
     if lista[0] == "UPDATE" {
-        lista.remove(index);
-        if lista[index] == "file_name" {
-            lista.remove(index);
-            // Chequeo si es un archivo válido
-        } else {
-            return Ok(None);
-        }
+        // Guardar el nombre de la tabla
+        let file_name: String = lista.remove(index);
+        check_file_name(file_name);
 
         if lista[index] == "USING" {
             lista.remove(index);
             // Chequeo de la sintaxis de USING
-        } else {
-            return Ok(None);
         }
 
         if lista[index] == "SET" {
@@ -299,8 +284,6 @@ pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>,
             if lista[index] == "IF" {
                 lista.remove(index);
                 // Chequeo sintaxis de condicionales para la query
-            } else {
-                return Ok(None);
             }
         } else {
             return Ok(None);
@@ -318,25 +301,34 @@ pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, 
         if lista[index] == "UNLOGGED" {
             // Lógica para el Unlogged Batch -> Aplicación parcial del batch
             lista.remove(index);
-            lista.remove(index);
         } else if lista[index] == "COUNTER" {
             // Lógica para el Counter Batch -> Aplicación para contadores
             lista.remove(index);
-            lista.remove(index);
         } else {
             // Lógica para el Logged Batch -> Aplicación total del batch
-            lista.remove(index);
         }
+    } else {
+        return Ok(None);
+    }
+
+    lista.remove(index);
+
+    if lista[index] != "BATCH" {
+        return Ok(None);
     }
 
     let mut query = None;
-    if lista[index] == "INSERT" {
-        query = insert_statement(lista)?;
-    } else if lista[index] == "UPDATE" {
-        query = update_statement(lista)?;
-    } else if lista[index] == "DELETE" {
-        query = delete_statement(lista)?;
+    while lista[index] != "APPLY" && lista[index + 1] != "BATCH" {
+        if lista.is_empty() {
+            break;
+        }
+        if lista[index] == "INSERT" {
+            query = insert_statement(lista)?;
+        } else if lista[index] == "UPDATE" {
+            query = update_statement(lista)?;
+        } else if lista[index] == "DELETE" {
+            query = delete_statement(lista)?;
+        }
     }
-
     Ok(query)
 }
