@@ -9,18 +9,19 @@ use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 use crate::server::actions::opcode::SvAction;
 use crate::server::modes::ConnectionMode;
-use crate::server::nodes::states::appstatus::AppStatus;
-use crate::server::nodes::states::endpoints::EndpointState;
-use crate::server::nodes::states::heartbeat::{GenType, VerType};
-
-use super::graph::NodeGraph;
+use crate::server::nodes::graph::NodeGraph;
+use crate::server::nodes::states::{
+    appstatus::AppStatus,
+    endpoints::EndpointState,
+    heartbeat::{GenType, VerType},
+};
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
     /// El ID del nodo mismo.
     id: u8,
 
-    /// Los IDs de los nodos vecinos.
+    /// Los estados de los nodos vecinos, incluyendo este mismo.
     ///
     /// No necesariamente serán todos los otros nodos del grafo, sólo los que este nodo conoce.
     neighbours_states: Vec<EndpointState>,

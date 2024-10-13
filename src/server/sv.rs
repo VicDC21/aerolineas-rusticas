@@ -56,6 +56,7 @@ impl Server {
 
         let mut handlers: Vec<JoinHandle<Result<()>>> = Vec::new();
         handlers.push(self.graph.beater()?);
+        handlers.push(self.graph.gossip_round()?);
         handlers.extend(self.graph.bootup(5)?);
 
         for tcp_stream_res in listener.incoming() {

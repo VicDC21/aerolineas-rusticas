@@ -1,7 +1,7 @@
 //! Módulo para grafo de nodos.
 
-use rand::distributions::Distribution;
-use rand::distributions::WeightedIndex;
+use rand::distributions::{Distribution, WeightedIndex};
+use rand::thread_rng;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
@@ -17,7 +17,12 @@ use crate::server::modes::ConnectionMode;
 use crate::server::nodes::node::Node;
 use crate::server::nodes::states::endpoints::PORT;
 
+/// El ID c on el que comenzar a contar los nodos.
 const START_ID: u8 = 10;
+/// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
+const HANDSHAKE_NEIGHBOURS: u8 = 3;
+/// La cantidad de nodos que comenzarán su intercambio de _gossip_ con otros [n](crate::server::nodes::graph::HANDSHAKE_NEIGHBOURS) nodos.
+const SIMULTANEOUS_GOSSIPERS: u8 = 3;
 
 /// Un grafo es una colección de nodos.
 pub struct NodeGraph {
@@ -55,6 +60,11 @@ impl NodeGraph {
         self.node_ids.clone()
     }
 
+    /// Genera un vector de los pesos de los nodos.
+    pub fn get_weights(&self) -> Vec<u8> {
+        self.node_weights.clone()
+    }
+
     /// "Inicia" los nodos del grafo en sus propios hilos.
     pub fn bootup(&mut self, n: u8) -> Result<Vec<JoinHandle<Result<()>>>> {
         self.node_weights = vec![1; n as usize];
@@ -69,6 +79,8 @@ impl NodeGraph {
                 handlers.push(handler);
             }
         }
+        // TODO: Idealmente sólo un nodo o un par (los nodos "seed") deberían tener toda la info
+        // al principio. Ya el gossip se encargará de poblar el resto.
         for node_id in self.get_ids() {
             self.send_states_to_node(node_id);
         }
@@ -76,25 +88,37 @@ impl NodeGraph {
     }
 
     /// Realiza una ronda de _gossip_.
-    pub fn gossip_round(&self, id: u8) {
-        let dist = if let Ok(dist) = WeightedIndex::new(&self.node_weights) {
-            dist
-        } else {
-            return;
-        };
+    pub fn gossip_round(&self) -> Result<JoinHandle<Result<()>>> {
+        let builder = Builder::new().name("gossip".to_string());
+        let weights = self.get_weights();
+        match builder.spawn(move || {
+            sleep(Duration::from_millis(200));
+            let dist = if let Ok(dist) = WeightedIndex::new(weights) {
+                dist
+            } else {
+                return Ok(());
+            };
 
-        let mut rng = rand::thread_rng();
-        let mut selected_ids = HashSet::new();
-        while selected_ids.len() < 3 {
-            let selected_id = dist.sample(&mut rng);
-            selected_ids.insert(selected_id);
-        }
-
-        // TODO: Implementar el envío de mensajes de gossip incluyendo los ids seleccionados
-        for selected_id in selected_ids {
-            if let Err(err) = Self::send_to_node(id, SvAction::Gossip.as_bytes()) {
-                println!("Ocurrió un error enviando mensaje de gossip:\n\n{}", err);
+            let mut rng = thread_rng();
+            let mut selected_ids = HashSet::new();
+            while selected_ids.len() < SIMULTANEOUS_GOSSIPERS as usize {
+                let selected_id = dist.sample(&mut rng);
+                selected_ids.insert(selected_id);
             }
+
+            // TODO: Implementar el envío de mensajes de gossip incluyendo los ids seleccionados
+            for selected_id in selected_ids {
+                if let Err(err) = Self::send_to_node(selected_id as u8, SvAction::Gossip.as_bytes())
+                {
+                    println!("Ocurrió un error enviando mensaje de gossip:\n\n{}", err);
+                }
+            }
+            Ok(())
+        }) {
+            Ok(handler) => Ok(handler),
+            Err(_) => Err(Error::ServerError(
+                "Error procesando la ronda de gossip de los nodos.".to_string(),
+            )),
         }
     }
 
