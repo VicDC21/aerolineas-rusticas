@@ -22,9 +22,6 @@ pub enum SvAction {
     /// Iniciar ronda de _Gossip_.
     Gossip,
 
-    /// Actualizar el peso de un nodo, segun el id correspondiente.
-    SetWeight(u8),
-
     /// Añadir un nuevo vecino.
     NewNeighbour(EndpointState),
 
@@ -60,10 +57,9 @@ impl Byteable for SvAction {
             Self::Exit => vec![0xF0],
             Self::Beat => vec![0xF1],
             Self::Gossip => vec![0xF2],
-            Self::SetWeight(weight) => vec![0xF3, *weight],
-            Self::SendEndpointState(id) => vec![0xF4, *id],
+            Self::SendEndpointState(id) => vec![0xF3, *id],
             Self::NewNeighbour(state) => {
-                let mut bytes = vec![0xF5];
+                let mut bytes = vec![0xF4];
                 bytes.extend(state.as_bytes());
                 bytes
             }
@@ -95,21 +91,13 @@ impl TryFrom<&[Byte]> for SvAction {
             0xF3 => {
                 if bytes.len() < 2 {
                     return Err(Error::ServerError(
-                        "Conjunto de bytes demasiado chico para `SetWeight`.".to_string(),
-                    ));
-                }
-                Ok(Self::SetWeight(bytes[1]))
-            }
-            0xF4 => {
-                if bytes.len() < 2 {
-                    return Err(Error::ServerError(
                         "Conjunto de bytes demasiado chico para `NewNeighbour`.".to_string(),
                     ));
                 }
                 let state = EndpointState::try_from(&bytes[1..])?;
                 Ok(Self::NewNeighbour(state))
             }
-            0xF5 => {
+            0xF4 => {
                 if bytes.len() < 2 {
                     return Err(Error::ServerError(
                         "Conjunto de bytes demasiado chico para `SendEndpointState`.".to_string(),

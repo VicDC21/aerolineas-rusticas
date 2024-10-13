@@ -1,5 +1,8 @@
 //! Módulo para grafo de nodos.
 
+use rand::distributions::Distribution;
+use rand::distributions::WeightedIndex;
+use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
@@ -21,6 +24,9 @@ pub struct NodeGraph {
     /// Todos los IDs de nodos bajo este grafo.
     node_ids: Vec<u8>,
 
+    /// Los pesos de los nodos.
+    node_weights: Vec<u8>,
+
     /// El próximo id disponible para un nodo.
     prox_id: u8,
 
@@ -35,6 +41,7 @@ impl NodeGraph {
             node_ids,
             prox_id,
             preferred_mode,
+            node_weights: Vec::new(),
         }
     }
 
@@ -48,22 +55,13 @@ impl NodeGraph {
         self.node_ids.clone()
     }
 
-    /// Envia la accion de actualizar el peso de un nodo.
-    pub fn set_node_weight(&self, id: u8, weight: u8) {
-        if let Err(err) = Self::send_to_node(id, SvAction::SetWeight(weight).as_bytes()) {
-            println!(
-                "Ocurrió un error actualizando el peso de un nodo:\n\n{}",
-                err
-            );
-        }
-    }
-
     /// "Inicia" los nodos del grafo en sus propios hilos.
     pub fn bootup(&mut self, n: u8) -> Result<Vec<JoinHandle<Result<()>>>> {
+        self.node_weights = vec![1; n as usize];
         let mut handlers: Vec<JoinHandle<Result<()>>> = Vec::new();
         for _ in 0..n {
             let current_id = self.add_node_id();
-            let mut node = Node::new(current_id, self.preferred_mode.clone(), 1);
+            let mut node = Node::new(current_id, self.preferred_mode.clone());
 
             let builder = Builder::new().name(format!("{}", current_id));
             let spawn_res = builder.spawn(move || node.listen());
@@ -75,6 +73,29 @@ impl NodeGraph {
             self.send_states_to_node(node_id);
         }
         Ok(handlers)
+    }
+
+    /// Realiza una ronda de _gossip_.
+    pub fn gossip_round(&self, id: u8) {
+        let dist = if let Ok(dist) = WeightedIndex::new(&self.node_weights) {
+            dist
+        } else {
+            return;
+        };
+
+        let mut rng = rand::thread_rng();
+        let mut selected_ids = HashSet::new();
+        while selected_ids.len() < 3 {
+            let selected_id = dist.sample(&mut rng);
+            selected_ids.insert(selected_id);
+        }
+
+        // TODO: Implementar el envío de mensajes de gossip incluyendo los ids seleccionados
+        for selected_id in selected_ids {
+            if let Err(err) = Self::send_to_node(id, SvAction::Gossip.as_bytes()) {
+                println!("Ocurrió un error enviando mensaje de gossip:\n\n{}", err);
+            }
+        }
     }
 
     /// Agrega un nodo al grafo.

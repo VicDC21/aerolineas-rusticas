@@ -27,19 +27,15 @@ pub struct Node {
 
     /// Estado actual del nodo.
     endpoint_state: EndpointState,
-
-    /// Peso del nodo para ser seleccionado en la ronda de _gossip_.
-    weight: u8,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
-    pub fn new(id: u8, mode: ConnectionMode, weight: u8) -> Self {
+    pub fn new(id: u8, mode: ConnectionMode) -> Self {
         Self {
             id,
             neighbours_states: Vec::<EndpointState>::new(),
             endpoint_state: EndpointState::with_id_and_mode(id, mode),
-            weight,
         }
     }
 
@@ -68,11 +64,6 @@ impl Node {
 
     fn add_neighbour_state(&mut self, state: EndpointState) {
         self.neighbours_states.push(state);
-    }
-
-    /// Actualiza el peso del nodo.
-    fn set_weight(&mut self, weight: u8) {
-        self.weight = weight;
     }
 
     /// Ve si el nodo es un nodo "hoja".
@@ -134,9 +125,6 @@ impl Node {
                                 }
                                 SvAction::Gossip => {
                                     // Implementar ronda de gossip
-                                }
-                                SvAction::SetWeight(weight) => {
-                                    self.set_weight(weight);
                                 }
                                 SvAction::NewNeighbour(state) => {
                                     self.add_neighbour_state(state);
