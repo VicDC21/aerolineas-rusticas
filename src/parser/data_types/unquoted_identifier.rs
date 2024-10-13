@@ -8,7 +8,9 @@ impl UnquotedIdentifier {
     pub fn new(text: String) -> Self {
         UnquotedIdentifier { text }
     }
-
+    pub fn get_name(&self) -> &str{
+        &self.text
+    }
     pub fn check_unquoted_identifier(first: &String) -> bool {
         if !first.chars().all(char::is_alphabetic) {
             return false;

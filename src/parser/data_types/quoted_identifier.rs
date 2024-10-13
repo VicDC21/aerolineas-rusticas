@@ -9,6 +9,10 @@ impl QuotedIdentifier {
         QuotedIdentifier { text }
     }
 
+    pub fn get_name(&self) -> &str{
+        &self.text
+    }
+
     pub fn check_quoted_identifier(first: &String, second: &String, third: &String) -> bool {
         if first != "\"" || third != "\"" {
             return false;

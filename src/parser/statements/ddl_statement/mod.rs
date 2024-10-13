@@ -1,1 +1,8 @@
 pub mod ddl_statement_parser;
+pub mod create_keyspace;
+pub mod drop_keyspace;
+pub mod alter_keyspace;
+pub mod create_table;
+pub mod drop_table;
+pub mod alter_table;
+pub mod truncate;

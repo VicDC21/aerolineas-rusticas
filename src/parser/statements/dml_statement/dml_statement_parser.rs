@@ -1,5 +1,5 @@
 use crate::{
-    cassandra::errors::error::Error,
+    cassandra::errors::error::{self, Error},
     parser::{
         data_types::{
             constant::Constant, cql_type::CQLType, identifier::Identifier,
@@ -115,14 +115,13 @@ pub fn from_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Resu
     Ok(())
 }
 
-pub fn where_clause(lista: &mut Vec<String>) -> Option<Where> {
-    let where_expr: Where = if lista[0] == "WHERE" {
+pub fn where_clause(lista: &mut Vec<String>) -> Result<Option<Where>, Error> {
+    if lista[0] == "WHERE" {
         lista.remove(0);
-        Where::new(expression(lista).ok()?)
+        return Ok(Some(Where::new(expression(lista)?)));
     } else {
-        return Some(Where::new(None));
-    };
-    Some(where_expr)
+        return Ok(Some(Where::new(None)));
+    }
 }
 
 pub fn relation(lista: &mut Vec<String>) -> Result<Option<Relation>, Error> {
