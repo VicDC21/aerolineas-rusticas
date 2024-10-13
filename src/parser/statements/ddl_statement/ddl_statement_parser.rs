@@ -3,8 +3,8 @@ use crate::{
     parser::{
         column_definition::ColumnDefinition,
         data_types::{
-            identifier::Identifier, keyspace_name::KeyspaceName, option::Options,
-            unquoted_name::UnquotedName,
+            self, cql_type::CQLType, identifier::Identifier, keyspace_name::KeyspaceName,
+            native_types::parse_data_type, option::Options, unquoted_name::UnquotedName,
         },
         primary_key::PrimaryKey,
         table_name::TableName,
@@ -229,7 +229,19 @@ pub fn create_table_statement(lista: &mut Vec<String>) -> Result<Option<CreateTa
 fn parse_column_definitions(lista: &mut Vec<String>) -> Result<Vec<ColumnDefinition>, Error> {
     let mut columns = Vec::new();
     loop {
-        let column = ColumnDefinition::parse(lista)?;
+        let name = match Identifier::check_identifier(lista)? {
+            Some(id) => id.get_name().to_string(),
+            None => return Err(Error::SyntaxError("Expected column name".to_string())),
+        };
+
+        let data_type = parse_data_type(lista)?;
+
+        let mut is_static = false;
+        if check_words(lista, "STATIC") {
+            is_static = true;
+        }
+
+        let column = ColumnDefinition::new(name, CQLType::NativeType(data_type), is_static);
         columns.push(column);
 
         if !check_words(lista, ",") {

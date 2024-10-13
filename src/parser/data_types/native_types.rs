@@ -1,3 +1,6 @@
+use crate::cassandra::errors::error::Error;
+
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub enum NativeType {
     /// ASCII character string
     Ascii,
@@ -64,4 +67,40 @@ pub enum NativeType {
 
     /// A fixed length non-null, flattened array of float values CASSANDRA-18504 added this data type to Cassandra 5.0.
     Vector,
+}
+
+pub fn parse_data_type(tokens: &mut Vec<String>) -> Result<NativeType, Error> {
+    if tokens.is_empty() {
+        return Err(Error::SyntaxError("Expected data type".to_string()));
+    }
+
+    let type_name = tokens.remove(0).to_lowercase();
+
+    match type_name.as_str() {
+        "ascii" => Ok(NativeType::Ascii),
+        "bigint" => Ok(NativeType::Bigint),
+        "blob" => Ok(NativeType::Blob),
+        "boolean" => Ok(NativeType::Boolean),
+        "counter" => Ok(NativeType::Counter),
+        "date" => Ok(NativeType::Date),
+        "decimal" => Ok(NativeType::Decimal),
+        "double" => Ok(NativeType::Double),
+        "duration" => Ok(NativeType::Duration),
+        "float" => Ok(NativeType::Float),
+        "inet" => Ok(NativeType::Inet),
+        "int" => Ok(NativeType::Int),
+        "smallint" => Ok(NativeType::SmallInt),
+        "text" => Ok(NativeType::Text),
+        "time" => Ok(NativeType::Time),
+        "timestamp" => Ok(NativeType::TimeStamp),
+        "timeuuid" => Ok(NativeType::TimeUuid),
+        "tinyint" => Ok(NativeType::TinyInt),
+        "uuid" => Ok(NativeType::Uuid),
+        "varchar" => Ok(NativeType::Varchar),
+        "varint" => Ok(NativeType::Varint),
+        _ => Err(Error::SyntaxError(format!(
+            "Unknown data type: {}",
+            type_name
+        ))),
+    }
 }
