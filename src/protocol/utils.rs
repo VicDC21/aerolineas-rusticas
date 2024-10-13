@@ -117,6 +117,75 @@ pub fn encode_reasonmap_to_bytes(hashmap: &ReasonMap) -> Vec<Byte> {
     bytes_vec
 }
 
+/// Esto quizá suene un poco redundante, pero el protocolo de Cassandra requiere que si se tiene
+/// una secuencia de bytes crudos, la cantidad también sea explicitada justo antes.
+///
+/// Dicha cantidad es expresada con un [Int](crate::protocol::aliases::types::Int), y luego le sigue
+/// el contenido de [Byte]s tal cual.
+///
+/// ```rust
+/// # use aerolineas::protocol::utils::encode_bytes_collection_to_bytes;
+/// let bytes = [0x1, 0x2, 0x3, 0x4, 0x5, 0xF];
+///
+/// assert_eq!(encode_bytes_collection_to_bytes(&bytes[..]), vec![0x0, 0x0, 0x0, 0x6,
+///                                                               0x1, 0x2, 0x3, 0x4, 0x5, 0xF])
+/// ```
+pub fn encode_bytes_collection_to_bytes(bytes: &[Byte]) -> Vec<Byte> {
+    let mut bytes_vec: Vec<Byte> = vec![];
+    let collection_len = bytes.len();
+    let collection_len_bytes = collection_len.to_le_bytes();
+
+    bytes_vec.extend_from_slice(&[
+        collection_len_bytes[3],
+        collection_len_bytes[2],
+        collection_len_bytes[1],
+        collection_len_bytes[0],
+    ]);
+    bytes_vec.extend_from_slice(bytes);
+
+    bytes_vec
+}
+
+/// Transforma un iterador de coleccion de [bytes](encode_bytes_collection_to_bytes) en un conjunto
+/// de [Byte]s conforme al protocolo de Cassandra.
+///
+/// Este iterador puede ser una lista, un set, o algo más.
+///
+/// <div class="warning">
+///
+/// Este método **consume el iterador.** Tener cuidado de clonarlo o dejar esta operación para lo último.
+///
+/// </div>
+///
+/// ```rust
+/// # use aerolineas::protocol::utils::encode_iter_to_bytes;
+/// let iter_bytes = [vec![0x1, 0x2, 0x3, 0x4, 0x5, 0xF],
+///                  vec![0x6, 0x7, 0x8, 0x8, 0xE],
+///                  vec![0xA, 0xB, 0xC]].into_iter();
+///
+/// assert_eq!(encode_iter_to_bytes(iter_bytes), vec![0x0, 0x0, 0x0, 0x3,
+///                                                   0x0, 0x0, 0x0, 0x6, 0x1, 0x2, 0x3, 0x4, 0x5, 0xF,
+///                                                   0x0, 0x0, 0x0, 0x5, 0x6, 0x7, 0x8, 0x8, 0xE,
+///                                                   0x0, 0x0, 0x0, 0x3, 0xA, 0xB, 0xC])
+/// ```
+pub fn encode_iter_to_bytes(iterator: impl Iterator<Item = Vec<Byte>>) -> Vec<Byte> {
+    let mut bytes_vec: Vec<Byte> = vec![];
+    let collection: Vec<Vec<Byte>> = iterator.collect();
+    let collection_len_bytes = collection.len().to_le_bytes();
+
+    bytes_vec.extend_from_slice(&[
+        collection_len_bytes[3],
+        collection_len_bytes[2],
+        collection_len_bytes[1],
+        collection_len_bytes[0],
+    ]);
+    for bytes in collection {
+        bytes_vec.extend(encode_bytes_collection_to_bytes(&bytes[..]));
+    }
+
+    bytes_vec
+}
+
 /// Parsea un conjunto de [Byte]s de vuelta a un objeto [String].
 ///
 /// Esta es la operación recíproca a [encodearlos](encode_string_to_bytes).
@@ -221,25 +290,21 @@ pub fn parse_bytes_to_ipaddr(bytes: &[Byte], i: &mut usize) -> Result<IpAddr> {
 ///     assert_eq!(i, 4 + (1 + 4 + 2) + (1 + 16 + 2) + (1 + 4 + 2));
 /// }
 /// ```
-pub fn parse_bytes_to_reasonmap(bytes_vec: &[Byte], i: &mut usize) -> Result<ReasonMap> {
-    if bytes_vec.len() < 4 {
+pub fn parse_bytes_to_reasonmap(bytes: &[Byte], i: &mut usize) -> Result<ReasonMap> {
+    if bytes.len() < 4 {
         return Err(Error::SyntaxError(
             "Se esperaban 4 bytes que indiquen el tamaño del reasonmap a formar".to_string(),
         ));
     }
     let mut j: usize = 0;
-    let hashmap_len = Int::from_le_bytes([
-        bytes_vec[j + 3],
-        bytes_vec[j + 2],
-        bytes_vec[j + 1],
-        bytes_vec[j],
-    ]) as usize;
+    let hashmap_len =
+        Int::from_le_bytes([bytes[j + 3], bytes[j + 2], bytes[j + 1], bytes[j]]) as usize;
     j += 4;
 
     let mut reasonmap = ReasonMap::new();
     for _ in 0..hashmap_len {
-        let ip = parse_bytes_to_ipaddr(&bytes_vec[j..], &mut j)?;
-        let code = Short::from_be_bytes([bytes_vec[j], bytes_vec[j + 1]]);
+        let ip = parse_bytes_to_ipaddr(&bytes[j..], &mut j)?;
+        let code = Short::from_be_bytes([bytes[j], bytes[j + 1]]);
         j += 2;
         reasonmap.insert(ip, code);
     }

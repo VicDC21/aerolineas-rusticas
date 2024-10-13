@@ -1,6 +1,6 @@
 //! Módulo de nodos.
 
-use std::cmp::{Ordering, PartialEq, PartialOrd};
+use std::cmp::PartialEq;
 use std::io::Read;
 use std::net::TcpListener;
 
@@ -16,10 +16,14 @@ use crate::server::nodes::states::{
     heartbeat::{GenType, VerType},
 };
 
+/// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
+/// así que un byte debería bastar para representarlo.
+pub type NodeId = u8;
+
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
     /// El ID del nodo mismo.
-    id: u8,
+    id: NodeId,
 
     /// Los estados de los nodos vecinos, incluyendo este mismo.
     ///
@@ -32,7 +36,7 @@ pub struct Node {
 
 impl Node {
     /// Crea un nuevo nodo.
-    pub fn new(id: u8, mode: ConnectionMode) -> Self {
+    pub fn new(id: NodeId, mode: ConnectionMode) -> Self {
         Self {
             id,
             neighbours_states: Vec::<EndpointState>::new(),
@@ -41,7 +45,7 @@ impl Node {
     }
 
     /// Consulta el ID del nodo.
-    pub fn get_id(&self) -> &u8 {
+    pub fn get_id(&self) -> &NodeId {
         &self.id
     }
 
@@ -50,8 +54,13 @@ impl Node {
         &self.endpoint_state
     }
 
+    /// Compara si el _heartbeat_ de un nodo es más nuevo que otro.
+    pub fn is_newer(&self, other: &Self) -> bool {
+        self.endpoint_state.is_newer(&other.endpoint_state)
+    }
+
     /// Envia su endpoint state al nodo del ID correspondiente.
-    fn send_endpoint_state(&mut self, id: u8) {
+    fn send_endpoint_state(&mut self, id: NodeId) {
         if let Err(err) = NodeGraph::send_to_node(
             id,
             SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
@@ -124,8 +133,17 @@ impl Node {
                                 SvAction::Beat => {
                                     self.beat();
                                 }
-                                SvAction::Gossip => {
+                                SvAction::Gossip(neighbours) => {
                                     // Implementar ronda de gossip
+                                }
+                                SvAction::Syn => {
+                                    // Implementar Syn
+                                }
+                                SvAction::Ack => {
+                                    // Implementar Ack
+                                }
+                                SvAction::Ack2 => {
+                                    // Implementar Ack2
                                 }
                                 SvAction::NewNeighbour(state) => {
                                     self.add_neighbour_state(state);
@@ -159,11 +177,5 @@ impl Node {
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.endpoint_state.eq(&other.endpoint_state)
-    }
-}
-
-impl PartialOrd for Node {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.endpoint_state.partial_cmp(&other.endpoint_state)
     }
 }

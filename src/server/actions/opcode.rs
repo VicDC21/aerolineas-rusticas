@@ -1,10 +1,13 @@
 //! Módulo para una acción especial del servidor.
 
+use std::collections::HashSet;
 use std::convert::TryFrom;
 
-use crate::protocol::aliases::types::Byte;
+use crate::protocol::aliases::types::{Byte, Int};
 use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
+use crate::protocol::utils::encode_iter_to_bytes;
+use crate::server::nodes::node::NodeId;
 use crate::server::nodes::states::endpoints::EndpointState;
 
 const ACTION_MASK: u8 = 0xF0;
@@ -20,13 +23,25 @@ pub enum SvAction {
     Beat,
 
     /// Iniciar ronda de _Gossip_.
-    Gossip,
+    ///
+    /// Contiene un set de [ID](crate::server::nodes::node::NodeId)s que son los vecinos con los
+    /// que este nodo debe interactuar.
+    Gossip(HashSet<NodeId>),
+
+    /// Inicia el _handshake_ en un intercambio de _gossip_.
+    Syn,
+
+    /// Potencial primera respuesta en un intercambio de _gossip_.
+    Ack,
+
+    /// Potencial segunda respuesta en un intercambio de _gossip_.
+    Ack2,
 
     /// Añadir un nuevo vecino.
     NewNeighbour(EndpointState),
 
     /// Pedirle a un nodo que envie su endpoint state a otro nodo, dado el ID de este ultimo.
-    SendEndpointState(u8),
+    SendEndpointState(NodeId),
 }
 
 impl SvAction {
@@ -56,10 +71,19 @@ impl Byteable for SvAction {
         match self {
             Self::Exit => vec![0xF0],
             Self::Beat => vec![0xF1],
-            Self::Gossip => vec![0xF2],
-            Self::SendEndpointState(id) => vec![0xF3, *id],
+            Self::Gossip(neighbours) => {
+                let mut bytes = vec![0xF2];
+                let neighbours_iter = neighbours.iter().map(|byte| vec![byte.to_owned()]);
+                bytes.extend(encode_iter_to_bytes(neighbours_iter));
+
+                bytes
+            }
+            Self::Syn => vec![0xF3],
+            Self::Ack => vec![0xF4],
+            Self::Ack2 => vec![0xF5],
+            Self::SendEndpointState(id) => vec![0xF6, *id],
             Self::NewNeighbour(state) => {
-                let mut bytes = vec![0xF4];
+                let mut bytes = vec![0xF7];
                 bytes.extend(state.as_bytes());
                 bytes
             }
@@ -76,7 +100,8 @@ impl TryFrom<&[Byte]> for SvAction {
             ));
         }
 
-        let first = bytes[0];
+        let mut i = 0;
+        let first = bytes[i];
         if !Self::is_action(bytes) {
             return Err(Error::ServerError(format!(
                 "Conjunto de bytes no empieza por `1111...`. En su lugar se recibió {:#b}",
@@ -87,8 +112,32 @@ impl TryFrom<&[Byte]> for SvAction {
         match first {
             0xF0 => Ok(Self::Exit),
             0xF1 => Ok(Self::Beat),
-            0xF2 => Ok(Self::Gossip),
-            0xF3 => {
+            0xF2 => {
+                i += 1;
+                let mut set_bytes: HashSet<Byte> = HashSet::new();
+                let set_len =
+                    Int::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
+                i += 4;
+                for _ in 0..set_len {
+                    let byte_len =
+                        Int::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
+                    i += 4;
+                    if byte_len != 1 {
+                        return Err(Error::ServerError(format!(
+                            "Se esperaba que el valor del set ocupara sólo un byte, no {}",
+                            byte_len
+                        )));
+                    }
+
+                    set_bytes.insert(bytes[i]);
+                    i += 1;
+                }
+                Ok(Self::Gossip(set_bytes))
+            }
+            0xF3 => Ok(Self::Syn),
+            0xF4 => Ok(Self::Ack),
+            0xF5 => Ok(Self::Ack2),
+            0xF6 => {
                 if bytes.len() < 2 {
                     return Err(Error::ServerError(
                         "Conjunto de bytes demasiado chico para `NewNeighbour`.".to_string(),
@@ -97,7 +146,7 @@ impl TryFrom<&[Byte]> for SvAction {
                 let state = EndpointState::try_from(&bytes[1..])?;
                 Ok(Self::NewNeighbour(state))
             }
-            0xF4 => {
+            0xF7 => {
                 if bytes.len() < 2 {
                     return Err(Error::ServerError(
                         "Conjunto de bytes demasiado chico para `SendEndpointState`.".to_string(),

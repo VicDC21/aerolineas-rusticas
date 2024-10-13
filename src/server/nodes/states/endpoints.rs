@@ -1,15 +1,17 @@
 //! Módulo para el _Endpoint State_ de un nodo.
 
-use std::cmp::{Ordering, PartialEq, PartialOrd};
+use std::cmp::PartialEq;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
+use crate::protocol::aliases::types::Byte;
 use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 use crate::protocol::utils::encode_ipaddr_to_bytes;
 use crate::server::modes::ConnectionMode;
-use crate::server::nodes::states::appstatus::AppStatus;
-use crate::server::nodes::states::heartbeat::VerType;
-use crate::server::nodes::states::{application::AppState, heartbeat::HeartbeatState};
+use crate::server::nodes::node::NodeId;
+use crate::server::nodes::states::{
+    application::AppState, appstatus::AppStatus, heartbeat::HeartbeatState, heartbeat::VerType,
+};
 
 /// El puerto preferido para las IPs
 pub const PORT: u16 = 8080;
@@ -29,7 +31,7 @@ pub struct EndpointState {
 
 impl EndpointState {
     /// Genera un socket basado en un id dado.
-    fn generate_ipaddr(id: u8) -> SocketAddr {
+    fn generate_ipaddr(id: NodeId) -> SocketAddr {
         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, id), PORT))
     }
 
@@ -43,7 +45,7 @@ impl EndpointState {
     }
 
     /// Crea una instancia dado un ID.
-    pub fn with_id(id: u8) -> Self {
+    pub fn with_id(id: NodeId) -> Self {
         Self::new(
             Self::generate_ipaddr(id),
             HeartbeatState::default(),
@@ -52,12 +54,17 @@ impl EndpointState {
     }
 
     /// Crea una instancia dado un ID y modo de conexión.
-    pub fn with_id_and_mode(id: u8, mode: ConnectionMode) -> Self {
+    pub fn with_id_and_mode(id: NodeId, mode: ConnectionMode) -> Self {
         Self::new(
             Self::generate_ipaddr(id),
             HeartbeatState::default(),
             AppState::new(AppStatus::Bootstrap, mode),
         )
+    }
+
+    /// Compara si el _heartbeat_ de este estado es más nuevo que otro.
+    pub fn is_newer(&self, other: &Self) -> bool {
+        self.heartbeat > other.heartbeat
     }
 
     /// Consulta la dirección del _socket_.
@@ -83,18 +90,12 @@ impl EndpointState {
 
 impl PartialEq for EndpointState {
     fn eq(&self, other: &Self) -> bool {
-        self.heartbeat.eq(&other.heartbeat)
-    }
-}
-
-impl PartialOrd for EndpointState {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.heartbeat.partial_cmp(&other.heartbeat)
+        self.addr == other.addr && self.heartbeat.eq(&other.heartbeat)
     }
 }
 
 impl Byteable for EndpointState {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         let mut bytes = Vec::new();
         let addr = encode_ipaddr_to_bytes(&self.addr.ip());
         bytes.extend(addr);
@@ -105,10 +106,10 @@ impl Byteable for EndpointState {
     }
 }
 
-impl TryFrom<&[u8]> for EndpointState {
+impl TryFrom<&[Byte]> for EndpointState {
     type Error = Error;
 
-    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
         if bytes.len() != 14 {
             return Err(Error::ServerError(
                 "No se pudo parsear el EndpointState".to_string(),
