@@ -13,13 +13,11 @@ impl UnquotedName {
         Ok(UnquotedName { name: word })
     }
 
-
-    pub fn is_unquoted_name(word: &str)-> bool{
+    pub fn is_unquoted_name(word: &str) -> bool {
         let length = word.chars().count();
         if length < 1 && length > 48 {
             return false;
         }
         word.chars().all(|c| c.is_ascii_alphanumeric())
     }
-
 }

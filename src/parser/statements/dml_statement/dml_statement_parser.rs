@@ -65,7 +65,7 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<Select>, Error
             builder.set_select_clause(KindOfColumns::SelectClause(res));
         }
         from_clause(lista, &mut builder)?;
-        builder.set_where(where_clause(lista));
+        builder.set_where(where_clause(lista)?);
         ordering_clause(lista, &mut builder)?;
         per_partition_limit_clause(lista, &mut builder)?;
         limit_clause(lista, &mut builder)?;

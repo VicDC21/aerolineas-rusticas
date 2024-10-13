@@ -9,7 +9,7 @@ impl QuotedIdentifier {
         QuotedIdentifier { text }
     }
 
-    pub fn get_name(&self) -> &str{
+    pub fn get_name(&self) -> &str {
         &self.text
     }
 
