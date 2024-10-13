@@ -1,5 +1,10 @@
 //! Módulo para modos de conección al servidor.
 
+use std::convert::TryFrom;
+
+use crate::protocol::errors::error::Error;
+use crate::protocol::{aliases::types::Byte, traits::Byteable};
+
 /// Indica el modo de conexión al instanciar el servidor.
 #[derive(Clone, Debug)]
 pub enum ConnectionMode {
@@ -8,4 +13,34 @@ pub enum ConnectionMode {
 
     /// El modo general para parsear _queries_ de CQL.
     Parsing,
+}
+
+impl Byteable for ConnectionMode {
+    fn as_bytes(&self) -> Vec<Byte> {
+        match self {
+            Self::Echo => vec![0x0],
+            Self::Parsing => vec![0x1],
+        }
+    }
+}
+
+impl TryFrom<&[Byte]> for ConnectionMode {
+    type Error = Error;
+    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+        if bytes.is_empty() {
+            return Err(Error::ServerError(
+                "El conjunto de bytes está vacío.".to_string(),
+            ));
+        }
+
+        let first = bytes[0];
+        match first {
+            0x0 => Ok(Self::Echo),
+            0x1 => Ok(Self::Parsing),
+            _ => Err(Error::ServerError(format!(
+                "El ID '{}' no corresponde a ningún modo de conexión.",
+                first
+            ))),
+        }
+    }
 }

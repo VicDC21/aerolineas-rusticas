@@ -136,13 +136,13 @@ impl Node {
                                 SvAction::Gossip(neighbours) => {
                                     // Implementar ronda de gossip
                                 }
-                                SvAction::Syn => {
+                                SvAction::Syn(endpoints) => {
                                     // Implementar Syn
                                 }
-                                SvAction::Ack => {
+                                SvAction::Ack(endpoints) => {
                                     // Implementar Ack
                                 }
-                                SvAction::Ack2 => {
+                                SvAction::Ack2(endpoints) => {
                                     // Implementar Ack2
                                 }
                                 SvAction::NewNeighbour(state) => {

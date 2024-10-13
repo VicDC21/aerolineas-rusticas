@@ -2,7 +2,9 @@
 
 use chrono::Utc;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
+use std::convert::TryFrom;
 
+use crate::protocol::errors::error::Error;
 use crate::protocol::{aliases::types::Byte, traits::Byteable};
 
 /// El alias para el número de generación.
@@ -72,5 +74,44 @@ impl Byteable for HeartbeatState {
         bytes.extend_from_slice(&self.gen.to_be_bytes());
         bytes.extend_from_slice(&self.ver.to_be_bytes());
         bytes
+    }
+}
+
+impl TryFrom<&[Byte]> for HeartbeatState {
+    type Error = Error;
+    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+        let bytes_len = bytes.len();
+        if bytes_len < 16 {
+            return Err(Error::ServerError(format!(
+                "Se esperaba al menos 16 bytes para el estado de heartbeat, no {}.",
+                bytes_len
+            )));
+        }
+
+        let mut i = 0;
+        let gen = i64::from_be_bytes([
+            bytes[i],
+            bytes[i + 1],
+            bytes[i + 2],
+            bytes[i + 3],
+            bytes[i + 4],
+            bytes[i + 5],
+            bytes[i + 6],
+            bytes[i + 7],
+        ]);
+        i += 8;
+
+        let ver = u64::from_be_bytes([
+            bytes[i],
+            bytes[i + 1],
+            bytes[i + 2],
+            bytes[i + 3],
+            bytes[i + 4],
+            bytes[i + 5],
+            bytes[i + 6],
+            bytes[i + 7],
+        ]);
+
+        Ok(HeartbeatState::new(gen, ver))
     }
 }

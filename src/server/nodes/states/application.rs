@@ -1,5 +1,9 @@
 //! Módulo para el _Application State_ de un nodo.
 
+use std::convert::TryFrom;
+
+use crate::protocol::errors::error::Error;
+use crate::protocol::{aliases::types::Byte, traits::Byteable};
 use crate::server::modes::ConnectionMode;
 use crate::server::nodes::states::appstatus::AppStatus;
 
@@ -33,5 +37,29 @@ impl AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self::new(AppStatus::Bootstrap, ConnectionMode::Parsing)
+    }
+}
+
+impl Byteable for AppState {
+    fn as_bytes(&self) -> Vec<Byte> {
+        let mut bytes_vec: Vec<Byte> = Vec::new();
+
+        bytes_vec.extend(self.status.as_bytes());
+        bytes_vec.extend(self.conmode.as_bytes());
+
+        bytes_vec
+    }
+}
+
+impl TryFrom<&[Byte]> for AppState {
+    type Error = Error;
+    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+        let mut i = 0;
+
+        let status = AppStatus::try_from(&bytes[i..])?;
+        i += status.as_bytes().len();
+
+        let conmode = ConnectionMode::try_from(&bytes[i..])?;
+        Ok(AppState::new(status, conmode))
     }
 }
