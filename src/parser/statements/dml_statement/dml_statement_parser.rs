@@ -338,7 +338,7 @@ pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<Delete>, Error
 
         if lista[index] == "WHERE" {
             lista.remove(index);
-            builder.set_where(where_clause(lista));
+            builder.set_where(where_clause(lista)?);
             if lista[index] == "IF" {
                 lista.remove(index);
                 // Chequeo sintaxis de condicionales para la query
@@ -413,7 +413,7 @@ pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<Update>, Error
 
         if lista[index] == "WHERE" {
             lista.remove(index);
-            builder.set_where(where_clause(lista));
+            builder.set_where(where_clause(lista)?);
             if lista[index] == "IF" {
                 lista.remove(index);
                 // Chequeo sintaxis de condicionales para la query

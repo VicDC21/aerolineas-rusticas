@@ -44,7 +44,7 @@ impl InsertBuilder {
     }
 
     fn set_values(&mut self, set_values: Vec<String>) {
-        self.set_values = set_values;
+        self.values = set_values;
     }
 
     fn set_if_not_exists(&mut self, if_not_exists: Option<bool>) {

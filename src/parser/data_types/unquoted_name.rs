@@ -15,7 +15,7 @@ impl UnquotedName {
 
     pub fn is_unquoted_name(word: &str) -> bool {
         let length = word.chars().count();
-        if length < 1 && length > 48 {
+        if !(1..=48).contains(&length) {
             return false;
         }
         word.chars().all(|c| c.is_ascii_alphanumeric())
