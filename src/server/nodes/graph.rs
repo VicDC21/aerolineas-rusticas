@@ -48,18 +48,31 @@ impl NodeGraph {
         self.node_ids.clone()
     }
 
+    /// Envia la accion de actualizar el peso de un nodo.
+    pub fn set_node_weight(&self, id: u8, weight: u8) {
+        if let Err(err) = Self::send_to_node(id, SvAction::SetWeight(weight).as_bytes()) {
+            println!(
+                "Ocurrió un error actualizando el peso de un nodo:\n\n{}",
+                err
+            );
+        }
+    }
+
     /// "Inicia" los nodos del grafo en sus propios hilos.
     pub fn bootup(&mut self, n: u8) -> Result<Vec<JoinHandle<Result<()>>>> {
         let mut handlers: Vec<JoinHandle<Result<()>>> = Vec::new();
         for _ in 0..n {
             let current_id = self.add_node_id();
-            let mut node = Node::new(current_id, self.preferred_mode.clone());
+            let mut node = Node::new(current_id, self.preferred_mode.clone(), 1);
 
             let builder = Builder::new().name(format!("{}", current_id));
             let spawn_res = builder.spawn(move || node.listen());
             if let Ok(handler) = spawn_res {
                 handlers.push(handler);
             }
+        }
+        for node_id in self.get_ids() {
+            self.send_states_to_node(node_id);
         }
         Ok(handlers)
     }
@@ -71,6 +84,20 @@ impl NodeGraph {
         self.node_ids.push(self.prox_id);
         self.prox_id += 1;
         self.prox_id - 1
+    }
+
+    /// Ordena a todos los nodos existentes que envien su endpoint state al nodo con el ID correspondiente.
+    fn send_states_to_node(&self, id: u8) {
+        for node_id in self.get_ids() {
+            if let Err(err) =
+                Self::send_to_node(node_id, SvAction::SendEndpointState(id).as_bytes())
+            {
+                println!(
+                    "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
+                    err
+                );
+            }
+        }
     }
 
     /// Avanza a cada segundo el estado de _heartbeat_ de los nodos.
@@ -97,7 +124,7 @@ impl NodeGraph {
     }
 
     /// Genera una dirección de socket a partir de un ID.
-    pub fn guess_socket(id: u8) -> SocketAddr {
+    fn guess_socket(id: u8) -> SocketAddr {
         SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, id), PORT))
     }
 
@@ -122,7 +149,7 @@ impl NodeGraph {
         Ok(())
     }
 
-    /// Seleciona un ID de nodo conforme al _hashing_ de un conjunto de [Byte]s.
+    /// Selecciona un ID de nodo conforme al _hashing_ de un conjunto de [Byte]s.
     pub fn select_node(&self, bytes: &Vec<Byte>) -> u8 {
         let mut hasher = DefaultHasher::new();
         bytes.hash(&mut hasher);

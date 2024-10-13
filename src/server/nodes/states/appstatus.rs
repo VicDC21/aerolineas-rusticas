@@ -1,6 +1,7 @@
 //! Módulo para el estado de un nodo.
 
 /// El estado actual de un nodo.
+#[derive(Clone)]
 pub enum AppStatus {
     /// El nodo funciona normalmente.
     Normal,

@@ -6,11 +6,14 @@ use std::net::TcpListener;
 
 use crate::protocol::aliases::{results::Result, types::Byte};
 use crate::protocol::errors::error::Error;
+use crate::protocol::traits::Byteable;
 use crate::server::actions::opcode::SvAction;
 use crate::server::modes::ConnectionMode;
 use crate::server::nodes::states::appstatus::AppStatus;
 use crate::server::nodes::states::endpoints::EndpointState;
 use crate::server::nodes::states::heartbeat::{GenType, VerType};
+
+use super::graph::NodeGraph;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
@@ -20,19 +23,23 @@ pub struct Node {
     /// Los IDs de los nodos vecinos.
     ///
     /// No necesariamente serán todos los otros nodos del grafo, sólo los que este nodo conoce.
-    neighbours: Vec<usize>,
+    neighbours_states: Vec<EndpointState>,
 
     /// Estado actual del nodo.
     endpoint_state: EndpointState,
+
+    /// Peso del nodo para ser seleccionado en la ronda de _gossip_.
+    weight: u8,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
-    pub fn new(id: u8, mode: ConnectionMode) -> Self {
+    pub fn new(id: u8, mode: ConnectionMode, weight: u8) -> Self {
         Self {
             id,
-            neighbours: Vec::<usize>::new(),
+            neighbours_states: Vec::<EndpointState>::new(),
             endpoint_state: EndpointState::with_id_and_mode(id, mode),
+            weight,
         }
     }
 
@@ -41,9 +48,36 @@ impl Node {
         &self.id
     }
 
+    /// Consulta el estado del nodo.
+    pub fn get_endpoint_state(&self) -> &EndpointState {
+        &self.endpoint_state
+    }
+
+    /// Envia su endpoint state al nodo del ID correspondiente.
+    fn send_endpoint_state(&mut self, id: u8) {
+        if let Err(err) = NodeGraph::send_to_node(
+            id,
+            SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
+        ) {
+            println!(
+                "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
+                err
+            );
+        }
+    }
+
+    fn add_neighbour_state(&mut self, state: EndpointState) {
+        self.neighbours_states.push(state);
+    }
+
+    /// Actualiza el peso del nodo.
+    fn set_weight(&mut self, weight: u8) {
+        self.weight = weight;
+    }
+
     /// Ve si el nodo es un nodo "hoja".
     pub fn leaf(&self) -> bool {
-        self.neighbours.is_empty()
+        self.neighbours_states.is_empty()
     }
 
     /// Consulta el modo de conexión del nodo.
@@ -100,6 +134,15 @@ impl Node {
                                 }
                                 SvAction::Gossip => {
                                     // Implementar ronda de gossip
+                                }
+                                SvAction::SetWeight(weight) => {
+                                    self.set_weight(weight);
+                                }
+                                SvAction::NewNeighbour(state) => {
+                                    self.add_neighbour_state(state);
+                                }
+                                SvAction::SendEndpointState(id) => {
+                                    self.send_endpoint_state(id);
                                 }
                             }
                         }

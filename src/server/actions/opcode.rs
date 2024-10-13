@@ -5,6 +5,7 @@ use std::convert::TryFrom;
 use crate::protocol::aliases::types::Byte;
 use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
+use crate::server::nodes::states::endpoints::EndpointState;
 
 const ACTION_MASK: u8 = 0xF0;
 
@@ -20,6 +21,15 @@ pub enum SvAction {
 
     /// Iniciar ronda de _Gossip_.
     Gossip,
+
+    /// Actualizar el peso de un nodo, segun el id correspondiente.
+    SetWeight(u8),
+
+    /// Añadir un nuevo vecino.
+    NewNeighbour(EndpointState),
+
+    /// Pedirle a un nodo que envie su endpoint state a otro nodo, dado el ID de este ultimo.
+    SendEndpointState(u8),
 }
 
 impl SvAction {
@@ -50,6 +60,13 @@ impl Byteable for SvAction {
             Self::Exit => vec![0xF0],
             Self::Beat => vec![0xF1],
             Self::Gossip => vec![0xF2],
+            Self::SetWeight(weight) => vec![0xF3, *weight],
+            Self::SendEndpointState(id) => vec![0xF4, *id],
+            Self::NewNeighbour(state) => {
+                let mut bytes = vec![0xF5];
+                bytes.extend(state.as_bytes());
+                bytes
+            }
         }
     }
 }
@@ -75,6 +92,31 @@ impl TryFrom<&[Byte]> for SvAction {
             0xF0 => Ok(Self::Exit),
             0xF1 => Ok(Self::Beat),
             0xF2 => Ok(Self::Gossip),
+            0xF3 => {
+                if bytes.len() < 2 {
+                    return Err(Error::ServerError(
+                        "Conjunto de bytes demasiado chico para `SetWeight`.".to_string(),
+                    ));
+                }
+                Ok(Self::SetWeight(bytes[1]))
+            }
+            0xF4 => {
+                if bytes.len() < 2 {
+                    return Err(Error::ServerError(
+                        "Conjunto de bytes demasiado chico para `NewNeighbour`.".to_string(),
+                    ));
+                }
+                let state = EndpointState::try_from(&bytes[1..])?;
+                Ok(Self::NewNeighbour(state))
+            }
+            0xF5 => {
+                if bytes.len() < 2 {
+                    return Err(Error::ServerError(
+                        "Conjunto de bytes demasiado chico para `SendEndpointState`.".to_string(),
+                    ));
+                }
+                Ok(Self::SendEndpointState(bytes[1]))
+            }
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

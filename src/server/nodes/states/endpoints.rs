@@ -3,6 +3,9 @@
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
+use crate::protocol::errors::error::Error;
+use crate::protocol::traits::Byteable;
+use crate::protocol::utils::encode_ipaddr_to_bytes;
 use crate::server::modes::ConnectionMode;
 use crate::server::nodes::states::appstatus::AppStatus;
 use crate::server::nodes::states::heartbeat::VerType;
@@ -12,6 +15,7 @@ use crate::server::nodes::states::{application::AppState, heartbeat::HeartbeatSt
 pub const PORT: u16 = 8080;
 
 /// Las propiedades de un nodo.
+#[derive(Clone)]
 pub struct EndpointState {
     /// La dirección de _socket_ del nodo.
     addr: SocketAddr,
@@ -86,5 +90,41 @@ impl PartialEq for EndpointState {
 impl PartialOrd for EndpointState {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.heartbeat.partial_cmp(&other.heartbeat)
+    }
+}
+
+impl Byteable for EndpointState {
+    fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let addr = encode_ipaddr_to_bytes(&self.addr.ip());
+        bytes.extend(addr);
+        bytes.extend(self.addr.port().to_be_bytes());
+        bytes.extend(self.heartbeat.as_bytes());
+        //bytes.extend(self.application.as_bytes());
+        bytes
+    }
+}
+
+impl TryFrom<&[u8]> for EndpointState {
+    type Error = Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.len() != 14 {
+            return Err(Error::ServerError(
+                "No se pudo parsear el EndpointState".to_string(),
+            ));
+        }
+        let ip = Ipv4Addr::new(bytes[0], bytes[1], bytes[2], bytes[3]);
+        let port = u16::from_be_bytes([bytes[4], bytes[5]]);
+        let addr = SocketAddr::V4(SocketAddrV4::new(ip, port));
+        let heartbeat = HeartbeatState::new(
+            i64::from_be_bytes([bytes[6], bytes[7], bytes[8], bytes[9], 0, 0, 0, 0]),
+            u64::from_be_bytes([bytes[10], bytes[11], bytes[12], bytes[13], 0, 0, 0, 0]),
+        );
+        //let appstatus = AppStatus::from_byte(bytes[14]);
+        //let conmode = ConnectionMode::from_byte(bytes[15]);
+        // TODO: Definir y parsear bien application state
+        let application = AppState::new(AppStatus::Normal, ConnectionMode::Echo);
+        Ok(Self::new(addr, heartbeat, application))
     }
 }

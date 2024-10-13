@@ -3,12 +3,15 @@
 use chrono::Utc;
 use std::cmp::{Ordering, PartialEq, PartialOrd};
 
+use crate::protocol::{aliases::types::Byte, traits::Byteable};
+
 /// El alias para el número de generación.
 pub type GenType = i64;
 /// El alias para el número de versión.
 pub type VerType = u64;
 
 /// Estructura para el _Heartbeat State_ de un nodo.
+#[derive(Clone)]
 pub struct HeartbeatState {
     /// Momento de generación del nodo.
     gen: GenType,
@@ -60,5 +63,14 @@ impl PartialOrd for HeartbeatState {
         } else {
             Some(Ordering::Equal)
         }
+    }
+}
+
+impl Byteable for HeartbeatState {
+    fn as_bytes(&self) -> Vec<Byte> {
+        let mut bytes = Vec::<Byte>::new();
+        bytes.extend_from_slice(&self.gen.to_be_bytes());
+        bytes.extend_from_slice(&self.ver.to_be_bytes());
+        bytes
     }
 }

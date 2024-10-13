@@ -4,6 +4,7 @@ use crate::server::modes::ConnectionMode;
 use crate::server::nodes::states::appstatus::AppStatus;
 
 /// El estado de aplicación contiene otros datos actuales sobre el estado del nodo.
+#[derive(Clone)]
 pub struct AppState {
     /// El estado de conexión del nodo.
     status: AppStatus,
