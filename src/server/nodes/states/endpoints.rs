@@ -1,7 +1,7 @@
 //! Módulo para el _Endpoint State_ de un nodo.
 
 use std::cmp::PartialEq;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use crate::protocol::aliases::types::{Byte, Int};
 use crate::protocol::errors::error::Error;
@@ -60,6 +60,20 @@ impl EndpointState {
             HeartbeatState::default(),
             AppState::new(AppStatus::Bootstrap, mode),
         )
+    }
+
+    /// Adivina el ID del nodo a partir de la IP del estado.
+    pub fn guess_id(&self) -> NodeId {
+        match self.addr.ip() {
+            IpAddr::V4(ipv4) => {
+                let [_, _, _, id] = ipv4.octets();
+                id
+            }
+            IpAddr::V6(ipv6) => {
+                let [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, id] = ipv6.octets();
+                id
+            }
+        }
     }
 
     /// Compara si el _heartbeat_ de este estado es más nuevo que otro.

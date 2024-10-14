@@ -1,6 +1,6 @@
 //! Módulo para una acción especial del servidor.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 
 use crate::protocol::aliases::{
@@ -10,11 +10,14 @@ use crate::protocol::aliases::{
 use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 use crate::protocol::utils::encode_iter_to_bytes;
-use crate::server::nodes::node::NodeId;
-use crate::server::nodes::states::endpoints::EndpointState;
+use crate::server::nodes::node::{NodeId, NodesMap};
+use crate::server::nodes::states::{endpoints::EndpointState, heartbeat::HeartbeatState};
 
-/// Una colección de [EndpointState]s, tal que se puedan pasar entre nodos.
+/// Un mapa de [EndpointState]s, tal que se puedan pasar entre nodos.
 pub type EndpointsVec = Vec<EndpointState>;
+
+/// Contiene los metadatos mínimos para comparar versiones de nodos.
+pub type GossipInfo = HashMap<NodeId, HeartbeatState>;
 
 const ACTION_MASK: u8 = 0xF0;
 
@@ -35,13 +38,22 @@ pub enum SvAction {
     Gossip(HashSet<NodeId>),
 
     /// Inicia el _handshake_ en un intercambio de _gossip_.
-    Syn(EndpointsVec),
+    ///
+    /// Acá todavía no se mandan estados de nodo, sino sólo metadatos que son lo mínimo y necesario
+    /// para comparar versiones.
+    Syn(GossipInfo),
 
     /// Potencial primera respuesta en un intercambio de _gossip_.
-    Ack(EndpointsVec),
+    ///
+    /// Acá se devuelven tanto los estados que el nodo receptor pide actualizar en un [GossipInfo],
+    /// así como los [EndpointState] actualizados que le hacen falta al nodo emisor, en un [NodesMap].
+    Ack(GossipInfo, NodesMap),
 
     /// Potencial segunda respuesta en un intercambio de _gossip_.
-    Ack2(EndpointsVec),
+    ///
+    /// A estas alturas sólo se mandan estados que el nodo receptor dijo que le hacían falta,
+    /// en un [NodesMap].
+    Ack2(NodesMap),
 
     /// Añadir un nuevo vecino.
     NewNeighbour(EndpointState),
@@ -71,41 +83,80 @@ impl SvAction {
         }
     }
 
-    /// Serializa una secuencia de [EndpointState]s.
-    pub fn encode_endpoint_vec_to_bytes(endpoints: &EndpointsVec) -> Vec<Byte> {
+    /// Serializa la información de _gossip_.
+    fn encode_gossip_info_to_bytes(gossip_info: &GossipInfo) -> Vec<Byte> {
         let mut bytes_vec: Vec<Byte> = Vec::new();
-        let endpoints_len_bytes = endpoints.len().to_le_bytes();
-
+        let gossip_len_bytes = gossip_info.len().to_le_bytes();
         bytes_vec.extend_from_slice(&[
-            endpoints_len_bytes[3],
-            endpoints_len_bytes[2],
-            endpoints_len_bytes[1],
-            endpoints_len_bytes[0],
+            gossip_len_bytes[3],
+            gossip_len_bytes[2],
+            gossip_len_bytes[1],
+            gossip_len_bytes[0],
         ]);
 
-        for endpoint_state in endpoints {
+        for (node_id, node_heartbeat) in gossip_info {
+            bytes_vec.push(node_id.to_owned());
+            bytes_vec.extend(node_heartbeat.as_bytes());
+        }
+
+        bytes_vec
+    }
+
+    /// Serializa un mapa de nodos.
+    fn encode_nodes_map_to_bytes(nodes_map: &NodesMap) -> Vec<Byte> {
+        let mut bytes_vec: Vec<Byte> = Vec::new();
+        let nodes_len_bytes = nodes_map.len().to_le_bytes();
+        bytes_vec.extend_from_slice(&[
+            nodes_len_bytes[3],
+            nodes_len_bytes[2],
+            nodes_len_bytes[1],
+            nodes_len_bytes[0],
+        ]);
+
+        for (node_id, endpoint_state) in nodes_map {
+            bytes_vec.push(node_id.to_owned());
             bytes_vec.extend(endpoint_state.as_bytes());
         }
 
         bytes_vec
     }
 
-    /// Deserializa una secuencia de bytes de vuelta a un [HashSet] de [EndpointState]s.
-    pub fn parse_bytes_to_endpoint_vec(bytes: &[Byte], i: &mut usize) -> SvResult<EndpointsVec> {
+    /// Deserializa una secuencia de [Byte]s de vuelta a un [GossipInfo].
+    pub fn parse_bytes_to_gossip_info(bytes: &[Byte], i: &mut usize) -> SvResult<GossipInfo> {
         let mut j: usize = 0;
-        let mut endpoints: EndpointsVec = EndpointsVec::new();
-        let endpoints_len =
-            Int::from_be_bytes([bytes[j], bytes[j + 1], bytes[j + 2], bytes[j + 3]]);
+        let mut gossip_info = GossipInfo::new();
+
+        let gossip_len = Int::from_be_bytes([bytes[j], bytes[j + 1], bytes[j + 2], bytes[j + 3]]);
         j += 4;
 
-        for _ in 0..endpoints_len {
-            let endpoint = EndpointState::try_from(&bytes[j..])?;
-            j += endpoint.as_bytes().len();
-            endpoints.push(endpoint);
+        for _ in 0..gossip_len {
+            let node_id = bytes[j]; // El nodo siempre tendrá un ID de un byte.
+            let heartbeat = HeartbeatState::try_from(&bytes[j + 1..])?;
+            j += heartbeat.as_bytes().len() + 1;
+            gossip_info.insert(node_id, heartbeat);
         }
 
         *i += j;
-        Ok(endpoints)
+        Ok(gossip_info)
+    }
+
+    /// Deserializa una secuencia de [Byte]s de vuelta a un [NodesMap].
+    pub fn parse_bytes_to_nodes_map(bytes: &[Byte], i: &mut usize) -> SvResult<NodesMap> {
+        let mut j: usize = 0;
+        let mut nodes_map = NodesMap::new();
+
+        let nodes_len = Int::from_be_bytes([bytes[j], bytes[j + 1], bytes[j + 2], bytes[j + 3]]);
+        j += 4;
+
+        for _ in 0..nodes_len {
+            let node_id = bytes[j]; // El nodo siempre tendrá un ID de un byte.
+            let endpoint_state = EndpointState::try_from(&bytes[j + 1..])?;
+            j += endpoint_state.as_bytes().len() + 1;
+            nodes_map.insert(node_id, endpoint_state);
+        }
+
+        *i += j;
+        Ok(nodes_map)
     }
 }
 
@@ -120,19 +171,20 @@ impl Byteable for SvAction {
                 bytes_vec.extend(encode_iter_to_bytes(neighbours_iter));
                 bytes_vec
             }
-            Self::Syn(endpoints) => {
+            Self::Syn(gossip_info) => {
                 let mut bytes_vec = vec![0xF3];
-                bytes_vec.extend(Self::encode_endpoint_vec_to_bytes(endpoints));
+                bytes_vec.extend(Self::encode_gossip_info_to_bytes(gossip_info));
                 bytes_vec
             }
-            Self::Ack(endpoints) => {
+            Self::Ack(gossip_info, nodes_map) => {
                 let mut bytes_vec = vec![0xF4];
-                bytes_vec.extend(Self::encode_endpoint_vec_to_bytes(endpoints));
+                bytes_vec.extend(Self::encode_gossip_info_to_bytes(gossip_info));
+                bytes_vec.extend(Self::encode_nodes_map_to_bytes(nodes_map));
                 bytes_vec
             }
-            Self::Ack2(endpoints) => {
+            Self::Ack2(nodes_map) => {
                 let mut bytes_vec = vec![0xF5];
-                bytes_vec.extend(Self::encode_endpoint_vec_to_bytes(endpoints));
+                bytes_vec.extend(Self::encode_nodes_map_to_bytes(nodes_map));
                 bytes_vec
             }
             Self::SendEndpointState(id) => vec![0xF6, *id],
@@ -190,21 +242,20 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xF3 => {
                 i += 1;
-                Ok(Self::Syn(Self::parse_bytes_to_endpoint_vec(
+                Ok(Self::Syn(Self::parse_bytes_to_gossip_info(
                     &bytes[i..],
                     &mut i,
                 )?))
             }
             0xF4 => {
                 i += 1;
-                Ok(Self::Ack(Self::parse_bytes_to_endpoint_vec(
-                    &bytes[i..],
-                    &mut i,
-                )?))
+                let gossip_info = Self::parse_bytes_to_gossip_info(&bytes[i..], &mut i)?;
+                let nodes_map = Self::parse_bytes_to_nodes_map(&bytes[i..], &mut i)?;
+                Ok(Self::Ack(gossip_info, nodes_map))
             }
             0xF5 => {
                 i += 1;
-                Ok(Self::Ack2(Self::parse_bytes_to_endpoint_vec(
+                Ok(Self::Ack2(Self::parse_bytes_to_nodes_map(
                     &bytes[i..],
                     &mut i,
                 )?))

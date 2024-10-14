@@ -4,8 +4,6 @@ use rand::distributions::{Distribution, WeightedIndex};
 use rand::thread_rng;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::io::Write;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
 use std::thread::{sleep, Builder, JoinHandle};
 use std::time::Duration;
 
@@ -15,7 +13,7 @@ use crate::protocol::traits::Byteable;
 use crate::server::actions::opcode::SvAction;
 use crate::server::modes::ConnectionMode;
 use crate::server::nodes::node::{Node, NodeId};
-use crate::server::nodes::states::endpoints::PORT;
+use crate::server::nodes::utils::send_to_node;
 
 /// El ID con el que comenzar a contar los nodos.
 const START_ID: NodeId = 10;
@@ -122,7 +120,7 @@ impl NodeGraph {
                     }
                 }
 
-                if let Err(err) = Self::send_to_node(
+                if let Err(err) = send_to_node(
                     selected_id as NodeId,
                     SvAction::Gossip(neighbours).as_bytes(),
                 ) {
@@ -164,9 +162,7 @@ impl NodeGraph {
     /// Ordena a todos los nodos existentes que envien su endpoint state al nodo con el ID correspondiente.
     fn send_states_to_node(&self, id: NodeId) {
         for node_id in self.get_ids() {
-            if let Err(err) =
-                Self::send_to_node(node_id, SvAction::SendEndpointState(id).as_bytes())
-            {
+            if let Err(err) = send_to_node(node_id, SvAction::SendEndpointState(id).as_bytes()) {
                 println!(
                     "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
                     err
@@ -182,7 +178,7 @@ impl NodeGraph {
         match builder.spawn(move || {
             sleep(Duration::from_secs(1));
             for node_id in ids {
-                if Self::send_to_node(node_id, SvAction::Beat.as_bytes()).is_err() {
+                if send_to_node(node_id, SvAction::Beat.as_bytes()).is_err() {
                     return Err(Error::ServerError(format!(
                         "Error enviado mensaje a nodo {}",
                         node_id
@@ -198,32 +194,6 @@ impl NodeGraph {
         }
     }
 
-    /// Genera una dirección de socket a partir de un ID.
-    fn guess_socket(id: NodeId) -> SocketAddr {
-        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, id), PORT))
-    }
-
-    /// Manda un mensaje a un nodo específico.
-    pub fn send_to_node(id: NodeId, bytes: Vec<Byte>) -> Result<()> {
-        let addr = Self::guess_socket(id);
-        let mut stream = match TcpStream::connect(addr) {
-            Ok(tcpstream) => tcpstream,
-            Err(_) => {
-                return Err(Error::ServerError(format!(
-                    "No se pudo conectar al nodo con ID {}",
-                    id
-                )))
-            }
-        };
-        if stream.write_all(&bytes[..]).is_err() {
-            return Err(Error::ServerError(format!(
-                "No se pudo escribir el contenido en {}",
-                addr
-            )));
-        }
-        Ok(())
-    }
-
     /// Selecciona un ID de nodo conforme al _hashing_ de un conjunto de [Byte]s.
     pub fn select_node(&self, bytes: &Vec<Byte>) -> NodeId {
         let mut hasher = DefaultHasher::new();
@@ -237,13 +207,13 @@ impl NodeGraph {
 
     /// Manda un mensaje al nodo relevante mediante el _hashing_ del mensaje.
     pub fn send_message(&self, bytes: Vec<Byte>) -> Result<()> {
-        Self::send_to_node(self.select_node(&bytes), bytes)
+        send_to_node(self.select_node(&bytes), bytes)
     }
 
     /// Apaga todos los nodos.
     pub fn shutdown(&self) {
         for node_id in self.get_ids() {
-            if let Err(err) = Self::send_to_node(node_id, SvAction::Exit.as_bytes()) {
+            if let Err(err) = send_to_node(node_id, SvAction::Exit.as_bytes()) {
                 println!("Ocurrió un error saliendo de un nodo:\n\n{}", err);
             }
         }
