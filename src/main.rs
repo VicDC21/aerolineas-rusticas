@@ -1,6 +1,5 @@
-use std::env::args;
-
 use aerolineas::{client::cli::Client, server::sv::Server};
+use std::env::args;
 
 fn main() {
     let argv = args().collect::<Vec<String>>();

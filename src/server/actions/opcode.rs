@@ -1,17 +1,23 @@
 //! Módulo para una acción especial del servidor.
 
-use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
-
-use crate::protocol::aliases::{
-    results::Result as SvResult,
-    types::{Byte, Int},
+use std::{
+    collections::{HashMap, HashSet},
+    convert::TryFrom,
 };
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::protocol::utils::encode_iter_to_bytes;
-use crate::server::nodes::node::{NodeId, NodesMap};
-use crate::server::nodes::states::{endpoints::EndpointState, heartbeat::HeartbeatState};
+
+use crate::protocol::{
+    aliases::{
+        results::Result as SvResult,
+        types::{Byte, Int},
+    },
+    errors::error::Error,
+    traits::Byteable,
+    utils::encode_iter_to_bytes,
+};
+use crate::server::nodes::{
+    node::{NodeId, NodesMap},
+    states::{endpoints::EndpointState, heartbeat::HeartbeatState},
+};
 
 /// Un mapa de [EndpointState]s, tal que se puedan pasar entre nodos.
 pub type EndpointsVec = Vec<EndpointState>;

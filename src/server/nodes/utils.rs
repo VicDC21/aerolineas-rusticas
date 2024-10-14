@@ -1,12 +1,15 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
-use std::io::Write;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
+use std::{
+    io::Write,
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+};
 
-use crate::protocol::aliases::{results::Result, types::Byte};
-use crate::protocol::errors::error::Error;
-use crate::server::nodes::node::NodeId;
-use crate::server::nodes::states::endpoints::PORT;
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+};
+use crate::server::nodes::{node::NodeId, states::endpoints::PORT};
 
 /// Genera una dirección de socket a partir de un ID.
 pub fn guess_socket(id: NodeId) -> SocketAddr {

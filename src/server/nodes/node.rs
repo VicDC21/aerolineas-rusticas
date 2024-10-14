@@ -1,22 +1,31 @@
 //! Módulo de nodos.
 
-use std::cmp::PartialEq;
-use std::collections::{HashMap, HashSet};
-use std::io::Read;
-use std::net::TcpListener;
-
-use crate::protocol::aliases::{results::Result, types::Byte};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::server::actions::opcode::{GossipInfo, SvAction};
-use crate::server::modes::ConnectionMode;
-use crate::server::nodes::states::heartbeat::HeartbeatState;
-use crate::server::nodes::states::{
-    appstatus::AppStatus,
-    endpoints::EndpointState,
-    heartbeat::{GenType, VerType},
+use std::{
+    cmp::PartialEq,
+    collections::{HashMap, HashSet},
+    io::Read,
+    net::TcpListener,
 };
-use crate::server::nodes::utils::send_to_node;
+
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    traits::Byteable,
+};
+use crate::server::{
+    actions::opcode::{GossipInfo, SvAction},
+    modes::ConnectionMode,
+    nodes::{
+        states::{
+            appstatus::AppStatus,
+            endpoints::EndpointState,
+            heartbeat::{
+                HeartbeatState, {GenType, VerType},
+            },
+        },
+        utils::send_to_node,
+    },
+};
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.

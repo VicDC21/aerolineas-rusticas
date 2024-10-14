@@ -1,11 +1,15 @@
 //! Módulo del cliente.
 
-use std::io::{stdin, BufRead, BufReader, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::{
+    io::{stdin, BufRead, BufReader, Write},
+    net::{SocketAddr, TcpStream},
+};
 
-use crate::protocol::aliases::{results::Result, types::Byte};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    traits::Byteable,
+};
 use crate::server::actions::opcode::SvAction;
 
 /// Estructura principal de un cliente.

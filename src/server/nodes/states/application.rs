@@ -2,10 +2,8 @@
 
 use std::convert::TryFrom;
 
-use crate::protocol::errors::error::Error;
-use crate::protocol::{aliases::types::Byte, traits::Byteable};
-use crate::server::modes::ConnectionMode;
-use crate::server::nodes::states::appstatus::AppStatus;
+use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
+use crate::server::{modes::ConnectionMode, nodes::states::appstatus::AppStatus};
 
 /// El estado de aplicación contiene otros datos actuales sobre el estado del nodo.
 #[derive(Clone)]
