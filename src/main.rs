@@ -1,5 +1,6 @@
 use std::env::args;
 
+use aerolineas::interface::run::run_app;
 use aerolineas::{client::cli::Client, server::sv::Server};
 
 fn main() {
@@ -20,6 +21,11 @@ fn main() {
         "cli" => {
             let client = Client::new(Server::default_addr());
             if let Err(err) = client.echo() {
+                println!("{}", err);
+            }
+        }
+        "gui" => {
+            if let Err(err) = run_app() {
                 println!("{}", err);
             }
         }
