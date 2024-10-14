@@ -1,8 +1,7 @@
 use crate::cassandra::errors::error::Error;
 
 use super::{
-    and::And, operator::Operator, relation::Relation,
-    dml_statement_parser::is_column_name,
+    and::And, dml_statement_parser::is_column_name, operator::Operator, relation::Relation,
 };
 
 pub enum Expression {
@@ -13,8 +12,8 @@ pub enum Expression {
 
 pub fn expression(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
     match and(lista)? {
-        Some(expression) => return Ok(Some(expression)),
-        None => return Ok(None),
+        Some(expression) => Ok(Some(expression)),
+        None => Ok(None),
     }
 }
 

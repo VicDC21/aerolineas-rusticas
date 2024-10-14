@@ -1,13 +1,13 @@
 pub mod constant;
 pub mod cql_type;
 pub mod float;
+pub mod identifier;
 pub mod integer;
 pub mod keyspace_name;
+pub mod literal;
 pub mod quoted_name;
 pub mod term;
 pub mod type_hint;
 pub mod udt_literal;
 pub mod unquoted_name;
 pub mod user_defined_type;
-pub mod literal;
-pub mod identifier;

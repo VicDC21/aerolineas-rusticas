@@ -1,4 +1,4 @@
-use crate::parser::data_types::identifiers::identifier::Identifier;
+use crate::parser::data_types::identifier::identifier::Identifier;
 
 use super::operator::Operator;
 

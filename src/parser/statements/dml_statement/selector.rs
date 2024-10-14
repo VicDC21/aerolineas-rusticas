@@ -1,4 +1,4 @@
-use crate::parser::data_types::{identifiers::identifier::Identifier, term::Term};
+use crate::parser::data_types::{identifier::identifier::Identifier, term::Term};
 
 pub enum Selector {
     ColumnName(Identifier),

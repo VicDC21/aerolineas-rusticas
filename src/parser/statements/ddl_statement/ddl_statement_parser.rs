@@ -1,17 +1,27 @@
 use crate::{
     cassandra::errors::error::Error,
     parser::{
-        
         data_types::{
-            cql_type::{cql_type::CQLType, native_types::parse_data_type}, identifier::identifier::Identifier, keyspace_name::KeyspaceName, unquoted_name::UnquotedName
+            cql_type::{cql_type::CQLType, native_types::parse_data_type},
+            identifier::identifier::Identifier,
+            keyspace_name::KeyspaceName,
+            unquoted_name::UnquotedName,
         },
         primary_key::PrimaryKey,
         table_name::TableName,
     },
 };
 
-use super::{option::Options,
-    alter_keyspace::AlterKeyspace, alter_table::{AlterTable, AlterTableInstruction}, column_definition::ColumnDefinition, create_keyspace::CreateKeyspace, create_table::CreateTable, drop_keyspace::DropKeyspace, drop_table::DropTable, truncate::Truncate
+use super::{
+    alter_keyspace::AlterKeyspace,
+    alter_table::{AlterTable, AlterTableInstruction},
+    column_definition::ColumnDefinition,
+    create_keyspace::CreateKeyspace,
+    create_table::CreateTable,
+    drop_keyspace::DropKeyspace,
+    drop_table::DropTable,
+    option::Options,
+    truncate::Truncate,
 };
 
 pub enum DdlStatement {
@@ -235,12 +245,14 @@ fn parse_column_definitions(lista: &mut Vec<String>) -> Result<Vec<ColumnDefinit
 
         let is_static = check_words(lista, "STATIC");
 
-        let primary_key = check_words(lista, "PRIMARY KEY"); 
+        let primary_key = check_words(lista, "PRIMARY KEY");
 
-        let column = ColumnDefinition::new(name, CQLType::NativeType(data_type), is_static, primary_key);
+        let column =
+            ColumnDefinition::new(name, CQLType::NativeType(data_type), is_static, primary_key);
         columns.push(column);
 
-        if !check_words(lista, ","){ // falta ver que pasa cuando hay 	[ ',' PRIMARY KEY '(' primary_key ')' ]
+        if !check_words(lista, ",") {
+            // falta ver que pasa cuando hay 	[ ',' PRIMARY KEY '(' primary_key ')' ]
             break;
         }
 

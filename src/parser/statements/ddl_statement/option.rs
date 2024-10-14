@@ -1,8 +1,12 @@
 use crate::{
     cassandra::errors::error::Error,
-    parser::{data_types::{identifiers::identifier::Identifier, literal::map_literal::MapLiteral, term::Term}, statements::dml_statement::dml_statement_parser::is_term},
+    parser::{
+        data_types::{
+            identifier::identifier::Identifier, literal::map_literal::MapLiteral, term::Term,
+        },
+        statements::dml_statement::dml_statement_parser::is_term,
+    },
 };
-
 
 // options::= option ( AND option )*
 // option::= identifier '=' ( identifier

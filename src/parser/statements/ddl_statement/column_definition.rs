@@ -1,11 +1,13 @@
-use crate::{cassandra::errors::error::Error, parser::data_types::cql_type::{cql_type::CQLType, native_types::parse_data_type}};
-
+use crate::{
+    cassandra::errors::error::Error,
+    parser::data_types::cql_type::{cql_type::CQLType, native_types::parse_data_type},
+};
 
 pub struct ColumnDefinition {
     pub name: String,
     pub data_type: CQLType,
     is_static: bool,
-    primary_key: bool
+    primary_key: bool,
 }
 
 impl ColumnDefinition {
@@ -14,7 +16,7 @@ impl ColumnDefinition {
             name,
             data_type,
             is_static,
-            primary_key
+            primary_key,
         }
     }
 
@@ -28,7 +30,7 @@ impl ColumnDefinition {
             name,
             data_type,
             is_static,
-            primary_key
+            primary_key,
         })
     }
 }

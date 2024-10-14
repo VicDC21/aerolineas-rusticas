@@ -2,23 +2,30 @@ use crate::{
     cassandra::errors::error::Error,
     parser::{
         data_types::{
-            constant::Constant, identifiers::identifier::Identifier,
-            identifiers::quoted_identifier::QuotedIdentifier, term::Term,
-            identifiers::unquoted_identifier::UnquotedIdentifier,
+            constant::Constant,
+            identifier::{
+                identifier::Identifier, quoted_identifier::QuotedIdentifier,
+                unquoted_identifier::UnquotedIdentifier,
+            },
+            keyspace_name::KeyspaceName,
+            term::Term,
         },
-        statements::dml_statement::{
-            delete::{Delete, DeleteBuilder},
-            expression::expression,
-            group_by::GroupBy,
-            insert::Insert,
-            limit::Limit,
-            per_partition_limit::PerPartitionLimit,
-            r#where::Where,
-            relation::Relation,
-            select::{KindOfColumns, Select, SelectBuilder},
-            selector::Selector,
-            update::{Update, UpdateBuilder},
-        }
+        statements::{
+            ddl_statement::ddl_statement_parser::check_words,
+            dml_statement::{
+                delete::{Delete, DeleteBuilder},
+                expression::expression,
+                group_by::GroupBy,
+                insert::Insert,
+                limit::Limit,
+                per_partition_limit::PerPartitionLimit,
+                r#where::Where,
+                relation::Relation,
+                select::{KindOfColumns, Select, SelectBuilder},
+                selector::Selector,
+                update::{Update, UpdateBuilder},
+            },
+        },
     },
 };
 
@@ -94,33 +101,25 @@ fn select_clause(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error
 }
 
 pub fn from_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
-    match lista.first() {
-        Some(value) => {
-            if value != "FROM" || lista.len() < 2 {
-                return Err(Error::SyntaxError(
-                    "Falta el from en la consulta".to_string(),
-                ));
-            } else {
-                lista.remove(0);
-                let val = lista.remove(0);
-                // builder.set_from(val);
-            }
-        }
-        None => {
-            return Err(Error::SyntaxError(
-                "Falta el from en la consulta".to_string(),
-            ))
-        }
+    if check_words(lista, "FROM") {
+        let table_name = match KeyspaceName::check_kind_of_name(lista)? {
+            Some(value) => value,
+            None => return Err(Error::SyntaxError("Tipo de dato no admitido".to_string())),
+        };
+        builder.set_from(table_name);
+        Ok(())
+    } else {
+        Err(Error::SyntaxError(
+            "Falta el from en la consulta".to_string(),
+        ))
     }
-    Ok(())
 }
 
 pub fn where_clause(lista: &mut Vec<String>) -> Result<Option<Where>, Error> {
-    if lista[0] == "WHERE" {
-        lista.remove(0);
-        return Ok(Some(Where::new(expression(lista)?)));
+    if check_words(lista, "WHERE") {
+        Ok(Some(Where::new(expression(lista)?)))
     } else {
-        return Ok(Some(Where::new(None)));
+        Ok(Some(Where::new(None)))
     }
 }
 
@@ -129,10 +128,6 @@ pub fn relation(lista: &mut Vec<String>) -> Result<Option<Relation>, Error> {
         lista.remove(0);
     }
     Ok(None)
-}
-
-pub fn operator(lista: &mut Vec<String>) -> Option<Where> {
-    None
 }
 
 pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
@@ -166,8 +161,8 @@ pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> 
 }
 
 pub fn ordering_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
-    if lista[0] == "ORDER" && lista[1] == "BY" {
-        if let Some(value) = is_column_name(lista)? {}
+    if check_words(lista, "ORDER BY") {
+        if let Some(value) = is_column_name(lista)? {} // TERMINAR
     } else {
         builder.set_order_by(None);
     }
@@ -327,7 +322,6 @@ pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<Delete>, Error
         }
 
         let file_name: String = lista.remove(index);
-        check_file_name(file_name);
 
         if lista[index] == "USING" {
             lista.remove(index);
@@ -354,8 +348,6 @@ pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<Delete>, Error
     Ok(None)
 }
 
-fn check_file_name(file_name: String) {}
-
 pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<Insert>, Error> {
     let index = 0;
     if lista[index] == "INSERT" && lista[index + 1] == "INTO" {
@@ -365,7 +357,6 @@ pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<Insert>, Error
         //let mut builder = InsertBuilder::default();
         // Guardar el nombre de la tabla
         let file_name: String = lista.remove(index);
-        check_file_name(file_name);
 
         if lista[index] == "JSON" {
             // Chequeo si la sintaxis JSON es válida
@@ -397,7 +388,6 @@ pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<Update>, Error
         let mut builder = UpdateBuilder::default();
         // Guardar el nombre de la tabla
         let file_name: String = lista.remove(index);
-        check_file_name(file_name);
 
         if lista[index] == "USING" {
             lista.remove(index);

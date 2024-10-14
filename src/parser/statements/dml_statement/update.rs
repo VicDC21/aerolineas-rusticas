@@ -1,6 +1,6 @@
 use crate::parser::set_parameter::SetParameter;
 
-use super::{r#where::Where,  update_parameter::UpdateParameter};
+use super::{r#where::Where, update_parameter::UpdateParameter};
 
 pub struct Update {
     table_name: String,

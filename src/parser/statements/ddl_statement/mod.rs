@@ -1,10 +1,10 @@
 pub mod alter_keyspace;
 pub mod alter_table;
+pub mod column_definition;
 pub mod create_keyspace;
 pub mod create_table;
 pub mod ddl_statement_parser;
 pub mod drop_keyspace;
 pub mod drop_table;
-pub mod truncate;
-pub mod column_definition;
 pub mod option;
+pub mod truncate;
