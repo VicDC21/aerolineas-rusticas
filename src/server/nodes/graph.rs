@@ -1,19 +1,29 @@
 //! Módulo para grafo de nodos.
 
-use rand::distributions::{Distribution, WeightedIndex};
-use rand::thread_rng;
-use std::collections::HashSet;
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::thread::{sleep, Builder, JoinHandle};
-use std::time::Duration;
+use rand::{
+    distributions::{Distribution, WeightedIndex},
+    thread_rng,
+};
+use std::{
+    collections::HashSet,
+    hash::{DefaultHasher, Hash, Hasher},
+    thread::{sleep, Builder, JoinHandle},
+    time::Duration,
+};
 
-use crate::protocol::aliases::{results::Result, types::Byte};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::server::actions::opcode::SvAction;
-use crate::server::modes::ConnectionMode;
-use crate::server::nodes::node::{Node, NodeId};
-use crate::server::nodes::utils::send_to_node;
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    traits::Byteable,
+};
+use crate::server::{
+    actions::opcode::SvAction,
+    modes::ConnectionMode,
+    nodes::{
+        node::{Node, NodeId},
+        utils::send_to_node,
+    },
+};
 
 /// El ID con el que comenzar a contar los nodos.
 const START_ID: NodeId = 10;
@@ -223,5 +233,11 @@ impl NodeGraph {
 impl Default for NodeGraph {
     fn default() -> Self {
         Self::new(Vec::new(), START_ID, ConnectionMode::Parsing)
+    }
+}
+
+impl Drop for NodeGraph {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }
