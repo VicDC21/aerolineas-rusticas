@@ -5,4 +5,6 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4.38"
+eframe = "=0.25.0"
 rand = "0.8.4"
+walkers = "=0.17.0"
