@@ -1,9 +1,8 @@
 use crate::{
     cassandra::errors::error::Error,
-    parser::statements::{
-        ddl_statement::ddl_statement_parser::check_words,
-        dml_statement::dml_statement_parser::is_term,
-    },
+    parser::statements::
+        ddl_statement::ddl_statement_parser::check_words
+    
 };
 
 use super::super::term::Term;
@@ -17,7 +16,7 @@ impl MapLiteral {
         let mut values: Vec<(Term, Term)> = Vec::new();
         if check_words(lista, "{") {
             while check_words(lista, ",") || !check_words(lista, "}") {
-                let term = match is_term(lista)? {
+                let term = match Term::is_term(lista)? {
                     Some(value) => value,
                     None => {
                         return Err(Error::SyntaxError(
@@ -30,7 +29,7 @@ impl MapLiteral {
                         "Sintaxis de mapa incorrecta".to_string(),
                     ));
                 }
-                let term2 = match is_term(lista)? {
+                let term2 = match Term::is_term(lista)? {
                     Some(value) => value,
                     None => {
                         return Err(Error::SyntaxError(

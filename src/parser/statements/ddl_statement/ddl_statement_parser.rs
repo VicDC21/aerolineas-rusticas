@@ -2,7 +2,7 @@ use crate::{
     cassandra::errors::error::Error,
     parser::{
         data_types::{
-            cql_type::{cql_type::CQLType, native_types::parse_data_type},
+            cql_type::cql_type::CQLType,
             identifier::identifier::Identifier,
             keyspace_name::KeyspaceName,
             unquoted_name::UnquotedName,
@@ -36,22 +36,22 @@ pub enum DdlStatement {
 }
 
 pub fn ddl_statement(lista: &mut Vec<String>) -> Result<Option<DdlStatement>, Error> {
-    if let Some(ddl_statement) = use_statement(lista.to_vec())? {
-        return Ok(Some(ddl_statement));
+    if let Some(parsed_value) = use_statement(lista.to_vec())? {
+        return Ok(Some(parsed_value));
         // return Ok(Some(DdlStatement::UseStatement(KeyspaceName)));
-    } else if let Some(ddl_statement) = create_keyspace_statement(lista)? {
-        return Ok(Some(DdlStatement::CreateKeyspaceStatement(ddl_statement)));
-    } else if let Some(ddl_statement) = alter_keyspace_statement(lista)? {
-        return Ok(Some(DdlStatement::AlterKeyspaceStatement(ddl_statement)));
-    } else if let Some(ddl_statement) = drop_keyspace_statement(lista)? {
-        return Ok(Some(DdlStatement::DropKeyspaceStatement(ddl_statement)));
-    } else if let Some(ddl_statement) = create_table_statement(lista)? {
-        return Ok(Some(DdlStatement::CreateTableStatement(ddl_statement)));
-    } else if let Some(ddl_statement) = alter_table_statement(lista)? {
-        return Ok(Some(DdlStatement::AlterTableStatement(ddl_statement)));
-    } else if let Some(_ddl_statement) = drop_table_statement(lista)? {
+    } else if let Some(parsed_value) = create_keyspace_statement(lista)? {
+        return Ok(Some(DdlStatement::CreateKeyspaceStatement(parsed_value)));
+    } else if let Some(parsed_value) = alter_keyspace_statement(lista)? {
+        return Ok(Some(DdlStatement::AlterKeyspaceStatement(parsed_value)));
+    } else if let Some(parsed_value) = drop_keyspace_statement(lista)? {
+        return Ok(Some(DdlStatement::DropKeyspaceStatement(parsed_value)));
+    } else if let Some(parsed_value) = create_table_statement(lista)? {
+        return Ok(Some(DdlStatement::CreateTableStatement(parsed_value)));
+    } else if let Some(parsed_value) = alter_table_statement(lista)? {
+        return Ok(Some(DdlStatement::AlterTableStatement(parsed_value)));
+    } else if let Some(_parsed_value) = drop_table_statement(lista)? {
         return Ok(Some(DdlStatement::DropTableStatement(DropTable {})));
-    } else if let Some(_ddl_statement) = truncate_statement(lista)? {
+    } else if let Some(_parsed_value) = truncate_statement(lista)? {
         return Ok(Some(DdlStatement::TruncateStatement(Truncate {})));
     }
     Ok(None)
@@ -76,10 +76,7 @@ pub fn use_statement(lista: Vec<String>) -> Result<Option<DdlStatement>, Error> 
 
 pub fn create_keyspace_statement(lista: &mut Vec<String>) -> Result<Option<CreateKeyspace>, Error> {
     if check_words(lista, "CREATE KEYSPACE") {
-        let mut if_not_exists = false;
-        if check_words(lista, "IF NOT EXISTS") {
-            if_not_exists = true;
-        }
+        let if_not_exists = check_words(lista, "IF NOT EXISTS");
         let name = match KeyspaceName::check_kind_of_name(lista)? {
             Some(name) => name,
             None => return Err(Error::SyntaxError("No se indico la Keyspace".to_string())),
@@ -216,21 +213,61 @@ pub fn create_table_statement(lista: &mut Vec<String>) -> Result<Option<CreateTa
             ));
         }
 
-        let options = if check_words(lista, "WITH") {
-            Some(options(lista)?)
-        } else {
-            None
-        };
+        let mut compact_storage = false;
+        let mut clustering_order = None;
+
+        if check_words(lista, "WITH") {
+            let options = parse_table_options(lista)?;
+            for option in options {
+                if let Options::Identifier(id) = option {
+                    if id.get_name() == "COMPACT STORAGE" {
+                        compact_storage = true;
+                    } else if id.get_name() == "CLUSTERING ORDER" {
+                        if let Some(order) = lista.first() {
+                            clustering_order = Some(parse_clustering_order(order.as_str())?);
+                        } else {
+                            return Err(Error::SyntaxError("Expected clustering order value".to_string()));
+                        }
+                    }
+                }
+            }
+        }
 
         return Ok(Some(CreateTable::new(
             if_not_exists,
             name,
             columns,
             primary_key,
-            options,
+            compact_storage,
+            clustering_order,
         )));
     }
     Ok(None)
+}
+
+fn parse_table_options(lista: &mut Vec<String>) -> Result<Vec<Options>, Error> {
+    let mut options = Vec::new();
+    loop {
+        let option = Options::check_options(lista)?;
+        options.push(option);
+        if !check_words(lista, "AND") {
+            break;
+        }
+    }
+    Ok(options)
+}
+
+fn parse_clustering_order(order: &str) -> Result<Vec<(String, String)>, Error> {
+    let order = order.trim_matches(|c| c == '(' || c == ')');
+    let parts: Vec<&str> = order.split(',').collect();
+    let mut result = Vec::new();
+    for part in parts {
+        let mut column_order = part.split_whitespace();
+        let column = column_order.next().ok_or_else(|| Error::SyntaxError("Expected column name in clustering order".to_string()))?;
+        let order = column_order.next().ok_or_else(|| Error::SyntaxError("Expected order (ASC or DESC) in clustering order".to_string()))?;
+        result.push((column.to_string(), order.to_string()));
+    }
+    Ok(result)
 }
 
 fn parse_column_definitions(lista: &mut Vec<String>) -> Result<Vec<ColumnDefinition>, Error> {
@@ -241,18 +278,20 @@ fn parse_column_definitions(lista: &mut Vec<String>) -> Result<Vec<ColumnDefinit
             None => return Err(Error::SyntaxError("Expected column name".to_string())),
         };
 
-        let data_type = parse_data_type(lista)?;
+        let data_type = match CQLType::check_kind_of_type(lista)?{
+            Some(value) => value,
+            None => return Err(Error::SyntaxError(("Tipo de dato no soportado").to_string()))
+        };
 
         let is_static = check_words(lista, "STATIC");
 
         let primary_key = check_words(lista, "PRIMARY KEY");
 
         let column =
-            ColumnDefinition::new(name, CQLType::NativeType(data_type), is_static, primary_key);
+            ColumnDefinition::new(name, data_type, is_static, primary_key);
         columns.push(column);
 
         if !check_words(lista, ",") {
-            // falta ver que pasa cuando hay 	[ ',' PRIMARY KEY '(' primary_key ')' ]
             break;
         }
 

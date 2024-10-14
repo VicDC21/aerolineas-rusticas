@@ -1,8 +1,6 @@
 pub mod constant;
 pub mod cql_type;
-pub mod float;
 pub mod identifier;
-pub mod integer;
 pub mod keyspace_name;
 pub mod literal;
 pub mod quoted_name;

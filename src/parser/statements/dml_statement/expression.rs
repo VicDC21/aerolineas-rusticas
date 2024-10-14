@@ -1,7 +1,7 @@
-use crate::cassandra::errors::error::Error;
+use crate::{cassandra::errors::error::Error, parser::data_types::identifier::identifier::Identifier};
 
 use super::{
-    and::And, dml_statement_parser::is_column_name, operator::Operator, relation::Relation,
+    and::And, operator::Operator, relation::Relation,
 };
 
 pub enum Expression {
@@ -53,11 +53,11 @@ pub fn relation(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Erro
     if lista.len() >= 3 {
         if let Some(operator) = Operator::is_operator(&lista[1]) {
             lista.remove(1);
-            let first = match is_column_name(lista)? {
+            let first = match Identifier::check_identifier(lista)? {
                 Some(value) => value,
                 None => return Err(Error::SyntaxError("Falta un operator".to_string())),
             };
-            let second = match is_column_name(lista)? {
+            let second = match Identifier::check_identifier(lista)? {
                 Some(value) => value,
                 None => return Err(Error::SyntaxError("Falta un operator".to_string())),
             };

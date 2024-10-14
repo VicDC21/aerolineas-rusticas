@@ -1,15 +1,14 @@
 use crate::cassandra::errors::error::Error;
 
-#[derive(Default)]
 
+/// re('[a-zA-Z_0-9]\{1, 48}')
+#[derive(Default)]
 pub struct UnquotedName {
-    /// re('[a-zA-Z_0-9]\{1, 48}')
     name: String,
 }
 
 impl UnquotedName {
     pub fn new(word: String) -> Result<Self, Error> {
-        // verificaciones
         Ok(UnquotedName { name: word })
     }
 

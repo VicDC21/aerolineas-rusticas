@@ -3,6 +3,9 @@ use crate::cassandra::errors::error::Error;
 use super::quoted_identifier::QuotedIdentifier;
 use super::unquoted_identifier::UnquotedIdentifier;
 
+/// column_name::= identifier
+/// identifier::= unquoted_identifier | quoted_identifier
+
 pub enum Identifier {
     UnquotedIdentifier(UnquotedIdentifier),
     QuotedIdentifier(QuotedIdentifier),

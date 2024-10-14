@@ -12,5 +12,5 @@ pub mod relation;
 pub mod select;
 pub mod selector;
 pub mod update;
-pub mod update_parameter;
 pub mod r#where;
+pub mod if_condition;

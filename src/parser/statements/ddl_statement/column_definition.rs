@@ -1,6 +1,6 @@
 use crate::{
     cassandra::errors::error::Error,
-    parser::data_types::cql_type::{cql_type::CQLType, native_types::parse_data_type},
+    parser::data_types::cql_type::cql_type::CQLType,
 };
 
 pub struct ColumnDefinition {
@@ -22,8 +22,11 @@ impl ColumnDefinition {
 
     pub fn parse(lista: &mut Vec<String>) -> Result<Self, Error> {
         let name = lista.remove(0);
-        let native_type = parse_data_type(lista)?;
-        let data_type = CQLType::NativeType(native_type);
+        let native_type = match CQLType::check_kind_of_type(lista)?{
+            Some(value) => value,
+            None => return Err(Error::SyntaxError(("Tipo de dato no soportado").to_string()))
+        };
+        let data_type = native_type;
         let is_static = !lista.is_empty() && lista.remove(0) == "STATIC";
         let primary_key = true; // ESTA HARDCODEADO, REVISAR
         Ok(ColumnDefinition {

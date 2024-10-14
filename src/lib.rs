@@ -2,7 +2,7 @@
 //!
 //! Por ahora sólo habrá una interacciçon cliente / servidor para probar.
 
-//#![warn(missing_docs)]
+#![warn(missing_docs)]
 
 pub mod cassandra;
 pub mod client;

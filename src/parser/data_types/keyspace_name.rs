@@ -2,6 +2,8 @@ use crate::cassandra::errors::error::Error;
 
 use super::unquoted_name::UnquotedName;
 
+/// keyspace_name::= name
+/// name::= unquoted_name | quoted_name
 pub enum KeyspaceName {
     UnquotedName(UnquotedName),
     QuotedName(UnquotedName),
@@ -27,6 +29,10 @@ impl KeyspaceName {
             };
             let keyspace_name = KeyspaceName::QuotedName(UnquotedName::new(lista.remove(0))?);
             lista.remove(0);
+            return Ok(Some(keyspace_name));
+        };
+        if UnquotedName::is_unquoted_name(&lista[0]){
+            let keyspace_name = KeyspaceName::UnquotedName(UnquotedName::new(lista.remove(0))?);
             return Ok(Some(keyspace_name));
         };
         Ok(None)

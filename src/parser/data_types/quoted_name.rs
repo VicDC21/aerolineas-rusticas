@@ -1,7 +1,19 @@
-pub struct QuotedName {}
+use crate::cassandra::errors::error::Error;
 
-// impl QuotedName{
-//     pub fn new() -> Self{
-//         QuotedName{}
-//     }
-// }
+
+
+/// '"' unquoted_name '"'
+pub struct QuotedName {
+    name: String
+}
+
+impl QuotedName{
+    pub fn new(word: String) -> Result<Self, Error> {
+        // verificaciones
+        Ok(QuotedName { name: word })
+    }
+
+    
+
+
+}

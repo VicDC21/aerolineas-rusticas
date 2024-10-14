@@ -1,67 +1,103 @@
+use super::if_condition::{Condition, IfCondition, Value};
 use crate::{
     cassandra::errors::error::Error,
     parser::{
-        data_types::{
-            constant::Constant,
-            identifier::{
+        assignment::Assignment, data_types::{
+            constant::Constant, identifier::{
                 identifier::Identifier, quoted_identifier::QuotedIdentifier,
                 unquoted_identifier::UnquotedIdentifier,
-            },
-            keyspace_name::KeyspaceName,
-            term::Term,
-        },
-        statements::{
+            }, keyspace_name::KeyspaceName, literal::tuple_literal::TupleLiteral, term::Term
+        }, statements::{
             ddl_statement::ddl_statement_parser::check_words,
             dml_statement::{
-                delete::{Delete, DeleteBuilder},
-                expression::expression,
-                group_by::GroupBy,
-                insert::Insert,
-                limit::Limit,
-                per_partition_limit::PerPartitionLimit,
-                r#where::Where,
-                relation::Relation,
-                select::{KindOfColumns, Select, SelectBuilder},
-                selector::Selector,
-                update::{Update, UpdateBuilder},
+                delete::{Delete, DeleteBuilder}, expression::expression, group_by::GroupBy, insert::Insert, limit::Limit, per_partition_limit::PerPartitionLimit, relation::Relation, select::{KindOfColumns, Select, SelectBuilder}, 
+                selector::Selector, update::Update, r#where::Where,
             },
-        },
+        }, table_name::TableName
     },
 };
+
+#[derive(Default)]
+enum BatchType {
+    #[default]
+    Logged,
+    Unlogged,
+    Counter,
+}
+
+struct Batch {
+    batch_type: BatchType,
+    queries : Vec<DmlStatement>,
+}
+
+impl Batch {
+    fn new(
+        batch_type: BatchType,
+        queries : Vec<DmlStatement>,
+    ) -> Batch {
+        Batch {
+            batch_type,
+            queries,
+        }
+    }
+}
+
+#[derive(Default)]
+struct BatchBuilder {
+    batch_type: BatchType,
+    queries : Vec<DmlStatement>,
+}
+
+impl BatchBuilder {
+    fn set_batch_clause(&mut self, batch_type: BatchType) {
+        self.batch_type = batch_type;
+    }
+
+    fn set_queries(&mut self, queries : Vec<DmlStatement>) {
+        self.queries = queries;
+    }
+
+    fn build(self) -> Batch {
+        Batch::new(
+            self.batch_type,
+            self.queries,
+        )
+    }
+}
 
 pub enum DmlStatement {
     SelectStatement(Select),
     InsertStatement(Insert),
     UpdateStatement(Update),
     DeleteStatement(Delete),
-    BatchStatement,
+    BatchStatement(Batch),
 }
 
-pub fn dml_statement(lista: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
-    if let Some(dml_statement) = select_statement(lista)? {
+pub fn dml_statement(list: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
+    if let Some(dml_statement) = select_statement(list)? {
         return Ok(Some(DmlStatement::SelectStatement(dml_statement)));
-    } else if let Some(dml_statement) = insert_statement(lista)? {
+    } else if let Some(dml_statement) = insert_statement(list)? {
         return Ok(Some(DmlStatement::InsertStatement(dml_statement)));
-    } else if let Some(dml_statement) = delete_statement(lista)? {
+    } else if let Some(dml_statement) = delete_statement(list)? {
         return Ok(Some(DmlStatement::DeleteStatement(dml_statement)));
-    } else if let Some(dml_statement) = update_statement(lista)? {
+    } else if let Some(dml_statement) = update_statement(list)? {
         return Ok(Some(DmlStatement::UpdateStatement(dml_statement)));
-    } else if let Some(_dml_statement) = batch_statement(lista)? {
-        return Ok(Some(DmlStatement::BatchStatement));
+    } else if let Some(dml_statement) = batch_statement(list)? {
+        return Ok(Some(DmlStatement::BatchStatement(dml_statement)));
     }
     Ok(None)
 }
 
-pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<Select>, Error> {
+fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
     let index = 0;
-    if lista[index] == "SELECT" {
-        lista.remove(index);
+    if list[index] == "SELECT" {
+        list.remove(index);
         let mut builder = SelectBuilder::default();
-        if lista[index] == "*" {
-            lista.remove(index);
+        if list[index] == "*" {
+            list.remove(index);
             builder.set_select_clause(KindOfColumns::All);
         } else {
-            let res = match select_clause(lista)? {
+            let res = match select_clause(list)? {
                 Some(columns) => columns,
                 None => {
                     return Err(Error::SyntaxError(
@@ -71,26 +107,26 @@ pub fn select_statement(lista: &mut Vec<String>) -> Result<Option<Select>, Error
             };
             builder.set_select_clause(KindOfColumns::SelectClause(res));
         }
-        from_clause(lista, &mut builder)?;
-        builder.set_where(where_clause(lista)?);
-        ordering_clause(lista, &mut builder)?;
-        per_partition_limit_clause(lista, &mut builder)?;
-        limit_clause(lista, &mut builder)?;
-        allow_filtering_clause(lista.to_vec(), &mut builder);
+        builder.set_from(from_clause(list)?);
+        builder.set_where(where_clause(list)?);
+        ordering_clause(list, &mut builder)?;
+        per_partition_limit_clause(list, &mut builder)?;
+        limit_clause(list, &mut builder)?;
+        allow_filtering_clause(list, &mut builder);
         return Ok(Some(builder.build()));
     }
     Ok(None)
 }
 
-fn select_clause(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
-    if lista[0] != "FROM" {
+fn select_clause(list: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
+    if list[0] != "FROM" {
         let mut vec: Vec<Selector> = Vec::new();
-        if let Some(sel) = selector(lista)? {
+        if let Some(sel) = selector(list)? {
             vec.push(sel);
         }
-        if lista[0] == "," {
-            lista.remove(0);
-            if let Some(mut clasules) = select_clause(lista)? {
+        if list[0] == "," {
+            list.remove(0);
+            if let Some(mut clasules) = select_clause(list)? {
                 vec.append(&mut clasules);
             };
         }
@@ -100,14 +136,13 @@ fn select_clause(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error
     }
 }
 
-pub fn from_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
-    if check_words(lista, "FROM") {
-        let table_name = match KeyspaceName::check_kind_of_name(lista)? {
+fn from_clause(list: &mut Vec<String>) -> Result<KeyspaceName, Error> {
+    if check_words(list, "FROM") {
+        let table_name = match KeyspaceName::check_kind_of_name(list)? {
             Some(value) => value,
             None => return Err(Error::SyntaxError("Tipo de dato no admitido".to_string())),
         };
-        builder.set_from(table_name);
-        Ok(())
+        Ok(table_name)
     } else {
         Err(Error::SyntaxError(
             "Falta el from en la consulta".to_string(),
@@ -115,27 +150,18 @@ pub fn from_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Resu
     }
 }
 
-pub fn where_clause(lista: &mut Vec<String>) -> Result<Option<Where>, Error> {
-    if check_words(lista, "WHERE") {
-        Ok(Some(Where::new(expression(lista)?)))
+fn where_clause(list: &mut Vec<String>) -> Result<Option<Where>, Error> {
+    if check_words(list, "WHERE") {
+        Ok(Some(Where::new(expression(list)?)))
     } else {
         Ok(Some(Where::new(None)))
     }
 }
 
-pub fn relation(lista: &mut Vec<String>) -> Result<Option<Relation>, Error> {
-    if let Some(_value) = is_column_name(lista)? {
-        lista.remove(0);
-    }
-    Ok(None)
-}
-
-pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
-    if lista[0] == "GROUP" && lista[1] == "BY" {
-        lista.remove(0);
-        lista.remove(0);
+fn group_by_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
+    if check_words(list, "GROUP BY"){
         let mut columns: Vec<Identifier> = Vec::new();
-        match is_column_name(lista)? {
+        match Identifier::check_identifier(list)? {
             Some(value) => columns.push(value),
             None => {
                 return Err(Error::SyntaxError(
@@ -143,8 +169,8 @@ pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> 
                 ))
             }
         };
-        while lista[0] == "," {
-            match is_column_name(lista)? {
+        while list[0] == "," {
+            match Identifier::check_identifier(list)? {
                 Some(value) => columns.push(value),
                 None => {
                     return Err(Error::SyntaxError(
@@ -160,24 +186,24 @@ pub fn group_by_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> 
     Ok(())
 }
 
-pub fn ordering_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
-    if check_words(lista, "ORDER BY") {
-        if let Some(value) = is_column_name(lista)? {} // TERMINAR
+fn ordering_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
+    if check_words(list, "ORDER BY") {
+        if let Some(value) = Identifier::check_identifier(list)? {} // TERMINAR
     } else {
         builder.set_order_by(None);
     }
     Ok(())
 }
 
-pub fn per_partition_limit_clause(
-    lista: &mut Vec<String>,
+fn per_partition_limit_clause(
+    list: &mut Vec<String>,
     builder: &mut SelectBuilder,
 ) -> Result<(), Error> {
-    if lista[0] == "PER" && lista[1] == "PARTITION" && lista[2] == "LIMIT" {
-        lista.remove(0);
-        lista.remove(0);
-        lista.remove(0);
-        let int = lista.remove(0);
+    if  check_words(list, "PER PARTITION LIMIT"){
+        list.remove(0);
+        list.remove(0);
+        list.remove(0);
+        let int = list.remove(0);
         let int = match int.parse::<i32>() {
             Ok(value) => Limit::new(value),
             Err(_e) => {
@@ -192,10 +218,10 @@ pub fn per_partition_limit_clause(
     }
     Ok(())
 }
-pub fn limit_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
-    if lista[0] == "LIMIT" {
-        lista.remove(0);
-        let int = lista.remove(0);
+fn limit_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
+    if check_words(list, "LIMIT"){
+        list.remove(0);
+        let int = list.remove(0);
         let int = match int.parse::<i32>() {
             Ok(value) => Limit::new(value),
             Err(_e) => {
@@ -210,11 +236,11 @@ pub fn limit_clause(lista: &mut Vec<String>, builder: &mut SelectBuilder) -> Res
     }
     Ok(())
 }
-pub fn allow_filtering_clause(
-    lista: Vec<String>,
+fn allow_filtering_clause(
+    list: &mut Vec<String>,
     builder: &mut SelectBuilder,
 ) -> Option<PerPartitionLimit> {
-    if lista[0] == "ALLOW" && lista[1] == "FILTERING" {
+    if check_words(list, "LIMIT"){
         builder.set_allow_filtering(Some(true));
     } else {
         builder.set_allow_filtering(None);
@@ -222,245 +248,249 @@ pub fn allow_filtering_clause(
     None
 }
 
-pub fn selector(lista: &mut Vec<String>) -> Result<Option<Selector>, Error> {
-    if let Some(column) = is_column_name(lista)? {
+fn selector(list: &mut Vec<String>) -> Result<Option<Selector>, Error> {
+    if let Some(column) = Identifier::check_identifier(list)? {
         return Ok(Some(Selector::ColumnName(column)));
     }
-    if let Some(term) = is_term(lista)? {
+    if let Some(term) = Term::is_term(list)? {
         return Ok(Some(Selector::Term(term)));
     }
     Ok(None)
 }
 
-// identifier
-pub fn is_column_name(lista: &mut Vec<String>) -> Result<Option<Identifier>, Error> {
-    if QuotedIdentifier::check_quoted_identifier(&lista[0], &lista[1], &lista[2]) {
-        lista.remove(0);
-        let string = lista.remove(0);
-        lista.remove(0);
-        return Ok(Some(Identifier::QuotedIdentifier(QuotedIdentifier::new(
-            string,
-        ))));
-    } else if UnquotedIdentifier::check_unquoted_identifier(&lista[0]) {
-        let string = lista.remove(0);
-        return Ok(Some(Identifier::UnquotedIdentifier(
-            UnquotedIdentifier::new(string),
-        )));
+fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
+    if !check_words(list, "DELETE") {
+        return Ok(None);
     }
-    Ok(None)
-}
 
-pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error> {
-    // Todo: falta corroborar que el largo de la lista sea de al menos X largo asi no rompe con remove
-    if Constant::check_string(&lista[0], &lista[2]) {
-        lista.remove(0);
-        let string = Constant::String(lista.remove(0));
-        lista.remove(0);
-        return Ok(Some(Term::Constant(string)));
-    } else if Constant::check_integer(&lista[0]) {
-        let integer_string: String = lista.remove(0);
-        let int = Constant::new_integer(integer_string)?;
-        return Ok(Some(Term::Constant(int)));
-    } else if Constant::check_float(&lista[0]) {
-        let float_string = lista.remove(0);
-        let float = Constant::new_float(float_string)?;
-        return Ok(Some(Term::Constant(float)));
-    } else if Constant::check_boolean(&lista[0]) {
-        let bool = lista.remove(0);
-        let bool = Constant::new_boolean(bool)?;
-        return Ok(Some(Term::Constant(bool)));
-    } else if Constant::check_uuid(&lista[0]) {
-        let uuid = lista.remove(0);
-        let uuid = Constant::new_uuid(uuid)?;
-        return Ok(Some(Term::Constant(uuid)));
-    } else if Constant::check_hex(&lista[0]) {
-        let hex = Constant::new_hex(lista.remove(0))?;
-        return Ok(Some(Term::Constant(hex)));
-    } else if Constant::check_blob(&lista[0]) {
-        let blob = Constant::new_blob(lista.remove(0))?;
-        return Ok(Some(Term::Constant(blob)));
-    }
-    Ok(None)
-}
-
-pub fn get_clauses(lista: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
-    //cambiaste select_clause por esta funcion no?
-    if lista[0] != "FROM" {
-        let mut vec: Vec<Selector> = Vec::new();
-        if let Some(sel) = selector(lista)? {
-            vec.push(sel);
+    let mut builder = DeleteBuilder::default();
+    
+    let mut cols = Vec::new();
+    while !check_words(list, "FROM") {
+        if list.is_empty() {
+            return Err(Error::SyntaxError("Se esperaba FROM después de las columnas".to_string()));
         }
-        if lista[0] == "," {
-            lista.remove(0);
-            if let Some(mut clausules) = get_clauses(lista)? {
-                vec.append(&mut clausules);
-            };
-        }
-        Ok(Some(vec))
-    } else {
-        Ok(None)
+        cols.push(list.remove(0));
     }
-}
+    if !cols.is_empty() {
+        builder.set_cols(cols);
+    }
 
-pub fn delete_statement(lista: &mut Vec<String>) -> Result<Option<Delete>, Error> {
-    let index: usize = 0;
-    if lista[index] == "DELETE" {
-        let mut builder = DeleteBuilder::default();
-        lista.remove(index);
+    builder.set_from(from_clause(list)?);
 
-        if lista[index] != "FROM" {
-            let res = get_clauses(lista);
-            match res {
-                Ok(Some(_x)) => {}
-                Ok(None) => return Err(Error::SyntaxError("Columna(s) inválida(s)".to_string())),
-                Err(_x) => {
-                    return Err(Error::SyntaxError(
-                        "Falta el from en la consulta".to_string(),
-                    ))
+    if !check_words(list, "WHERE") {
+        return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
+    }
+    builder.set_where(where_clause(list)?);
+
+    if check_words(list, "IF") {
+        if check_words(list, "EXISTS") {
+            builder.set_if_condition(Some(IfCondition::Exists));
+        } else {
+            let mut conditions = Vec::new();
+            loop {
+                let condition = parse_condition(list)?;
+                conditions.push(condition);
+                if !check_words(list, "AND") {
+                    break;
                 }
             }
+            builder.set_if_condition(Some(IfCondition::Conditions(conditions)));
         }
+    }
 
-        let file_name: String = lista.remove(index);
+    Ok(Some(builder.build()))
+}
 
-        if lista[index] == "USING" {
-            lista.remove(index);
-            // Chequeo de la sintaxis de USING
-        } else {
-            return Ok(None);
-        }
+fn parse_condition(list: &mut Vec<String>) -> Result<Condition, Error> {
+    if list.len() < 3 {
+        return Err(Error::SyntaxError("Condición IF incompleta".to_string()));
+    }
 
-        if lista[index] == "WHERE" {
-            lista.remove(index);
-            builder.set_where(where_clause(lista)?);
-            if lista[index] == "IF" {
-                lista.remove(index);
-                // Chequeo sintaxis de condicionales para la query
+    let column = list.remove(0);
+    let operator = list.remove(0);
+    let value = parse_value(list)?;
+
+    match operator.as_str() {
+        "=" => Ok(Condition::Equals(column, value)),
+        "!=" => Ok(Condition::NotEquals(column, value)),
+        ">" => Ok(Condition::GreaterThan(column, value)),
+        ">=" => Ok(Condition::GreaterThanOrEqual(column, value)),
+        "<" => Ok(Condition::LessThan(column, value)),
+        "<=" => Ok(Condition::LessThanOrEqual(column, value)),
+        "IN" => {
+            if let Value::List(list) = value {
+                Ok(Condition::In(column, list))
             } else {
-                return Ok(None);
+                Err(Error::SyntaxError("Se esperaba una list para el operador IN".to_string()))
             }
-
-            return Ok(Some(builder.build()));
-        } else {
-            return Ok(None);
-        }
+        },
+        _ => Err(Error::SyntaxError(format!("Operador desconocido: {}", operator))),
     }
-    Ok(None)
 }
 
-pub fn insert_statement(lista: &mut Vec<String>) -> Result<Option<Insert>, Error> {
-    let index = 0;
-    if lista[index] == "INSERT" && lista[index + 1] == "INTO" {
-        lista.remove(index);
-        lista.remove(index);
-
-        //let mut builder = InsertBuilder::default();
-        // Guardar el nombre de la tabla
-        let file_name: String = lista.remove(index);
-
-        if lista[index] == "JSON" {
-            // Chequeo si la sintaxis JSON es válida
-        } else {
-            // Chequeo si la sintaxis de las columnas es válida (o crear si no existe alguna)
-        }
-
-        if lista[index] == "IF" && lista[index + 1] == "NOT" && lista[index + 2] == "EXISTS" {
-            // Chequeo de la sintaxis de IF NOT EXISTS
-        }
-
-        if lista[index] == "VALUES" {
-            lista.remove(index);
-            // Chequeo/match de valores con columnas
-        }
-
-        if lista[index] == "USING" {
-            lista.remove(index);
-            // Chequeo de la sintaxis de USING
-        }
-        //return Ok(Some(builder.build()));
+fn parse_value(list: &mut Vec<String>) -> Result<Value, Error> {
+    if list.is_empty() {
+        return Err(Error::SyntaxError("Valor esperado".to_string()));
     }
-    Ok(None)
-}
 
-pub fn update_statement(lista: &mut Vec<String>) -> Result<Option<Update>, Error> {
-    let index = 0;
-    if lista[0] == "UPDATE" {
-        let mut builder = UpdateBuilder::default();
-        // Guardar el nombre de la tabla
-        let file_name: String = lista.remove(index);
-
-        if lista[index] == "USING" {
-            lista.remove(index);
-            // Chequeo de la sintaxis de USING
-        }
-
-        if lista[index] == "SET" {
-            lista.remove(index);
-            // Chequeo de la sintaxis de SET
-        } else {
-            return Ok(None);
-        }
-
-        if lista[index] == "WHERE" {
-            lista.remove(index);
-            builder.set_where(where_clause(lista)?);
-            if lista[index] == "IF" {
-                lista.remove(index);
-                // Chequeo sintaxis de condicionales para la query
+    let first = list.remove(0);
+    if first == "(" {
+        let mut values = Vec::new();
+        while let Some(next) = list.first() {
+            if next == ")" {
+                list.remove(0);
+                return Ok(Value::List(values));
             }
-        } else {
-            return Ok(None);
+            values.push(parse_single_value(list.remove(0))?);
+            if list.first() == Some(&",".to_string()) {
+                list.remove(0);
+            }
         }
-        return Ok(Some(builder.build()));
-    }
-
-    Ok(None)
-}
-
-pub fn batch_statement(lista: &mut Vec<String>) -> Result<Option<Vec<DmlStatement>>, Error> {
-    let index = 0;
-    let query: Vec<DmlStatement> = Vec::new();
-
-    if lista[index] == "BEGIN" {
-        lista.remove(index);
-        if lista[index] == "UNLOGGED" {
-            // Lógica para el Unlogged Batch -> Aplicación parcial del batch
-            lista.remove(index);
-        } else if lista[index] == "COUNTER" {
-            // Lógica para el Counter Batch -> Aplicación para contadores
-            lista.remove(index);
-        } else {
-            // Lógica para el Logged Batch -> Aplicación total del batch
-        }
+        Err(Error::SyntaxError("List no cerrada".to_string()))
     } else {
-        return Ok(Some(query));
+        parse_single_value(first)
+    }
+}
+
+fn parse_single_value(value: String) -> Result<Value, Error> {
+    if value.starts_with('\'') && value.ends_with('\'') {
+        Ok(Value::String(value[1..value.len()-1].to_string()))
+    } else if let Ok(num) = value.parse::<i64>() {
+        Ok(Value::Integer(num))
+    } else if let Ok(num) = value.parse::<f64>() {
+        Ok(Value::Float(num))
+    } else if value == "true" || value == "false" {
+        Ok(Value::Boolean(value == "true"))
+    } else {
+        Ok(Value::Identifier(value))
+    }
+}
+
+fn insert_statement(list: &mut Vec<String>) -> Result<Option<Insert>, Error> {
+    if check_words(list, "INSERT INTO"){
+        let table_name: TableName = match TableName::check_kind_of_name(list)?{
+            Some(value) => value,
+            None => return Err(Error::SyntaxError("El nombre de la tabla no es sintacticamente valido".to_string()))
+        };
+        let names = check_insert_names(list)?;
+
+        if !check_words(list, "VALUES") {
+            return Err(Error::SyntaxError("Falto VALUES".to_string()));
+        }
+        let values = match TupleLiteral::check_tuple_literal(list)?{
+            Some(value) => value,
+            None => return Err(Error::SyntaxError("No se encontro ninguna tupla".to_string()))
+        };
+        let if_not_exists = check_words(list, "IF NOT EXISTS");
+        return Ok(Some(Insert::new(table_name, names, values, if_not_exists)))
+    }
+    Ok(None)
+}
+
+fn check_insert_names(list: &mut Vec<String>) -> Result<Vec<Identifier>, Error> {
+    if !check_words(list, "("){
+        return  Err(Error::SyntaxError("Falto (".to_string()));
+    }
+    let mut names: Vec<Identifier> = Vec::new();
+    match Identifier::check_identifier(list)? {
+        Some(value) => names.push(value),
+        None => {
+            return Err(Error::SyntaxError(
+                "Columnas de INSERT no encontradas".to_string(),
+            ))
+        }
+    };
+    while check_words(list, ","){
+        match Identifier::check_identifier(list)? {
+            Some(value) => names.push(value),
+            None => {
+                return Err(Error::SyntaxError(
+                    "Columnas de INSERT no encontradas".to_string(),
+                ))
+            }
+        };
+    }
+    if !check_words(list, ")"){
+        return  Err(Error::SyntaxError("Falta el cierre ')'".to_string()));
+    }
+    Ok(names)
+}
+
+fn update_statement(list: &mut Vec<String>) -> Result<Option<Update>, Error> {
+    if check_words(list, "UPDATE"){
+        // Guardar el nombre de la tabla
+        let table_name: TableName = match TableName::check_kind_of_name(list)?{
+            Some(value) => value,
+            None => return Err(Error::SyntaxError("El nombre de la tabla no es sintacticamente valido".to_string()))
+        };
+        let set = set_clause(list)?;
+        let r#where = where_clause(list)?;
+        return Ok(Some(Update::new(table_name, set, r#where)));
     }
 
-    lista.remove(index);
+    Ok(None)
+}
 
-    if lista[index] != "BATCH" {
-        return Ok(Some(query));
+fn set_clause(list: &mut Vec<String>) -> Result<Vec<Assignment>, Error>{
+    if !check_words(list, "SET"){
+        return Err(Error::SyntaxError("No se encontro el SET".to_string()));
+    }
+    let mut assignments: Vec<Assignment> = Vec::new();
+    let mut assignment = match Assignment::check_kind_of_assignment(list)?{
+        Some(value) => value,
+        None => return Err(Error::SyntaxError("No se indico ninguna columna en el SET".to_string()))
+    };
+    assignments.push(assignment);
+    while check_words(list, ","){
+        assignment = match Assignment::check_kind_of_assignment(list)?{
+            Some(value) => value,
+            None => return Err(Error::SyntaxError("No se indico ninguna columna en el SET".to_string()))
+        }; 
+        assignments.push(assignment);
+    }
+    Ok(assignments)
+
+}
+
+fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
+    let mut builder = BatchBuilder::default();
+    if check_words(list, "BEGIN") {
+        if check_words(list, "UNLOGGED") {
+            builder.set_batch_clause(BatchType::Unlogged);
+        } else if check_words(list, "COUNTER") {
+            builder.set_batch_clause(BatchType::Counter);
+        } else if !check_words(list, "BATCH") {
+            return Err(Error::SyntaxError("Falta BATCH en la consulta".to_string()));
+        }
+        builder.set_batch_clause(BatchType::Logged);
+    } else {
+        return Err(Error::SyntaxError("Falta BEGIN en la consulta".to_string()));
     }
 
-    let mut query: Vec<DmlStatement> = Vec::new();
-    while lista[index] != "APPLY" && lista[index + 1] != "BATCH" {
-        if lista.is_empty() {
+    let mut queries: Vec<DmlStatement> = Vec::new();
+    while list[0] != "APPLY" && list[1] != "BATCH" {
+        if list.is_empty() {
             break;
         }
-        if lista[index] == "INSERT" {
-            if let Some(insert_stmt) = insert_statement(lista)? {
-                query.push(DmlStatement::InsertStatement(insert_stmt));
+        if check_words(list, "INSERT") {
+            if let Some(insert_stmt) = insert_statement(list)? {
+                queries.push(DmlStatement::InsertStatement(insert_stmt));
             }
-        } else if lista[index] == "UPDATE" {
-            if let Some(update_stmt) = update_statement(lista)? {
-                query.push(DmlStatement::UpdateStatement(update_stmt));
+        } else if check_words(list, "UPDATE") {
+            if let Some(update_stmt) = update_statement(list)? {
+                queries.push(DmlStatement::UpdateStatement(update_stmt));
             }
-        } else if lista[index] == "DELETE" {
-            if let Some(delete_stmt) = delete_statement(lista)? {
-                query.push(DmlStatement::DeleteStatement(delete_stmt));
+        } else if check_words(list, "DELETE") {
+            if let Some(delete_stmt) = delete_statement(list)? {
+                queries.push(DmlStatement::DeleteStatement(delete_stmt));
             }
         }
-        lista.remove(index);
+        list.remove(0);
     }
-    Ok(Some(query))
+    if queries.is_empty() {
+        return Err(Error::SyntaxError("No se encontraron consultas en el batch".to_string()));
+    }
+    builder.set_queries(queries);
+    Ok(Some(builder.build()))
 }
