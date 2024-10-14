@@ -2,8 +2,7 @@
 
 use std::convert::TryFrom;
 
-use crate::protocol::errors::error::Error;
-use crate::protocol::{aliases::types::Byte, traits::Byteable};
+use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
 
 /// Indica el modo de conexión al instanciar el servidor.
 #[derive(Clone, Debug)]

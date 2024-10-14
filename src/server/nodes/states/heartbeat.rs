@@ -1,14 +1,16 @@
 //! Módulo para el _Heartbeat State_ de un nodo.
 
 use chrono::Utc;
-use std::cmp::{Ordering, PartialEq, PartialOrd};
-use std::convert::TryFrom;
+use std::{
+    cmp::{Ordering, PartialEq, PartialOrd},
+    convert::TryFrom,
+};
 
-use crate::protocol::errors::error::Error;
-use crate::protocol::{aliases::types::Byte, traits::Byteable};
+use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
 
 /// El alias para el número de generación.
 pub type GenType = i64;
+
 /// El alias para el número de versión.
 pub type VerType = u64;
 

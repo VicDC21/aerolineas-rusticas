@@ -1,13 +1,15 @@
 //! Módulo de servidor.
-use std::io::Read;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
-use std::thread::JoinHandle;
+use std::{
+    io::Read,
+    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener},
+    thread::JoinHandle,
+};
 
-use crate::protocol::aliases::{results::Result, types::Byte};
-use crate::protocol::errors::error::Error;
-use crate::server::actions::opcode::SvAction;
-use crate::server::modes::ConnectionMode;
-use crate::server::nodes::graph::NodeGraph;
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+};
+use crate::server::{actions::opcode::SvAction, modes::ConnectionMode, nodes::graph::NodeGraph};
 
 /// Estructura principal de servidor.
 pub struct Server {

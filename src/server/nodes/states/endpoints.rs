@@ -1,16 +1,25 @@
 //! Módulo para el _Endpoint State_ de un nodo.
 
-use std::cmp::PartialEq;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::{
+    cmp::PartialEq,
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+};
 
-use crate::protocol::aliases::types::{Byte, Int};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::protocol::utils::{encode_ipaddr_to_bytes, parse_bytes_to_ipaddr};
-use crate::server::modes::ConnectionMode;
-use crate::server::nodes::node::NodeId;
-use crate::server::nodes::states::{
-    application::AppState, appstatus::AppStatus, heartbeat::HeartbeatState, heartbeat::VerType,
+use crate::protocol::{
+    aliases::types::{Byte, Int},
+    errors::error::Error,
+    traits::Byteable,
+    utils::{encode_ipaddr_to_bytes, parse_bytes_to_ipaddr},
+};
+use crate::server::{
+    modes::ConnectionMode,
+    nodes::{
+        node::NodeId,
+        states::{
+            application::AppState, appstatus::AppStatus, heartbeat::HeartbeatState,
+            heartbeat::VerType,
+        },
+    },
 };
 
 /// El puerto preferido para las IPs
