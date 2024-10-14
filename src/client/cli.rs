@@ -1,10 +1,16 @@
 //! Módulo del cliente.
 
-use std::io::{stdin, BufRead, BufReader, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::{
+    io::{stdin, BufRead, BufReader, Write},
+    net::{SocketAddr, TcpStream},
+};
 
-use crate::protocol::aliases::{results::Result, types::Byte};
-use crate::protocol::errors::error::Error;
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    traits::Byteable,
+};
+use crate::server::actions::opcode::SvAction;
 
 /// Estructura principal de un cliente.
 pub struct Client {
@@ -23,7 +29,7 @@ impl Client {
         match TcpStream::connect(self.addr) {
             Ok(tcp_stream) => Ok(tcp_stream),
             Err(_) => Err(Error::ServerError(format!(
-                "Could not connect to socket '{}'",
+                "No se pudo conectar al socket '{}'",
                 self.addr
             ))),
         }
@@ -41,12 +47,17 @@ impl Client {
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
 
+        println!("ECHO MODE:\n----------\nEscribe lo que necesites.\nCuando salgas de este modo, se mandará todo de una al servidor.\n----------\n'q' en una línea sola para salir\n'shutdown' para mandar un mensaje de apagado al servidor\n----------\n");
+
         for line in reader.lines().map_while(|e| e.ok()) {
             if line.eq_ignore_ascii_case("q") {
                 break;
             }
+            if line.eq_ignore_ascii_case("shutdown") {
+                let _ = tcp_stream.write_all(&SvAction::Exit.as_bytes()[..]);
+                break;
+            }
 
-            println!("Enviando: {:?}", line);
             let _ = tcp_stream.write_all(line.as_bytes());
             let _ = tcp_stream.write_all("\n".as_bytes());
         }

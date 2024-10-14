@@ -1,6 +1,5 @@
-use std::env::args;
-
 use aerolineas::{client::cli::Client, server::sv::Server};
+use std::env::args;
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
@@ -11,13 +10,17 @@ fn main() {
 
     match argv[1].as_str() {
         "sv" => {
-            let server = Server::echo_mode();
-            let _ = server.listen();
+            let mut server = Server::echo_mode();
+            if let Err(err) = server.listen() {
+                println!("{}", err);
+            }
         }
 
         "cli" => {
             let client = Client::new(Server::default_addr());
-            let _ = client.echo();
+            if let Err(err) = client.echo() {
+                println!("{}", err);
+            }
         }
         _ => {
             println!("Se debe elegir o 'sv' o 'cli', no '{}'...", argv[1]);
