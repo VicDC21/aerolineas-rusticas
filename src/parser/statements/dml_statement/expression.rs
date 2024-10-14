@@ -1,8 +1,8 @@
 use crate::cassandra::errors::error::Error;
 
 use super::{
-    and::And, operator::Operator, r#where::Where, relation::Relation,
-    statements::dml_statement::dml_statement_parser::is_column_name,
+    and::And, operator::Operator, relation::Relation,
+    dml_statement_parser::is_column_name,
 };
 
 pub enum Expression {

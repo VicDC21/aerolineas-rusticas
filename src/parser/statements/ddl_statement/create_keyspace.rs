@@ -1,4 +1,7 @@
-use crate::parser::data_types::{keyspace_name::KeyspaceName, option::Options};
+use crate::parser::data_types::keyspace_name::KeyspaceName;
+use super::option::Options;
+
+
 
 pub struct CreateKeyspace {
     if_not_exist: bool,

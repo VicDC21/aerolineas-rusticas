@@ -17,14 +17,14 @@ pub fn udt_statement(lista: &mut [String]) -> Result<Option<UdtStatement>, Error
     Ok(None)
 }
 
-pub fn create_type_statement(lista: &mut [String]) -> Result<Option<UdtStatement>, Error> {
+pub fn create_type_statement(_lista: &mut [String]) -> Result<Option<UdtStatement>, Error> {
     Ok(None)
 }
 
-pub fn alter_type_statement(lista: &mut [String]) -> Result<Option<UdtStatement>, Error> {
+pub fn alter_type_statement(_lista: &mut [String]) -> Result<Option<UdtStatement>, Error> {
     Ok(None)
 }
 
-pub fn drop_type_statement(lista: &mut [String]) -> Result<Option<UdtStatement>, Error> {
+pub fn drop_type_statement(_lista: &mut [String]) -> Result<Option<UdtStatement>, Error> {
     Ok(None)
 }

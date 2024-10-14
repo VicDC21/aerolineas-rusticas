@@ -6,3 +6,5 @@ pub mod ddl_statement_parser;
 pub mod drop_keyspace;
 pub mod drop_table;
 pub mod truncate;
+pub mod column_definition;
+pub mod option;

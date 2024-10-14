@@ -1,5 +1,6 @@
-use crate::parser::data_types::option::Options;
-use crate::parser::{column_definition::ColumnDefinition, table_name::TableName};
+use super::option::Options;
+use crate::parser::table_name::TableName;
+use super::column_definition::ColumnDefinition;
 
 pub enum AlterTableInstruction {
     AddColumns(Vec<ColumnDefinition>),

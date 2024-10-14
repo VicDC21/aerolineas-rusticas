@@ -6,7 +6,7 @@ use crate::{
     },
 };
 
-use super::term::Term;
+use super::super::term::Term;
 
 pub struct MapLiteral {
     values: Vec<(Term, Term)>,

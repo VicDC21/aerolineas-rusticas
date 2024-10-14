@@ -1,7 +1,7 @@
-use super::{data_types::keyspace_name::KeyspaceName, order_by::OrderBy, selector::Selector};
-use crate::parser::{
+use super::{order_by::OrderBy, selector::Selector};
+use crate::parser::{data_types::keyspace_name::KeyspaceName, statements::dml_statement::{
     group_by::GroupBy, limit::Limit, per_partition_limit::PerPartitionLimit, r#where::Where,
-};
+}};
 
 pub struct Select {
     columns: KindOfColumns,

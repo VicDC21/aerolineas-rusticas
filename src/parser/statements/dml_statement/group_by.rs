@@ -1,4 +1,4 @@
-use super::data_types::identifier::Identifier;
+use crate::parser::data_types::identifiers::identifier::Identifier;
 
 pub struct GroupBy {
     columns: Vec<Identifier>,

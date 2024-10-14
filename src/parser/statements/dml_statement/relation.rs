@@ -1,4 +1,6 @@
-use super::{data_types::identifier::Identifier, operator::Operator};
+use crate::parser::data_types::identifiers::identifier::Identifier;
+
+use super::operator::Operator;
 
 pub struct Relation {
     first_column: Identifier,

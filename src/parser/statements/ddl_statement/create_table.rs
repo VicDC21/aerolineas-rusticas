@@ -1,7 +1,7 @@
-use crate::parser::data_types::option::Options;
-use crate::parser::{
-    column_definition::ColumnDefinition, primary_key::PrimaryKey, table_name::TableName,
-};
+use super::option::Options;
+use crate::parser::{primary_key::PrimaryKey, table_name::TableName};
+
+use super::column_definition::ColumnDefinition;
 
 pub struct CreateTable {
     pub if_not_exists: bool,

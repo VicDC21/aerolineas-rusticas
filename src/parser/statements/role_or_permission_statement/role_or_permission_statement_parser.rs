@@ -50,79 +50,79 @@ pub fn role_or_permission_statement(
 }
 
 pub fn create_role_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn alter_role_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_role_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn grant_role_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn revoke_role_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn list_roles_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn grant_permission_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn revoke_permission_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn list_permissions_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn create_user_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn alter_user_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn drop_user_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }
 
 pub fn list_users_statement(
-    lista: &mut [String],
+    _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
 }

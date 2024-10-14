@@ -1,20 +1,17 @@
 use crate::{
     cassandra::errors::error::Error,
     parser::{
-        column_definition::ColumnDefinition,
+        
         data_types::{
-            self, cql_type::CQLType, identifier::Identifier, keyspace_name::KeyspaceName,
-            native_types::parse_data_type, option::Options, unquoted_name::UnquotedName,
+            cql_type::{cql_type::CQLType, native_types::parse_data_type}, identifier::identifier::Identifier, keyspace_name::KeyspaceName, unquoted_name::UnquotedName
         },
         primary_key::PrimaryKey,
         table_name::TableName,
     },
 };
 
-use super::{
-    alter_keyspace::AlterKeyspace, alter_table::AlterTable, alter_table::AlterTableInstruction,
-    create_keyspace::CreateKeyspace, create_table::CreateTable, drop_keyspace::DropKeyspace,
-    drop_table::DropTable, truncate::Truncate,
+use super::{option::Options,
+    alter_keyspace::AlterKeyspace, alter_table::{AlterTable, AlterTableInstruction}, column_definition::ColumnDefinition, create_keyspace::CreateKeyspace, create_table::CreateTable, drop_keyspace::DropKeyspace, drop_table::DropTable, truncate::Truncate
 };
 
 pub enum DdlStatement {
@@ -236,15 +233,14 @@ fn parse_column_definitions(lista: &mut Vec<String>) -> Result<Vec<ColumnDefinit
 
         let data_type = parse_data_type(lista)?;
 
-        let mut is_static = false;
-        if check_words(lista, "STATIC") {
-            is_static = true;
-        }
+        let is_static = check_words(lista, "STATIC");
 
-        let column = ColumnDefinition::new(name, CQLType::NativeType(data_type), is_static);
+        let primary_key = check_words(lista, "PRIMARY KEY"); 
+
+        let column = ColumnDefinition::new(name, CQLType::NativeType(data_type), is_static, primary_key);
         columns.push(column);
 
-        if !check_words(lista, ",") {
+        if !check_words(lista, ","){ // falta ver que pasa cuando hay 	[ ',' PRIMARY KEY '(' primary_key ')' ]
             break;
         }
 
@@ -329,10 +325,10 @@ fn parse_column_names(lista: &mut Vec<String>) -> Result<Vec<String>, Error> {
     Ok(columns)
 }
 
-pub fn drop_table_statement(lista: &mut Vec<String>) -> Result<Option<DdlStatement>, Error> {
+pub fn drop_table_statement(_lista: &mut Vec<String>) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }
 
-pub fn truncate_statement(lista: &mut Vec<String>) -> Result<Option<DdlStatement>, Error> {
+pub fn truncate_statement(_lista: &mut Vec<String>) -> Result<Option<DdlStatement>, Error> {
     Ok(None)
 }

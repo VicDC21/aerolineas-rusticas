@@ -1,5 +1,6 @@
 use crate::cassandra::errors::error::Error;
-use crate::parser::data_types::native_types::{parse_data_type, NativeType};
+
+use super::native_types::{parse_data_type, NativeType};
 
 pub enum CollectionType {
     /// MAP '<' cql_type',' cql_type'>'

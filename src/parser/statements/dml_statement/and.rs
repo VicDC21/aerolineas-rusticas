@@ -1,4 +1,4 @@
-use super::{expression::Expression, relation::Relation};
+use super::expression::Expression;
 
 pub struct And {
     first_relation: Box<Expression>,

@@ -1,24 +1,24 @@
 use crate::{
-    cassandra::errors::error::{self, Error},
+    cassandra::errors::error::Error,
     parser::{
         data_types::{
-            constant::Constant, cql_type::CQLType, identifier::Identifier,
-            keyspace_name::KeyspaceName, native_types::NativeType,
-            quoted_identifier::QuotedIdentifier, term::Term,
-            unquoted_identifier::UnquotedIdentifier,
+            constant::Constant, identifiers::identifier::Identifier,
+            identifiers::quoted_identifier::QuotedIdentifier, term::Term,
+            identifiers::unquoted_identifier::UnquotedIdentifier,
         },
-        delete::{Delete, DeleteBuilder},
-        expression::expression,
-        group_by::GroupBy,
-        insert::{Insert, InsertBuilder},
-        limit::Limit,
-        order_by::OrderBy,
-        per_partition_limit::PerPartitionLimit,
-        r#where::Where,
-        relation::Relation,
-        select::{KindOfColumns, Select, SelectBuilder},
-        selector::Selector,
-        update::{Update, UpdateBuilder},
+        statements::dml_statement::{
+            delete::{Delete, DeleteBuilder},
+            expression::expression,
+            group_by::GroupBy,
+            insert::Insert,
+            limit::Limit,
+            per_partition_limit::PerPartitionLimit,
+            r#where::Where,
+            relation::Relation,
+            select::{KindOfColumns, Select, SelectBuilder},
+            selector::Selector,
+            update::{Update, UpdateBuilder},
+        }
     },
 };
 

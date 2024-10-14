@@ -1,5 +1,6 @@
 use crate::parser::data_types::keyspace_name::KeyspaceName;
-use crate::parser::data_types::option::Options;
+
+use super::option::Options;
 
 pub struct AlterKeyspace {
     pub if_exists: bool,

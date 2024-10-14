@@ -1,9 +1,8 @@
 use crate::{
     cassandra::errors::error::Error,
-    parser::statements::dml_statement::dml_statement_parser::is_term,
+    parser::{data_types::{identifiers::identifier::Identifier, literal::map_literal::MapLiteral, term::Term}, statements::dml_statement::dml_statement_parser::is_term},
 };
 
-use super::{identifier::Identifier, map_literal::MapLiteral, term::Term};
 
 // options::= option ( AND option )*
 // option::= identifier '=' ( identifier
