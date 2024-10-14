@@ -9,6 +9,6 @@ pub fn run_app() -> UIResult<()> {
     run_native(
         "Aerolíneas App",
         NativeOptions::default(),
-        Box::new(|_cc| Box::<AerolineasApp>::default()),
+        Box::new(|cc| Box::<AerolineasApp>::new(AerolineasApp::new(cc.egui_ctx.clone()))),
     )
 }
