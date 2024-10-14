@@ -86,9 +86,14 @@ impl EndpointState {
         &self.addr
     }
 
-    /// Consulta el estado _Heartbeat_.
-    pub fn get_heartbeat(&mut self) -> &HeartbeatState {
+    /// Consulta el estado _heartbeat_.
+    pub fn get_heartbeat(&self) -> &HeartbeatState {
         &self.heartbeat
+    }
+
+    /// Devuelve una copia del estado _heartbeat_.
+    pub fn clone_heartbeat(&self) -> HeartbeatState {
+        self.heartbeat.clone()
     }
 
     /// Consulta el estado de aplicación.

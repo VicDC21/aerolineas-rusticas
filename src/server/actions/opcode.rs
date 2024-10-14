@@ -41,13 +41,13 @@ pub enum SvAction {
     ///
     /// Acá todavía no se mandan estados de nodo, sino sólo metadatos que son lo mínimo y necesario
     /// para comparar versiones.
-    Syn(GossipInfo),
+    Syn(NodeId, GossipInfo),
 
     /// Potencial primera respuesta en un intercambio de _gossip_.
     ///
     /// Acá se devuelven tanto los estados que el nodo receptor pide actualizar en un [GossipInfo],
     /// así como los [EndpointState] actualizados que le hacen falta al nodo emisor, en un [NodesMap].
-    Ack(GossipInfo, NodesMap),
+    Ack(NodeId, GossipInfo, NodesMap),
 
     /// Potencial segunda respuesta en un intercambio de _gossip_.
     ///
@@ -171,13 +171,13 @@ impl Byteable for SvAction {
                 bytes_vec.extend(encode_iter_to_bytes(neighbours_iter));
                 bytes_vec
             }
-            Self::Syn(gossip_info) => {
-                let mut bytes_vec = vec![0xF3];
+            Self::Syn(emissor_id, gossip_info) => {
+                let mut bytes_vec = vec![0xF3, *emissor_id];
                 bytes_vec.extend(Self::encode_gossip_info_to_bytes(gossip_info));
                 bytes_vec
             }
-            Self::Ack(gossip_info, nodes_map) => {
-                let mut bytes_vec = vec![0xF4];
+            Self::Ack(receptor_id, gossip_info, nodes_map) => {
+                let mut bytes_vec = vec![0xF4, *receptor_id];
                 bytes_vec.extend(Self::encode_gossip_info_to_bytes(gossip_info));
                 bytes_vec.extend(Self::encode_nodes_map_to_bytes(nodes_map));
                 bytes_vec
@@ -242,16 +242,20 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xF3 => {
                 i += 1;
-                Ok(Self::Syn(Self::parse_bytes_to_gossip_info(
-                    &bytes[i..],
-                    &mut i,
-                )?))
+                let emissor_id = bytes[i];
+                i += 1;
+                Ok(Self::Syn(
+                    emissor_id,
+                    Self::parse_bytes_to_gossip_info(&bytes[i..], &mut i)?,
+                ))
             }
             0xF4 => {
                 i += 1;
+                let receptor_id = bytes[i];
+                i += 1;
                 let gossip_info = Self::parse_bytes_to_gossip_info(&bytes[i..], &mut i)?;
                 let nodes_map = Self::parse_bytes_to_nodes_map(&bytes[i..], &mut i)?;
-                Ok(Self::Ack(gossip_info, nodes_map))
+                Ok(Self::Ack(receptor_id, gossip_info, nodes_map))
             }
             0xF5 => {
                 i += 1;

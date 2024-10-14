@@ -10,6 +10,7 @@ use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 use crate::server::actions::opcode::{GossipInfo, SvAction};
 use crate::server::modes::ConnectionMode;
+use crate::server::nodes::states::heartbeat::HeartbeatState;
 use crate::server::nodes::states::{
     appstatus::AppStatus,
     endpoints::EndpointState,
@@ -90,6 +91,27 @@ impl Node {
         }
     }
 
+    /// Actualiza la información de vecinos con otro mapa dado.
+    ///
+    /// No se comprueba si las entradas nuevas son más recientes o no: reemplaza todo sin preguntar.
+    fn update_neighbours(&mut self, new_neighbours: NodesMap) -> Result<()> {
+        for (node_id, endpoint_state) in new_neighbours {
+            self.neighbours_states.insert(node_id, endpoint_state);
+        }
+
+        Ok(())
+    }
+
+    /// Consigue la información de _gossip_ que contiene este nodo.
+    pub fn get_gossip_info(&self) -> GossipInfo {
+        let mut gossip_info = GossipInfo::new();
+        for (node_id, endpoint_state) in &self.neighbours_states {
+            gossip_info.insert(node_id.to_owned(), endpoint_state.clone_heartbeat());
+        }
+
+        gossip_info
+    }
+
     /// Ve si el nodo es un nodo "hoja".
     pub fn leaf(&self) -> bool {
         self.neighbours_states.is_empty()
@@ -120,27 +142,94 @@ impl Node {
 
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     pub fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
-        // for neighbour in neighbours {
-        //     if let Err(err) = send_to_node(neighbour, SvAction::Syn(self.neighbours_states.clone()).as_bytes()) {
-        //         println!("Ocurrió un error en medio de una ronda de gossip:\n\n{}", err);
-        //     }
-        // }
+        for neighbour_id in neighbours {
+            if let Err(err) = send_to_node(
+                neighbour_id,
+                SvAction::Syn(self.get_id().to_owned(), self.get_gossip_info()).as_bytes(),
+            ) {
+                println!(
+                    "Ocurrió un error al mandar un mensaje SYN al nodo [{}]:\n\n{}",
+                    neighbour_id, err
+                );
+            }
+        }
         Ok(())
     }
 
     /// Se recibe un mensaje [SYN](crate::server::actions::opcode::SvAction::Syn).
-    pub fn syn(&mut self, gossip_info: GossipInfo) -> Result<()> {
+    pub fn syn(&mut self, emissor_id: NodeId, gossip_info: GossipInfo) -> Result<()> {
+        let mut own_gossip = GossipInfo::new(); // quiero info de estos nodos
+        let mut response_nodes = NodesMap::new(); // doy info de estos nodos
+
+        for (node_id, heartbeat) in &gossip_info {
+            let endpoint_state_opt = &self.neighbours_states.get(node_id);
+            match endpoint_state_opt {
+                Some(endpoint_state) => {
+                    let cur_heartbeat = endpoint_state.get_heartbeat();
+                    if cur_heartbeat > heartbeat {
+                        response_nodes.insert(*node_id, (*endpoint_state).clone());
+                    } else if cur_heartbeat < heartbeat {
+                        own_gossip.insert(*node_id, endpoint_state.clone_heartbeat());
+                    }
+                }
+                None => {
+                    // Se trata de un vecino que no conocemos aún
+                    own_gossip.insert(*node_id, HeartbeatState::minimal());
+                }
+            }
+        }
+
+        // Ahora rondamos nuestros vecinos para ver si tenemos uno que el nodo emisor no
+        for (own_node_id, endpoint_state) in &self.neighbours_states {
+            if !gossip_info.contains_key(own_node_id) {
+                response_nodes.insert(*own_node_id, endpoint_state.clone());
+            }
+        }
+
+        if let Err(err) = send_to_node(
+            emissor_id,
+            SvAction::Ack(self.get_id().to_owned(), own_gossip, response_nodes).as_bytes(),
+        ) {
+            println!(
+                "Ocurrió un error al mandar un mensaje ACK al nodo [{}]:\n\n{}",
+                emissor_id, err
+            );
+        }
         Ok(())
     }
 
     /// Se recibe un mensaje [ACK](crate::server::actions::opcode::SvAction::Ack).
-    pub fn ack(&mut self, gossip_info: GossipInfo, nodes_map: NodesMap) -> Result<()> {
+    pub fn ack(
+        &mut self,
+        receptor_id: NodeId,
+        gossip_info: GossipInfo,
+        nodes_map: NodesMap,
+    ) -> Result<()> {
+        // Poblamos un mapa con los estados que pide el receptor
+        let mut nodes_for_receptor = NodesMap::new();
+        for (node_id, heartbeat) in &gossip_info {
+            let cur_endpoint_state = &self.neighbours_states[node_id];
+            if cur_endpoint_state.get_heartbeat() > heartbeat {
+                // hacemos doble chequeo que efectivamente tenemos información más nueva
+                nodes_for_receptor.insert(*node_id, cur_endpoint_state.clone());
+            }
+        }
+
+        // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
+        self.update_neighbours(nodes_map)?;
+
+        if let Err(err) = send_to_node(receptor_id, SvAction::Ack2(nodes_for_receptor).as_bytes()) {
+            println!(
+                "Ocurrió un error al mandar un mensaje ACK2 al nodo [{}]:\n\n{}",
+                receptor_id, err
+            );
+        }
         Ok(())
     }
 
     /// Se recibe un mensaje [ACK2](crate::server::actions::opcode::SvAction::Ack2).
     pub fn ack2(&mut self, nodes_map: NodesMap) -> Result<()> {
-        Ok(())
+        self.update_neighbours(nodes_map)
     }
 
     /// Escucha por los eventos que recibe.
@@ -174,11 +263,11 @@ impl Node {
                             SvAction::Gossip(neighbours) => {
                                 self.gossip(neighbours)?;
                             }
-                            SvAction::Syn(gossip_info) => {
-                                self.syn(gossip_info)?;
+                            SvAction::Syn(emissor_id, gossip_info) => {
+                                self.syn(emissor_id, gossip_info)?;
                             }
-                            SvAction::Ack(gossip_info, nodes_map) => {
-                                self.ack(gossip_info, nodes_map)?;
+                            SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
+                                self.ack(receptor_id, gossip_info, nodes_map)?;
                             }
                             SvAction::Ack2(nodes_map) => {
                                 self.ack2(nodes_map)?;

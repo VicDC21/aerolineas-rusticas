@@ -38,6 +38,11 @@ impl HeartbeatState {
     pub fn as_tuple(&self) -> (GenType, VerType) {
         (self.gen, self.ver)
     }
+
+    /// Devuelve un estado que siempre va a ser menor que otros.
+    pub fn minimal() -> Self {
+        Self::new(0, 0)
+    }
 }
 
 impl Default for HeartbeatState {
