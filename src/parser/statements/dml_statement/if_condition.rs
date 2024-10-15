@@ -2,7 +2,6 @@ use crate::parser::data_types::{identifier::identifier::Identifier, term::Term};
 
 use super::r#where::operator::Operator;
 
-
 /// Representa una condición IF en una declaración DML.
 pub enum IfCondition {
     /// Representa una condición IF EXISTS.    
@@ -26,8 +25,6 @@ pub struct Condition {
     _second_column: Term,
 }
 
-
-
 impl IfCondition {
     /// Crea una nueva condición IF EXISTS.
     pub fn new_exists() -> Self {
@@ -45,11 +42,13 @@ impl IfCondition {
     }
 }
 
-impl Condition{
+impl Condition {
     /// Crea un nuevo Condition
-    pub fn new(_first_column: Identifier, _operator: Operator, _second_column: Term) -> Condition{
-        Condition{ _first_column, _operator, _second_column
+    pub fn new(_first_column: Identifier, _operator: Operator, _second_column: Term) -> Condition {
+        Condition {
+            _first_column,
+            _operator,
+            _second_column,
         }
-
     }
 }

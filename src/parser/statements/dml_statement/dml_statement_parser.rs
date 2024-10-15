@@ -382,17 +382,29 @@ fn parse_condition(list: &mut Vec<String>) -> Result<Condition, Error> {
         return Err(Error::SyntaxError("Condición IF incompleta".to_string()));
     }
 
-    let column = match Identifier::check_identifier(list)?{
+    let column = match Identifier::check_identifier(list)? {
         Some(value) => value,
-        None => return Err(Error::SyntaxError("La condicion IF no tiene una sintaxis adecuada".to_string()))
+        None => {
+            return Err(Error::SyntaxError(
+                "La condicion IF no tiene una sintaxis adecuada".to_string(),
+            ))
+        }
     };
-    let operator = match Operator::is_operator(&list.remove(0)){
+    let operator = match Operator::is_operator(&list.remove(0)) {
         Some(value) => value,
-        None => return Err(Error::SyntaxError("La condicion IF no tiene una sintaxis adecuada".to_string()))
+        None => {
+            return Err(Error::SyntaxError(
+                "La condicion IF no tiene una sintaxis adecuada".to_string(),
+            ))
+        }
     };
-    let term = match Term::is_term(list)?{
+    let term = match Term::is_term(list)? {
         Some(value) => value,
-        None => return Err(Error::SyntaxError("La condicion IF no tiene una sintaxis adecuada".to_string()))
+        None => {
+            return Err(Error::SyntaxError(
+                "La condicion IF no tiene una sintaxis adecuada".to_string(),
+            ))
+        }
     };
 
     Ok(Condition::new(column, operator, term))
