@@ -17,7 +17,7 @@ use crate::parser::statements::{
 ///
 /// * `Result<Statement, Error>` - Un resultado que contiene un `Statement` o un `Error`.
 pub fn make_parse(lista: &mut Vec<String>) -> Result<Statement, Error> {
-    let tree = match cql_statement(lista)? {
+    let statement = match cql_statement(lista)? {
         Some(value) => value,
         None => {
             return Err(Error::ConfigError(
@@ -26,7 +26,7 @@ pub fn make_parse(lista: &mut Vec<String>) -> Result<Statement, Error> {
         }
     };
 
-    Ok(tree)
+    Ok(statement)
 }
 
 fn cql_statement(lista: &mut Vec<String>) -> Result<Option<Statement>, Error> {

@@ -5,7 +5,6 @@ pub mod keyspace_name;
 pub mod literal;
 pub mod quoted_name;
 pub mod term;
-pub mod type_hint;
 pub mod udt_literal;
 pub mod unquoted_name;
 pub mod user_defined_type;

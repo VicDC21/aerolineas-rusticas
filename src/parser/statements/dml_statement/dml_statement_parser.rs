@@ -9,7 +9,7 @@ use crate::{
         statements::{
             ddl_statement::ddl_statement_parser::check_words,
             dml_statement::{
-                if_condition::{Condition, IfCondition, Value},
+                if_condition::{Condition, IfCondition},
                 main_statements::{
                     batch::{Batch, BatchBuilder, BatchType},
                     delete::Delete,
@@ -30,6 +30,8 @@ use crate::{
         table_name::TableName,
     },
 };
+
+use super::r#where::operator::Operator;
 
 /// dml_statement::= select_statement
 /// | insert_statement
@@ -90,19 +92,7 @@ pub fn dml_statement(list: &mut Vec<String>) -> Result<Option<DmlStatement>, Err
 
 fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
     if check_words(list, "SELECT") {
-        let select_columns = if check_words(list, "*") {
-            KindOfColumns::All
-        } else {
-            let res = match select_clause(list)? {
-                Some(columns) => columns,
-                None => {
-                    return Err(Error::SyntaxError(
-                        "No se especifico ninguna columna".to_string(),
-                    ))
-                }
-            };
-            KindOfColumns::SelectClause(res)
-        };
+        let select_columns = kind_of_columns(list)?;
         let from = from_clause(list)?;
         let options = SelectOptions {
             the_where: where_clause(list)?,
@@ -239,8 +229,7 @@ fn select_clause(list: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error>
         if let Some(sel) = selector(list)? {
             vec.push(sel);
         }
-        if list[0] == "," {
-            list.remove(0);
+        if check_words(list, ",") {
             if let Some(mut clasules) = select_clause(list)? {
                 vec.append(&mut clasules);
             };
@@ -248,6 +237,22 @@ fn select_clause(list: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error>
         Ok(Some(vec))
     } else {
         Ok(None)
+    }
+}
+
+fn kind_of_columns(list: &mut Vec<String>) -> Result<KindOfColumns, Error> {
+    if check_words(list, "*") {
+        Ok(KindOfColumns::All)
+    } else {
+        let res = match select_clause(list)? {
+            Some(columns) => columns,
+            None => {
+                return Err(Error::SyntaxError(
+                    "No se especifico ninguna columna".to_string(),
+                ))
+            }
+        };
+        Ok(KindOfColumns::SelectClause(res))
     }
 }
 
@@ -338,9 +343,9 @@ fn per_partition_limit_clause(list: &mut Vec<String>) -> Result<Option<PerPartit
     }
     Ok(None)
 }
+
 fn limit_clause(list: &mut Vec<String>) -> Result<Option<Limit>, Error> {
     if check_words(list, "LIMIT") {
-        list.remove(0);
         let int = list.remove(0);
         let int = match int.parse::<i32>() {
             Ok(value) => Limit::new(value),
@@ -354,6 +359,7 @@ fn limit_clause(list: &mut Vec<String>) -> Result<Option<Limit>, Error> {
     }
     Ok(None)
 }
+
 fn allow_filtering_clause(list: &mut Vec<String>) -> Option<bool> {
     if check_words(list, "ALLOW FILTERING") {
         return Some(true);
@@ -376,70 +382,59 @@ fn parse_condition(list: &mut Vec<String>) -> Result<Condition, Error> {
         return Err(Error::SyntaxError("Condición IF incompleta".to_string()));
     }
 
-    let column = list.remove(0);
-    let operator = list.remove(0);
-    let value = parse_value(list)?;
+    let column = match Identifier::check_identifier(list)?{
+        Some(value) => value,
+        None => return Err(Error::SyntaxError("La condicion IF no tiene una sintaxis adecuada".to_string()))
+    };
+    let operator = match Operator::is_operator(&list.remove(0)){
+        Some(value) => value,
+        None => return Err(Error::SyntaxError("La condicion IF no tiene una sintaxis adecuada".to_string()))
+    };
+    let term = match Term::is_term(list)?{
+        Some(value) => value,
+        None => return Err(Error::SyntaxError("La condicion IF no tiene una sintaxis adecuada".to_string()))
+    };
 
-    match operator.as_str() {
-        "=" => Ok(Condition::Equals(column, value)),
-        "!=" => Ok(Condition::NotEquals(column, value)),
-        ">" => Ok(Condition::GreaterThan(column, value)),
-        ">=" => Ok(Condition::GreaterThanOrEqual(column, value)),
-        "<" => Ok(Condition::LessThan(column, value)),
-        "<=" => Ok(Condition::LessThanOrEqual(column, value)),
-        "IN" => {
-            if let Value::List(list) = value {
-                Ok(Condition::In(column, list))
-            } else {
-                Err(Error::SyntaxError(
-                    "Se esperaba una list para el operador IN".to_string(),
-                ))
-            }
-        }
-        _ => Err(Error::SyntaxError(format!(
-            "Operador desconocido: {}",
-            operator
-        ))),
-    }
+    Ok(Condition::new(column, operator, term))
 }
 
-fn parse_value(list: &mut Vec<String>) -> Result<Value, Error> {
-    if list.is_empty() {
-        return Err(Error::SyntaxError("Valor esperado".to_string()));
-    }
+// fn parse_value(list: &mut Vec<String>) -> Result<Value, Error> {
+//     if list.is_empty() {
+//         return Err(Error::SyntaxError("Valor esperado".to_string()));
+//     }
 
-    let first = list.remove(0);
-    if first == "(" {
-        let mut values = Vec::new();
-        while let Some(next) = list.first() {
-            if next == ")" {
-                list.remove(0);
-                return Ok(Value::List(values));
-            }
-            values.push(parse_single_value(list.remove(0))?);
-            if list.first() == Some(&",".to_string()) {
-                list.remove(0);
-            }
-        }
-        Err(Error::SyntaxError("List no cerrada".to_string()))
-    } else {
-        parse_single_value(first)
-    }
-}
+//     let first = list.remove(0);
+//     if first == "(" {
+//         let mut values = Vec::new();
+//         while let Some(next) = list.first() {
+//             if next == ")" {
+//                 list.remove(0);
+//                 return Ok(Value::List(values));
+//             }
+//             values.push(parse_single_value(list.remove(0))?);
+//             if list.first() == Some(&",".to_string()) {
+//                 list.remove(0);
+//             }
+//         }
+//         Err(Error::SyntaxError("List no cerrada".to_string()))
+//     } else {
+//         parse_single_value(first)
+//     }
+// }
 
-fn parse_single_value(value: String) -> Result<Value, Error> {
-    if value.starts_with('\'') && value.ends_with('\'') {
-        Ok(Value::String(value[1..value.len() - 1].to_string()))
-    } else if let Ok(num) = value.parse::<i64>() {
-        Ok(Value::Integer(num))
-    } else if let Ok(num) = value.parse::<f64>() {
-        Ok(Value::Float(num))
-    } else if value == "true" || value == "false" {
-        Ok(Value::Boolean(value == "true"))
-    } else {
-        Ok(Value::Identifier(value))
-    }
-}
+// fn parse_single_value(value: String) -> Result<Value, Error> {
+//     if value.starts_with('\'') && value.ends_with('\'') {
+//         Ok(Value::String(value[1..value.len() - 1].to_string()))
+//     } else if let Ok(num) = value.parse::<i64>() {
+//         Ok(Value::Integer(num))
+//     } else if let Ok(num) = value.parse::<f64>() {
+//         Ok(Value::Float(num))
+//     } else if value == "true" || value == "false" {
+//         Ok(Value::Boolean(value == "true"))
+//     } else {
+//         Ok(Value::Identifier(value))
+//     }
+// }
 
 fn check_insert_names(list: &mut Vec<String>) -> Result<Vec<Identifier>, Error> {
     if !check_words(list, "(") {
