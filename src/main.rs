@@ -1,22 +1,33 @@
 use std::env::args;
-use std::io::stdin;
 
-use aerolineas::{client::cli, server::sv};
+use aerolineas::interface::run::run_app;
+use aerolineas::{client::cli::Client, server::sv::Server};
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
-    if argv.len() != 2 {
-        println!("ERROR: No hay sólo 2 argumentos...");
+    if argv.len() < 2 {
+        println!("ERROR: Hay menos de 2 argumentos...");
         return;
     }
 
     match argv[1].as_str() {
         "sv" => {
-            let _ = sv::run();
+            let mut server = Server::echo_mode();
+            if let Err(err) = server.listen() {
+                println!("{}", err);
+            }
         }
 
         "cli" => {
-            let _ = cli::run(&mut stdin());
+            let client = Client::new(Server::default_addr());
+            if let Err(err) = client.echo() {
+                println!("{}", err);
+            }
+        }
+        "gui" => {
+            if let Err(err) = run_app() {
+                println!("{}", err);
+            }
         }
         _ => {
             println!("Se debe elegir o 'sv' o 'cli', no '{}'...", argv[1]);
