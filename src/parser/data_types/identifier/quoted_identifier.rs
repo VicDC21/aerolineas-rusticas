@@ -13,11 +13,15 @@ impl QuotedIdentifier {
         &self.text
     }
 
-    pub fn check_quoted_identifier(first: &String, second: &String, third: &String) -> bool {
-        if first != "\"" || third != "\"" {
+    pub fn check_quoted_identifier(
+        first_quotes: &String,
+        word: &str,
+        second_quotes: &String,
+    ) -> bool {
+        if first_quotes != "\"" || second_quotes != "\"" {
             return false;
         }
-        if !second.chars().all(char::is_alphabetic) {
+        if !word.chars().all(char::is_alphabetic) {
             return false;
         }
         true

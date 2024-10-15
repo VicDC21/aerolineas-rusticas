@@ -13,45 +13,46 @@ pub enum CollectionType {
     List(Box<CQLType>),
 }
 
-impl CollectionType{
-    fn parse_collection_type(tokens: &mut Vec<String>) -> Result<Option<CollectionType>, Error>{
+impl CollectionType {
+    pub fn parse_collection_type(
+        tokens: &mut Vec<String>,
+    ) -> Result<Option<CollectionType>, Error> {
         CollectionType::parse_list_type(tokens)?;
         CollectionType::parse_map_type(tokens)?;
         CollectionType::parse_set_type(tokens)?;
         Ok(None)
     }
 
-
     fn parse_list_type(tokens: &mut Vec<String>) -> Result<CollectionType, Error> {
         expect_token(tokens, "<")?;
-        let inner_type = match CQLType::check_kind_of_type(tokens)?{
+        let inner_type = match CQLType::check_kind_of_type(tokens)? {
             Some(value) => value,
-            None => return Err(Error::SyntaxError(("Tipo de dato invalido").to_string()))
+            None => return Err(Error::SyntaxError(("Tipo de dato invalido").to_string())),
         };
         expect_token(tokens, ">")?;
         Ok(CollectionType::List(Box::new(inner_type)))
     }
-    
+
     fn parse_set_type(tokens: &mut Vec<String>) -> Result<CollectionType, Error> {
         expect_token(tokens, "<")?;
-        let inner_type = match CQLType::check_kind_of_type(tokens)?{
+        let inner_type = match CQLType::check_kind_of_type(tokens)? {
             Some(value) => value,
-            None => return Err(Error::SyntaxError(("Tipo de dato invalido").to_string()))
+            None => return Err(Error::SyntaxError(("Tipo de dato invalido").to_string())),
         };
         expect_token(tokens, ">")?;
         Ok(CollectionType::Set(Box::new(inner_type)))
     }
-    
+
     fn parse_map_type(tokens: &mut Vec<String>) -> Result<CollectionType, Error> {
         expect_token(tokens, "<")?;
-        let key_type =  match CQLType::check_kind_of_type(tokens)?{
+        let key_type = match CQLType::check_kind_of_type(tokens)? {
             Some(value) => value,
-            None => return Err(Error::SyntaxError(("Tipo de dato invalido").to_string()))
+            None => return Err(Error::SyntaxError(("Tipo de dato invalido").to_string())),
         };
         expect_token(tokens, ",")?;
-        let value_type =  match CQLType::check_kind_of_type(tokens)?{
+        let value_type = match CQLType::check_kind_of_type(tokens)? {
             Some(value) => value,
-            None => return Err(Error::SyntaxError(("Tipo de dato invalido").to_string()))
+            None => return Err(Error::SyntaxError(("Tipo de dato invalido").to_string())),
         };
         expect_token(tokens, ">")?;
         Ok(CollectionType::Map(
@@ -61,7 +62,7 @@ impl CollectionType{
     }
 }
 
-fn expect_token(tokens: &mut Vec<String>, expected: &str) -> Result<(), Error> {
+pub fn expect_token(tokens: &mut Vec<String>, expected: &str) -> Result<(), Error> {
     if tokens.is_empty() || tokens[0] != expected {
         Err(Error::SyntaxError(format!("Expected token: {}", expected)))
     } else {

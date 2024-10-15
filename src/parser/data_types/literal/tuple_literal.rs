@@ -1,12 +1,17 @@
-use crate::{cassandra::errors::error::Error, parser::{data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words}};
+use crate::{
+    cassandra::errors::error::Error,
+    parser::{
+        data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words,
+    },
+};
 
 /// tuple_literal::= '(' term( ',' term )* ')'
 pub struct TupleLiteral {
-    values: Vec<Term>
+    values: Vec<Term>,
 }
 
-impl TupleLiteral{
-    pub fn check_tuple_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error>{
+impl TupleLiteral {
+    pub fn check_tuple_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         let mut values: Vec<Term> = Vec::new();
         if check_words(lista, "(") {
             while check_words(lista, ",") || !check_words(lista, ")") {
@@ -20,7 +25,7 @@ impl TupleLiteral{
                 };
                 values.push(term);
             }
-            Ok(Some(TupleLiteral{values}))
+            Ok(Some(TupleLiteral { values }))
         } else {
             Ok(None)
         }

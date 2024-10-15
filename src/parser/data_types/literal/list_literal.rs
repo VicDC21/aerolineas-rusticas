@@ -1,12 +1,15 @@
-use crate::{cassandra::errors::error::Error, parser::{data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words}};
+use crate::{
+    cassandra::errors::error::Error,
+    parser::{
+        data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words,
+    },
+};
 
 pub struct ListLiteral {
-    values: Vec<Term>
-
+    values: Vec<Term>,
 }
 
-
-impl ListLiteral{
+impl ListLiteral {
     pub fn check_list_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         let mut values: Vec<Term> = Vec::new();
         if check_words(lista, "[") {
@@ -22,6 +25,6 @@ impl ListLiteral{
                 values.push(term);
             }
         }
-        Ok(Some(ListLiteral{ values }))
+        Ok(Some(ListLiteral { values }))
     }
 }

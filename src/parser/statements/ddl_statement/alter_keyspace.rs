@@ -2,6 +2,8 @@ use crate::parser::data_types::keyspace_name::KeyspaceName;
 
 use super::option::Options;
 
+/// alter_keyspace_statement::= ALTER KEYSPACE [ IF EXISTS ] keyspace_name
+/// WITH options
 pub struct AlterKeyspace {
     pub if_exists: bool,
     pub name: KeyspaceName,

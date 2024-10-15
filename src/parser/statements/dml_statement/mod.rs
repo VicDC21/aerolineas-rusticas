@@ -1,16 +1,11 @@
-pub mod and;
-pub mod delete;
+/// Este módulo contiene el parser de las declaraciones de manipulación de datos (DML).
 pub mod dml_statement_parser;
-pub mod expression;
-pub mod group_by;
-pub mod insert;
-pub mod limit;
-pub mod operator;
-pub mod order_by;
-pub mod per_partition_limit;
-pub mod relation;
-pub mod select;
-pub mod selector;
-pub mod update;
-pub mod r#where;
+
+/// Este módulo contiene el parser de las comparaciones para el manejo de la cláusula if exists.
 pub mod if_condition;
+
+/// Este módulo contiene el parser de las principales declaraciones de manipulación de datos (DML).
+pub mod main_statements;
+
+/// Este módulo contiene el parser de las declaraciones de manipulación de datos (DML) para la cláusula where.
+pub mod r#where;

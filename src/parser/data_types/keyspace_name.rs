@@ -31,7 +31,7 @@ impl KeyspaceName {
             lista.remove(0);
             return Ok(Some(keyspace_name));
         };
-        if UnquotedName::is_unquoted_name(&lista[0]){
+        if UnquotedName::is_unquoted_name(&lista[0]) {
             let keyspace_name = KeyspaceName::UnquotedName(UnquotedName::new(lista.remove(0))?);
             return Ok(Some(keyspace_name));
         };

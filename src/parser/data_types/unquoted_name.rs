@@ -1,6 +1,5 @@
 use crate::cassandra::errors::error::Error;
 
-
 /// re('[a-zA-Z_0-9]\{1, 48}')
 #[derive(Default)]
 pub struct UnquotedName {

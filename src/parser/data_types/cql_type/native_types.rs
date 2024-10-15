@@ -71,16 +71,15 @@ pub enum NativeType {
     Vector,
 }
 
-
 impl NativeType {
     /// Parse a data type from a list of tokens.
     pub fn parse_data_type(tokens: &mut Vec<String>) -> Result<Option<NativeType>, Error> {
         if tokens.is_empty() {
             return Err(Error::SyntaxError("Expected data type".to_string()));
         }
-    
+
         let type_name = tokens.remove(0).to_lowercase();
-    
+
         match type_name.as_str() {
             "ascii" => Ok(Some(NativeType::Ascii)),
             "bigint" => Ok(Some(NativeType::Bigint)),
@@ -107,5 +106,4 @@ impl NativeType {
             _ => Ok(None),
         }
     }
-    
 }

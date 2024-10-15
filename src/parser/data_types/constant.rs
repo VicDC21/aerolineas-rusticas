@@ -1,5 +1,5 @@
+use crate::cassandra::aliases::types::{Float, Int, Uuid};
 use crate::cassandra::errors::error::Error;
-use crate::cassandra::aliases::types::{Int, Float, Uuid};
 
 // Revisar u32 despues de mergear para no hacer conflicto
 pub enum Constant {

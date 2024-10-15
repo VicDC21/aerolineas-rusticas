@@ -1,5 +1,7 @@
-use super::{r#where::Where, if_condition::IfCondition};
-use crate::parser::data_types::keyspace_name::KeyspaceName;
+use crate::parser::{
+    data_types::keyspace_name::KeyspaceName,
+    statements::dml_statement::{if_condition::IfCondition, r#where::r#where_parser::Where},
+};
 
 pub struct Delete {
     cols: Vec<String>,

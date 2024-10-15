@@ -1,6 +1,5 @@
 use crate::parser::data_types::identifier::identifier::Identifier;
-
-use super::operator::Operator;
+use crate::parser::statements::dml_statement::r#where::operator::Operator;
 
 pub struct Relation {
     first_column: Identifier,

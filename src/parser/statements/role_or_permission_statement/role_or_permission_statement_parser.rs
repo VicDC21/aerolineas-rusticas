@@ -1,4 +1,4 @@
-use crate::cassandra::errors::error::Error;
+/*use crate::cassandra::errors::error::Error;
 
 pub enum RoleOrPermissionStatement {
     CreateRoleStatement,
@@ -125,4 +125,4 @@ pub fn list_users_statement(
     _lista: &mut [String],
 ) -> Result<Option<RoleOrPermissionStatement>, Error> {
     Ok(None)
-}
+}*/

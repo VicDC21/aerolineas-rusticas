@@ -1,5 +1,7 @@
-use crate::parser::{data_types::{identifier::identifier::Identifier, literal::tuple_literal::TupleLiteral}, table_name::TableName};
-
+use crate::parser::{
+    data_types::{identifier::identifier::Identifier, literal::tuple_literal::TupleLiteral},
+    table_name::TableName,
+};
 
 pub struct Insert {
     table_name: TableName,

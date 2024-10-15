@@ -1,15 +1,24 @@
-use crate::{cassandra::errors::error::Error, parser::data_types::identifier::identifier::Identifier};
-
-use super::{
-    and::And, operator::Operator, relation::Relation,
+use crate::{
+    cassandra::errors::error::Error, parser::data_types::identifier::identifier::Identifier,
 };
 
+use super::{and::And, operator::Operator, relation::Relation};
+
+/// Representa diferentes tipos de expresiones en el analizador sintáctico.
 pub enum Expression {
+    /// Representa una expresión simple.
+    /// Una expresión simple consta de un solo término.
     Expression(Box<Expression>),
+    /// Representa una operación lógica AND entre dos expresiones.
+    /// AND ::= expression AND expression
     And(And),
+    /// Representa una relación entre dos términos.
+    /// relation ::= term operator term
     Relation(Relation),
 }
 
+/// Parsea una expresión recursivamente.
+/// Una expresión puede ser una expresión simple o una expresión compuesta.
 pub fn expression(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
     match and(lista)? {
         Some(expression) => Ok(Some(expression)),
@@ -17,6 +26,7 @@ pub fn expression(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Er
     }
 }
 
+/// Parsea una operación lógica AND entre dos expresiones.
 pub fn and(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
     let a_relation = match relation(lista)? {
         Some(relation) => relation,
@@ -25,6 +35,7 @@ pub fn and(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
     and_recursive(lista, a_relation)
 }
 
+/// Parsea una operación lógica AND entre dos expresiones recursivamente.
 pub fn and_recursive(
     lista: &mut Vec<String>,
     a_relation: Box<Expression>,
@@ -46,10 +57,8 @@ pub fn and_recursive(
     Ok(None)
 }
 
+/// Parsea una relación entre dos términos.
 pub fn relation(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
-    // if lista[1] == "("{
-    //     return Ok(expression(lista)?);
-    // }
     if lista.len() >= 3 {
         if let Some(operator) = Operator::is_operator(&lista[1]) {
             lista.remove(1);

@@ -1,4 +1,4 @@
-use super::{expression::Expression, operator::Operator, relation::Relation};
+use super::expression::Expression;
 
 pub struct Where {
     pub expression: Option<Box<Expression>>,

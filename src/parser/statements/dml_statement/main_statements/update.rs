@@ -1,7 +1,7 @@
-use crate::parser::{assignment::Assignment, table_name::TableName};
-
-use super::r#where::Where;
-
+use crate::parser::{
+    assignment::Assignment, statements::dml_statement::r#where::r#where_parser::Where,
+    table_name::TableName,
+};
 pub struct Update {
     table_name: TableName,
     set_parameter: Vec<Assignment>,

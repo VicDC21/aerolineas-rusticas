@@ -1,78 +1,78 @@
-use super::if_condition::{Condition, IfCondition, Value};
 use crate::{
     cassandra::errors::error::Error,
     parser::{
-        assignment::Assignment, data_types::{
-            constant::Constant, identifier::{
-                identifier::Identifier, quoted_identifier::QuotedIdentifier,
-                unquoted_identifier::UnquotedIdentifier,
-            }, keyspace_name::KeyspaceName, literal::tuple_literal::TupleLiteral, term::Term
-        }, statements::{
+        assignment::Assignment,
+        data_types::{
+            identifier::identifier::Identifier, keyspace_name::KeyspaceName,
+            literal::tuple_literal::TupleLiteral, term::Term,
+        },
+        statements::{
             ddl_statement::ddl_statement_parser::check_words,
             dml_statement::{
-                delete::{Delete, DeleteBuilder}, expression::expression, group_by::GroupBy, insert::Insert, limit::Limit, per_partition_limit::PerPartitionLimit, relation::Relation, select::{KindOfColumns, Select, SelectBuilder}, 
-                selector::Selector, update::Update, r#where::Where,
+                if_condition::{Condition, IfCondition, Value},
+                main_statements::{
+                    batch::{Batch, BatchBuilder, BatchType},
+                    delete::{Delete, DeleteBuilder},
+                    insert::Insert,
+                    select::{
+                        group_by::GroupBy,
+                        limit::Limit,
+                        order_by::{OrderBy, Ordering},
+                        per_partition_limit::PerPartitionLimit,
+                        select::{KindOfColumns, Select, SelectBuilder},
+                        selector::Selector,
+                    },
+                    update::Update,
+                },
+                r#where::{expression::expression, r#where_parser::Where},
             },
-        }, table_name::TableName
+        },
+        table_name::TableName,
     },
 };
 
-#[derive(Default)]
-enum BatchType {
-    #[default]
-    Logged,
-    Unlogged,
-    Counter,
-}
-
-struct Batch {
-    batch_type: BatchType,
-    queries : Vec<DmlStatement>,
-}
-
-impl Batch {
-    fn new(
-        batch_type: BatchType,
-        queries : Vec<DmlStatement>,
-    ) -> Batch {
-        Batch {
-            batch_type,
-            queries,
-        }
-    }
-}
-
-#[derive(Default)]
-struct BatchBuilder {
-    batch_type: BatchType,
-    queries : Vec<DmlStatement>,
-}
-
-impl BatchBuilder {
-    fn set_batch_clause(&mut self, batch_type: BatchType) {
-        self.batch_type = batch_type;
-    }
-
-    fn set_queries(&mut self, queries : Vec<DmlStatement>) {
-        self.queries = queries;
-    }
-
-    fn build(self) -> Batch {
-        Batch::new(
-            self.batch_type,
-            self.queries,
-        )
-    }
-}
-
+/// dml_statement::= select_statement
+/// | insert_statement
+/// | update_statement
+/// | delete_statement
+/// | batch_statement
 pub enum DmlStatement {
-    SelectStatement(Select),
+    /// select_statement::= SELECT [ JSON | DISTINCT ] ( select_clause | '*' )
+    /// FROM `table_name`
+    /// [ WHERE `where_clause` ]
+    /// [ GROUP BY `group_by_clause` ]
+    /// [ ORDER BY `ordering_clause` ]
+    /// [ PER PARTITION LIMIT (`integer` | `bind_marker`) ]
+    /// [ LIMIT (`integer` | `bind_marker`) ]
+    /// [ ALLOW FILTERING ]
+    SelectStatement(Select), // EL bind_marker AUN NO ESTA IMPLEMENTADO, NO SABIA MUY BIEN PARA QUE SERVIA
+
+    /// insert_statement::= INSERT INTO table_name names_values
+    /// [ IF NOT EXISTS ]
     InsertStatement(Insert),
+
+    /// update_statement ::= UPDATE table_name
+    ///                      SET assignment( ',' assignment )*
+    ///                      WHERE where_clause
+    ///                      [ IF ( EXISTS | condition ( AND condition)*) ]
     UpdateStatement(Update),
+
+    /// delete_statement::= DELETE [ simple_selection ( ',' simple_selection ) ]
+    ///     FROM table_name
+    ///     WHERE where_clause
+    ///     [ IF ( EXISTS | condition ( AND condition)*) ]
     DeleteStatement(Delete),
+
+    /// batch_statement ::= BEGIN [ UNLOGGED | COUNTER ] BATCH
+    ///                     [ USING update_parameter( AND update_parameter)* ]
+    ///                     modification_statement ( ';' modification_statement )*
+    ///                     APPLY BATCH
+    /// modification_statement ::= insert_statement | update_statement | delete_statement
     BatchStatement(Batch),
 }
 
+/// Crea el enum `DmlStatement` con el tipo de struct de acuerdo a la sintaxis dada, si la entrada proporcionada no satisface
+/// los requerimientos de los tipos de datos, entonces devuelve None.
 pub fn dml_statement(list: &mut Vec<String>) -> Result<Option<DmlStatement>, Error> {
     if let Some(dml_statement) = select_statement(list)? {
         return Ok(Some(DmlStatement::SelectStatement(dml_statement)));
@@ -89,12 +89,9 @@ pub fn dml_statement(list: &mut Vec<String>) -> Result<Option<DmlStatement>, Err
 }
 
 fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
-    let index = 0;
-    if list[index] == "SELECT" {
-        list.remove(index);
+    if check_words(list, "SELECT") {
         let mut builder = SelectBuilder::default();
-        if list[index] == "*" {
-            list.remove(index);
+        if check_words(list, "*") {
             builder.set_select_clause(KindOfColumns::All);
         } else {
             let res = match select_clause(list)? {
@@ -109,6 +106,7 @@ fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
         }
         builder.set_from(from_clause(list)?);
         builder.set_where(where_clause(list)?);
+        group_by_clause(list, &mut builder)?;
         ordering_clause(list, &mut builder)?;
         per_partition_limit_clause(list, &mut builder)?;
         limit_clause(list, &mut builder)?;
@@ -116,6 +114,142 @@ fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
         return Ok(Some(builder.build()));
     }
     Ok(None)
+}
+
+fn insert_statement(list: &mut Vec<String>) -> Result<Option<Insert>, Error> {
+    if check_words(list, "INSERT INTO") {
+        let table_name: TableName = match TableName::check_kind_of_name(list)? {
+            Some(value) => value,
+            None => {
+                return Err(Error::SyntaxError(
+                    "El nombre de la tabla no es sintacticamente valido".to_string(),
+                ))
+            }
+        };
+        let names = check_insert_names(list)?;
+
+        if !check_words(list, "VALUES") {
+            return Err(Error::SyntaxError("Falto VALUES".to_string()));
+        }
+        let values = match TupleLiteral::check_tuple_literal(list)? {
+            Some(value) => value,
+            None => {
+                return Err(Error::SyntaxError(
+                    "No se encontro ninguna tupla".to_string(),
+                ))
+            }
+        };
+        let if_not_exists = check_words(list, "IF NOT EXISTS");
+        return Ok(Some(Insert::new(table_name, names, values, if_not_exists)));
+    }
+    Ok(None)
+}
+
+fn update_statement(list: &mut Vec<String>) -> Result<Option<Update>, Error> {
+    if check_words(list, "UPDATE") {
+        let table_name: TableName = match TableName::check_kind_of_name(list)? {
+            Some(value) => value,
+            None => {
+                return Err(Error::SyntaxError(
+                    "El nombre de la tabla no es sintacticamente valido".to_string(),
+                ))
+            }
+        };
+        let set = set_clause(list)?;
+        let r#where = where_clause(list)?;
+        return Ok(Some(Update::new(table_name, set, r#where)));
+    }
+
+    Ok(None)
+}
+
+fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
+    if !check_words(list, "DELETE") {
+        return Ok(None);
+    }
+
+    let mut builder = DeleteBuilder::default();
+
+    let mut cols = Vec::new();
+    while !check_words(list, "FROM") {
+        if list.is_empty() {
+            return Err(Error::SyntaxError(
+                "Se esperaba FROM después de las columnas".to_string(),
+            ));
+        }
+        cols.push(list.remove(0));
+    }
+    if !cols.is_empty() {
+        builder.set_cols(cols);
+    }
+
+    builder.set_from(from_clause(list)?);
+
+    if !check_words(list, "WHERE") {
+        return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
+    }
+    builder.set_where(where_clause(list)?);
+
+    if check_words(list, "IF") {
+        if check_words(list, "EXISTS") {
+            builder.set_if_condition(Some(IfCondition::Exists));
+        } else {
+            let mut conditions = Vec::new();
+            loop {
+                let condition = parse_condition(list)?;
+                conditions.push(condition);
+                if !check_words(list, "AND") {
+                    break;
+                }
+            }
+            builder.set_if_condition(Some(IfCondition::Conditions(conditions)));
+        }
+    }
+
+    Ok(Some(builder.build()))
+}
+
+fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
+    let mut builder = BatchBuilder::default();
+    if check_words(list, "BEGIN") {
+        if check_words(list, "UNLOGGED") {
+            builder.set_batch_clause(BatchType::Unlogged);
+        } else if check_words(list, "COUNTER") {
+            builder.set_batch_clause(BatchType::Counter);
+        } else if !check_words(list, "BATCH") {
+            return Err(Error::SyntaxError("Falta BATCH en la consulta".to_string()));
+        }
+    } else {
+        return Ok(None);
+    }
+
+    let mut queries: Vec<DmlStatement> = Vec::new();
+    while list[0] != "APPLY" && list[1] != "BATCH" {
+        if list.is_empty() {
+            break;
+        }
+        if check_words(list, "INSERT") {
+            if let Some(insert_stmt) = insert_statement(list)? {
+                queries.push(DmlStatement::InsertStatement(insert_stmt));
+            }
+        } else if check_words(list, "UPDATE") {
+            if let Some(update_stmt) = update_statement(list)? {
+                queries.push(DmlStatement::UpdateStatement(update_stmt));
+            }
+        } else if check_words(list, "DELETE") {
+            if let Some(delete_stmt) = delete_statement(list)? {
+                queries.push(DmlStatement::DeleteStatement(delete_stmt));
+            }
+        }
+        list.remove(0);
+    }
+    if queries.is_empty() {
+        return Err(Error::SyntaxError(
+            "No se encontraron consultas en el batch".to_string(),
+        ));
+    }
+    builder.set_queries(queries);
+    Ok(Some(builder.build()))
 }
 
 fn select_clause(list: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
@@ -159,17 +293,9 @@ fn where_clause(list: &mut Vec<String>) -> Result<Option<Where>, Error> {
 }
 
 fn group_by_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
-    if check_words(list, "GROUP BY"){
+    if check_words(list, "GROUP BY") {
         let mut columns: Vec<Identifier> = Vec::new();
-        match Identifier::check_identifier(list)? {
-            Some(value) => columns.push(value),
-            None => {
-                return Err(Error::SyntaxError(
-                    "Columnas de GROUP BY no encontradas".to_string(),
-                ))
-            }
-        };
-        while list[0] == "," {
+        loop {
             match Identifier::check_identifier(list)? {
                 Some(value) => columns.push(value),
                 None => {
@@ -178,6 +304,9 @@ fn group_by_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Resul
                     ))
                 }
             };
+            if !check_words(list, ",") {
+                break;
+            }
         }
         builder.set_group_by(Some(GroupBy::new(columns)));
     } else {
@@ -188,7 +317,29 @@ fn group_by_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Resul
 
 fn ordering_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
     if check_words(list, "ORDER BY") {
-        if let Some(value) = Identifier::check_identifier(list)? {} // TERMINAR
+        let mut columns: Vec<(Identifier, Option<Ordering>)> = Vec::new();
+        loop {
+            let value = match Identifier::check_identifier(list)? {
+                Some(value) => value,
+                None => {
+                    return Err(Error::SyntaxError(
+                        "En ORDER BY se esperaba una columna".to_string(),
+                    ))
+                }
+            };
+            if check_words(list, "ASC") {
+                columns.push((value, Some(Ordering::Asc)));
+            } else if check_words(list, "DESC") {
+                columns.push((value, Some(Ordering::Desc)));
+            } else {
+                columns.push((value, None));
+            }
+            if !check_words(list, ",") {
+                break;
+            }
+        }
+
+        OrderBy::new(columns);
     } else {
         builder.set_order_by(None);
     }
@@ -199,16 +350,13 @@ fn per_partition_limit_clause(
     list: &mut Vec<String>,
     builder: &mut SelectBuilder,
 ) -> Result<(), Error> {
-    if  check_words(list, "PER PARTITION LIMIT"){
-        list.remove(0);
-        list.remove(0);
-        list.remove(0);
+    if check_words(list, "PER PARTITION LIMIT") {
         let int = list.remove(0);
         let int = match int.parse::<i32>() {
             Ok(value) => Limit::new(value),
             Err(_e) => {
                 return Err(Error::SyntaxError(
-                    "El valor brindado al Per Partition Limit no es un int".to_string(),
+                    "El valor brindado al Per Partition Limit no es un numero".to_string(),
                 ))
             }
         };
@@ -219,7 +367,7 @@ fn per_partition_limit_clause(
     Ok(())
 }
 fn limit_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
-    if check_words(list, "LIMIT"){
+    if check_words(list, "LIMIT") {
         list.remove(0);
         let int = list.remove(0);
         let int = match int.parse::<i32>() {
@@ -240,7 +388,7 @@ fn allow_filtering_clause(
     list: &mut Vec<String>,
     builder: &mut SelectBuilder,
 ) -> Option<PerPartitionLimit> {
-    if check_words(list, "LIMIT"){
+    if check_words(list, "LIMIT") {
         builder.set_allow_filtering(Some(true));
     } else {
         builder.set_allow_filtering(None);
@@ -256,50 +404,6 @@ fn selector(list: &mut Vec<String>) -> Result<Option<Selector>, Error> {
         return Ok(Some(Selector::Term(term)));
     }
     Ok(None)
-}
-
-fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
-    if !check_words(list, "DELETE") {
-        return Ok(None);
-    }
-
-    let mut builder = DeleteBuilder::default();
-    
-    let mut cols = Vec::new();
-    while !check_words(list, "FROM") {
-        if list.is_empty() {
-            return Err(Error::SyntaxError("Se esperaba FROM después de las columnas".to_string()));
-        }
-        cols.push(list.remove(0));
-    }
-    if !cols.is_empty() {
-        builder.set_cols(cols);
-    }
-
-    builder.set_from(from_clause(list)?);
-
-    if !check_words(list, "WHERE") {
-        return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
-    }
-    builder.set_where(where_clause(list)?);
-
-    if check_words(list, "IF") {
-        if check_words(list, "EXISTS") {
-            builder.set_if_condition(Some(IfCondition::Exists));
-        } else {
-            let mut conditions = Vec::new();
-            loop {
-                let condition = parse_condition(list)?;
-                conditions.push(condition);
-                if !check_words(list, "AND") {
-                    break;
-                }
-            }
-            builder.set_if_condition(Some(IfCondition::Conditions(conditions)));
-        }
-    }
-
-    Ok(Some(builder.build()))
 }
 
 fn parse_condition(list: &mut Vec<String>) -> Result<Condition, Error> {
@@ -322,10 +426,15 @@ fn parse_condition(list: &mut Vec<String>) -> Result<Condition, Error> {
             if let Value::List(list) = value {
                 Ok(Condition::In(column, list))
             } else {
-                Err(Error::SyntaxError("Se esperaba una list para el operador IN".to_string()))
+                Err(Error::SyntaxError(
+                    "Se esperaba una list para el operador IN".to_string(),
+                ))
             }
-        },
-        _ => Err(Error::SyntaxError(format!("Operador desconocido: {}", operator))),
+        }
+        _ => Err(Error::SyntaxError(format!(
+            "Operador desconocido: {}",
+            operator
+        ))),
     }
 }
 
@@ -355,7 +464,7 @@ fn parse_value(list: &mut Vec<String>) -> Result<Value, Error> {
 
 fn parse_single_value(value: String) -> Result<Value, Error> {
     if value.starts_with('\'') && value.ends_with('\'') {
-        Ok(Value::String(value[1..value.len()-1].to_string()))
+        Ok(Value::String(value[1..value.len() - 1].to_string()))
     } else if let Ok(num) = value.parse::<i64>() {
         Ok(Value::Integer(num))
     } else if let Ok(num) = value.parse::<f64>() {
@@ -367,30 +476,9 @@ fn parse_single_value(value: String) -> Result<Value, Error> {
     }
 }
 
-fn insert_statement(list: &mut Vec<String>) -> Result<Option<Insert>, Error> {
-    if check_words(list, "INSERT INTO"){
-        let table_name: TableName = match TableName::check_kind_of_name(list)?{
-            Some(value) => value,
-            None => return Err(Error::SyntaxError("El nombre de la tabla no es sintacticamente valido".to_string()))
-        };
-        let names = check_insert_names(list)?;
-
-        if !check_words(list, "VALUES") {
-            return Err(Error::SyntaxError("Falto VALUES".to_string()));
-        }
-        let values = match TupleLiteral::check_tuple_literal(list)?{
-            Some(value) => value,
-            None => return Err(Error::SyntaxError("No se encontro ninguna tupla".to_string()))
-        };
-        let if_not_exists = check_words(list, "IF NOT EXISTS");
-        return Ok(Some(Insert::new(table_name, names, values, if_not_exists)))
-    }
-    Ok(None)
-}
-
 fn check_insert_names(list: &mut Vec<String>) -> Result<Vec<Identifier>, Error> {
-    if !check_words(list, "("){
-        return  Err(Error::SyntaxError("Falto (".to_string()));
+    if !check_words(list, "(") {
+        return Err(Error::SyntaxError("Falto (".to_string()));
     }
     let mut names: Vec<Identifier> = Vec::new();
     match Identifier::check_identifier(list)? {
@@ -401,7 +489,7 @@ fn check_insert_names(list: &mut Vec<String>) -> Result<Vec<Identifier>, Error> 
             ))
         }
     };
-    while check_words(list, ","){
+    while check_words(list, ",") {
         match Identifier::check_identifier(list)? {
             Some(value) => names.push(value),
             None => {
@@ -411,86 +499,36 @@ fn check_insert_names(list: &mut Vec<String>) -> Result<Vec<Identifier>, Error> 
             }
         };
     }
-    if !check_words(list, ")"){
-        return  Err(Error::SyntaxError("Falta el cierre ')'".to_string()));
+    if !check_words(list, ")") {
+        return Err(Error::SyntaxError("Falta el cierre ')'".to_string()));
     }
     Ok(names)
 }
 
-fn update_statement(list: &mut Vec<String>) -> Result<Option<Update>, Error> {
-    if check_words(list, "UPDATE"){
-        // Guardar el nombre de la tabla
-        let table_name: TableName = match TableName::check_kind_of_name(list)?{
-            Some(value) => value,
-            None => return Err(Error::SyntaxError("El nombre de la tabla no es sintacticamente valido".to_string()))
-        };
-        let set = set_clause(list)?;
-        let r#where = where_clause(list)?;
-        return Ok(Some(Update::new(table_name, set, r#where)));
-    }
-
-    Ok(None)
-}
-
-fn set_clause(list: &mut Vec<String>) -> Result<Vec<Assignment>, Error>{
-    if !check_words(list, "SET"){
+fn set_clause(list: &mut Vec<String>) -> Result<Vec<Assignment>, Error> {
+    if !check_words(list, "SET") {
         return Err(Error::SyntaxError("No se encontro el SET".to_string()));
     }
     let mut assignments: Vec<Assignment> = Vec::new();
-    let mut assignment = match Assignment::check_kind_of_assignment(list)?{
+    let mut assignment = match Assignment::check_kind_of_assignment(list)? {
         Some(value) => value,
-        None => return Err(Error::SyntaxError("No se indico ninguna columna en el SET".to_string()))
+        None => {
+            return Err(Error::SyntaxError(
+                "No se indico ninguna columna en el SET".to_string(),
+            ))
+        }
     };
     assignments.push(assignment);
-    while check_words(list, ","){
-        assignment = match Assignment::check_kind_of_assignment(list)?{
+    while check_words(list, ",") {
+        assignment = match Assignment::check_kind_of_assignment(list)? {
             Some(value) => value,
-            None => return Err(Error::SyntaxError("No se indico ninguna columna en el SET".to_string()))
-        }; 
+            None => {
+                return Err(Error::SyntaxError(
+                    "No se indico ninguna columna en el SET".to_string(),
+                ))
+            }
+        };
         assignments.push(assignment);
     }
     Ok(assignments)
-
-}
-
-fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
-    let mut builder = BatchBuilder::default();
-    if check_words(list, "BEGIN") {
-        if check_words(list, "UNLOGGED") {
-            builder.set_batch_clause(BatchType::Unlogged);
-        } else if check_words(list, "COUNTER") {
-            builder.set_batch_clause(BatchType::Counter);
-        } else if !check_words(list, "BATCH") {
-            return Err(Error::SyntaxError("Falta BATCH en la consulta".to_string()));
-        }
-        builder.set_batch_clause(BatchType::Logged);
-    } else {
-        return Err(Error::SyntaxError("Falta BEGIN en la consulta".to_string()));
-    }
-
-    let mut queries: Vec<DmlStatement> = Vec::new();
-    while list[0] != "APPLY" && list[1] != "BATCH" {
-        if list.is_empty() {
-            break;
-        }
-        if check_words(list, "INSERT") {
-            if let Some(insert_stmt) = insert_statement(list)? {
-                queries.push(DmlStatement::InsertStatement(insert_stmt));
-            }
-        } else if check_words(list, "UPDATE") {
-            if let Some(update_stmt) = update_statement(list)? {
-                queries.push(DmlStatement::UpdateStatement(update_stmt));
-            }
-        } else if check_words(list, "DELETE") {
-            if let Some(delete_stmt) = delete_statement(list)? {
-                queries.push(DmlStatement::DeleteStatement(delete_stmt));
-            }
-        }
-        list.remove(0);
-    }
-    if queries.is_empty() {
-        return Err(Error::SyntaxError("No se encontraron consultas en el batch".to_string()));
-    }
-    builder.set_queries(queries);
-    Ok(Some(builder.build()))
 }

@@ -3,9 +3,10 @@ use super::option::Options;
 use crate::parser::table_name::TableName;
 
 pub enum AlterTableInstruction {
-    AddColumns(Vec<ColumnDefinition>),
-    DropColumns(Vec<String>),
-    WithOptions(Vec<Options>),
+    AddColumns(bool, Vec<ColumnDefinition>),
+    DropColumns(bool, Vec<String>),
+    WithOptions(bool, Vec<Options>),
+    RenameColumns(bool, Vec<(String, String)>),
 }
 
 pub struct AlterTable {
