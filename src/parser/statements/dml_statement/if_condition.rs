@@ -6,6 +6,8 @@ pub enum IfCondition {
     Exists,
     /// Representa una condición IF con una lista de condiciones.
     Conditions(Vec<Condition>),
+    /// Representa una condición IF sin condiciones.
+    None,
 }
 #[derive(Debug, Clone)]
 /// Representa una condición en una declaración DML.
@@ -53,6 +55,11 @@ impl IfCondition {
     /// Crea una nueva condición IF con una lista de condiciones.
     pub fn new_conditions(conditions: Vec<Condition>) -> Self {
         IfCondition::Conditions(conditions)
+    }
+
+    /// Crea una nueva condición IF sin condiciones.
+    pub fn new_none() -> Self {
+        IfCondition::None
     }
 }
 

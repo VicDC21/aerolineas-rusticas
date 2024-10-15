@@ -5,18 +5,24 @@ use crate::{
     },
 };
 
-// options::= option ( AND option )*
-// option::= identifier '=' ( identifier
-// 	| constant
-// 	| map_literal )
+/// options::= option ( AND option )*
+/// option::= identifier '=' ( identifier
+///     | constant
+///     | map_literal )
 pub enum Options {
+    /// Representa un identificador.
+    /// Ejemplo: `keyspace_name = 'keyspace'`
     Identifier(Identifier),
-    Constant(Term), //termine usando Term porque tengo una funcion que me devuelve este tipo de dato
-    // y ademas Term casi que equivale a Constant.
+    /// Representa un término constante.
+    /// Ejemplo: `keyspace_name = 'keyspace'`
+    Constant(Term),
+    /// Representa un literal de mapa.
+    /// Ejemplo: `keyspace_name = {'keyspace': 'value'}`
     MapLiteral(MapLiteral),
 }
 
 impl Options {
+    /// Verifica si la lista de tokens es un literal de mapa.
     pub fn check_options(lista: &mut Vec<String>) -> Result<Self, Error> {
         if let Some(map) = MapLiteral::check_map_literal(lista)? {
             return Ok(Options::MapLiteral(map));

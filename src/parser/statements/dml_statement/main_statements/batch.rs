@@ -17,10 +17,10 @@ pub enum BatchType {
 ///                      APPLY BATCH
 pub struct Batch {
     /// Tipo de batch indicado mas especificamente en el tipo de dato correspondiente [BatchType].
-    batch_type: BatchType,
+    pub batch_type: BatchType,
 
     /// Consultas de batch realizables.
-    queries: Vec<DmlStatement>,
+    pub queries: Vec<DmlStatement>,
 }
 
 impl Batch {

@@ -11,12 +11,13 @@ pub struct ColumnDefinition {
     /// cql_type
     pub data_type: CQLType,
     /// [ STATIC ] // cuando no esta lo tomamos como false
-    is_static: bool,
-    ///
-    primary_key: bool,
+    pub is_static: bool,
+    /// [ PRIMARY KEY ] // cuando no esta lo tomamos como false
+    pub primary_key: bool,
 }
 
 impl ColumnDefinition {
+    /// Crea una nueva instancia de `ColumnDefinition`.
     pub fn new(
         column_name: Identifier,
         data_type: CQLType,
@@ -31,6 +32,15 @@ impl ColumnDefinition {
         }
     }
 
+    /// Analiza una lista de cadenas para crear una `ColumnDefinition`.
+    ///
+    /// # Argumentos
+    ///
+    /// * `lista` - Una referencia mutable a un vector de cadenas que representa la definición de la columna.
+    ///
+    /// # Retornos
+    ///
+    /// * `Result<Self, Error>` - Devuelve una `ColumnDefinition` en caso de éxito o un `Error` en caso de fallo.
     pub fn parse(lista: &mut Vec<String>) -> Result<Self, Error> {
         let column_name = match Identifier::check_identifier(lista)? {
             Some(value) => value,

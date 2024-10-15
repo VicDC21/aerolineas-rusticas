@@ -60,30 +60,30 @@ pub enum DdlStatement {
 
 /// Crea el enum `DdlStatement` con el tipo de struct de acuerdo a la sintaxis dada, si la entrada proporcionada no satisface
 /// los requerimientos de los tipos de datos, entonces devuelve None.
-pub fn ddl_statement(lista: &mut Vec<String>) -> Result<Option<DdlStatement>, Error> {
-    if let Some(parsed_value) = use_statement(lista)? {
+pub fn ddl_statement(list: &mut Vec<String>) -> Result<Option<DdlStatement>, Error> {
+    if let Some(parsed_value) = use_statement(list)? {
         return Ok(Some(DdlStatement::UseStatement(parsed_value)));
-    } else if let Some(parsed_value) = create_keyspace_statement(lista)? {
+    } else if let Some(parsed_value) = create_keyspace_statement(list)? {
         return Ok(Some(DdlStatement::CreateKeyspaceStatement(parsed_value)));
-    } else if let Some(parsed_value) = alter_keyspace_statement(lista)? {
+    } else if let Some(parsed_value) = alter_keyspace_statement(list)? {
         return Ok(Some(DdlStatement::AlterKeyspaceStatement(parsed_value)));
-    } else if let Some(parsed_value) = drop_keyspace_statement(lista)? {
+    } else if let Some(parsed_value) = drop_keyspace_statement(list)? {
         return Ok(Some(DdlStatement::DropKeyspaceStatement(parsed_value)));
-    } else if let Some(parsed_value) = create_table_statement(lista)? {
+    } else if let Some(parsed_value) = create_table_statement(list)? {
         return Ok(Some(DdlStatement::CreateTableStatement(parsed_value)));
-    } else if let Some(parsed_value) = alter_table_statement(lista)? {
+    } else if let Some(parsed_value) = alter_table_statement(list)? {
         return Ok(Some(DdlStatement::AlterTableStatement(parsed_value)));
-    } else if let Some(parsed_value) = drop_table_statement(lista)? {
+    } else if let Some(parsed_value) = drop_table_statement(list)? {
         return Ok(Some(DdlStatement::DropTableStatement(parsed_value)));
-    } else if let Some(parsed_value) = truncate_statement(lista)? {
+    } else if let Some(parsed_value) = truncate_statement(list)? {
         return Ok(Some(DdlStatement::TruncateStatement(parsed_value)));
     }
     Ok(None)
 }
 
-fn use_statement(lista: &mut Vec<String>) -> Result<Option<KeyspaceName>, Error> {
-    if check_words(lista, "USE") {
-        let keyspace = match KeyspaceName::check_kind_of_name(lista)? {
+fn use_statement(list: &mut Vec<String>) -> Result<Option<KeyspaceName>, Error> {
+    if check_words(list, "USE") {
+        let keyspace = match KeyspaceName::check_kind_of_name(list)? {
             Some(value) => value,
             None => {
                 return Err(Error::SyntaxError(
@@ -96,49 +96,49 @@ fn use_statement(lista: &mut Vec<String>) -> Result<Option<KeyspaceName>, Error>
     Ok(None)
 }
 
-fn create_keyspace_statement(lista: &mut Vec<String>) -> Result<Option<CreateKeyspace>, Error> {
-    if check_words(lista, "CREATE KEYSPACE") {
-        let if_not_exists = check_words(lista, "IF NOT EXISTS");
-        let name = match KeyspaceName::check_kind_of_name(lista)? {
+fn create_keyspace_statement(list: &mut Vec<String>) -> Result<Option<CreateKeyspace>, Error> {
+    if check_words(list, "CREATE KEYSPACE") {
+        let if_not_exists = check_words(list, "IF NOT EXISTS");
+        let name = match KeyspaceName::check_kind_of_name(list)? {
             Some(name) => name,
             None => return Err(Error::SyntaxError("No se indico la Keyspace".to_string())),
         };
-        if !check_words(lista, "WITH") {
+        if !check_words(list, "WITH") {
             return Err(Error::SyntaxError("Falta el WITH con opciones".to_string()));
         }
-        let options = options(lista)?;
+        let options = options(list)?;
         return Ok(Some(CreateKeyspace::new(if_not_exists, name, options)));
     }
     Ok(None)
 }
 
-fn alter_keyspace_statement(lista: &mut Vec<String>) -> Result<Option<AlterKeyspace>, Error> {
-    if check_words(lista, "ALTER KEYSPACE") {
+fn alter_keyspace_statement(list: &mut Vec<String>) -> Result<Option<AlterKeyspace>, Error> {
+    if check_words(list, "ALTER KEYSPACE") {
         let mut if_exists = false;
-        if check_words(lista, "IF EXISTS") {
+        if check_words(list, "IF EXISTS") {
             if_exists = true;
         }
-        let name = match KeyspaceName::check_kind_of_name(lista)? {
+        let name = match KeyspaceName::check_kind_of_name(list)? {
             Some(name) => name,
             None => return Err(Error::SyntaxError("No se indicó la Keyspace".to_string())),
         };
-        if !check_words(lista, "WITH") {
+        if !check_words(list, "WITH") {
             return Err(Error::SyntaxError("Falta el WITH con opciones".to_string()));
         }
-        let options = options(lista)?;
+        let options = options(list)?;
         return Ok(Some(AlterKeyspace::new(if_exists, name, options)));
     }
     Ok(None)
 }
 
-fn drop_keyspace_statement(lista: &mut Vec<String>) -> Result<Option<DropKeyspace>, Error> {
-    if check_words(lista, "DROP KEYSPACE") {
+fn drop_keyspace_statement(list: &mut Vec<String>) -> Result<Option<DropKeyspace>, Error> {
+    if check_words(list, "DROP KEYSPACE") {
         let mut if_exists = false;
-        if check_words(lista, "IF EXISTS") {
+        if check_words(list, "IF EXISTS") {
             if_exists = true;
         }
 
-        let name = match KeyspaceName::check_kind_of_name(lista)? {
+        let name = match KeyspaceName::check_kind_of_name(list)? {
             Some(name) => name,
             None => {
                 return Err(Error::SyntaxError(
@@ -152,14 +152,14 @@ fn drop_keyspace_statement(lista: &mut Vec<String>) -> Result<Option<DropKeyspac
     Ok(None)
 }
 
-fn create_table_statement(lista: &mut Vec<String>) -> Result<Option<CreateTable>, Error> {
-    if check_words(lista, "CREATE TABLE") {
+fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>, Error> {
+    if check_words(list, "CREATE TABLE") {
         let mut if_not_exists = false;
-        if check_words(lista, "IF NOT EXISTS") {
+        if check_words(list, "IF NOT EXISTS") {
             if_not_exists = true;
         }
 
-        let name = match TableName::check_kind_of_name(lista)? {
+        let name = match TableName::check_kind_of_name(list)? {
             Some(name) => name,
             None => {
                 return Err(Error::SyntaxError(
@@ -168,25 +168,25 @@ fn create_table_statement(lista: &mut Vec<String>) -> Result<Option<CreateTable>
             }
         };
 
-        if !check_words(lista, "(") {
+        if !check_words(list, "(") {
             return Err(Error::SyntaxError(
                 "Falta el paréntesis de apertura".to_string(),
             ));
         }
 
-        let columns = parse_column_definitions(lista)?;
-        let primary_key = parse_primary_key(lista)?;
+        let columns = parse_column_definitions(list)?;
+        let primary_key = parse_primary_key(list)?;
 
-        if !check_words(lista, ")") {
+        if !check_words(list, ")") {
             return Err(Error::SyntaxError(
                 "Falta el paréntesis de cierre".to_string(),
             ));
         }
 
-        if !check_words(lista, "WITH") {
+        if !check_words(list, "WITH") {
             return Err(Error::SyntaxError("Falta la condición WITH".to_string()));
         }
-        let options = parse_table_options(lista)?;
+        let options = parse_table_options(list)?;
         let mut compact_storage = false;
         let mut clustering_order = None;
 
@@ -195,7 +195,7 @@ fn create_table_statement(lista: &mut Vec<String>) -> Result<Option<CreateTable>
                 match id.get_name() {
                     "COMPACT STORAGE" => compact_storage = true,
                     "CLUSTERING ORDER" => {
-                        clustering_order = Some(parse_clustering_order(&lista.join(" "))?);
+                        clustering_order = Some(parse_clustering_order(&list.join(" "))?);
                     }
                     _ => {}
                 }
@@ -214,9 +214,9 @@ fn create_table_statement(lista: &mut Vec<String>) -> Result<Option<CreateTable>
     Ok(None)
 }
 
-fn alter_table_statement(lista: &mut Vec<String>) -> Result<Option<AlterTable>, Error> {
-    if check_words(lista, "ALTER TABLE") {
-        let name = match TableName::check_kind_of_name(lista)? {
+fn alter_table_statement(list: &mut Vec<String>) -> Result<Option<AlterTable>, Error> {
+    if check_words(list, "ALTER TABLE") {
+        let name = match TableName::check_kind_of_name(list)? {
             Some(name) => name,
             None => {
                 return Err(Error::SyntaxError(
@@ -225,17 +225,17 @@ fn alter_table_statement(lista: &mut Vec<String>) -> Result<Option<AlterTable>, 
             }
         };
 
-        let instruction = parse_alter_table_instruction(lista)?;
+        let instruction = parse_alter_table_instruction(list)?;
 
         return Ok(Some(AlterTable::new(name, instruction)));
     }
     Ok(None)
 }
 
-fn drop_table_statement(lista: &mut Vec<String>) -> Result<Option<DropTable>, Error> {
-    if check_words(lista, "DROP TABLE") {
-        let exist = check_words(lista, "IF EXISTS");
-        let table_name = match TableName::check_kind_of_name(lista)? {
+fn drop_table_statement(list: &mut Vec<String>) -> Result<Option<DropTable>, Error> {
+    if check_words(list, "DROP TABLE") {
+        let exist = check_words(list, "IF EXISTS");
+        let table_name = match TableName::check_kind_of_name(list)? {
             Some(value) => value,
             None => {
                 return Err(Error::SyntaxError(
@@ -248,10 +248,10 @@ fn drop_table_statement(lista: &mut Vec<String>) -> Result<Option<DropTable>, Er
     Ok(None)
 }
 
-fn truncate_statement(lista: &mut Vec<String>) -> Result<Option<Truncate>, Error> {
-    if check_words(lista, "TRUNCATE") {
-        check_words(lista, "TABLE");
-        let table_name = match TableName::check_kind_of_name(lista)? {
+fn truncate_statement(list: &mut Vec<String>) -> Result<Option<Truncate>, Error> {
+    if check_words(list, "TRUNCATE") {
+        check_words(list, "TABLE");
+        let table_name = match TableName::check_kind_of_name(list)? {
             Some(value) => value,
             None => {
                 return Err(Error::SyntaxError(
@@ -264,14 +264,14 @@ fn truncate_statement(lista: &mut Vec<String>) -> Result<Option<Truncate>, Error
     Ok(None)
 }
 
-fn options(lista: &mut Vec<String>) -> Result<Vec<Options>, Error> {
+fn options(list: &mut Vec<String>) -> Result<Vec<Options>, Error> {
     let mut options: Vec<Options> = Vec::new();
-    match is_an_option(lista)? {
+    match is_an_option(list)? {
         Some(value) => options.push(value),
         None => return Err(Error::SyntaxError("".to_string())),
     };
-    while lista[0] == "AND" {
-        match is_an_option(lista)? {
+    while list[0] == "AND" {
+        match is_an_option(list)? {
             Some(value) => options.push(value),
             None => return Err(Error::SyntaxError("".to_string())),
         };
@@ -279,8 +279,8 @@ fn options(lista: &mut Vec<String>) -> Result<Vec<Options>, Error> {
     Ok(options)
 }
 
-fn is_an_option(lista: &mut Vec<String>) -> Result<Option<Options>, Error> {
-    let value = match Identifier::check_identifier(lista)? {
+fn is_an_option(list: &mut Vec<String>) -> Result<Option<Options>, Error> {
+    let value = match Identifier::check_identifier(list)? {
         Some(value) => value,
         None => {
             return Err(Error::SyntaxError(
@@ -292,36 +292,46 @@ fn is_an_option(lista: &mut Vec<String>) -> Result<Option<Options>, Error> {
     if option_word != "replication" || option_word != "durable_writes" {
         return Err(Error::SyntaxError("OPTION no permitida".to_string()));
     }
-    if !check_words(lista, "=") {
+    if !check_words(list, "=") {
         return Err(Error::SyntaxError(
             "Falto el '=' de las opciones".to_string(),
         ));
     }
-    let options = Options::check_options(lista)?;
+    let options = Options::check_options(list)?;
     Ok(Some(options))
 }
 
-pub fn check_words(lista: &mut Vec<String>, palabra: &str) -> bool {
+/// Verifica si las siguientes palabras en la lista coinciden con la cadena dada y las elimina si es así.
+///
+/// # Argumentos
+///
+/// * `list` - Una referencia mutable a un vector de cadenas que representa la lista de palabras.
+/// * `palabra` - Una porción de cadena que representa las palabras a verificar.
+///
+/// # Retornos
+///
+/// * `true` si las palabras coinciden y fueron eliminadas, `false` de lo contrario.
+pub fn check_words(list: &mut Vec<String>, palabra: &str) -> bool {
     let palabras: Vec<&str> = palabra.split_whitespace().collect();
-    if palabras.len() > lista.len() {
+    if palabras.len() > list.len() {
         return false;
     };
 
     for (index, &word) in palabras.iter().enumerate() {
-        if lista[index] != word {
+        if list[index] != word {
             return false;
         }
     }
-    lista.drain(..palabras.len());
+    list.drain(..palabras.len());
     true
 }
 
-fn parse_table_options(lista: &mut Vec<String>) -> Result<Vec<Options>, Error> {
+fn parse_table_options(list: &mut Vec<String>) -> Result<Vec<Options>, Error> {
     let mut options = Vec::new();
     loop {
-        let option = Options::check_options(lista)?;
+        let option = Options::check_options(list)?;
         options.push(option);
-        if !check_words(lista, "AND") {
+        if !check_words(list, "AND") {
             break;
         }
     }
@@ -345,32 +355,32 @@ fn parse_clustering_order(order: &str) -> Result<Vec<(String, String)>, Error> {
     Ok(result)
 }
 
-fn parse_column_definitions(lista: &mut Vec<String>) -> Result<Vec<ColumnDefinition>, Error> {
+fn parse_column_definitions(list: &mut Vec<String>) -> Result<Vec<ColumnDefinition>, Error> {
     let mut columns = Vec::new();
     loop {
-        let column = ColumnDefinition::parse(lista)?;
+        let column = ColumnDefinition::parse(list)?;
         columns.push(column);
-        if !check_words(lista, ",") {
+        if !check_words(list, ",") {
             break;
         }
-        if lista.len() >= 2 && lista[0] == "PRIMARY" && lista[1] == "KEY" {
+        if list.len() >= 2 && list[0] == "PRIMARY" && list[1] == "KEY" {
             break;
         }
     }
     Ok(columns)
 }
 
-fn parse_primary_key(lista: &mut Vec<String>) -> Result<Option<PrimaryKey>, Error> {
-    if check_words(lista, "PRIMARY KEY") {
-        if !check_words(lista, "(") {
+fn parse_primary_key(list: &mut Vec<String>) -> Result<Option<PrimaryKey>, Error> {
+    if check_words(list, "PRIMARY KEY") {
+        if !check_words(list, "(") {
             return Err(Error::SyntaxError(
                 "Falta el paréntesis de apertura en PRIMARY KEY".to_string(),
             ));
         }
 
-        let primary_key = PrimaryKey::parse(lista)?;
+        let primary_key = PrimaryKey::parse(list)?;
 
-        if !check_words(lista, ")") {
+        if !check_words(list, ")") {
             return Err(Error::SyntaxError(
                 "Falta el paréntesis de cierre en PRIMARY KEY".to_string(),
             ));
@@ -382,22 +392,22 @@ fn parse_primary_key(lista: &mut Vec<String>) -> Result<Option<PrimaryKey>, Erro
     }
 }
 
-fn parse_alter_table_instruction(lista: &mut Vec<String>) -> Result<AlterTableInstruction, Error> {
-    if check_words(lista, "ADD") {
-        let if_not_exists = check_words(lista, "IF NOT EXISTS");
-        let columns = parse_column_definitions(lista)?;
+fn parse_alter_table_instruction(list: &mut Vec<String>) -> Result<AlterTableInstruction, Error> {
+    if check_words(list, "ADD") {
+        let if_not_exists = check_words(list, "IF NOT EXISTS");
+        let columns = parse_column_definitions(list)?;
         Ok(AlterTableInstruction::AddColumns(if_not_exists, columns))
-    } else if check_words(lista, "DROP") {
-        let if_exists = check_words(lista, "IF EXISTS");
-        let columns = parse_column_names(lista)?;
+    } else if check_words(list, "DROP") {
+        let if_exists = check_words(list, "IF EXISTS");
+        let columns = parse_column_names(list)?;
         Ok(AlterTableInstruction::DropColumns(if_exists, columns))
-    } else if check_words(lista, "WITH") {
-        let if_exists = check_words(lista, "IF EXISTS");
-        let options = options(lista)?;
+    } else if check_words(list, "WITH") {
+        let if_exists = check_words(list, "IF EXISTS");
+        let options = options(list)?;
         Ok(AlterTableInstruction::WithOptions(if_exists, options))
-    } else if check_words(lista, "RENAME") {
-        let if_exists = check_words(lista, "IF EXISTS");
-        let renames = parse_column_renames(lista)?;
+    } else if check_words(list, "RENAME") {
+        let if_exists = check_words(list, "IF EXISTS");
+        let renames = parse_column_renames(list)?;
         Ok(AlterTableInstruction::RenameColumns(if_exists, renames))
     } else {
         Err(Error::SyntaxError(
@@ -406,35 +416,35 @@ fn parse_alter_table_instruction(lista: &mut Vec<String>) -> Result<AlterTableIn
     }
 }
 
-fn parse_column_renames(lista: &mut Vec<String>) -> Result<Vec<(String, String)>, Error> {
+fn parse_column_renames(list: &mut Vec<String>) -> Result<Vec<(String, String)>, Error> {
     let mut renames = Vec::new();
 
     loop {
-        let old_name = if lista.is_empty() {
+        let old_name = if list.is_empty() {
             return Err(Error::SyntaxError(
                 "Se esperaba el nombre antiguo de la columna".to_string(),
             ));
         } else {
-            lista.remove(0)
+            list.remove(0)
         };
 
-        if !check_words(lista, "TO") {
+        if !check_words(list, "TO") {
             return Err(Error::SyntaxError(
                 "Se esperaba la palabra clave 'TO'".to_string(),
             ));
         }
 
-        if lista.is_empty() {
+        if list.is_empty() {
             return Err(Error::SyntaxError(
                 "Se esperaba el nuevo nombre de la columna".to_string(),
             ));
         }
 
-        let new_name = lista.remove(0);
+        let new_name = list.remove(0);
 
         renames.push((old_name, new_name));
 
-        if !check_words(lista, "AND") {
+        if !check_words(list, "AND") {
             break;
         }
     }
@@ -442,17 +452,17 @@ fn parse_column_renames(lista: &mut Vec<String>) -> Result<Vec<(String, String)>
     Ok(renames)
 }
 
-fn parse_column_names(lista: &mut Vec<String>) -> Result<Vec<String>, Error> {
+fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>, Error> {
     let mut columns = Vec::new();
     loop {
-        if lista.is_empty() {
+        if list.is_empty() {
             return Err(Error::SyntaxError(
                 "Se esperaba un nombre de columna".to_string(),
             ));
         }
-        columns.push(lista.remove(0));
+        columns.push(list.remove(0));
 
-        if !check_words(lista, ",") {
+        if !check_words(list, ",") {
             break;
         }
     }

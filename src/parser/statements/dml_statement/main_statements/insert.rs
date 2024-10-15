@@ -3,14 +3,20 @@ use crate::parser::{
     table_name::TableName,
 };
 
+/// Representa una declaración CQL INSERT.
 pub struct Insert {
-    table_name: TableName,
-    names: Vec<Identifier>,
-    values: TupleLiteral,
-    if_not_exists: bool,
+    /// Nombre de la tabla a insertar.
+    pub table_name: TableName,
+    /// Lista de nombres de columnas.
+    pub names: Vec<Identifier>,
+    /// Lista de valores a insertar.
+    pub values: TupleLiteral,
+    /// Indica si la inserción debe realizarse solo si no existe.
+    pub if_not_exists: bool,
 }
 
 impl Insert {
+    /// Crea una nueva sentencia INSERT.
     pub fn new(
         table_name: TableName,
         names: Vec<Identifier>,
@@ -25,42 +31,3 @@ impl Insert {
         }
     }
 }
-
-pub struct InsertBuilder {
-    table_name: TableName,
-    names: Vec<Identifier>,
-    values: TupleLiteral,
-    if_not_exists: bool,
-}
-
-// impl InsertBuilder {
-//     fn set_table_name(&mut self, table_name: String) {
-//         self.table_name = table_name;
-//     }
-
-//     fn set_columns(&mut self, columns: Vec<String>) {
-//         self.columns = columns;
-//     }
-
-//     fn set_values(&mut self, set_values: Vec<String>) {
-//         self.values = set_values;
-//     }
-
-//     fn set_if_not_exists(&mut self, if_not_exists: Option<bool>) {
-//         self.if_not_exists = if_not_exists;
-//     }
-
-//     fn set_update_parameter(&mut self, update_parameter: Option<UpdateParameter>) {
-//         self.update_parameter = update_parameter;
-//     }
-
-//     fn build(self) -> Insert {
-//         Insert::new(
-//             self.table_name,
-//             self.columns,
-//             self.values,
-//             self.if_not_exists,
-//             self.update_parameter,
-//         )
-//     }
-// }

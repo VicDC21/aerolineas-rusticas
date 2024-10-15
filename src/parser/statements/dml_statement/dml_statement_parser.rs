@@ -12,14 +12,14 @@ use crate::{
                 if_condition::{Condition, IfCondition, Value},
                 main_statements::{
                     batch::{Batch, BatchBuilder, BatchType},
-                    delete::{Delete, DeleteBuilder},
+                    delete::Delete,
                     insert::Insert,
                     select::{
                         group_by::GroupBy,
                         limit::Limit,
                         order_by::{OrderBy, Ordering},
                         per_partition_limit::PerPartitionLimit,
-                        select::{KindOfColumns, Select, SelectBuilder},
+                        select_operation::{KindOfColumns, Select, SelectOptions},
                         selector::Selector,
                     },
                     update::Update,
@@ -90,9 +90,8 @@ pub fn dml_statement(list: &mut Vec<String>) -> Result<Option<DmlStatement>, Err
 
 fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
     if check_words(list, "SELECT") {
-        let mut builder = SelectBuilder::default();
-        if check_words(list, "*") {
-            builder.set_select_clause(KindOfColumns::All);
+        let select_columns = if check_words(list, "*") {
+            KindOfColumns::All
         } else {
             let res = match select_clause(list)? {
                 Some(columns) => columns,
@@ -102,16 +101,18 @@ fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
                     ))
                 }
             };
-            builder.set_select_clause(KindOfColumns::SelectClause(res));
-        }
-        builder.set_from(from_clause(list)?);
-        builder.set_where(where_clause(list)?);
-        group_by_clause(list, &mut builder)?;
-        ordering_clause(list, &mut builder)?;
-        per_partition_limit_clause(list, &mut builder)?;
-        limit_clause(list, &mut builder)?;
-        allow_filtering_clause(list, &mut builder);
-        return Ok(Some(builder.build()));
+            KindOfColumns::SelectClause(res)
+        };
+        let from = from_clause(list)?;
+        let options = SelectOptions {
+            the_where: where_clause(list)?,
+            group_by: group_by_clause(list)?,
+            order_by: ordering_clause(list)?,
+            per_partition_limit: per_partition_limit_clause(list)?,
+            limit: limit_clause(list)?,
+            allow_filtering: allow_filtering_clause(list),
+        };
+        return Ok(Some(Select::new(select_columns, from, options)));
     }
     Ok(None)
 }
@@ -157,7 +158,8 @@ fn update_statement(list: &mut Vec<String>) -> Result<Option<Update>, Error> {
         };
         let set = set_clause(list)?;
         let r#where = where_clause(list)?;
-        return Ok(Some(Update::new(table_name, set, r#where)));
+        let if_exists = check_if_condition(list)?;
+        return Ok(Some(Update::new(table_name, set, r#where, if_exists)));
     }
 
     Ok(None)
@@ -168,8 +170,6 @@ fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
         return Ok(None);
     }
 
-    let mut builder = DeleteBuilder::default();
-
     let mut cols = Vec::new();
     while !check_words(list, "FROM") {
         if list.is_empty() {
@@ -179,34 +179,15 @@ fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
         }
         cols.push(list.remove(0));
     }
-    if !cols.is_empty() {
-        builder.set_cols(cols);
-    }
 
-    builder.set_from(from_clause(list)?);
+    let from = from_clause(list)?;
 
     if !check_words(list, "WHERE") {
         return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
     }
-    builder.set_where(where_clause(list)?);
-
-    if check_words(list, "IF") {
-        if check_words(list, "EXISTS") {
-            builder.set_if_condition(Some(IfCondition::Exists));
-        } else {
-            let mut conditions = Vec::new();
-            loop {
-                let condition = parse_condition(list)?;
-                conditions.push(condition);
-                if !check_words(list, "AND") {
-                    break;
-                }
-            }
-            builder.set_if_condition(Some(IfCondition::Conditions(conditions)));
-        }
-    }
-
-    Ok(Some(builder.build()))
+    let r#where = where_clause(list)?;
+    let if_exists = check_if_condition(list)?;
+    Ok(Some(Delete::new(cols, from, r#where, if_exists)))
 }
 
 fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
@@ -292,7 +273,7 @@ fn where_clause(list: &mut Vec<String>) -> Result<Option<Where>, Error> {
     }
 }
 
-fn group_by_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
+fn group_by_clause(list: &mut Vec<String>) -> Result<Option<GroupBy>, Error> {
     if check_words(list, "GROUP BY") {
         let mut columns: Vec<Identifier> = Vec::new();
         loop {
@@ -308,14 +289,12 @@ fn group_by_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Resul
                 break;
             }
         }
-        builder.set_group_by(Some(GroupBy::new(columns)));
-    } else {
-        builder.set_group_by(None);
+        return Ok(Some(GroupBy::new(columns)));
     }
-    Ok(())
+    Ok(None)
 }
 
-fn ordering_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
+fn ordering_clause(list: &mut Vec<String>) -> Result<Option<OrderBy>, Error> {
     if check_words(list, "ORDER BY") {
         let mut columns: Vec<(Identifier, Option<Ordering>)> = Vec::new();
         loop {
@@ -339,34 +318,27 @@ fn ordering_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Resul
             }
         }
 
-        OrderBy::new(columns);
-    } else {
-        builder.set_order_by(None);
+        return Ok(Some(OrderBy::new(columns)));
     }
-    Ok(())
+    Ok(None)
 }
 
-fn per_partition_limit_clause(
-    list: &mut Vec<String>,
-    builder: &mut SelectBuilder,
-) -> Result<(), Error> {
+fn per_partition_limit_clause(list: &mut Vec<String>) -> Result<Option<PerPartitionLimit>, Error> {
     if check_words(list, "PER PARTITION LIMIT") {
         let int = list.remove(0);
         let int = match int.parse::<i32>() {
-            Ok(value) => Limit::new(value),
+            Ok(value) => PerPartitionLimit::new(value),
             Err(_e) => {
                 return Err(Error::SyntaxError(
                     "El valor brindado al Per Partition Limit no es un numero".to_string(),
                 ))
             }
         };
-        builder.set_limit(Some(int));
-    } else {
-        builder.set_per_partition_limit(None);
+        return Ok(Some(int));
     }
-    Ok(())
+    Ok(None)
 }
-fn limit_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(), Error> {
+fn limit_clause(list: &mut Vec<String>) -> Result<Option<Limit>, Error> {
     if check_words(list, "LIMIT") {
         list.remove(0);
         let int = list.remove(0);
@@ -378,20 +350,13 @@ fn limit_clause(list: &mut Vec<String>, builder: &mut SelectBuilder) -> Result<(
                 ))
             }
         };
-        builder.set_limit(Some(int));
-    } else {
-        builder.set_limit(None);
+        return Ok(Some(int));
     }
-    Ok(())
+    Ok(None)
 }
-fn allow_filtering_clause(
-    list: &mut Vec<String>,
-    builder: &mut SelectBuilder,
-) -> Option<PerPartitionLimit> {
-    if check_words(list, "LIMIT") {
-        builder.set_allow_filtering(Some(true));
-    } else {
-        builder.set_allow_filtering(None);
+fn allow_filtering_clause(list: &mut Vec<String>) -> Option<bool> {
+    if check_words(list, "ALLOW FILTERING") {
+        return Some(true);
     }
     None
 }
@@ -531,4 +496,23 @@ fn set_clause(list: &mut Vec<String>) -> Result<Vec<Assignment>, Error> {
         assignments.push(assignment);
     }
     Ok(assignments)
+}
+
+fn check_if_condition(list: &mut Vec<String>) -> Result<IfCondition, Error> {
+    if check_words(list, "IF") {
+        if check_words(list, "EXISTS") {
+            return Ok(IfCondition::Exists);
+        } else {
+            let mut conditions = Vec::new();
+            loop {
+                let condition = parse_condition(list)?;
+                conditions.push(condition);
+                if !check_words(list, "AND") {
+                    break;
+                }
+            }
+            return Ok(IfCondition::Conditions(conditions));
+        }
+    }
+    Ok(IfCondition::None)
 }

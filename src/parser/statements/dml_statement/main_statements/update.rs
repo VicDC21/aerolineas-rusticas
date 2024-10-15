@@ -1,65 +1,33 @@
 use crate::parser::{
-    assignment::Assignment, statements::dml_statement::r#where::r#where_parser::Where,
+    assignment::Assignment,
+    statements::dml_statement::{if_condition::IfCondition, r#where::r#where_parser::Where},
     table_name::TableName,
 };
+/// Representa una sentencia CQL UPDATE.
 pub struct Update {
-    table_name: TableName,
-    set_parameter: Vec<Assignment>,
-    the_where: Option<Where>,
-    // if_exists: bool,
+    /// Nombre de la tabla a actualizar.
+    pub table_name: TableName,
+    /// Lista de asignaciones de valores a actualizar.
+    pub set_parameter: Vec<Assignment>,
+    /// Condición de actualización.
+    pub the_where: Option<Where>,
+    /// Condición de existencia.
+    pub if_exists: IfCondition,
 }
 
 impl Update {
+    /// Crea una nueva sentencia UPDATE.
     pub fn new(
         table_name: TableName,
         set_parameter: Vec<Assignment>,
         the_where: Option<Where>,
-        // if_exists: bool,
+        if_exists: IfCondition,
     ) -> Update {
         Update {
             table_name,
             set_parameter,
             the_where,
-            // if_exists,
+            if_exists,
         }
     }
 }
-
-// #[derive(Default)]
-// pub struct UpdateBuilder {
-//     table_name: String,
-//     update_parameter: Option<UpdateParameter>,
-//     set_parameter: Option<SetParameter>,
-//     the_where: Option<Where>,
-//     if_exists: Option<bool>,
-// }
-
-// impl UpdateBuilder {
-//     pub fn set_table_name(&mut self, table_name: String) {
-//         self.table_name = table_name;
-//     }
-
-//     pub fn set_update_parameter(&mut self, update_parameter: Option<UpdateParameter>) {
-//         self.update_parameter = update_parameter;
-//     }
-//     pub fn set_set_parameter(&mut self, set_parameter: Option<SetParameter>) {
-//         self.set_parameter = set_parameter;
-//     }
-
-//     pub fn set_where(&mut self, r#where: Option<Where>) {
-//         self.the_where = r#where;
-//     }
-//     pub fn set_if_exists(&mut self, if_exists: Option<bool>) {
-//         self.if_exists = if_exists;
-//     }
-
-//     pub fn build(self) -> Update {
-//         Update::new(
-//             self.table_name,
-//             self.update_parameter,
-//             self.set_parameter,
-//             self.the_where,
-//             self.if_exists,
-//         )
-//     }
-// }
