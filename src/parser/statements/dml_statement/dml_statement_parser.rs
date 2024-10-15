@@ -398,44 +398,6 @@ fn parse_condition(list: &mut Vec<String>) -> Result<Condition, Error> {
     Ok(Condition::new(column, operator, term))
 }
 
-// fn parse_value(list: &mut Vec<String>) -> Result<Value, Error> {
-//     if list.is_empty() {
-//         return Err(Error::SyntaxError("Valor esperado".to_string()));
-//     }
-
-//     let first = list.remove(0);
-//     if first == "(" {
-//         let mut values = Vec::new();
-//         while let Some(next) = list.first() {
-//             if next == ")" {
-//                 list.remove(0);
-//                 return Ok(Value::List(values));
-//             }
-//             values.push(parse_single_value(list.remove(0))?);
-//             if list.first() == Some(&",".to_string()) {
-//                 list.remove(0);
-//             }
-//         }
-//         Err(Error::SyntaxError("List no cerrada".to_string()))
-//     } else {
-//         parse_single_value(first)
-//     }
-// }
-
-// fn parse_single_value(value: String) -> Result<Value, Error> {
-//     if value.starts_with('\'') && value.ends_with('\'') {
-//         Ok(Value::String(value[1..value.len() - 1].to_string()))
-//     } else if let Ok(num) = value.parse::<i64>() {
-//         Ok(Value::Integer(num))
-//     } else if let Ok(num) = value.parse::<f64>() {
-//         Ok(Value::Float(num))
-//     } else if value == "true" || value == "false" {
-//         Ok(Value::Boolean(value == "true"))
-//     } else {
-//         Ok(Value::Identifier(value))
-//     }
-// }
-
 fn check_insert_names(list: &mut Vec<String>) -> Result<Vec<Identifier>, Error> {
     if !check_words(list, "(") {
         return Err(Error::SyntaxError("Falto (".to_string()));
