@@ -1,6 +1,6 @@
-/// Este módulo se encarga de las operaciones de asignación.
-///
-/// Contiene submódulos para manejar diferentes aspectos del análisis de sintaxis:
+//! Este módulo se encarga de las operaciones de asignación.
+//!
+//! Contiene submódulos para manejar diferentes aspectos del análisis de sintaxis:
 
 /// - `assignment`: Maneja las operaciones de asignación.
 pub mod assignment;
