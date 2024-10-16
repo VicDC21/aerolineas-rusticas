@@ -5,13 +5,16 @@ pub struct UnquotedIdentifier {
 }
 
 impl UnquotedIdentifier {
+    /// TODO: Desc básica
     pub fn new(text: String) -> Self {
         UnquotedIdentifier { text }
     }
+    /// TODO: Desc básica
     pub fn get_name(&self) -> &str {
         &self.text
     }
-    pub fn check_unquoted_identifier(first: &String) -> bool {
+    /// TODO: Desc básica
+    pub fn check_unquoted_identifier(first: &str) -> bool {
         if !first.chars().all(char::is_alphabetic) {
             return false;
         }

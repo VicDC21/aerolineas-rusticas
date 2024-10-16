@@ -5,12 +5,15 @@ use crate::{
     protocol::errors::error::Error,
 };
 
+#[allow(dead_code)]
 /// tuple_literal::= '(' term( ',' term )* ')'
 pub struct TupleLiteral {
+    /// TODO: Desc básica
     values: Vec<Term>,
 }
 
 impl TupleLiteral {
+    /// TODO: Desc básica
     pub fn check_tuple_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         let mut values: Vec<Term> = Vec::new();
         if check_words(lista, "(") {

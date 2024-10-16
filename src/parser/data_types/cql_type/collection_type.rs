@@ -2,6 +2,7 @@ use crate::protocol::errors::error::Error;
 
 use super::cql_type::CQLType;
 
+/// TODO: Desc básica
 pub enum CollectionType {
     /// MAP '<' cql_type',' cql_type'>'
     Map(Box<CQLType>, Box<CQLType>),
@@ -14,6 +15,7 @@ pub enum CollectionType {
 }
 
 impl CollectionType {
+    /// TODO: Desc básica
     pub fn parse_collection_type(
         tokens: &mut Vec<String>,
     ) -> Result<Option<CollectionType>, Error> {
@@ -62,6 +64,7 @@ impl CollectionType {
     }
 }
 
+/// TODO: Desc básica
 pub fn expect_token(tokens: &mut Vec<String>, expected: &str) -> Result<(), Error> {
     if tokens.is_empty() || tokens[0] != expected {
         Err(Error::SyntaxError(format!("Expected token: {}", expected)))

@@ -5,14 +5,17 @@ pub struct QuotedIdentifier {
 }
 
 impl QuotedIdentifier {
+    /// TODO: Desc básica
     pub fn new(text: String) -> Self {
         QuotedIdentifier { text }
     }
 
+    /// TODO: Desc básica
     pub fn get_name(&self) -> &str {
         &self.text
     }
 
+    /// TODO: Desc básica
     pub fn check_quoted_identifier(
         first_quotes: &String,
         word: &str,

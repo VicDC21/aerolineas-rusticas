@@ -5,7 +5,9 @@ use super::unquoted_name::UnquotedName;
 /// keyspace_name::= name
 /// name::= unquoted_name | quoted_name
 pub enum KeyspaceName {
+    /// TODO: Desc básica
     UnquotedName(UnquotedName),
+    /// TODO: Desc básica
     QuotedName(UnquotedName),
 }
 
@@ -16,6 +18,7 @@ impl Default for KeyspaceName {
 }
 
 impl KeyspaceName {
+    /// TODO: Desc básica
     pub fn check_kind_of_name(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         if lista.is_empty() {
             return Err(Error::SyntaxError("Faltan argumentos".to_string()));

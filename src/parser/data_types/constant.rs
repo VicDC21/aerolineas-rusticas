@@ -42,6 +42,7 @@ impl PartialEq for Constant {
 }
 
 impl Constant {
+    /// TODO: Desc básica
     pub fn is_constant(lista: &mut Vec<String>) -> Result<Option<Constant>, Error> {
         // Todo: falta corroborar que el largo de la lista sea de al menos X largo asi no rompe con remove
         if Constant::check_string(&lista[0], &lista[2]) {

@@ -5,11 +5,15 @@ use crate::{
 
 use super::super::term::Term;
 
+#[allow(dead_code)]
+/// TODO: Desc básica
 pub struct MapLiteral {
+    /// TODO: Desc básica
     values: Vec<(Term, Term)>,
 }
 
 impl MapLiteral {
+    /// TODO: Desc básica
     pub fn check_map_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         let mut values: Vec<(Term, Term)> = Vec::new();
         if check_words(lista, "{") {

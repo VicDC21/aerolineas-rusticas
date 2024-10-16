@@ -5,11 +5,15 @@ use crate::{
     protocol::errors::error::Error,
 };
 
+#[allow(dead_code)]
+/// TODO: Desc básica
 pub struct ListLiteral {
+    /// TODO: Desc básica
     values: Vec<Term>,
 }
 
 impl ListLiteral {
+    /// TODO: Desc básica
     pub fn check_list_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         let mut values: Vec<Term> = Vec::new();
         if check_words(lista, "[") {
