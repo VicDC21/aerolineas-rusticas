@@ -1,7 +1,7 @@
 use crate::{
-    cassandra::errors::error::Error,
     parser::data_types::{cql_type::cql_type::CQLType, identifier::identifier::Identifier},
     parser::statements::ddl_statement::ddl_statement_parser::check_words,
+    protocol::errors::error::Error,
 };
 
 /// column_definition::= column_name cql_type [ STATIC ] [ PRIMARY KEY]

@@ -1,6 +1,6 @@
 /// user_defined_type::= udt_name
 /// udt_name::= [ keyspace_name '.' ] identifier
-use crate::cassandra::errors::error::Error;
+use crate::protocol::errors::error::Error;
 pub struct UserDefinedType {
     udt_name: String,
 }

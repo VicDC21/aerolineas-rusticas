@@ -1,8 +1,8 @@
 use crate::{
-    cassandra::errors::error::Error,
     parser::{
         data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words,
     },
+    protocol::errors::error::Error,
 };
 
 /// tuple_literal::= '(' term( ',' term )* ')'

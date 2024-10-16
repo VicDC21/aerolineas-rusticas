@@ -1,8 +1,8 @@
 use super::collection_type::CollectionType;
 use super::native_types::NativeType;
 use super::tuple_type::TupleType;
-use crate::cassandra::errors::error::Error;
 use crate::parser::data_types::user_defined_type::UserDefinedType;
+use crate::protocol::errors::error::Error;
 
 pub enum CQLType {
     NativeType(NativeType),

@@ -1,4 +1,4 @@
-use crate::cassandra::errors::error::Error;
+use crate::protocol::errors::error::Error;
 
 /// Representa diferentes tipos de declaraciones de UDT (Tipo Definido por el Usuario) personalizado.
 /// Las declaraciones UDT se utilizan para definir un nuevo tipo de datos personalizado.

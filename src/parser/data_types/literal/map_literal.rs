@@ -1,6 +1,6 @@
 use crate::{
-    cassandra::errors::error::Error,
     parser::statements::ddl_statement::ddl_statement_parser::check_words,
+    protocol::errors::error::Error,
 };
 
 use super::super::term::Term;

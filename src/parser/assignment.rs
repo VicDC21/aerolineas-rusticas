@@ -1,4 +1,4 @@
-use crate::cassandra::errors::error::Error;
+use crate::protocol::errors::error::Error;
 
 use super::{
     data_types::{

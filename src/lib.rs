@@ -5,7 +5,7 @@
 #![warn(missing_docs)]
 
 pub mod client;
-pub mod parser;
 pub mod interface;
+pub mod parser;
 pub mod protocol;
 pub mod server;

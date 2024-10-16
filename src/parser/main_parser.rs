@@ -1,4 +1,3 @@
-use crate::cassandra::errors::error::Error;
 use crate::parser::statements::{
     ddl_statement::ddl_statement_parser::ddl_statement,
     dml_statement::dml_statement_parser::dml_statement,
@@ -6,6 +5,7 @@ use crate::parser::statements::{
     statement::Statement,
     udt_statement::udt_statement_parser::udt_statement,
 };
+use crate::protocol::errors::error::Error;
 
 /// Analiza una lista de declaraciones CQL y devuelve un `Statement` o un `Error`.
 ///

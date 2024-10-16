@@ -1,5 +1,4 @@
 use crate::{
-    cassandra::errors::error::Error,
     parser::{
         assignment::Assignment,
         data_types::{
@@ -29,6 +28,7 @@ use crate::{
         },
         table_name::TableName,
     },
+    protocol::errors::error::Error,
 };
 
 use super::r#where::operator::Operator;

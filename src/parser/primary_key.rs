@@ -1,4 +1,4 @@
-use crate::cassandra::errors::error::Error;
+use crate::protocol::errors::error::Error;
 
 /// Representa la clave primaria de una tabla.
 /// primary_key ::= PRIMARY KEY '(' column_name (',' column_name)* ')'

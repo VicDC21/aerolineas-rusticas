@@ -1,8 +1,8 @@
 use crate::{
-    cassandra::errors::error::Error,
     parser::data_types::{
         identifier::identifier::Identifier, literal::map_literal::MapLiteral, term::Term,
     },
+    protocol::errors::error::Error,
 };
 
 /// options::= option ( AND option )*

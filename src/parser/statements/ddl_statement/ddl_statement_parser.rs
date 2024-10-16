@@ -1,10 +1,10 @@
 use crate::{
-    cassandra::errors::error::Error,
     parser::{
         data_types::{identifier::identifier::Identifier, keyspace_name::KeyspaceName},
         primary_key::PrimaryKey,
         table_name::TableName,
     },
+    protocol::errors::error::Error,
 };
 
 use super::{

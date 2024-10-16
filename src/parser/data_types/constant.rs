@@ -1,5 +1,5 @@
-use crate::cassandra::aliases::types::{Float, Int, Uuid};
-use crate::cassandra::errors::error::Error;
+use crate::protocol::aliases::types::{Float, Int, Uuid};
+use crate::protocol::errors::error::Error;
 
 // Revisar u32 despues de mergear para no hacer conflicto
 /// constant::= string | integer | float | boolean | uuid | blob | NULL

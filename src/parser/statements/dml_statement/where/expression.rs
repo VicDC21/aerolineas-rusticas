@@ -1,5 +1,5 @@
 use crate::{
-    cassandra::errors::error::Error, parser::data_types::identifier::identifier::Identifier,
+    parser::data_types::identifier::identifier::Identifier, protocol::errors::error::Error,
 };
 
 use super::{and::And, operator::Operator, relation::Relation};

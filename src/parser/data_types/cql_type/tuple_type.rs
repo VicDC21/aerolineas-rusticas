@@ -1,7 +1,7 @@
 use super::cql_type::CQLType;
-/// tuple_type::= TUPLE '<' cql_type( ',' cql_type)* '>'
-use crate::cassandra::errors::error::Error;
 use crate::parser::data_types::cql_type::collection_type::expect_token;
+/// tuple_type::= TUPLE '<' cql_type( ',' cql_type)* '>'
+use crate::protocol::errors::error::Error;
 
 pub enum TupleType {
     Tuple(Box<Vec<CQLType>>),
