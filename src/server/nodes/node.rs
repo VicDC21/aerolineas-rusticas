@@ -7,6 +7,13 @@ use std::{
     net::TcpListener,
 };
 
+use crate::parser::{
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::ddl_statement_parser::DdlStatement,
+        dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+    },
+};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -26,6 +33,7 @@ use crate::server::{
         utils::send_to_node,
     },
 };
+use crate::tokenizer::tokenizer::tokenize_query;
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -264,48 +272,120 @@ impl Node {
                 Ok(tcp_stream) => {
                     let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
                     match SvAction::get_action(&bytes[..]) {
-                        Some(action) => match action {
-                            SvAction::Exit => break,
-                            SvAction::Beat => {
-                                self.beat();
+                        Some(action) => match self.handle_sv_action(action) {
+                            Ok(continue_loop) => {
+                                if !continue_loop {
+                                    break;
+                                }
                             }
-                            SvAction::Gossip(neighbours) => {
-                                self.gossip(neighbours)?;
-                            }
-                            SvAction::Syn(emissor_id, gossip_info) => {
-                                self.syn(emissor_id, gossip_info)?;
-                            }
-                            SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
-                                self.ack(receptor_id, gossip_info, nodes_map)?;
-                            }
-                            SvAction::Ack2(nodes_map) => {
-                                self.ack2(nodes_map)?;
-                            }
-                            SvAction::NewNeighbour(state) => {
-                                self.add_neighbour_state(state);
-                            }
-                            SvAction::SendEndpointState(id) => {
-                                self.send_endpoint_state(id);
+                            Err(err) => {
+                                println!(
+                                    "[{} - ACTION] Error en la acción del servidor: {}",
+                                    self.id, err
+                                );
                             }
                         },
-                        None => {
-                            match self.mode() {
-                                ConnectionMode::Echo => {
-                                    if let Ok(line) = String::from_utf8(bytes) {
-                                        println!("[{} - ECHO] {}", self.id, line);
-                                    }
-                                }
-                                ConnectionMode::Parsing => {
-                                    // Parsear la query
+                        None => match self.mode() {
+                            ConnectionMode::Echo => {
+                                if let Ok(line) = String::from_utf8(bytes) {
+                                    println!("[{} - ECHO] {}", self.id, line);
                                 }
                             }
-                        }
+                            ConnectionMode::Parsing => {
+                                if let Ok(query) = String::from_utf8(bytes) {
+                                    self.handle_query(query)
+                                }
+                            }
+                        },
                     }
                 }
             }
         }
 
         Ok(())
+    }
+
+    /// Maneja una acción de servidor.
+    fn handle_sv_action(&mut self, action: SvAction) -> Result<bool> {
+        match action {
+            SvAction::Exit => Ok(false),
+            SvAction::Beat => {
+                self.beat();
+                Ok(true)
+            }
+            SvAction::Gossip(neighbours) => {
+                self.gossip(neighbours)?;
+                Ok(true)
+            }
+            SvAction::Syn(emissor_id, gossip_info) => {
+                self.syn(emissor_id, gossip_info)?;
+                Ok(true)
+            }
+            SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
+                self.ack(receptor_id, gossip_info, nodes_map)?;
+                Ok(true)
+            }
+            SvAction::Ack2(nodes_map) => {
+                self.ack2(nodes_map)?;
+                Ok(true)
+            }
+            SvAction::NewNeighbour(state) => {
+                self.add_neighbour_state(state);
+                Ok(true)
+            }
+            SvAction::SendEndpointState(id) => {
+                self.send_endpoint_state(id);
+                Ok(true)
+            }
+        }
+    }
+
+    /// Maneja un query.
+    fn handle_query(&self, query: String) {
+        match make_parse(&mut tokenize_query(&query)) {
+            Ok(statement) => match statement {
+                Statement::DdlStatement(ddl_statement) => {
+                    self.handle_ddl_statement(ddl_statement);
+                }
+                Statement::DmlStatement(dml_statement) => {
+                    self.handle_dml_statement(dml_statement);
+                }
+                Statement::UdtStatement(_udt_statement) => {
+                    todo!();
+                }
+            },
+            Err(err) => {
+                println!(
+                    "[{} - PARSING] Error en el query tokenizado: {}",
+                    self.id, err
+                );
+            }
+        }
+    }
+
+    /// Maneja una declaración DDL.
+    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) {
+        match ddl_statement {
+            DdlStatement::UseStatement(_keyspace_name) => {}
+            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {}
+            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {}
+            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {}
+            DdlStatement::CreateTableStatement(_create_table) => {}
+            DdlStatement::AlterTableStatement(_alter_table) => {}
+            DdlStatement::DropTableStatement(_drop_table) => {}
+            DdlStatement::TruncateStatement(_truncate) => {}
+        }
+    }
+
+    /// Maneja una declaración DML.
+    fn handle_dml_statement(&self, dml_statement: DmlStatement) {
+        match dml_statement {
+            DmlStatement::SelectStatement(_select) => {}
+            DmlStatement::InsertStatement(_insert) => {}
+            DmlStatement::UpdateStatement(_update) => {}
+            DmlStatement::DeleteStatement(_delete) => {}
+            DmlStatement::BatchStatement(_batch) => {}
+        }
     }
 }
 

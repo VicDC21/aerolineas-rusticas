@@ -1,3 +1,6 @@
+//! Módulo para tokenizar queries.
+
+/// Tokeniza una query dada, devolviendo un vector de strings listos para ser parseados.
 pub fn tokenize_query(query: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current_token = String::new();

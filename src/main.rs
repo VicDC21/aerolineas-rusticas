@@ -12,7 +12,12 @@ fn main() {
 
     match argv[1].as_str() {
         "sv" => {
-            let mut server = Server::echo_mode();
+            let mut server = if argv.len() == 3 && argv[2] == "echo" {
+                Server::echo_mode()
+            } else {
+                Server::parsing_mode()
+            };
+
             if let Err(err) = server.listen() {
                 println!("{}", err);
             }
