@@ -1,10 +1,10 @@
-#[allow(clippy::module_inception)]
-/// TODO: Desc básica
-pub mod literal;
 /// TODO: Desc básica
 pub mod collection_literal;
 /// TODO: Desc básica
 pub mod list_literal;
+#[allow(clippy::module_inception)]
+/// TODO: Desc básica
+pub mod literal;
 /// TODO: Desc básica
 pub mod map_literal;
 /// TODO: Desc básica

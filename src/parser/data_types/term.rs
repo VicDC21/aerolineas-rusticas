@@ -1,12 +1,11 @@
-use crate::protocol::errors::error::Error;
 use super::constant::Constant;
+use crate::protocol::errors::error::Error;
 
 #[allow(dead_code)]
 /// TODO: Desc básica
 pub enum Term {
-
     /// TODO: Desc básica
-    Constant(Constant)
+    Constant(Constant),
 }
 
 impl PartialEq for Term {
