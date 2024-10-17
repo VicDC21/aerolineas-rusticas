@@ -285,18 +285,21 @@ impl Node {
                                 );
                             }
                         },
-                        None => match self.mode() {
-                            ConnectionMode::Echo => {
-                                if let Ok(line) = String::from_utf8(bytes) {
-                                    println!("[{} - ECHO] {}", self.id, line);
+                        None => {
+                            if let Ok(query) = String::from_utf8(bytes) {
+                                match self.mode() {
+                                    ConnectionMode::Echo => {
+                                        println!("[{} - ECHO] {}", self.id, query)
+                                    }
+                                    ConnectionMode::Parsing => self.handle_query(query),
                                 }
+                            } else {
+                                println!(
+                                    "[{} - PARSING] Error en el query recibido: no es UTF-8",
+                                    self.id
+                                );
                             }
-                            ConnectionMode::Parsing => {
-                                if let Ok(query) = String::from_utf8(bytes) {
-                                    self.handle_query(query)
-                                }
-                            }
-                        },
+                        }
                     }
                 }
             }
