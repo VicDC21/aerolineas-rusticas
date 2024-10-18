@@ -12,19 +12,14 @@ fn main() {
 
     match argv[1].as_str() {
         "sv" => {
-            let mut server = if argv.len() == 3 && argv[2] == "echo" {
-                Server::echo_mode()
-            } else {
-                Server::parsing_mode()
-            };
-
+            let mut server = Server::echo_mode();
             if let Err(err) = server.listen() {
                 println!("{}", err);
             }
         }
 
         "cli" => {
-            let client = Client::new(Server::default_addr());
+            let mut client = Client::new(Server::default_addr());
             if let Err(err) = client.echo() {
                 println!("{}", err);
             }
