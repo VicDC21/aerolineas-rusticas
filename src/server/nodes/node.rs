@@ -54,6 +54,9 @@ pub struct Node {
 
     /// Estado actual del nodo.
     endpoint_state: EndpointState,
+
+    /// Dirección de almacenamiento en disco.
+    _storage_addr: String,
 }
 
 impl Node {
@@ -63,6 +66,7 @@ impl Node {
             id,
             neighbours_states: NodesMap::new(),
             endpoint_state: EndpointState::with_id_and_mode(id, mode),
+            _storage_addr: format!("storage/storage_node_{}.csv", id),
         }
     }
 
