@@ -6,7 +6,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use crate::protocol::errors::error::Error;
 
 /// El tipo de un aeropuerto.
-/// 
+///
 /// Las definiciones se inspiran en las de [OurAirports](https://ourairports.com/help/#airports).
 pub enum AirportType {
     /// Un gran aeropuerto con un tráfico anual en millones de personas, o una base militar importante.
@@ -56,15 +56,18 @@ impl TryFrom<&str> for AirportType {
             "seaplane_base" => Ok(Self::SeaplaneBase),
             "balloonport" => Ok(Self::BalloonBase),
             "closed_airport" => Ok(Self::Closed),
-            _ => Err(Error::ServerError(format!("'{}' no es un tipo válido de aeropuerto.", airport_type)))
+            _ => Err(Error::ServerError(format!(
+                "'{}' no es un tipo válido de aeropuerto.",
+                airport_type
+            ))),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
     use crate::data::airport_types::AirportType;
+    use crate::protocol::errors::error::Error;
 
     #[test]
     fn test_1_nombres_correctos() {
