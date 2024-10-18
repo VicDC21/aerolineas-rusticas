@@ -6,3 +6,4 @@ pub mod airports;
 pub mod continent_types;
 pub mod countries;
 pub mod regions;
+pub mod utils;
