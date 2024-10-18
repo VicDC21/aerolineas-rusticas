@@ -118,7 +118,6 @@ impl NodeGraph {
                 }
             }
 
-            // TODO: Implementar el envío de mensajes de gossip incluyendo los ids seleccionados
             for selected_id in selected_ids {
                 let mut neighbours: HashSet<NodeId> = HashSet::new();
                 while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
