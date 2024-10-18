@@ -81,7 +81,7 @@ impl Region {
             continent,
             iso_country,
             wikipedia_link,
-            keywords
+            keywords,
         })
     }
 

@@ -56,13 +56,13 @@ pub fn breakdown(string: &str, delimiter: char) -> Vec<String> {
 }
 
 /// Convierte un &[str] a un [Option] dependiendo de si está vacío o no.
-/// 
+///
 /// * Si el &[str] es `""`, entonces se devuelve [Option::None].
 /// * Cualquier otro caso devuelve [Option::Some]\([str].to_string())
-/// 
+///
 /// ```rust
 /// use aerolineas::data::utils::strings::to_option;
-/// 
+///
 /// let empty = to_option("");
 /// let example = to_option("hola mundo!");
 ///
@@ -75,6 +75,6 @@ pub fn breakdown(string: &str, delimiter: char) -> Vec<String> {
 pub fn to_option(string: &str) -> Option<String> {
     match string {
         "" => None,
-        _ => Some(string.to_string())
+        _ => Some(string.to_string()),
     }
 }

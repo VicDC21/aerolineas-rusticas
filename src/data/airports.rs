@@ -3,12 +3,12 @@
 use std::io::{BufRead, Result as IOResult};
 use walkers::Position;
 
-use crate::data::{airport_types::AirportType, continent_types::ContinentType};
 use crate::data::utils::{
+    distances::distance_euclidean,
     paths::{get_tokens, reader_from},
     strings::{breakdown, to_option},
-    distances::distance_euclidean,
 };
+use crate::data::{airport_types::AirportType, continent_types::ContinentType};
 use crate::protocol::aliases::results::Result;
 use crate::protocol::errors::error::Error;
 
@@ -121,11 +121,21 @@ impl Airport {
         let name = tokens[3].to_string();
         let cur_lat = match tokens[4].parse::<f64>() {
             Ok(lat) => lat,
-            Err(_) => return Err(Error::ServerError(format!("'{}' no es un formato de latitud válido.", tokens[4])))
+            Err(_) => {
+                return Err(Error::ServerError(format!(
+                    "'{}' no es un formato de latitud válido.",
+                    tokens[4]
+                )))
+            }
         };
         let cur_lon = match tokens[5].parse::<f64>() {
             Ok(lon) => lon,
-            Err(_) => return Err(Error::ServerError(format!("'{}' no es un formato de longitud válido.", tokens[5])))
+            Err(_) => {
+                return Err(Error::ServerError(format!(
+                    "'{}' no es un formato de longitud válido.",
+                    tokens[5]
+                )))
+            }
         };
         let position = Position::from_lat_lon(cur_lat, cur_lon);
         let elevation_ft = match tokens[6].parse::<usize>() {
@@ -170,7 +180,7 @@ impl Airport {
             local_code,
             home_link,
             wikipedia_link,
-            keywords
+            keywords,
         })
     }
 
@@ -184,11 +194,21 @@ impl Airport {
 
             let cur_lat = match tokens[4].parse::<f64>() {
                 Ok(lat) => lat,
-                Err(_) => return Err(Error::ServerError(format!("'{}' no es un formato de latitud válido.", tokens[4])))
+                Err(_) => {
+                    return Err(Error::ServerError(format!(
+                        "'{}' no es un formato de latitud válido.",
+                        tokens[4]
+                    )))
+                }
             };
             let cur_lon = match tokens[5].parse::<f64>() {
                 Ok(lon) => lon,
-                Err(_) => return Err(Error::ServerError(format!("'{}' no es un formato de longitud válido.", tokens[5])))
+                Err(_) => {
+                    return Err(Error::ServerError(format!(
+                        "'{}' no es un formato de longitud válido.",
+                        tokens[5]
+                    )))
+                }
             };
 
             if distance_euclidean(&Position::from_lat_lon(cur_lat, cur_lon), pos) <= tolerance {
