@@ -42,16 +42,13 @@ pub struct Airport {
     /// El código de continente donde el aeropuerto está (primariamente) ubicado.
     continent: ContinentType,
 
-    /// El código de país en formato [ISO 3166:1-alpha2](https://en.wikipedia.org/wiki/List_of_ISO_3166_country_codes),
-    /// así como algunas nominaciones no oficiales.
-    ///
-    /// Apunta al apartado de [code]() de [Country]().
+    /// Mismo valor que el apartado [code](crate::data::countries::Country::code) de [Country](crate::data::countries::Country).
     iso_country: String,
 
     /// Un código alfanumérico que representa la sub-división administrativa de un país donde el
     /// aeropuerto está (primariamente) ubicado.
     ///
-    /// Está prefijado por el [código](crate::data::airports::Airport::iso_country) de país y un guión (`'-'`).
+    /// Está prefijado por el [código](crate::data::countries::Country::code) de país y un guión (`'-'`).
     ///
     /// [Ver más]()
     iso_region: String,
