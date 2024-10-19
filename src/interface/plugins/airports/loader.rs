@@ -37,7 +37,7 @@ impl AirportsLoader {
     /// Verifica si ha pasado un mínimo de tiempo dado desde la última vez
     /// que se editaron los puertos.
     pub fn elapsed_at_least(&self, duration: &Duration) -> bool {
-        &self.last_checked.elapsed() < duration
+        &self.last_checked.elapsed() >= duration
     }
 }
 
