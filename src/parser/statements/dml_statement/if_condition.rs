@@ -3,6 +3,7 @@ use crate::parser::data_types::{identifier::identifier::Identifier, term::Term};
 use super::r#where::operator::Operator;
 
 /// Representa una condición IF en una declaración DML.
+#[derive(Debug)]
 pub enum IfCondition {
     /// Representa una condición IF EXISTS.    
     Exists,
@@ -13,6 +14,7 @@ pub enum IfCondition {
 }
 
 /// Representa una condición en una declaración DML.
+#[derive(Debug)]
 pub struct Condition {
     /// Identificador de la primera columna.
     /// La primera columna es la columna de la izquierda en la condicion.

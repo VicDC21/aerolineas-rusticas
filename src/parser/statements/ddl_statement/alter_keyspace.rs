@@ -4,6 +4,8 @@ use super::option::Options;
 
 /// alter_keyspace_statement::= ALTER KEYSPACE [ IF EXISTS ] keyspace_name
 /// WITH options
+
+#[derive(Debug)]
 pub struct AlterKeyspace {
     /// Indica si se debe verificar la existencia del keyspace.
     pub if_exists: bool,

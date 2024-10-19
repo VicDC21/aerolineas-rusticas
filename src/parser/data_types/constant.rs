@@ -3,6 +3,8 @@ use crate::protocol::errors::error::Error;
 
 // Revisar u32 despues de mergear para no hacer conflicto
 /// constant::= string | integer | float | boolean | uuid | blob | NULL
+
+#[derive(Debug)]
 pub enum Constant {
     /// ''' (any character where ' can appear if doubled)+ '''.
     String(String),

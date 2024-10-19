@@ -3,6 +3,7 @@ use crate::protocol::errors::error::Error;
 #[derive(PartialEq)]
 
 /// Native types are the basic data types that are supported by Cassandra.
+#[derive(Debug)]
 pub enum NativeType {
     /// ASCII character string
     Ascii,

@@ -9,6 +9,7 @@ pub fn tokenize_query(query: &str) -> Vec<String> {
 
     for c in query.chars() {
         match c {
+            '\n' => continue,
             '\'' => handle_single_quote(
                 &mut tokens,
                 &mut current_token,

@@ -10,6 +10,7 @@ use super::{
 /// assignment: simple_selection'=' term
 /// `| column_name'=' column_name ( '+' | '-' ) term
 /// | column_name'=' list_literal'+' column_name
+#[derive(Debug)]
 pub enum Assignment {
     /// simple_selection'=' term
     ColumnNameTerm(Identifier, Term),

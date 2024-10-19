@@ -1,6 +1,7 @@
 use crate::parser::table_name::TableName;
 
 /// Representa una sentencia CQL DROP TABLE.
+#[derive(Debug)]
 pub struct DropTable {
     /// Indica si se debe verificar la existencia de la tabla.
     pub if_exist: bool,

@@ -4,6 +4,7 @@ use crate::parser::{
     table_name::TableName,
 };
 /// Representa una sentencia CQL UPDATE.
+#[derive(Debug)]
 pub struct Update {
     /// Nombre de la tabla a actualizar.
     pub table_name: TableName,

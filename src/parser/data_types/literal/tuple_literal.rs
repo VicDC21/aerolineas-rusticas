@@ -7,6 +7,7 @@ use crate::{
 
 #[allow(dead_code)]
 /// tuple_literal::= '(' term( ',' term )* ')'
+#[derive(Debug)]
 pub struct TupleLiteral {
     /// TODO: Desc básica
     values: Vec<Term>,

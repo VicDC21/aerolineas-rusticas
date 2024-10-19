@@ -3,6 +3,8 @@ use crate::protocol::errors::error::Error;
 
 #[allow(dead_code)]
 /// TODO: Desc básica
+
+#[derive(Debug)]
 pub enum Term {
     /// TODO: Desc básica
     Constant(Constant),

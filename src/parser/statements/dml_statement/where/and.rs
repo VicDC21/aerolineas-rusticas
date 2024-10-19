@@ -1,6 +1,7 @@
 use super::expression::Expression;
 
 /// Representa una operación lógica AND entre dos expresiones.
+#[derive(Debug)]
 pub struct And {
     /// Primera expresión.
     /// Puede ser una expresión simple o una expresión compuesta.

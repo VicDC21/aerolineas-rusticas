@@ -10,6 +10,7 @@ use crate::parser::{
 };
 
 /// Representa una declaración SELECT en el lenguaje de consulta.
+#[derive(Debug)]
 pub struct Select {
     /// Columnas a seleccionar.
     pub columns: KindOfColumns,
@@ -20,6 +21,7 @@ pub struct Select {
 }
 
 /// Opciones para la declaración SELECT.
+#[derive(Debug)]
 pub struct SelectOptions {
     /// Condición de selección.
     pub the_where: Option<Where>,
@@ -48,6 +50,7 @@ impl Select {
 
 #[derive(Default)]
 /// Representa el tipo de columnas a seleccionar.
+#[derive(Debug, PartialEq)]
 pub enum KindOfColumns {
     /// Columnas específicas.
     SelectClause(Vec<Selector>),

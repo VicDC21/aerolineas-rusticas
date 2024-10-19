@@ -4,6 +4,7 @@ use crate::parser::{
 };
 
 /// Representa una declaración CQL INSERT.
+#[derive(Debug)]
 pub struct Insert {
     /// Nombre de la tabla a insertar.
     pub table_name: TableName,

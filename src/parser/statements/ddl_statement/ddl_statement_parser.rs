@@ -27,6 +27,8 @@ use super::{
 ///         | alter_table_statement
 ///         | drop_table_statement
 ///         | truncate_statement
+
+#[derive(Debug)]
 pub enum DdlStatement {
     /// use_statement::= USE keyspace_name
     UseStatement(KeyspaceName),

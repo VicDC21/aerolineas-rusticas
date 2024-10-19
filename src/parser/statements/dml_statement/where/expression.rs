@@ -5,6 +5,7 @@ use crate::{
 use super::{and::And, operator::Operator, relation::Relation};
 
 /// Representa diferentes tipos de expresiones en el analizador sintáctico.
+#[derive(Debug)]
 pub enum Expression {
     /// Representa una expresión simple.
     /// Una expresión simple consta de un solo término.
@@ -60,19 +61,24 @@ pub fn and_recursive(
 /// Parsea una relación entre dos términos.
 pub fn relation(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
     if lista.len() >= 3 {
-        if let Some(operator) = Operator::is_operator(&lista[1]) {
-            lista.remove(1);
-            let first = match Identifier::check_identifier(lista)? {
-                Some(value) => value,
-                None => return Err(Error::SyntaxError("Falta un operator".to_string())),
-            };
-            let second = match Identifier::check_identifier(lista)? {
-                Some(value) => value,
-                None => return Err(Error::SyntaxError("Falta un operator".to_string())),
-            };
-            let relation = Relation::new(first, operator, second);
-            return Ok(Some(Box::new(Expression::Relation(relation))));
-        }
+        let first = match Identifier::check_identifier(lista)? {
+            Some(value) => value,
+            None => return Err(Error::SyntaxError("Falta un operator".to_string())),
+        };
+
+        let operator = match Operator::is_operator(&lista[0]) {
+            Some(value) => value,
+            None => return Err(Error::SyntaxError("Falta un operator".to_string())),
+        };
+
+        lista.remove(0);
+
+        let second = match Identifier::check_identifier(lista)? {
+            Some(value) => value,
+            None => return Err(Error::SyntaxError("Falta un operator".to_string())),
+        };
+        let relation = Relation::new(first, operator, second);
+        return Ok(Some(Box::new(Expression::Relation(relation))));
     }
     Ok(None)
 }

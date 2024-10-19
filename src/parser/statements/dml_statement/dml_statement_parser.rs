@@ -38,6 +38,7 @@ use super::r#where::operator::Operator;
 /// | update_statement
 /// | delete_statement
 /// | batch_statement
+#[derive(Debug)]
 pub enum DmlStatement {
     /// select_statement::= SELECT [ JSON | DISTINCT ] ( select_clause | '*' )
     /// FROM `table_name`
@@ -48,7 +49,7 @@ pub enum DmlStatement {
     /// [ LIMIT (`integer` | `bind_marker`) ]
     /// [ ALLOW FILTERING ]
     SelectStatement(Select), // EL bind_marker AUN NO ESTA IMPLEMENTADO, NO SABIA MUY BIEN PARA QUE SERVIA
-
+    // Tampoco eñ JSON / DISTINCT
     /// insert_statement::= INSERT INTO table_name names_values
     /// [ IF NOT EXISTS ]
     InsertStatement(Insert),
@@ -94,14 +95,23 @@ fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
     if check_words(list, "SELECT") {
         let select_columns = kind_of_columns(list)?;
         let from = from_clause(list)?;
+        let the_where = where_clause(list)?;
+        let group_by = group_by_clause(list)?;
+        println!("{:#?}", group_by);
+        let order_by = ordering_clause(list)?;
+        let per_partition_limit = per_partition_limit_clause(list)?;
+        let limit = limit_clause(list)?;
+        let allow_filtering = allow_filtering_clause(list);
+
         let options = SelectOptions {
-            the_where: where_clause(list)?,
-            group_by: group_by_clause(list)?,
-            order_by: ordering_clause(list)?,
-            per_partition_limit: per_partition_limit_clause(list)?,
-            limit: limit_clause(list)?,
-            allow_filtering: allow_filtering_clause(list),
+            the_where,
+            group_by,
+            order_by,
+            per_partition_limit,
+            limit,
+            allow_filtering,
         };
+
         return Ok(Some(Select::new(select_columns, from, options)));
     }
     Ok(None)
@@ -272,10 +282,10 @@ fn from_clause(list: &mut Vec<String>) -> Result<KeyspaceName, Error> {
 
 fn where_clause(list: &mut Vec<String>) -> Result<Option<Where>, Error> {
     if check_words(list, "WHERE") {
-        Ok(Some(Where::new(expression(list)?)))
-    } else {
-        Ok(Some(Where::new(None)))
+        let r#where = Where::new(expression(list)?);
+        return Ok(Some(r#where));
     }
+    Ok(None)
 }
 
 fn group_by_clause(list: &mut Vec<String>) -> Result<Option<GroupBy>, Error> {
@@ -484,4 +494,171 @@ fn check_if_condition(list: &mut Vec<String>) -> Result<IfCondition, Error> {
         }
     }
     Ok(IfCondition::None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::data_types::unquoted_name::UnquotedName;
+
+    #[test]
+    fn test_basic_select_all() {
+        let mut tokens = vec![
+            "SELECT".to_string(),
+            "*".to_string(),
+            "FROM".to_string(),
+            "users".to_string(),
+        ];
+        let result = select_statement(&mut tokens).unwrap();
+        assert!(result.is_some());
+        let select = result.unwrap();
+        assert_eq!(select.columns, KindOfColumns::All);
+        assert_eq!(
+            select.from,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string()).unwrap())
+        );
+        assert!(select.options.the_where.is_none());
+    }
+
+    #[test]
+    fn test_select_specific_columns() {
+        let mut tokens = vec![
+            "SELECT".to_string(),
+            "id".to_string(),
+            ",".to_string(),
+            "name".to_string(),
+            "FROM".to_string(),
+            "users".to_string(),
+        ];
+        let result = select_statement(&mut tokens).unwrap();
+        assert!(result.is_some());
+        let select = result.unwrap();
+        if let KindOfColumns::SelectClause(columns) = select.columns {
+            assert_eq!(columns.len(), 2);
+            assert!(matches!(columns[0], Selector::ColumnName(_)));
+            assert!(matches!(columns[1], Selector::ColumnName(_)));
+        }
+    }
+
+    #[test]
+    fn test_select_with_where_clause() {
+        let mut tokens = vec![
+            "SELECT".to_string(),
+            "*".to_string(),
+            "FROM".to_string(),
+            "users".to_string(),
+            "WHERE".to_string(),
+            "id".to_string(),
+            ">".to_string(),
+            "10".to_string(),
+        ];
+        let result = select_statement(&mut tokens).unwrap();
+        assert!(result.is_some());
+        let select = result.unwrap();
+        assert!(select.options.the_where.is_some());
+    }
+
+    #[test]
+    fn test_select_with_group_by() {
+        let mut tokens = vec![
+            "SELECT".to_string(),
+            "country".to_string(),
+            "FROM".to_string(),
+            "users".to_string(),
+            "GROUP".to_string(),
+            "BY".to_string(),
+            "country".to_string(),
+        ];
+        let result = select_statement(&mut tokens).unwrap();
+        assert!(result.is_some());
+        let select = result.unwrap();
+        assert!(select.options.group_by.is_some());
+        if let Some(group_by) = select.options.group_by {
+            assert_eq!(group_by.columns.len(), 1);
+            assert!(matches!(
+                group_by.columns[0],
+                Identifier::UnquotedIdentifier(_) | Identifier::QuotedIdentifier(_)
+            ));
+        }
+    }
+
+    #[test]
+    fn test_select_with_order_by() {
+        let mut tokens = vec![
+            "SELECT".to_string(),
+            "*".to_string(),
+            "FROM".to_string(),
+            "users".to_string(),
+            "ORDER".to_string(),
+            "BY".to_string(),
+            "age".to_string(),
+            "DESC".to_string(),
+        ];
+        let result = select_statement(&mut tokens).unwrap();
+        assert!(result.is_some());
+        let select = result.unwrap();
+        assert!(select.options.order_by.is_some());
+        if let Some(order_by) = select.options.order_by {
+            assert_eq!(order_by.columns.len(), 1);
+            assert!(matches!(
+                order_by.columns[0].0,
+                Identifier::UnquotedIdentifier(_) | Identifier::QuotedIdentifier(_)
+            ));
+            assert_eq!(order_by.columns[0].1, Some(Ordering::Desc));
+        }
+    }
+
+    #[test]
+    fn test_select_with_limit() {
+        let mut tokens = vec![
+            "SELECT".to_string(),
+            "*".to_string(),
+            "FROM".to_string(),
+            "users".to_string(),
+            "LIMIT".to_string(),
+            "10".to_string(),
+        ];
+        let result = select_statement(&mut tokens).unwrap();
+        assert!(result.is_some());
+        let select = result.unwrap();
+        assert!(select.options.limit.is_some());
+        if let Some(limit) = select.options.limit {
+            assert_eq!(limit.limit, 10);
+        }
+    }
+
+    #[test]
+    fn test_select_with_allow_filtering() {
+        let mut tokens = vec![
+            "SELECT".to_string(),
+            "*".to_string(),
+            "FROM".to_string(),
+            "users".to_string(),
+            "ALLOW".to_string(),
+            "FILTERING".to_string(),
+        ];
+        let result = select_statement(&mut tokens).unwrap();
+        assert!(result.is_some());
+        let select = result.unwrap();
+        assert_eq!(select.options.allow_filtering, Some(true));
+    }
+
+    #[test]
+    fn test_invalid_select() {
+        let mut tokens = vec![
+            "SELECT".to_string(),
+            "FROM".to_string(),
+            "users".to_string(),
+        ];
+        let result = select_statement(&mut tokens);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_input() {
+        let mut tokens = vec![];
+        let result = select_statement(&mut tokens);
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
 }
