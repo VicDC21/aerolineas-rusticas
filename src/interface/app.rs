@@ -5,7 +5,7 @@ use eframe::{App, Frame};
 use walkers::{Map, MapMemory, Position};
 
 use crate::interface::map::providers::{Provider, ProvidersMap};
-use crate::interface::map::windows::{acknowledge, controls, go_to_my_position, zoom};
+use crate::interface::map::windows::{controls, go_to_my_position, zoom};
 
 /// Latitud de la coordenada de origen de nuestro mapa.
 pub const ORIG_LAT: f64 = -34.61760464833609;
@@ -42,9 +42,10 @@ impl App for AerolineasApp {
         CentralPanel::default().show(ctx, |ui| {
             let scroll_delta = ctx.input(|input_state| input_state.raw_scroll_delta);
             if scroll_delta.y > 0.0 {
-                // scrollea para arriba
+                // scrollea para "arriba"
                 let _ = self.map_memory.zoom_in();
             } else if scroll_delta.y < 0.0 {
+                // scrollea para "abajo"
                 let _ = self.map_memory.zoom_out();
             }
 
@@ -53,7 +54,6 @@ impl App for AerolineasApp {
                 .get_mut(&self.selected_provider)
                 .unwrap()
                 .as_mut();
-            let attribution = tiles.attribution();
 
             let map = Map::new(
                 Some(tiles),
@@ -71,7 +71,6 @@ impl App for AerolineasApp {
                 &mut self.map_providers.keys(),
                 // &mut self.images_plugin_data,
             );
-            acknowledge(ui, attribution);
         });
     }
 }
