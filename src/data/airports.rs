@@ -46,7 +46,7 @@ pub struct Airport {
     pub position: Position,
 
     /// La elevación del aeropuerto en **pies** _(ft)_, no metros.
-    pub elevation_ft: usize,
+    pub elevation_ft: Option<usize>,
 
     /// El código de continente donde el aeropuerto está (primariamente) ubicado.
     pub continent: ContinentType,
@@ -106,18 +106,18 @@ impl Airport {
     /// Crea una instancia a partir de una lista de tokens.
     ///
     /// Se asume que dicha lista tiene suficientes elementos.
-    fn from_tokens(tokens: Vec<&str>) -> Result<Self> {
+    fn from_tokens(tokens: Vec<String>) -> Result<Self> {
         let id = match tokens[0].parse::<usize>() {
             Ok(parsed) => parsed,
             Err(_) => {
                 return Err(Error::ServerError(format!(
-                    "'{}' no es un formato numérico válido.",
+                    "'{}' no es un formato numérico válido para el ID de un aeropuerto.",
                     tokens[0]
                 )))
             }
         };
         let ident = tokens[1].to_string();
-        let airport_type = AirportType::try_from(tokens[2])?;
+        let airport_type = AirportType::try_from(tokens[2].as_str())?;
         let name = tokens[3].to_string();
         let cur_lat = match tokens[4].parse::<f64>() {
             Ok(lat) => lat,
@@ -132,35 +132,38 @@ impl Airport {
             Ok(lon) => lon,
             Err(_) => {
                 return Err(Error::ServerError(format!(
-                    "'{}' no es un formato de longitud válido.",
+                    "'{}' no es un formato de longitud válido",
                     tokens[5]
                 )))
             }
         };
         let position = Position::from_lat_lon(cur_lat, cur_lon);
-        let elevation_ft = match tokens[6].parse::<usize>() {
-            Ok(parsed) => parsed,
-            Err(_) => {
-                return Err(Error::ServerError(format!(
-                    "'{}' no es un formato numérico válido.",
-                    tokens[6]
-                )))
-            }
+        let elevation_ft = match tokens[6].as_str() {
+            "" => None,
+            _ => match tokens[6].parse::<usize>() {
+                Ok(parsed) => Some(parsed),
+                Err(_) => {
+                    return Err(Error::ServerError(format!(
+                        "'{}' no es un formato numérico válido para la elevación.",
+                        tokens[6]
+                    )))
+                }
+            },
         };
-        let continent = ContinentType::try_from(tokens[7])?;
+        let continent = ContinentType::try_from(tokens[7].as_str())?;
         let iso_country = tokens[8].to_string();
         let iso_region = tokens[9].to_string();
         let municipality = tokens[10].to_string();
-        let scheduled_service = match tokens[11] {
+        let scheduled_service = match tokens[11].as_str() {
             "yes" => true,
             "no" => false,
             _ => false,
         };
         let gps_code = tokens[12].to_string();
-        let iata_code = to_option(tokens[13]);
-        let local_code = to_option(tokens[14]);
-        let home_link = to_option(tokens[15]);
-        let wikipedia_link = to_option(tokens[16]);
+        let iata_code = to_option(tokens[13].as_str());
+        let local_code = to_option(tokens[14].as_str());
+        let home_link = to_option(tokens[15].as_str());
+        let wikipedia_link = to_option(tokens[16].as_str());
         let keywords = breakdown(&tokens[17..].join(""), ',');
 
         Ok(Self {
@@ -186,7 +189,7 @@ impl Airport {
 
     /// Devuelve una lista de aeropuertos que están cerca de la posición dada.
     pub fn by_distance(pos: &Position, tolerance: f64) -> Result<Vec<Self>> {
-        let reader = reader_from(AIRPORTS_PATH)?;
+        let reader = reader_from(AIRPORTS_PATH, true)?;
         let mut airports = Vec::<Self>::new();
 
         for line in reader.lines().map_while(IOResult::ok) {

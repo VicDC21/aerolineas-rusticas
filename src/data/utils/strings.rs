@@ -1,5 +1,7 @@
 //! Módulo para funciones auxiliares de [String]s.
 
+use crate::protocol::aliases::results::Result;
+
 /// Saca el caracter **LF** (`"\n"`), o de ser posible **CRLF** (`"\r\n"`).
 ///
 /// ```rust
@@ -77,4 +79,57 @@ pub fn to_option(string: &str) -> Option<String> {
         "" => None,
         _ => Some(string.to_string()),
     }
+}
+
+/// Une strings que empiezan y terminan en comillas en uno sólo.
+///
+/// ```rust
+/// use aerolineas::data::utils::strings::unify_quotes_tokens;
+///
+/// let first_res = unify_quotes_tokens(vec!["a", "\"b", "c", "d\"", "e"]);
+/// assert!(first_res.is_ok());
+/// if let Ok(first) = first_res {
+///     assert_eq!(first, vec!["a".to_string(), "bcd".to_string(), "e".to_string()]);
+/// }
+/// ```
+pub fn unify_quotes_tokens(tokens: Vec<&str>) -> Result<Vec<String>> {
+    let mut new_tokens = Vec::<String>::new();
+    let mut buffer = Vec::<&str>::new();
+
+    for raw in tokens {
+        let token = raw.trim_ascii();
+        let mut comillas = false;
+
+        if token.starts_with("\"") && token != "\"" {
+            comillas = true;
+            // si se encuentra una comilla que abre antes de encontrar una que cierra,
+            // agregar el buffer como si fueran elementos comunes, y NO fusionarlos.
+            if !buffer.is_empty() {
+                new_tokens.extend(buffer.iter().map(|elem| sanitize(elem)));
+                buffer.clear();
+            }
+            buffer.push(token);
+        }
+        if token.ends_with("\"") {
+            comillas = true;
+            // pushear al buffer salvo que se trate del mismo elemento que también tiene comillas que abren
+            if !(buffer.len() == 1 && buffer[0].ends_with("\"")) {
+                buffer.push(token);
+            }
+            new_tokens.push(sanitize(&buffer.join("")));
+            buffer.clear();
+        }
+        if !comillas {
+            if buffer.is_empty() {
+                // a este punto, el token no tiene comillas ni al principio ni al final
+                new_tokens.push(sanitize(token));
+            } else {
+                buffer.push(token);
+            }
+        }
+    }
+    if !buffer.is_empty() {
+        new_tokens.extend(buffer.iter().map(|elem| sanitize(elem)));
+    }
+    Ok(new_tokens)
 }

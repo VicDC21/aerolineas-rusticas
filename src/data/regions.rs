@@ -55,12 +55,12 @@ impl Region {
     /// Crea una instancia a partir de una lista de tokens.
     ///
     /// Se asume que dicha lista tiene suficientes elementos.
-    fn from_tokens(tokens: Vec<&str>) -> Result<Self> {
+    fn from_tokens(tokens: Vec<String>) -> Result<Self> {
         let id = match tokens[0].parse::<usize>() {
             Ok(parsed) => parsed,
             Err(_) => {
                 return Err(Error::ServerError(format!(
-                    "'{}' no es un formato numérico válido.",
+                    "'{}' no es un formato numérico válido para el ID de una región.",
                     tokens[0]
                 )))
             }
@@ -68,9 +68,9 @@ impl Region {
         let code = tokens[1].to_string();
         let local_code = tokens[2].to_string();
         let name = tokens[3].to_string();
-        let continent = ContinentType::try_from(tokens[4])?;
+        let continent = ContinentType::try_from(tokens[4].as_str())?;
         let iso_country = tokens[5].to_string();
-        let wikipedia_link = to_option(tokens[6]);
+        let wikipedia_link = to_option(tokens[6].as_str());
         let keywords = breakdown(&tokens[7..].join(""), ',');
 
         Ok(Self {
@@ -87,7 +87,7 @@ impl Region {
 
     /// Crea una nueva instancia a partir del código de región.
     pub fn from_region_code(region_code: &str) -> Result<Self> {
-        let reader = reader_from(REGIONS_PATH)?;
+        let reader = reader_from(REGIONS_PATH, true)?;
 
         for line in reader.lines().map_while(IOResult::ok) {
             let tokens = get_tokens(&line, ',', MIN_REGIONS_ELEMS)?;

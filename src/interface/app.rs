@@ -2,10 +2,12 @@
 
 use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
+use egui_extras::install_image_loaders;
 use walkers::{Map, MapMemory, Position};
 
 use crate::interface::map::providers::{Provider, ProvidersMap};
 use crate::interface::map::windows::{controls, go_to_my_position, zoom};
+use crate::interface::plugins::airports::loader::AirportsLoader;
 
 /// Latitud de la coordenada de origen de nuestro mapa.
 pub const ORIG_LAT: f64 = -34.61760464833609;
@@ -22,17 +24,23 @@ pub struct AerolineasApp {
 
     /// El proveedor actualmente en uso.
     selected_provider: Provider,
+
+    /// El cargador de aeropuertos.
+    airports_loader: AirportsLoader,
 }
 
 impl AerolineasApp {
     /// Crea una nueva instancia de la aplicación.
     pub fn new(egui_ctx: Context) -> Self {
+        install_image_loaders(&egui_ctx);
         let mut mem = MapMemory::default();
         let _ = mem.set_zoom(7.0); // Queremos un zoom más lejos
+
         Self {
             map_memory: mem,
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
+            airports_loader: AirportsLoader::default(),
         }
     }
 }
@@ -60,6 +68,9 @@ impl App for AerolineasApp {
                 &mut self.map_memory,
                 Position::from_lat_lon(ORIG_LAT, ORIG_LONG),
             );
+
+            // Añadimos los plugins.
+            let map = map.with_plugin(&mut self.airports_loader);
 
             ui.add(map);
 

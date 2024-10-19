@@ -45,20 +45,20 @@ impl Country {
     /// Crea una instancia a partir de una lista de tokens.
     ///
     /// Se asume que dicha lista tiene suficientes elementos.
-    fn from_tokens(tokens: Vec<&str>) -> Result<Self> {
+    fn from_tokens(tokens: Vec<String>) -> Result<Self> {
         // No hay forma fácil de hacer esto porque 'keywords' podría ser los últimos N elementos.
         let id = match tokens[0].parse::<usize>() {
             Ok(parsed) => parsed,
             Err(_) => {
                 return Err(Error::ServerError(format!(
-                    "'{}' no es un formato numérico válido.",
+                    "'{}' no es un formato numérico válido para el ID de un país.",
                     tokens[0]
                 )))
             }
         };
         let code = tokens[1].to_string();
         let name = tokens[2].to_string();
-        let continent = ContinentType::try_from(tokens[3])?;
+        let continent = ContinentType::try_from(tokens[3].as_str())?;
         let wikipedia_link = tokens[4].to_string();
         let keywords = breakdown(&tokens[5..].join(""), ',');
 
@@ -74,7 +74,7 @@ impl Country {
 
     /// Crea una nueva instancia a partir del código de país.
     pub fn try_from_code(country_code: &str) -> Result<Self> {
-        let reader = reader_from(COUNTRIES_PATH)?;
+        let reader = reader_from(COUNTRIES_PATH, true)?;
 
         for line in reader.lines().map_while(IOResult::ok) {
             let tokens = get_tokens(&line, ',', MIN_COUNTRIES_ELEMS)?;

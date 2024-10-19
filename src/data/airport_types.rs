@@ -40,7 +40,7 @@ impl Display for AirportType {
             Self::Heliport => write!(f, "heliport"),
             Self::SeaplaneBase => write!(f, "seaplane_base"),
             Self::BalloonBase => write!(f, "balloonport"), // Sí, sin `_`
-            Self::Closed => write!(f, "closed_airport"),
+            Self::Closed => write!(f, "closed"),
         }
     }
 }
@@ -55,7 +55,7 @@ impl TryFrom<&str> for AirportType {
             "heliport" => Ok(Self::Heliport),
             "seaplane_base" => Ok(Self::SeaplaneBase),
             "balloonport" => Ok(Self::BalloonBase),
-            "closed_airport" => Ok(Self::Closed),
+            "closed" => Ok(Self::Closed),
             _ => Err(Error::ServerError(format!(
                 "'{}' no es un tipo válido de aeropuerto.",
                 airport_type
@@ -87,7 +87,7 @@ mod tests {
             "heliport",
             "seaplane_base",
             "balloonport",
-            "closed_airport",
+            "closed",
         ];
 
         for i in 0..types.len() {
@@ -103,7 +103,7 @@ mod tests {
         let heli_res = AirportType::try_from("heliport");
         let seaplane_res = AirportType::try_from("seaplane_base");
         let balloon_res = AirportType::try_from("balloonport");
-        let closed_res = AirportType::try_from("closed_airport");
+        let closed_res = AirportType::try_from("closed");
 
         assert!(large_res.is_ok());
         if let Ok(large) = large_res {
