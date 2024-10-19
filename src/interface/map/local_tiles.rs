@@ -1,7 +1,7 @@
 //! Módulo para un **ejemplo** de proveedor local de tiles.
 
 use eframe::egui::{ColorImage, Context};
-use walkers::{sources::Attribution, Texture, TileId, TilesManager};
+use walkers::{sources::Attribution, Texture, TileId, Tiles};
 
 /// Para tener más control del manejo de tiles, se puede implementar
 /// un proveedor local para el mapa, como evidencia este ejemplo.
@@ -16,7 +16,7 @@ impl LocalTiles {
     }
 }
 
-impl TilesManager for LocalTiles {
+impl Tiles for LocalTiles {
     fn at(&mut self, _tile_id: TileId) -> Option<Texture> {
         let image = ColorImage::example();
 

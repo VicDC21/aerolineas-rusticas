@@ -27,8 +27,10 @@ pub struct AerolineasApp {
 impl AerolineasApp {
     /// Crea una nueva instancia de la aplicación.
     pub fn new(egui_ctx: Context) -> Self {
+        let mut mem = MapMemory::default();
+        let _ = mem.set_zoom(7.0); // Queremos un zoom más lejos
         Self {
-            map_memory: MapMemory::default(),
+            map_memory: mem,
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
         }
@@ -38,7 +40,7 @@ impl AerolineasApp {
 impl App for AerolineasApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            let scroll_delta = ctx.input(|input_state| input_state.scroll_delta);
+            let scroll_delta = ctx.input(|input_state| input_state.smooth_scroll_delta);
             if scroll_delta.y > 0.0 {
                 // scrollea para arriba
                 let _ = self.map_memory.zoom_in();
