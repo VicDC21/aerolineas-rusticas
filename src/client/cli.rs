@@ -5,23 +5,40 @@ use std::{
     net::{SocketAddr, TcpStream},
 };
 
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    traits::Byteable,
-};
+use eframe::glow::Version;
+
 use crate::server::actions::opcode::SvAction;
+use crate::{
+    parser::{
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::ddl_statement_parser::DdlStatement,
+            dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+        },
+    },
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        traits::Byteable,
+    },
+    tokenizer::tokenizer::tokenize_query,
+};
 
 /// Estructura principal de un cliente.
 pub struct Client {
     /// La dirección del _socket_ al que conectarse al mandar cosas.
     addr: SocketAddr,
+    requests_stream: Vec<i16>,
 }
 
 impl Client {
     /// Crea una nueva instancia de cliente.
     pub fn new(addr: SocketAddr) -> Self {
-        Self { addr }
+        let requests_stream: Vec<i16> = Vec::new();
+        Self {
+            addr,
+            requests_stream,
+        }
     }
 
     /// Conecta con el _socket_ guardado.
@@ -42,7 +59,7 @@ impl Client {
     /// **Esto genera un loop infinito** hasta que el usuario ingrese `q` para salir.
     ///
     /// </div>
-    pub fn echo(&self) -> Result<()> {
+    pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
@@ -57,11 +74,61 @@ impl Client {
                 let _ = tcp_stream.write_all(&SvAction::Exit.as_bytes()[..]);
                 break;
             }
+            let stream = match self.requests_stream.iter().min() {
+                Some(stream_id) => *stream_id as u8,
+                None => 0,
+            }; // despues ver como hacer que no supere los 32768
+            self.requests_stream.push(stream as i16);
+            let mut header: Vec<u8> = vec![0x85, 0x00, stream];
+            // version que no se cuando pediriamos (startup?)
+            // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
+            // Numero de stream, tiene que ser positivo en cliente
 
-            let _ = tcp_stream.write_all(line.as_bytes());
-            let _ = tcp_stream.write_all("\n".as_bytes());
+            match make_parse(&mut tokenize_query(&line)) {
+                Ok(statement) => match statement {
+                    Statement::DdlStatement(ddl_statement) => {
+                        self.handle_ddl_statement(ddl_statement);
+                    }
+                    Statement::DmlStatement(dml_statement) => {
+                        self.handle_dml_statement(dml_statement);
+                    }
+                    Statement::UdtStatement(_udt_statement) => {
+                        todo!();
+                    }
+                },
+                Err(err) => {
+                    println!("{}", err);
+                }
+            };
+
+            let _ = tcp_stream.write_all(&header);
         }
         Ok(())
+    }
+
+    /// Maneja una declaración DDL.
+    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) {
+        match ddl_statement {
+            DdlStatement::UseStatement(_keyspace_name) => {}
+            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {}
+            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {}
+            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {}
+            DdlStatement::CreateTableStatement(_create_table) => {}
+            DdlStatement::AlterTableStatement(_alter_table) => {}
+            DdlStatement::DropTableStatement(_drop_table) => {}
+            DdlStatement::TruncateStatement(_truncate) => {}
+        }
+    }
+
+    /// Maneja una declaración DML.
+    fn handle_dml_statement(&self, dml_statement: DmlStatement) {
+        match dml_statement {
+            DmlStatement::SelectStatement(_select) => {}
+            DmlStatement::InsertStatement(_insert) => {}
+            DmlStatement::UpdateStatement(_update) => {}
+            DmlStatement::DeleteStatement(_delete) => {}
+            DmlStatement::BatchStatement(_batch) => {}
+        }
     }
 
     /// Intenta un objeto al _socket_ guardado.
