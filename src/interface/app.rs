@@ -48,15 +48,6 @@ impl AerolineasApp {
 impl App for AerolineasApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            let scroll_delta = ctx.input(|input_state| input_state.raw_scroll_delta);
-            if scroll_delta.y > 0.0 {
-                // scrollea para "arriba"
-                let _ = self.map_memory.zoom_in();
-            } else if scroll_delta.y < 0.0 {
-                // scrollea para "abajo"
-                let _ = self.map_memory.zoom_out();
-            }
-
             let tiles = self
                 .map_providers
                 .get_mut(&self.selected_provider)
