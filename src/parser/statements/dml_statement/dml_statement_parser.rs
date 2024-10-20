@@ -127,7 +127,6 @@ fn insert_statement(list: &mut Vec<String>) -> Result<Option<Insert>, Error> {
             }
         };
         let names = check_insert_names(list)?;
-
         if !check_words(list, "VALUES") {
             return Err(Error::SyntaxError("Falto VALUES".to_string()));
         }
@@ -139,6 +138,13 @@ fn insert_statement(list: &mut Vec<String>) -> Result<Option<Insert>, Error> {
                 ))
             }
         };
+
+        if values.size() != names.len() {
+            return Err(Error::SyntaxError(
+                "El numero de columnas y valores no coincide".to_string(),
+            ));
+        }
+
         let if_not_exists = check_words(list, "IF NOT EXISTS");
         return Ok(Some(Insert::new(table_name, names, values, if_not_exists)));
     }
@@ -846,6 +852,72 @@ mod tests {
         let result = select_statement(&mut tokens)?;
         let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
         assert!(select.options.the_where.unwrap().expression.is_none());
+        Ok(())
+    }
+
+    // INSERT TESTS:
+    #[test]
+    fn test_01_basic_insert() -> Result<(), Error> {
+        let query =
+            "INSERT INTO users (id, name, email) VALUES (1, 'John Doe', 'john@example.com')";
+        let mut tokens = tokenize_query(query);
+
+        let result = insert_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let insert = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            insert.table.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(insert.names.len(), 3);
+        assert_eq!(insert.values.items.len(), 3);
+        assert!(!insert.if_not_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_insert_with_if_not_exists() -> Result<(), Error> {
+        let query = "INSERT INTO users (id, name) VALUES (2, 'Jane Doe') IF NOT EXISTS";
+        let mut tokens = tokenize_query(query);
+
+        let result = insert_statement(&mut tokens)?;
+        let insert = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(insert.if_not_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_insert_with_quoted_identifiers() -> Result<(), Error> {
+        let query = "INSERT INTO \'users\' (\'ID\', \'Name\') VALUES (3, 'Bob Smith')";
+        let mut tokens = tokenize_query(query);
+
+        let result = insert_statement(&mut tokens)?;
+        let insert = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            insert.table.name,
+            KeyspaceName::QuotedName(UnquotedName::new("users".to_string())?)
+        );
+
+        assert_eq!(insert.names.len(), 2);
+        assert_eq!(
+            insert.names[0],
+            Identifier::QuotedIdentifier(QuotedIdentifier::new("ID".to_string()))
+        );
+        assert_eq!(
+            insert.names[1],
+            Identifier::QuotedIdentifier(QuotedIdentifier::new("Name".to_string()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_insert_without_column_names() -> Result<(), Error> {
+        let query = "INSERT INTO logs VALUES (1001, 'Error', '2023-05-01 10:30:00')";
+        let mut tokens = tokenize_query(query);
+        assert!(insert_statement(&mut tokens).is_err());
         Ok(())
     }
 

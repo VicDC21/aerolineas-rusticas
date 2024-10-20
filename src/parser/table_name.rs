@@ -36,7 +36,7 @@ impl TableName {
             return Ok(None);
         }
 
-        let keyspace = if lista[1] != "SET" {
+        let keyspace = if lista[1] != "SET" && lista[1] != "(" && lista[0] != "\'" {
             KeyspaceName::check_kind_of_name(lista)?
         } else {
             None
