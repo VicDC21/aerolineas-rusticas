@@ -85,3 +85,11 @@ impl App for AerolineasApp {
         });
     }
 }
+
+impl Drop for AerolineasApp {
+    fn drop(&mut self) {
+        // Por si se cierra la ventana sin dejar que los hilos hijos del cargador
+        // se cierren antes.
+        self.airports_loader.wait_children();
+    }
+}

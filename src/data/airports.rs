@@ -4,7 +4,7 @@ use std::io::{BufRead, Result as IOResult};
 use walkers::Position;
 
 use crate::data::utils::{
-    distances::distance_euclidean,
+    distances::{distance_euclidean, inside_area},
     paths::{get_tokens, reader_from},
     strings::{breakdown, to_option},
 };
@@ -103,6 +103,29 @@ pub struct Airport {
 }
 
 impl Airport {
+    /// Trata de parsear las coordenadas a partir de strings.
+    pub fn coords(lat_str: &str, lon_str: &str) -> Result<(f64, f64)> {
+        let cur_lat = match lat_str.parse::<f64>() {
+            Ok(lat) => lat,
+            Err(_) => {
+                return Err(Error::ServerError(format!(
+                    "'{}' no es un formato de latitud válido.",
+                    lat_str
+                )))
+            }
+        };
+        let cur_lon = match lon_str.parse::<f64>() {
+            Ok(lon) => lon,
+            Err(_) => {
+                return Err(Error::ServerError(format!(
+                    "'{}' no es un formato de longitud válido.",
+                    lon_str
+                )))
+            }
+        };
+        Ok((cur_lat, cur_lon))
+    }
+
     /// Crea una instancia a partir de una lista de tokens.
     ///
     /// Se asume que dicha lista tiene suficientes elementos.
@@ -119,24 +142,7 @@ impl Airport {
         let ident = tokens[1].to_string();
         let airport_type = AirportType::try_from(tokens[2].as_str())?;
         let name = tokens[3].to_string();
-        let cur_lat = match tokens[4].parse::<f64>() {
-            Ok(lat) => lat,
-            Err(_) => {
-                return Err(Error::ServerError(format!(
-                    "'{}' no es un formato de latitud válido.",
-                    tokens[4]
-                )))
-            }
-        };
-        let cur_lon = match tokens[5].parse::<f64>() {
-            Ok(lon) => lon,
-            Err(_) => {
-                return Err(Error::ServerError(format!(
-                    "'{}' no es un formato de longitud válido",
-                    tokens[5]
-                )))
-            }
-        };
+        let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
         let position = Position::from_lat_lon(cur_lat, cur_lon);
         let elevation_ft = match tokens[6].as_str() {
             "" => None,
@@ -188,33 +194,34 @@ impl Airport {
     }
 
     /// Devuelve una lista de aeropuertos que están cerca de la posición dada.
-    pub fn by_distance(pos: &Position, tolerance: f64) -> Result<Vec<Self>> {
+    pub fn by_distance(pos: &Position, tolerance: &f64) -> Result<Vec<Self>> {
         let reader = reader_from(AIRPORTS_PATH, true)?;
         let mut airports = Vec::<Self>::new();
 
         for line in reader.lines().map_while(IOResult::ok) {
             let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
 
-            let cur_lat = match tokens[4].parse::<f64>() {
-                Ok(lat) => lat,
-                Err(_) => {
-                    return Err(Error::ServerError(format!(
-                        "'{}' no es un formato de latitud válido.",
-                        tokens[4]
-                    )))
-                }
-            };
-            let cur_lon = match tokens[5].parse::<f64>() {
-                Ok(lon) => lon,
-                Err(_) => {
-                    return Err(Error::ServerError(format!(
-                        "'{}' no es un formato de longitud válido.",
-                        tokens[5]
-                    )))
-                }
-            };
+            let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
+            if &distance_euclidean(&Position::from_lat_lon(cur_lat, cur_lon), pos) <= tolerance {
+                airports.push(Self::from_tokens(tokens)?);
+            }
+        }
 
-            if distance_euclidean(&Position::from_lat_lon(cur_lat, cur_lon), pos) <= tolerance {
+        Ok(airports)
+    }
+
+    /// Devuelve una lista de aeropuertos que están dentro del área indicada.
+    ///
+    /// La primera coordenada del área está garantizada de tener valores menores que la segunda.
+    pub fn by_area(area: (&Position, &Position)) -> Result<Vec<Self>> {
+        let reader = reader_from(AIRPORTS_PATH, true)?;
+        let mut airports = Vec::<Self>::new();
+
+        for line in reader.lines().map_while(IOResult::ok) {
+            let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
+
+            let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
+            if inside_area(&Position::from_lat_lon(cur_lat, cur_lon), area) {
                 airports.push(Self::from_tokens(tokens)?);
             }
         }
