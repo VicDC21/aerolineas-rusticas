@@ -220,7 +220,6 @@ fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
         }
         if list[0] == "INSERT" {
             if let Some(insert_stmt) = insert_statement(list)? {
-                println!("{:#?}", insert_stmt);
                 queries.push(DmlStatement::InsertStatement(insert_stmt));
             }
         } else if list[0] == "UPDATE" {
@@ -231,6 +230,10 @@ fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
             if let Some(delete_stmt) = delete_statement(list)? {
                 queries.push(DmlStatement::DeleteStatement(delete_stmt));
             }
+        } else if list[0] == "SELECT" {
+            return Err(Error::SyntaxError(
+                "No se puede hacer una consulta SELECT usando BATCH".to_string(),
+            ));
         }
         list.remove(0);
     }
@@ -1108,6 +1111,141 @@ mod tests {
         let query = "DELETE FROM users";
         let mut tokens = tokenize_query(query);
         assert!(delete_statement(&mut tokens).is_err());
+        Ok(())
+    }
+
+    // BATCH TESTS:
+    #[test]
+    fn test_01_basic_batch() -> Result<(), Error> {
+        let query = "BEGIN BATCH
+                     INSERT INTO users (id, name) VALUES (1, 'John');
+                     UPDATE users SET email = 'john@example.com' WHERE id = 1;
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(batch.batch_type, BatchType::Logged);
+        assert_eq!(batch.queries.len(), 2);
+        assert!(matches!(batch.queries[0], DmlStatement::InsertStatement(_)));
+        assert!(matches!(batch.queries[1], DmlStatement::UpdateStatement(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_unlogged_batch() -> Result<(), Error> {
+        let query = "BEGIN UNLOGGED BATCH
+                     INSERT INTO users (id, name) VALUES (2, 'Jane');
+                     DELETE FROM users WHERE id = 1;
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(batch.batch_type, BatchType::Unlogged);
+        assert_eq!(batch.queries.len(), 2);
+        assert!(matches!(batch.queries[0], DmlStatement::InsertStatement(_)));
+        assert!(matches!(batch.queries[1], DmlStatement::DeleteStatement(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_counter_batch() -> Result<(), Error> {
+        let query = "BEGIN COUNTER BATCH
+                     UPDATE counters SET views = views + 1 WHERE id = 'page1';
+                     UPDATE counters SET views = views + 1 WHERE id = 'page2';
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(batch.batch_type, BatchType::Counter);
+        assert_eq!(batch.queries.len(), 2);
+        assert!(matches!(batch.queries[0], DmlStatement::UpdateStatement(_)));
+        assert!(matches!(batch.queries[1], DmlStatement::UpdateStatement(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_batch_with_multiple_tables() -> Result<(), Error> {
+        let query = "BEGIN BATCH
+                     INSERT INTO users (id, name) VALUES (3, 'Alice');
+                     INSERT INTO logs (user_id, action) VALUES (3, 'created');
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(batch.queries.len(), 2);
+        if let DmlStatement::InsertStatement(insert1) = &batch.queries[0] {
+            assert_eq!(
+                insert1.table.name,
+                KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+            );
+        } else {
+            return Err(Error::SyntaxError("Expected InsertStatement".into()));
+        }
+        if let DmlStatement::InsertStatement(insert2) = &batch.queries[1] {
+            assert_eq!(
+                insert2.table.name,
+                KeyspaceName::UnquotedName(UnquotedName::new("logs".to_string())?)
+            );
+        } else {
+            return Err(Error::SyntaxError("Expected InsertStatement".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_batch_with_if_conditions() -> Result<(), Error> {
+        let query = "BEGIN BATCH
+                     INSERT INTO users (id, name) VALUES (4, 'Bob') IF NOT EXISTS;
+                     UPDATE users SET email = 'bob@example.com' WHERE id = 4 IF name = 'Bob';
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(batch.queries.len(), 2);
+        if let DmlStatement::InsertStatement(insert) = &batch.queries[0] {
+            assert!(insert.if_not_exists);
+        } else {
+            return Err(Error::SyntaxError("Expected InsertStatement".into()));
+        }
+        if let DmlStatement::UpdateStatement(update) = &batch.queries[1] {
+            assert!(matches!(update.if_condition, IfCondition::Conditions(_)));
+        } else {
+            return Err(Error::SyntaxError("Expected UpdateStatement".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_empty_batch() -> Result<(), Error> {
+        let query = "BEGIN BATCH APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_07_invalid_batch() -> Result<(), Error> {
+        let query = "BEGIN BATCH
+                     INSERT INTO users (id, name) VALUES (5, 'Charlie');
+                     SELECT * FROM users;
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens);
+        assert!(result.is_err());
         Ok(())
     }
 

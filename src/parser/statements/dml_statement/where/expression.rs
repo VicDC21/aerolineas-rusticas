@@ -42,7 +42,7 @@ pub fn and_recursive(
     a_relation: Box<Expression>,
 ) -> Result<Option<Box<Expression>>, Error> {
     if !lista.is_empty() {
-        if lista[0] == "IF" {
+        if lista[0] == "IF" || lista[0] == ";" {
             return Ok(Some(a_relation));
         }
 
