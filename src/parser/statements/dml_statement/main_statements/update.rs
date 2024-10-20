@@ -13,7 +13,7 @@ pub struct Update {
     /// Condición de actualización.
     pub the_where: Option<Where>,
     /// Condición de existencia.
-    pub if_exists: IfCondition,
+    pub if_condition: IfCondition,
 }
 
 impl Update {
@@ -22,13 +22,13 @@ impl Update {
         table_name: TableName,
         set_parameter: Vec<Assignment>,
         the_where: Option<Where>,
-        if_exists: IfCondition,
+        if_condition: IfCondition,
     ) -> Update {
         Update {
             table_name,
             set_parameter,
             the_where,
-            if_exists,
+            if_condition,
         }
     }
 }

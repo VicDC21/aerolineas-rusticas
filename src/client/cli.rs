@@ -3,7 +3,7 @@
 use std::{
     collections::HashSet,
     io::{stdin, BufRead, BufReader, Write},
-    net::{SocketAddr, TcpStream}
+    net::{SocketAddr, TcpStream},
 };
 
 use crate::{
@@ -86,7 +86,7 @@ impl Client {
             // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
             // Numero de stream, tiene que ser positivo en cliente
             // self.parse_request(&line, &mut header);
-            if self.parse_request(&line, &mut header){
+            if self.parse_request(&line, &mut header) {
                 let _ = tcp_stream.write_all(&header);
                 let _ = tcp_stream.write_all(line.as_bytes());
             }

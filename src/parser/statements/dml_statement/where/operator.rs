@@ -1,5 +1,5 @@
 /// Representa diferentes tipos de operadores en una declaración DML.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Operator {
     /// Representa el operador de igualdad (`=`).
     Equal,

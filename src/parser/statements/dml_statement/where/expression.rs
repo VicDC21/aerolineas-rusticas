@@ -42,6 +42,10 @@ pub fn and_recursive(
     a_relation: Box<Expression>,
 ) -> Result<Option<Box<Expression>>, Error> {
     if !lista.is_empty() {
+        if lista[0] == "IF" {
+            return Ok(Some(a_relation));
+        }
+
         let value = lista.remove(0);
         if value == "AND" {
             let second_parameter = match relation(lista)? {
