@@ -155,7 +155,6 @@ fn update_statement(list: &mut Vec<String>) -> Result<Option<Update>, Error> {
                 ))
             }
         };
-        println!("{:#?}", table_name);
         let set = set_clause(list)?;
         if list.first() != Some(&"WHERE".to_string()) {
             return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
@@ -174,18 +173,19 @@ fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
     }
 
     let mut cols = Vec::new();
-    while !check_words(list, "FROM") {
+    while list.first() != Some(&"FROM".to_string()) {
         if list.is_empty() {
             return Err(Error::SyntaxError(
                 "Se esperaba FROM después de las columnas".to_string(),
             ));
         }
         cols.push(list.remove(0));
+        check_words(list, ",");
     }
 
     let from = from_clause(list)?;
 
-    if !check_words(list, "WHERE") {
+    if list.first() != Some(&"WHERE".to_string()) {
         return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
     }
     let r#where = where_clause(list)?;
@@ -212,15 +212,16 @@ fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
         if list.is_empty() {
             break;
         }
-        if check_words(list, "INSERT") {
+        if list[0] == "INSERT" {
             if let Some(insert_stmt) = insert_statement(list)? {
+                println!("{:#?}", insert_stmt);
                 queries.push(DmlStatement::InsertStatement(insert_stmt));
             }
-        } else if check_words(list, "UPDATE") {
+        } else if list[0] == "UPDATE" {
             if let Some(update_stmt) = update_statement(list)? {
                 queries.push(DmlStatement::UpdateStatement(update_stmt));
             }
-        } else if check_words(list, "DELETE") {
+        } else if list[0] == "DELETE" {
             if let Some(delete_stmt) = delete_statement(list)? {
                 queries.push(DmlStatement::DeleteStatement(delete_stmt));
             }
@@ -928,6 +929,113 @@ mod tests {
         let query = "UPDATE users SET name = 'John'";
         let mut tokens = tokenize_query(query);
         assert!(update_statement(&mut tokens).is_err());
+        Ok(())
+    }
+
+    // DELETE TESTS:
+    #[test]
+    fn test_01_basic_delete() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE id = 1";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            delete.from,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(delete.cols.is_empty());
+        assert!(delete.the_where.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_delete_specific_columns() -> Result<(), Error> {
+        let query = "DELETE name, email FROM users WHERE id = 1";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(delete.cols.len(), 2);
+        assert_eq!(delete.cols[0], "name");
+        assert_eq!(delete.cols[1], "email");
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_delete_with_complex_where() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE age > 18 AND country = 'USA'";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(delete.the_where.is_some());
+        if let Some(where_clause) = delete.the_where {
+            if let Some(expr) = where_clause.expression {
+                assert!(matches!(*expr, Expression::And(_)));
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_delete_with_if_condition() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE id = 1 IF email = 'old@email.com'";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(matches!(delete.if_condition, IfCondition::Conditions(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_delete_with_if_exists() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE id = 1 IF EXISTS";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(delete.if_condition, IfCondition::Exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_delete_with_contains() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE hobbies CONTAINS 'reading'";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(delete.the_where.is_some());
+        if let Some(where_clause) = delete.the_where {
+            if let Some(expr) = where_clause.expression {
+                if let Expression::Relation(relation) = *expr {
+                    assert_eq!(relation.operator, Operator::Contains);
+                } else {
+                    return Err(Error::SyntaxError("Expected Relation expression".into()));
+                }
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_07_invalid_delete() -> Result<(), Error> {
+        let query = "DELETE FROM users";
+        let mut tokens = tokenize_query(query);
+        assert!(delete_statement(&mut tokens).is_err());
         Ok(())
     }
 

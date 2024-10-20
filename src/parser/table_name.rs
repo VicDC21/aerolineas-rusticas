@@ -35,13 +35,12 @@ impl TableName {
         if lista.is_empty() {
             return Ok(None);
         }
-        
+
         let keyspace = if lista[1] != "SET" {
             KeyspaceName::check_kind_of_name(lista)?
         } else {
             None
         };
-
 
         let name = match KeyspaceName::check_kind_of_name(lista)? {
             Some(value) => value,
