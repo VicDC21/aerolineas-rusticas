@@ -155,6 +155,7 @@ fn update_statement(list: &mut Vec<String>) -> Result<Option<Update>, Error> {
                 ))
             }
         };
+        println!("{:#?}", table_name);
         let set = set_clause(list)?;
         if list.first() != Some(&"WHERE".to_string()) {
             return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
@@ -859,9 +860,7 @@ mod tests {
         let update = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
         assert_eq!(
             update.table_name.name,
-            Some(KeyspaceName::UnquotedName(UnquotedName::new(
-                "users".to_string()
-            )?))
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
         );
         assert_eq!(update.set_parameter.len(), 1);
         assert!(update.the_where.is_some());

@@ -10,9 +10,13 @@ use super::data_types::keyspace_name::KeyspaceName;
 /// * `name` - Un `KeyspaceName` que representa el nombre de la tabla.
 #[derive(Debug)]
 pub struct TableName {
-    /// Un `Option<KeyspaceName>` que representa la tabla.
+    /// Un `Option<KeyspaceName>` que representa el keyspace opcional.
     /// keyspace_name::= identifier
-    pub name: Option<KeyspaceName>,
+    pub keyspace: Option<KeyspaceName>,
+
+    /// Un `KeyspaceName` que representa el nombre de la tabla.
+    /// name::= identifier
+    pub name: KeyspaceName,
 }
 
 impl TableName {
@@ -31,6 +35,13 @@ impl TableName {
         if lista.is_empty() {
             return Ok(None);
         }
+        
+        let keyspace = if lista[1] != "SET" {
+            KeyspaceName::check_kind_of_name(lista)?
+        } else {
+            None
+        };
+
 
         let name = match KeyspaceName::check_kind_of_name(lista)? {
             Some(value) => value,
@@ -40,6 +51,6 @@ impl TableName {
                 ))
             }
         };
-        Ok(Some(TableName { name: Some(name) }))
+        Ok(Some(TableName { keyspace, name }))
     }
 }
