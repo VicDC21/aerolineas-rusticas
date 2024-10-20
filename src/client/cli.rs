@@ -1,13 +1,11 @@
 //! Módulo del cliente.
 
 use std::{
+    collections::HashSet,
     io::{stdin, BufRead, BufReader, Write},
-    net::{SocketAddr, TcpStream},
+    net::{SocketAddr, TcpStream}
 };
 
-use eframe::glow::Version;
-
-use crate::server::actions::opcode::SvAction;
 use crate::{
     parser::{
         main_parser::make_parse,
@@ -23,18 +21,22 @@ use crate::{
     },
     tokenizer::tokenizer::tokenize_query,
 };
+use crate::{
+    protocol::headers::{length::Length, opcode::Opcode},
+    server::actions::opcode::SvAction,
+};
 
 /// Estructura principal de un cliente.
 pub struct Client {
     /// La dirección del _socket_ al que conectarse al mandar cosas.
     addr: SocketAddr,
-    requests_stream: Vec<i16>,
+    requests_stream: HashSet<i16>,
 }
 
 impl Client {
     /// Crea una nueva instancia de cliente.
     pub fn new(addr: SocketAddr) -> Self {
-        let requests_stream: Vec<i16> = Vec::new();
+        let requests_stream = HashSet::new();
         Self {
             addr,
             requests_stream,
@@ -74,36 +76,54 @@ impl Client {
                 let _ = tcp_stream.write_all(&SvAction::Exit.as_bytes()[..]);
                 break;
             }
-            let stream = match self.requests_stream.iter().min() {
-                Some(stream_id) => *stream_id as u8,
-                None => 0,
-            }; // despues ver como hacer que no supere los 32768
-            self.requests_stream.push(stream as i16);
-            let mut header: Vec<u8> = vec![0x85, 0x00, stream];
-            // version que no se cuando pediriamos (startup?)
+
+            let mut stream_id: i16 = 0;
+            while self.requests_stream.contains(&stream_id) {
+                stream_id += 1;
+            }
+            self.requests_stream.insert(stream_id);
+            let mut header: Vec<u8> = vec![0x05, 0x00, stream_id as u8];
             // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
             // Numero de stream, tiene que ser positivo en cliente
+            // self.parse_request(&line, &mut header);
+            if self.parse_request(&line, &mut header){
+                let _ = tcp_stream.write_all(&header);
+                let _ = tcp_stream.write_all(line.as_bytes());
+            }
+        }
+        Ok(())
+    }
 
-            match make_parse(&mut tokenize_query(&line)) {
-                Ok(statement) => match statement {
+    fn parse_request(&mut self, line: &str, header: &mut Vec<u8>) -> bool {
+        match make_parse(&mut tokenize_query(line)) {
+            Ok(statement) => {
+                match statement {
                     Statement::DdlStatement(ddl_statement) => {
+                        header.push(Opcode::Query.as_bytes()[0]);
+                        let lenght = Length::new(line.len() as u32);
+                        header.append(&mut lenght.as_bytes());
                         self.handle_ddl_statement(ddl_statement);
                     }
                     Statement::DmlStatement(dml_statement) => {
+                        header.push(Opcode::Query.as_bytes()[0]);
+                        let lenght = Length::new(line.len() as u32);
+                        header.append(&mut lenght.as_bytes());
                         self.handle_dml_statement(dml_statement);
                     }
                     Statement::UdtStatement(_udt_statement) => {
+                        header.push(Opcode::Query.as_bytes()[0]);
+                        let lenght = Length::new(line.len() as u32);
+                        header.append(&mut lenght.as_bytes());
                         todo!();
                     }
-                },
-                Err(err) => {
-                    println!("{}", err);
-                }
-            };
-
-            let _ = tcp_stream.write_all(&header);
+                };
+                true
+            }
+            Err(err) => {
+                println!("{}", err);
+                false
+            }
         }
-        Ok(())
     }
 
     /// Maneja una declaración DDL.
