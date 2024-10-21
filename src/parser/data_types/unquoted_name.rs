@@ -20,6 +20,7 @@ impl UnquotedName {
         if !(1..=48).contains(&length) {
             return false;
         }
-        word.chars().all(|c| c.is_ascii_alphanumeric())
+        word.chars()
+            .all(|c| c.to_ascii_lowercase().is_ascii_alphanumeric() || c == '_' || c == ' ')
     }
 }

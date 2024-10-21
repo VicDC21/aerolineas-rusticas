@@ -21,7 +21,6 @@ impl PartialEq for Term {
 impl Term {
     /// TODO: Desc básica
     pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error> {
-        // Todo: falta corroborar que el largo de la lista sea de al menos X largo asi no rompe con remove
         if let Some(constant) = Constant::is_constant(lista)? {
             return Ok(Some(Term::Constant(constant)));
         }

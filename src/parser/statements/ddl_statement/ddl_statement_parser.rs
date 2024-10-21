@@ -84,7 +84,7 @@ pub fn ddl_statement(list: &mut Vec<String>) -> Result<Option<DdlStatement>, Err
 }
 
 fn use_statement(list: &mut Vec<String>) -> Result<Option<KeyspaceName>, Error> {
-    if check_words(list, "USE") {
+    if check_words(list, "USE") || check_words(list, "use") {
         let keyspace = match KeyspaceName::check_kind_of_name(list)? {
             Some(value) => value,
             None => {
@@ -272,7 +272,12 @@ fn options(list: &mut Vec<String>) -> Result<Vec<Options>, Error> {
         Some(value) => options.push(value),
         None => return Err(Error::SyntaxError("".to_string())),
     };
-    while list[0] == "AND" {
+
+    if list.is_empty() {
+        return Ok(options);
+    }
+
+    while check_words(list, "AND") {
         match is_an_option(list)? {
             Some(value) => options.push(value),
             None => return Err(Error::SyntaxError("".to_string())),
@@ -291,7 +296,7 @@ fn is_an_option(list: &mut Vec<String>) -> Result<Option<Options>, Error> {
         }
     };
     let option_word: &str = value.get_name();
-    if option_word != "replication" || option_word != "durable_writes" {
+    if option_word != "replication" && option_word != "durable_writes" {
         return Err(Error::SyntaxError("OPTION no permitida".to_string()));
     }
     if !check_words(list, "=") {
@@ -469,4 +474,162 @@ fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>, Error> {
         }
     }
     Ok(columns)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        parser::data_types::unquoted_name::UnquotedName, tokenizer::tokenizer::tokenize_query,
+    };
+
+    // USE STATEMENT TESTS:
+    #[test]
+    fn test_01_basic_use_statement() -> Result<(), Error> {
+        let query = "USE my_keyspace";
+        let mut tokens = tokenize_query(query);
+
+        let result = use_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            keyspace,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_use_statement_with_quoted_keyspace() -> Result<(), Error> {
+        let query = "USE \"My Keyspace\"";
+        let mut tokens = tokenize_query(query);
+
+        let result = use_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            keyspace,
+            KeyspaceName::QuotedName(UnquotedName::new("My Keyspace".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_use_statement_case_sensitivity() -> Result<(), Error> {
+        let query = "use MY_KEYSPACE";
+        let mut tokens = tokenize_query(query);
+
+        let result = use_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            keyspace,
+            KeyspaceName::UnquotedName(UnquotedName::new("MY_KEYSPACE".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_invalid_use_statement() -> Result<(), Error> {
+        let query = "USE";
+        let mut tokens = tokenize_query(query);
+
+        let result = use_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_use_statement_with_empty_input() -> Result<(), Error> {
+        let mut tokens = vec![];
+        let result = use_statement(&mut tokens)?;
+        assert!(result.is_none());
+        Ok(())
+    }
+
+    // CREATE KEYSPACE TESTS:
+    #[test]
+    fn test_01_basic_create_keyspace_statement() -> Result<(), Error> {
+        let query = "CREATE KEYSPACE my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_keyspace_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            keyspace.keyspace_name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        assert!(!keyspace.if_not_exist);
+        assert!(!keyspace.options.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_create_keyspace_with_if_not_exists() -> Result<(), Error> {
+        let query = "CREATE KEYSPACE IF NOT EXISTS my_keyspace WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 3, 'dc2': 2}";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_keyspace_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            keyspace.keyspace_name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        assert!(keyspace.if_not_exist);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_create_keyspace_with_multiple_options() -> Result<(), Error> {
+        let query = "CREATE KEYSPACE my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1} AND durable_writes = false";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_keyspace_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            keyspace.keyspace_name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        assert!(!keyspace.if_not_exist);
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_create_keyspace_with_quoted_name() -> Result<(), Error> {
+        let query = "CREATE KEYSPACE \"My Keyspace\" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_keyspace_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            keyspace.keyspace_name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Keyspace".to_string())?)
+        );
+        assert!(!keyspace.if_not_exist);
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_invalid_create_keyspace_statement() -> Result<(), Error> {
+        let query = "CREATE KEYSPACE";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_keyspace_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_create_keyspace_missing_with_clause() -> Result<(), Error> {
+        let query = "CREATE KEYSPACE my_keyspace";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_keyspace_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
 }
