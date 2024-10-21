@@ -46,7 +46,7 @@ pub struct Airport {
     pub position: Position,
 
     /// La elevación del aeropuerto en **pies** _(ft)_, no metros.
-    pub elevation_ft: Option<usize>,
+    pub elevation_ft: Option<isize>,
 
     /// El código de continente donde el aeropuerto está (primariamente) ubicado.
     pub continent: ContinentType,
@@ -146,7 +146,7 @@ impl Airport {
         let position = Position::from_lat_lon(cur_lat, cur_lon);
         let elevation_ft = match tokens[6].as_str() {
             "" => None,
-            _ => match tokens[6].parse::<usize>() {
+            _ => match tokens[6].parse::<isize>() {
                 Ok(parsed) => Some(parsed),
                 Err(_) => {
                     return Err(Error::ServerError(format!(
