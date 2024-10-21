@@ -178,7 +178,6 @@ fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>,
 
         let columns = parse_column_definitions(list)?;
         let primary_key = parse_primary_key(list)?;
-        println!("{:?}", list);
 
         if !check_words(list, ")") {
             return Err(Error::SyntaxError(
@@ -238,7 +237,6 @@ fn alter_table_statement(list: &mut Vec<String>) -> Result<Option<AlterTable>, E
         };
 
         let instruction = parse_alter_table_instruction(list)?;
-
         return Ok(Some(AlterTable::new(name, instruction)));
     }
     Ok(None)
@@ -375,6 +373,7 @@ fn parse_clustering_order(order: &str) -> Result<Vec<(String, String)>, Error> {
 fn parse_column_definitions(list: &mut Vec<String>) -> Result<Vec<ColumnDefinition>, Error> {
     let mut columns = Vec::new();
     loop {
+        check_words(list, "(");
         let column = ColumnDefinition::parse(list)?;
         columns.push(column);
         if !check_words(list, ",") {
@@ -484,8 +483,16 @@ fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::data_types::cql_type::cql_type::CQLType;
     use crate::{
-        parser::data_types::unquoted_name::UnquotedName, tokenizer::tokenizer::tokenize_query,
+        parser::data_types::{
+            cql_type::native_types::NativeType::{Int, Text},
+            identifier::{
+                quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
+            },
+            unquoted_name::UnquotedName,
+        },
+        tokenizer::tokenizer::tokenize_query,
     };
 
     // USE STATEMENT TESTS:
@@ -540,14 +547,6 @@ mod tests {
 
         let result = use_statement(&mut tokens);
         assert!(result.is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_05_use_statement_with_empty_input() -> Result<(), Error> {
-        let mut tokens = vec![];
-        let result = use_statement(&mut tokens)?;
-        assert!(result.is_none());
         Ok(())
     }
 
@@ -726,14 +725,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_07_alter_keyspace_with_empty_input() -> Result<(), Error> {
-        let mut tokens = vec![];
-        let result = alter_keyspace_statement(&mut tokens)?;
-        assert!(result.is_none());
-        Ok(())
-    }
-
     // DROP KEYSPACE TESTS:
     #[test]
     fn test_01_basic_drop_keyspace_statement() -> Result<(), Error> {
@@ -791,23 +782,6 @@ mod tests {
 
         let result = drop_keyspace_statement(&mut tokens);
         assert!(result.is_err());
-        Ok(())
-    }
-
-    // EMPTY INPUT TESTS:
-    #[test]
-    fn test_01_empty_input() -> Result<(), Error> {
-        let mut tokens = vec![];
-        let use_statement = use_statement(&mut tokens)?;
-        let create_keyspace = create_keyspace_statement(&mut tokens)?;
-        let alter_keyspace = alter_keyspace_statement(&mut tokens)?;
-        let drop_keyspace = drop_keyspace_statement(&mut tokens)?;
-        assert!(
-            use_statement.is_none()
-                && create_keyspace.is_none()
-                && alter_keyspace.is_none()
-                && drop_keyspace.is_none()
-        );
         Ok(())
     }
 
@@ -909,8 +883,14 @@ mod tests {
             KeyspaceName::QuotedName(UnquotedName::new("My Table".to_string())?)
         );
         assert_eq!(table.columns.len(), 2);
-        //assert_eq!(table.columns[0].name, UnquotedName::new("User ID".to_string())?);
-        //assert_eq!(table.columns[1].name, UnquotedName::new("Full Name".to_string())?);
+        assert_eq!(
+            table.columns[0].column_name,
+            Identifier::QuotedIdentifier(QuotedIdentifier::new("User ID".to_string()))
+        );
+        assert_eq!(
+            table.columns[1].column_name,
+            Identifier::QuotedIdentifier(QuotedIdentifier::new("Full Name".to_string()))
+        );
         assert!(table.compact_storage);
         Ok(())
     }
@@ -933,11 +913,181 @@ mod tests {
         Ok(())
     }
 
+    // ALTER TABLE TESTS:
+
     #[test]
-    fn test_08_create_table_with_empty_input() -> Result<(), Error> {
+    fn test_01_basic_alter_table_statement() -> Result<(), Error> {
+        let query = "ALTER TABLE users ADD new_column TEXT";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(
+            alter_table.instruction,
+            AlterTableInstruction::AddColumns(
+                false,
+                vec![ColumnDefinition::new(
+                    Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                        "new_column".to_string()
+                    )),
+                    CQLType::NativeType(Text),
+                    false,
+                    false
+                )]
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_alter_table_add_columns_with_if_not_exists() -> Result<(), Error> {
+        let query = "ALTER TABLE users ADD IF NOT EXISTS (new_column1 TEXT, new_column2 INT)";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(
+            alter_table.instruction,
+            AlterTableInstruction::AddColumns(
+                true,
+                vec![
+                    ColumnDefinition::new(
+                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                            "new_column1".to_string()
+                        )),
+                        CQLType::NativeType(Text),
+                        false,
+                        false
+                    ),
+                    ColumnDefinition::new(
+                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                            "new_column2".to_string()
+                        )),
+                        CQLType::NativeType(Int),
+                        false,
+                        false
+                    )
+                ]
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_alter_table_drop_columns_with_if_exists() -> Result<(), Error> {
+        let query = "ALTER TABLE users DROP IF EXISTS old_column1, old_column2";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(
+            alter_table.instruction,
+            AlterTableInstruction::DropColumns(
+                true,
+                vec!["old_column1".to_string(), "old_column2".to_string()]
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_alter_table_rename_columns() -> Result<(), Error> {
+        let query =
+            "ALTER TABLE users RENAME old_column1 TO new_column1 AND old_column2 TO new_column2";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(
+            alter_table.instruction,
+            AlterTableInstruction::RenameColumns(
+                false,
+                vec!(
+                    ("old_column1".to_string(), "new_column1".to_string()),
+                    ("old_column2".to_string(), "new_column2".to_string())
+                )
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_alter_table_with_if_exists() -> Result<(), Error> {
+        let query = "ALTER TABLE IF EXISTS users RENAME old_column TO new_column";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(alter_table.name.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_invalid_alter_table_statement() -> Result<(), Error> {
+        let query = "ALTER TABLE";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    // EMPTY INPUT TESTS:
+    #[test]
+    fn test_01_keyspace_empty_input() -> Result<(), Error> {
         let mut tokens = vec![];
-        let result = create_table_statement(&mut tokens)?;
-        assert!(result.is_none());
+        let use_statement = use_statement(&mut tokens)?;
+        let create_keyspace = create_keyspace_statement(&mut tokens)?;
+        let alter_keyspace = alter_keyspace_statement(&mut tokens)?;
+        let drop_keyspace = drop_keyspace_statement(&mut tokens)?;
+        assert!(
+            use_statement.is_none()
+                && create_keyspace.is_none()
+                && alter_keyspace.is_none()
+                && drop_keyspace.is_none()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_table_empty_input() -> Result<(), Error> {
+        let mut tokens = vec![];
+        let create_table = create_table_statement(&mut tokens)?;
+        let alter_table = alter_table_statement(&mut tokens)?;
+        let drop_table = drop_table_statement(&mut tokens)?;
+        let truncate = truncate_statement(&mut tokens)?;
+        assert!(
+            create_table.is_none()
+                && alter_table.is_none()
+                && drop_table.is_none()
+                && truncate.is_none()
+        );
         Ok(())
     }
 }

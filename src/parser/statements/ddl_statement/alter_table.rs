@@ -3,7 +3,7 @@ use super::option::Options;
 use crate::parser::table_name::TableName;
 
 /// Representa diferentes instrucciones que se pueden aplicar para alterar una tabla.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum AlterTableInstruction {
     /// Agregar columnas a la tabla.
     AddColumns(bool, Vec<ColumnDefinition>),
