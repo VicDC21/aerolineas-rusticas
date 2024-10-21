@@ -4,7 +4,7 @@ use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
     fs::{create_dir, OpenOptions},
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     net::TcpListener,
     path::Path,
 };
@@ -435,9 +435,8 @@ impl Node {
             None => format!("{}/{}.csv", self.storage_addr, name),
         };
 
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
-            .append(true)
             .open(&table_addr)
             .map_err(|e| Error::ServerError(e.to_string()))?;
         let mut reader = BufReader::new(&file);
@@ -454,9 +453,10 @@ impl Node {
         }
         line = line.trim().to_string();
 
+        let query_cols = statement.get_columns_names();
         let table_cols: Vec<&str> = line.split(",").collect();
-        for col in &table_cols {
-            if !table_cols.contains(col) {
+        for col in &query_cols {
+            if !table_cols.contains(&col.as_str()) {
                 return Err(Error::ServerError(format!(
                     "La tabla con ruta {} no contiene la columna {}",
                     &table_addr, col
@@ -464,30 +464,61 @@ impl Node {
             }
         }
 
-        let new_row = Self::generate_row_to_insert(
-            &statement.get_values(),
-            &statement.get_columns_names(),
-            &table_cols,
-        );
-        if file.write_all(new_row.as_bytes()).is_err() {
-            Err(Error::ServerError(format!(
-                "No se pudo escribir la tabla con ruta {}",
-                &table_addr
-            )))
-        } else {
-            Ok(())
+        let values = statement.get_values();
+        let mut id_exists = false;
+        let mut buffer = Vec::new();
+        let mut position = 0;
+        // Leo línea por línea y verifico si el ID de la fila ya existe
+        while let Some(Ok(line)) = reader.by_ref().lines().next() {
+            if line.starts_with(&values[0]) {
+                id_exists = true;
+                break;
+            }
+            position += line.len() + 1; // Actualizo la posicion a sobreescribir si existe el ID
+            buffer.push(line);
         }
+        // Si el ID existe y no se debe sobreescribir la línea, no hago nada.
+        if id_exists && statement.if_not_exists {
+            return Ok(());
+        }
+
+        // Abro el archivo nuevamente para escribir
+        let mut writer = OpenOptions::new()
+            .write(true)
+            .open(&table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let new_row = Self::generate_row_to_insert(&values, &query_cols, &table_cols);
+        if id_exists {
+            // Si el ID ya existia, sobrescribo la linea
+            writer
+                .seek(SeekFrom::Start(position as u64))
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+            writer
+                .write_all(new_row.as_bytes())
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+        } else {
+            // Si no existia el ID, escribo al final del archivo
+            writer
+                .seek(SeekFrom::End(0))
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+            writer
+                .write_all(new_row.as_bytes())
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+        }
+
+        Ok(())
     }
 
     fn generate_row_to_insert(
         values: &[String],
-        columns: &[String],
+        query_cols: &[String],
         table_cols: &[&str],
     ) -> String {
         let mut values_to_insert: Vec<&str> = vec![""; table_cols.len()];
 
-        for i in 0..columns.len() {
-            if let Some(j) = table_cols.iter().position(|c| *c == columns[i]) {
+        for i in 0..query_cols.len() {
+            if let Some(j) = table_cols.iter().position(|c| *c == query_cols[i]) {
                 values_to_insert[j] = values[i].as_str();
             }
         }
