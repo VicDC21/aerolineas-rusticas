@@ -21,13 +21,13 @@ impl And {
     }
 
     /// Evalúa la operación lógica AND.
-    pub fn evaluate(
-         &self,
-         line_to_review: &[String],
-         general_columns: &[String],
-     ) -> Result<bool> {
-         let passed_filter: bool = self.first_relation.evaluate(line_to_review, general_columns)?
-             && self.second_relation.evaluate(line_to_review, general_columns)?;
-         Ok(passed_filter)
-     }
+    pub fn evaluate(&self, line_to_review: &[String], general_columns: &[String]) -> Result<bool> {
+        let passed_filter: bool = self
+            .first_relation
+            .evaluate(line_to_review, general_columns)?
+            && self
+                .second_relation
+                .evaluate(line_to_review, general_columns)?;
+        Ok(passed_filter)
+    }
 }

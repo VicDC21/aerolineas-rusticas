@@ -16,11 +16,7 @@ impl Where {
     }
 
     /// Evalúa la expresión de la cláusula WHERE.
-    pub fn filters(
-        &self,
-        line_to_review: &[String],
-        general_columns: &[String],
-    ) -> Result<bool> {
+    pub fn filter(&self, line_to_review: &[String], general_columns: &[String]) -> Result<bool> {
         match &self.expression {
             Some(value) => value.evaluate(line_to_review, general_columns),
             None => Ok(true),

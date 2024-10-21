@@ -1,6 +1,8 @@
-use crate::parser::{data_types::identifier::identifier::Identifier, statements::dml_statement::r#where::operator::Operator};
+use crate::parser::{
+    data_types::identifier::identifier::Identifier, data_types::term::Term,
+    statements::dml_statement::r#where::operator::Operator,
+};
 use crate::protocol::{aliases::results::Result, errors::error::Error};
-use crate::parser::data_types::term::Term;
 use crate::tokenizer::tokenizer::tokenize_query;
 
 /// Representa una relación en una cláusula WHERE con dos columnas y un operador.
@@ -25,21 +27,13 @@ impl Relation {
         }
     }
 
-    pub fn evaluate(
-        &self,
-        line_to_review: &[String],
-        general_columns: &[String],
-    ) -> Result<bool> {
+    /// Evalúa la relación entre la columna de la tabla y el término dados.
+    pub fn evaluate(&self, line_to_review: &[String], general_columns: &[String]) -> Result<bool> {
         match self.operator {
-            Operator::Equal => self.make_comparison(line_to_review, general_columns),
-            Operator::Minor => self.make_comparison(line_to_review, general_columns),
-            Operator::Mayor => self.make_comparison(line_to_review, general_columns),
-            Operator::MinorEqual => self.make_comparison(line_to_review, general_columns),
-            Operator::MayorEqual => self.make_comparison(line_to_review, general_columns),
-            Operator::Distinct => self.make_comparison(line_to_review, general_columns),
             Operator::In => todo!(),
             Operator::Contains => todo!(),
             Operator::ContainsKey => todo!(),
+            _ => self.make_comparison(line_to_review, general_columns),
         }
     }
 
@@ -49,10 +43,7 @@ impl Relation {
         general_columns: &[String],
     ) -> Result<bool> {
         let column = self.column.get_name();
-        let index = match general_columns
-            .iter()
-            .position(|word| word == column)
-        {
+        let index = match general_columns.iter().position(|word| word == column) {
             Some(position) => position,
             None => {
                 return Err(Error::Invalid(
@@ -61,7 +52,14 @@ impl Relation {
             }
         };
 
-        let column_term = Term::is_term(&mut tokenize_query(&line_to_review[index]));
+        let column_term = match Term::is_term(&mut tokenize_query(&line_to_review[index]))? {
+            Some(value) => value,
+            None => {
+                return Err(Error::Invalid(
+                    "La columna es un tipo de dato no valido".to_string(),
+                ))
+            }
+        };
 
         // if self.first_column.is_a_string() || self.second_column.is_a_string() {
         //     return Err(Error::SyntaxError(
@@ -74,21 +72,16 @@ impl Relation {
         // let num2_comparator: i32 =
         //     self.parse_to_a_number(line_to_review, general_columns, &self.second_column)?;
 
-        /*match self.operator {
+        match self.operator {
             Operator::Minor => Ok(column_term < self.term_to_compare),
             Operator::Mayor => Ok(column_term > self.term_to_compare),
             Operator::MayorEqual => Ok(column_term >= self.term_to_compare),
             Operator::MinorEqual => Ok(column_term <= self.term_to_compare),
-            Operator::Equal => Err(Error::SyntaxError(
-                "Esto deberia ser un número".to_string(),
-            )),
-            Operator::Distinct => todo!(),
+            Operator::Equal => Ok(column_term == self.term_to_compare),
+            Operator::Distinct => Ok(column_term != self.term_to_compare),
             Operator::In => todo!(),
             Operator::Contains => todo!(),
             Operator::ContainsKey => todo!(),
-        }*/
-
-        // Provisorio
-        Ok(false)
+        }
     }
 }

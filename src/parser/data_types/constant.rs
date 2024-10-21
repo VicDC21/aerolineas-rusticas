@@ -1,8 +1,12 @@
-use crate::protocol::aliases::types::{Float, Int, Uuid};
-use crate::protocol::errors::error::Error;
+use std::cmp::Ordering;
+
+use crate::protocol::{
+    aliases::types::{Int, Uuid, Double},
+    errors::error::Error,
+};
 
 // Revisar u32 despues de mergear para no hacer conflicto
-/// constant::= string | integer | float | boolean | uuid | blob | NULL
+/// constant::= string | integer | double | boolean | uuid | blob | NULL
 pub enum Constant {
     /// ''' (any character where ' can appear if doubled)+ '''.
     String(String),
@@ -10,8 +14,8 @@ pub enum Constant {
     /// re('-?[0-9]+'). Es un i32 normalito.
     Integer(Int),
 
-    /// re('-?[0-9]+(.[0-9]*)?([eE][+-]?[0-9+])?') | NAN | INFINITY. Es un f32, con eso alcanza para representar las posibilidades.
-    Float(Float),
+    /// re('-?[0-9]+(.[0-9]*)?([eE][+-]?[0-9+])?') | NAN | INFINITY. Es un f64, con eso alcanza para representar las posibilidades.
+    Double(Double),
 
     /// TRUE | FALSE
     Boolean(bool),
@@ -24,21 +28,6 @@ pub enum Constant {
 
     /// Null
     NULL,
-}
-
-impl PartialEq for Constant {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Constant::String(s1), Constant::String(s2)) => s1 == s2,
-            (Constant::Integer(i1), Constant::Integer(i2)) => i1 == i2,
-            (Constant::Float(f1), Constant::Float(f2)) => f1 == f2,
-            (Constant::Boolean(b1), Constant::Boolean(b2)) => b1 == b2,
-            (Constant::Uuid(u1), Constant::Uuid(u2)) => u1 == u2,
-            (Constant::Blob(b1), Constant::Blob(b2)) => b1 == b2,
-            (Constant::NULL, Constant::NULL) => true,
-            _ => false,
-        }
-    }
 }
 
 impl Constant {
@@ -54,10 +43,10 @@ impl Constant {
             let integer_string: String = lista.remove(0);
             let int = Constant::new_integer(integer_string)?;
             return Ok(Some(int));
-        } else if Constant::check_float(&lista[0]) {
-            let float_string = lista.remove(0);
-            let float = Constant::new_float(float_string)?;
-            return Ok(Some(float));
+        } else if Constant::check_double(&lista[0]) {
+            let double_string = lista.remove(0);
+            let double = Constant::new_double(double_string)?;
+            return Ok(Some(double));
         } else if Constant::check_boolean(&lista[0]) {
             let bool = lista.remove(0);
             let bool = Constant::new_boolean(bool)?;
@@ -80,12 +69,12 @@ impl Constant {
         };
         Ok(Constant::Integer(int))
     }
-    fn new_float(float_string: String) -> Result<Self, Error> {
-        let float = match float_string.parse::<Float>() {
+    fn new_double(double_string: String) -> Result<Self, Error> {
+        let double = match double_string.parse::<Double>() {
             Ok(value) => value,
             Err(_e) => return Err(Error::Invalid("".to_string())),
         };
-        Ok(Constant::Float(float))
+        Ok(Constant::Double(double))
     }
     fn new_boolean(bool_string: String) -> Result<Self, Error> {
         if bool_string == "TRUE" {
@@ -124,8 +113,8 @@ impl Constant {
         value.parse::<Int>().is_ok()
     }
 
-    fn check_float(value: &str) -> bool {
-        value.parse::<Float>().is_ok()
+    fn check_double(value: &str) -> bool {
+        value.parse::<Double>().is_ok()
     }
 
     fn check_boolean(value: &String) -> bool {
@@ -168,11 +157,41 @@ impl Constant {
         match self {
             Constant::String(value) => value.to_string(),
             Constant::Integer(value) => value.to_string(),
-            Constant::Float(value) => value.to_string(),
+            Constant::Double(value) => value.to_string(),
             Constant::Boolean(value) => value.to_string(),
             Constant::Uuid(value) => value.to_string(),
             Constant::Blob(value) => value.to_string(),
             Constant::NULL => "".to_string(),
+        }
+    }
+}
+
+impl PartialEq for Constant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Constant::String(s1), Constant::String(s2)) => s1 == s2,
+            (Constant::Integer(i1), Constant::Integer(i2)) => i1 == i2,
+            (Constant::Double(f1), Constant::Double(f2)) => f1 == f2,
+            (Constant::Boolean(b1), Constant::Boolean(b2)) => b1 == b2,
+            (Constant::Uuid(u1), Constant::Uuid(u2)) => u1 == u2,
+            (Constant::Blob(b1), Constant::Blob(b2)) => b1 == b2,
+            (Constant::NULL, Constant::NULL) => true,
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Constant {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Constant::Integer(i1), Constant::Integer(i2)) => i1.partial_cmp(i2),
+            (Constant::Double(f1), Constant::Double(f2)) => f1.partial_cmp(f2),
+            (Constant::String(s1), Constant::String(s2)) => s1.partial_cmp(s2),
+            (Constant::Boolean(b1), Constant::Boolean(b2)) => b1.partial_cmp(b2),
+            (Constant::Uuid(u1), Constant::Uuid(u2)) => u1.partial_cmp(u2),
+            (Constant::Blob(b1), Constant::Blob(b2)) => b1.partial_cmp(b2),
+            (Constant::NULL, Constant::NULL) => Some(Ordering::Equal),
+            (_, _) => None,
         }
     }
 }

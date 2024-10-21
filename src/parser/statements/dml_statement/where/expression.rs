@@ -63,11 +63,19 @@ pub fn relation(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>> {
             lista.remove(1);
             let first = match Identifier::check_identifier(lista)? {
                 Some(value) => value,
-                None => return Err(Error::SyntaxError("Falta un operator en el where".to_string())),
+                None => {
+                    return Err(Error::SyntaxError(
+                        "Falta un operator en el where".to_string(),
+                    ))
+                }
             };
             let second = match Term::is_term(lista)? {
                 Some(value) => value,
-                None => return Err(Error::SyntaxError("Falta un operator en el where".to_string())),
+                None => {
+                    return Err(Error::SyntaxError(
+                        "Falta un operator en el where".to_string(),
+                    ))
+                }
             };
             let relation = Relation::new(first, operator, second);
             return Ok(Some(Box::new(Expression::Relation(relation))));
@@ -76,15 +84,13 @@ pub fn relation(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>> {
     Ok(None)
 }
 
-impl Expression{
+impl Expression {
     /// Evalúa la expresión de la cláusula WHERE.
-    pub fn evaluate(
-        &self,
-        line_to_review: &[String],
-        general_columns: &[String],
-    ) -> Result<bool> {
+    pub fn evaluate(&self, line_to_review: &[String], general_columns: &[String]) -> Result<bool> {
         let result = match &self {
-            Expression::Expression(another_expression) => another_expression.evaluate(line_to_review, general_columns)?,
+            Expression::Expression(another_expression) => {
+                another_expression.evaluate(line_to_review, general_columns)?
+            }
             Expression::And(and) => and.evaluate(line_to_review, general_columns)?,
             Expression::Relation(relation) => relation.evaluate(line_to_review, general_columns)?,
         };

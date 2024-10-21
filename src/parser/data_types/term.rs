@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use super::constant::Constant;
 use crate::protocol::errors::error::Error;
 
@@ -30,6 +32,14 @@ impl Term {
     pub fn get_value_as_string(&self) -> String {
         match self {
             Term::Constant(constant) => constant.get_value_as_string(),
+        }
+    }
+}
+
+impl PartialOrd for Term {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Term::Constant(c1), Term::Constant(c2)) => c1.partial_cmp(c2),
         }
     }
 }
