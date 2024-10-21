@@ -1,0 +1,194 @@
+//! Módulo de cargador de aeropuertos.
+
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread::{spawn, JoinHandle};
+use std::time::{Duration, Instant};
+
+use eframe::egui::{Painter, Response, Vec2};
+use walkers::{Plugin, Position, Projector};
+
+use crate::data::airports::Airport;
+use crate::protocol::aliases::results::Result;
+
+/// Un hilo destinado a procesos paralelos, tal que no bloquee el flujo sincrónico
+/// del hilo principal.
+pub type ChildHandle = JoinHandle<Result<()>>;
+
+/// El tipo de hilo hijo de área.
+pub type AreaChild = (Option<ChildHandle>, Sender<PosRect>);
+
+/// Un área de posiciciones geográficas.
+pub type PosRect = (Position, Position);
+
+/// Intervalo (en segundos) antes de cargar los aeropuertos de nuevo, como mínimo.
+const AIRPORTS_INTERVAL_SECS: u64 = 5;
+
+/// Cargador de aeropuertos.
+pub struct AirportsLoader {
+    /// Los aeropuertos actualmente en memoria.
+    airports: Option<Vec<Airport>>,
+
+    /// La última vez que [crate::interface::plugins::airports::loader::AirportsLoader::airports]
+    /// fue modificado.
+    last_checked: Instant,
+
+    /// Extremo de canal que recibe actualizaciones a los aeropuertos.
+    receiver: Receiver<Vec<Airport>>,
+
+    /// Hilo hijo, para cargar aeropuertos en área.
+    area_child: AreaChild,
+}
+
+impl AirportsLoader {
+    /// Crea una nueva instancia del cargador de aeropuertos.
+    pub fn new(
+        airports: Option<Vec<Airport>>,
+        receiver: Receiver<Vec<Airport>>,
+        last_checked: Instant,
+        area_child: AreaChild,
+    ) -> Self {
+        Self {
+            airports,
+            receiver,
+            last_checked,
+            area_child,
+        }
+    }
+
+    /// Genera el hilo cargador de área.
+    fn gen_area_child(to_parent: Sender<Vec<Airport>>) -> AreaChild {
+        let (area_sender, area_receiver) = channel::<PosRect>();
+        let area_handle = spawn(move || {
+            let equator_pos = Position::from_lat_lon(0.0, 0.0);
+
+            loop {
+                match area_receiver.recv() {
+                    Ok((pos_min, pos_max)) => {
+                        if (pos_min == equator_pos) && (pos_max == equator_pos) {
+                            break;
+                        }
+
+                        let airports = match Airport::by_area((&pos_min, &pos_max)) {
+                            Ok(loaded) => loaded,
+                            Err(err) => {
+                                println!("Error cargando los aeropuertos:\n\n{}", err);
+                                Vec::new()
+                            }
+                        };
+
+                        if let Err(err) = to_parent.send(airports) {
+                            println!(
+                                "Error al mandar a hilo principal los aeropuertos:\n\n{}",
+                                err
+                            );
+                        }
+                    }
+                    Err(err) => println!(
+                        "Ocurrió un error esperando mensajes del hilo principal:\n\n{}",
+                        err
+                    ),
+                }
+            }
+
+            Ok(())
+        });
+
+        (Some(area_handle), area_sender.clone())
+    }
+
+    /// **Consume** la lista de aeropuertos actualmente en memoria para devolverla, y en su lugar
+    /// deja [None].
+    ///
+    /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
+    pub fn take_airports(&mut self) -> Vec<Airport> {
+        self.airports.take().unwrap_or_default()
+    }
+
+    /// Resetea el chequeo al [Instant] actual.
+    pub fn reset_instant(&mut self) {
+        self.last_checked = Instant::now();
+    }
+
+    /// Verifica si ha pasado un mínimo de tiempo dado desde la última vez
+    /// que se editaron los puertos.
+    pub fn elapsed_at_least(&self, duration: &Duration) -> bool {
+        &self.last_checked.elapsed() >= duration
+    }
+
+    /// Apaga y espera a todos los hilos hijos.
+    pub fn wait_children(&mut self) {
+        let (area, area_sender) = &mut self.area_child;
+        if let Some(hanging) = area.take() {
+            // esto es el mensaje secreto para que pare
+            if area_sender
+                .send((
+                    Position::from_lat_lon(0.0, 0.0),
+                    Position::from_lat_lon(0.0, 0.0),
+                ))
+                .is_err()
+            {
+                println!("Error mandando un mensaje para parar hilo de área.")
+            }
+            if hanging.join().is_err() {
+                println!("Error esperando a que un hilo hijo termine.")
+            }
+        }
+    }
+}
+
+impl Default for AirportsLoader {
+    fn default() -> Self {
+        let (main_sender, main_receiver) = channel::<Vec<Airport>>();
+
+        Self::new(
+            Some(Vec::new()),
+            main_receiver,
+            Instant::now(),
+            Self::gen_area_child(main_sender.clone()),
+        )
+    }
+}
+
+impl Plugin for &mut AirportsLoader {
+    fn run(&mut self, response: &Response, _painter: Painter, projector: &Projector) {
+        if self.elapsed_at_least(&Duration::from_secs(AIRPORTS_INTERVAL_SECS)) {
+            self.reset_instant();
+            // Necesitamos correrlo para arriba a la izquierda porque el proyector calcula
+            // cosas desde el centro de la pantalla.
+            let offset_area = response.rect.translate(Vec2::new(
+                -(response.rect.max.x / 2.0),
+                -(response.rect.max.y / 2.0),
+            ));
+            let geo_min = projector.unproject(offset_area.min.to_vec2());
+            let geo_max = projector.unproject(offset_area.max.to_vec2());
+            let area = (
+                Position::from_lat_lon(
+                    geo_min.lat().min(geo_max.lat()),
+                    geo_min.lon().min(geo_max.lon()),
+                ),
+                Position::from_lat_lon(
+                    geo_min.lat().max(geo_max.lat()),
+                    geo_min.lon().max(geo_max.lon()),
+                ),
+            );
+
+            // primero le pedimos al cargador que vaya procesando el área
+            let (_, area_sender) = &mut self.area_child;
+            if let Err(err) = area_sender.send(area) {
+                println!("Error al enviar área al cargador:\n\n{}", err);
+            }
+        }
+        // y luego le pedimos si terminó (puede no ser en este frame)
+        if let Ok(new_airports) = self.receiver.try_recv() {
+            if !new_airports.is_empty() {
+                self.airports = Some(new_airports);
+            }
+        }
+    }
+}
+
+impl Drop for AirportsLoader {
+    fn drop(&mut self) {
+        self.wait_children();
+    }
+}

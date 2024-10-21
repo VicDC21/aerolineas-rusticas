@@ -13,7 +13,7 @@ impl UnquotedName {
     pub fn new(word: String) -> Result<Self, Error> {
         Ok(UnquotedName { name: word })
     }
-    
+
     /// TODO: Desc básica
     pub fn is_unquoted_name(word: &str) -> bool {
         let length = word.chars().count();
