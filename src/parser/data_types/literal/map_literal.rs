@@ -17,6 +17,7 @@ pub struct MapLiteral {
 impl MapLiteral {
     /// TODO: Desc básica
     pub fn check_map_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
+        println!("MapLiteral: {:?}", lista);
         let mut values: Vec<(Term, Term)> = Vec::new();
         if check_words(lista, "{") {
             while check_words(lista, ",") || !check_words(lista, "}") {

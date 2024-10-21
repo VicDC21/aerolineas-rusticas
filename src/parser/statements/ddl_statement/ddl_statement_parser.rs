@@ -178,6 +178,7 @@ fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>,
 
         let columns = parse_column_definitions(list)?;
         let primary_key = parse_primary_key(list)?;
+        println!("{:?}", list);
 
         if !check_words(list, ")") {
             return Err(Error::SyntaxError(
@@ -188,15 +189,24 @@ fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>,
         if !check_words(list, "WITH") {
             return Err(Error::SyntaxError("Falta la condición WITH".to_string()));
         }
+
         let options = parse_table_options(list)?;
         let mut compact_storage = false;
         let mut clustering_order = None;
 
         for option in options {
-            if let Options::Identifier(id) = option {
-                match id.get_name() {
+            if let Options::Constant(term) = option {
+                match term.get_value().as_str() {
                     "COMPACT STORAGE" => compact_storage = true,
-                    "CLUSTERING ORDER" => {
+                    "CLUSTERING ORDER BY" => {
+                        clustering_order = Some(parse_clustering_order(&list.join(" "))?);
+                    }
+                    _ => {}
+                }
+            } else if let Options::Identifier(term) = option {
+                match term.get_name() {
+                    "COMPACT STORAGE" => compact_storage = true,
+                    "CLUSTERING ORDER BY" => {
                         clustering_order = Some(parse_clustering_order(&list.join(" "))?);
                     }
                     _ => {}
@@ -385,13 +395,8 @@ fn parse_primary_key(list: &mut Vec<String>) -> Result<Option<PrimaryKey>, Error
             ));
         }
 
+        check_words(list, "(");
         let primary_key = PrimaryKey::parse(list)?;
-
-        if !check_words(list, ")") {
-            return Err(Error::SyntaxError(
-                "Falta el paréntesis de cierre en PRIMARY KEY".to_string(),
-            ));
-        }
 
         Ok(Some(primary_key))
     } else {
@@ -803,6 +808,136 @@ mod tests {
                 && alter_keyspace.is_none()
                 && drop_keyspace.is_none()
         );
+        Ok(())
+    }
+
+    // CREATE TABLE TESTS:
+    #[test]
+    fn test_01_basic_create_table_statement() -> Result<(), Error> {
+        let query =
+            "CREATE TABLE users (id UUID PRIMARY KEY, name TEXT, age INT) WITH 'COMPACT STORAGE'";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(!table.if_not_exists);
+        assert_eq!(table.columns.len(), 3);
+        assert_eq!(
+            table.primary_key.as_ref().map_or(1, |pk| pk.columns.len()),
+            1
+        );
+        assert!(table.compact_storage);
+        assert!(table.clustering_order.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_create_table_with_if_not_exists() -> Result<(), Error> {
+        let query = "CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, name TEXT, age INT) WITH 'COMPACT STORAGE'";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(table.if_not_exists);
+        assert!(table.compact_storage);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_create_table_with_compound_primary_key() -> Result<(), Error> {
+        let query = "CREATE TABLE posts (
+            user_id UUID,
+            post_id TIMEUUID,
+            content TEXT,
+            PRIMARY KEY (user_id, post_id)
+        ) WITH 'CLUSTERING ORDER BY' (post_id DESC)";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(table.columns.len(), 3);
+        assert_eq!(
+            table.primary_key.as_ref().map_or(0, |pk| pk.columns.len()),
+            2
+        );
+        assert!(table.clustering_order.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_create_table_without_compact_storage() -> Result<(), Error> {
+        let query = "CREATE TABLE events (
+            id UUID PRIMARY KEY,
+            data TEXT
+        ) WITH read_repair_chance = 1.0";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(table.columns.len(), 2);
+        assert!(!table.compact_storage);
+        assert!(table.clustering_order.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_create_table_with_quoted_names() -> Result<(), Error> {
+        let query = "CREATE TABLE \"My Table\" (
+            \"User ID\" UUID PRIMARY KEY,
+            \"Full Name\" TEXT
+        ) WITH 'COMPACT STORAGE'";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            table.name.name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Table".to_string())?)
+        );
+        assert_eq!(table.columns.len(), 2);
+        //assert_eq!(table.columns[0].name, UnquotedName::new("User ID".to_string())?);
+        //assert_eq!(table.columns[1].name, UnquotedName::new("Full Name".to_string())?);
+        assert!(table.compact_storage);
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_invalid_create_table_statement() -> Result<(), Error> {
+        let query = "CREATE TABLE";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_07_create_table_missing_with_clause() -> Result<(), Error> {
+        let query = "CREATE TABLE users (id UUID PRIMARY KEY, name TEXT)";
+        let mut tokens = tokenize_query(query);
+        assert!(create_table_statement(&mut tokens).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_08_create_table_with_empty_input() -> Result<(), Error> {
+        let mut tokens = vec![];
+        let result = create_table_statement(&mut tokens)?;
+        assert!(result.is_none());
         Ok(())
     }
 }

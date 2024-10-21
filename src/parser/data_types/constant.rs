@@ -45,6 +45,19 @@ impl PartialEq for Constant {
 
 impl Constant {
     /// TODO: Desc básica
+    pub fn get_value(&self) -> String {
+        match self {
+            Constant::String(s) => s.to_string(),
+            Constant::Integer(i) => i.to_string(),
+            Constant::Float(f) => f.to_string(),
+            Constant::Boolean(b) => b.to_string(),
+            Constant::Uuid(u) => u.to_string(),
+            Constant::Blob(b) => b.to_string(),
+            Constant::NULL => "NULL".to_string(),
+        }
+    }
+
+    /// TODO: Desc básica
     pub fn is_constant(lista: &mut Vec<String>) -> Result<Option<Constant>, Error> {
         if lista.len() > 2 && Constant::check_string(&lista[0], &lista[2]) {
             lista.remove(0);

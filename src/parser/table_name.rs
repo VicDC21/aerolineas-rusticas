@@ -36,11 +36,12 @@ impl TableName {
             return Ok(None);
         }
 
-        let keyspace = if lista[1] != "SET" && lista[1] != "(" && lista[0] != "\'" {
-            KeyspaceName::check_kind_of_name(lista)?
-        } else {
-            None
-        };
+        let keyspace =
+            if lista[1] != "SET" && lista[1] != "(" && lista[0] != "\'" && lista[3] != "(" {
+                KeyspaceName::check_kind_of_name(lista)?
+            } else {
+                None
+            };
 
         let name = match KeyspaceName::check_kind_of_name(lista)? {
             Some(value) => value,
