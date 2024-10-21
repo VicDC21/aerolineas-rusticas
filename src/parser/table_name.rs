@@ -44,23 +44,28 @@ impl TableName {
         }
 
         let mut if_exists = false;
-        if check_words(lista, "IF EXISTS") {
-            if_exists = true;
-        }
+        let mut keyspace = None;
+        if lista.len() > 1 {
+            if check_words(lista, "IF EXISTS") {
+                if_exists = true;
+            }
 
-        let keyspace = if lista[1] != "SET"
-            && lista[1] != "("
-            && lista[0] != "\'"
-            && lista[3] != "("
-            && lista[1] != "ADD"
-            && lista[1] != "DROP"
-            && lista[1] != "WITH"
-            && lista[1] != "RENAME"
-        {
-            KeyspaceName::check_kind_of_name(lista)?
-        } else {
-            None
-        };
+            if lista.len() > 3 {
+                keyspace = if lista[1] != "SET"
+                    && lista[1] != "("
+                    && lista[0] != "\'"
+                    && lista[3] != "("
+                    && lista[1] != "ADD"
+                    && lista[1] != "DROP"
+                    && lista[1] != "WITH"
+                    && lista[1] != "RENAME"
+                {
+                    KeyspaceName::check_kind_of_name(lista)?
+                } else {
+                    None
+                };
+            }
+        }
 
         let name = match KeyspaceName::check_kind_of_name(lista)? {
             Some(value) => value,
@@ -70,6 +75,7 @@ impl TableName {
                 ))
             }
         };
+
         Ok(Some(TableName {
             if_exists,
             keyspace,

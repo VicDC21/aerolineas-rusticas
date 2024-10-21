@@ -244,7 +244,6 @@ fn alter_table_statement(list: &mut Vec<String>) -> Result<Option<AlterTable>, E
 
 fn drop_table_statement(list: &mut Vec<String>) -> Result<Option<DropTable>, Error> {
     if check_words(list, "DROP TABLE") {
-        let exist = check_words(list, "IF EXISTS");
         let table_name = match TableName::check_kind_of_name(list)? {
             Some(value) => value,
             None => {
@@ -253,7 +252,7 @@ fn drop_table_statement(list: &mut Vec<String>) -> Result<Option<DropTable>, Err
                 ))
             }
         };
-        return Ok(Some(DropTable::new(exist, table_name)));
+        return Ok(Some(DropTable::new(table_name)));
     }
     Ok(None)
 }
@@ -1054,6 +1053,66 @@ mod tests {
         let mut tokens = tokenize_query(query);
 
         let result = alter_table_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    // DROP TABLE TESTS:
+    #[test]
+    fn test_01_basic_drop_table_statement() -> Result<(), Error> {
+        let query = "DROP TABLE my_table";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_table_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            table.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_table".to_string())?)
+        );
+        assert!(!table.table_name.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_drop_table_with_if_exists() -> Result<(), Error> {
+        let query = "DROP TABLE IF EXISTS my_table";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            table.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_table".to_string())?)
+        );
+        assert!(table.table_name.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_drop_table_with_quoted_name() -> Result<(), Error> {
+        let query = "DROP TABLE \"My Table\"";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            table.table_name.name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Table".to_string())?)
+        );
+        assert!(!table.table_name.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_invalid_drop_table_statement() -> Result<(), Error> {
+        let query = "DROP TABLE";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_table_statement(&mut tokens);
         assert!(result.is_err());
         Ok(())
     }
