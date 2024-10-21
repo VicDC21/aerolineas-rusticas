@@ -7,7 +7,7 @@ use walkers::{Map, MapMemory, Position};
 
 use crate::interface::map::providers::{Provider, ProvidersMap};
 use crate::interface::map::windows::{controls, go_to_my_position, zoom};
-use crate::interface::plugins::airports::loader::AirportsLoader;
+use crate::interface::plugins::airports::{drawer::AirportsDrawer, loader::AirportsLoader};
 
 /// Latitud de la coordenada de origen de nuestro mapa.
 pub const ORIG_LAT: f64 = -34.61760464833609;
@@ -27,6 +27,9 @@ pub struct AerolineasApp {
 
     /// El cargador de aeropuertos.
     airports_loader: AirportsLoader,
+
+    /// El renderizador de aeropuertos.
+    airports_drawer: AirportsDrawer,
 }
 
 impl AerolineasApp {
@@ -42,6 +45,7 @@ impl AerolineasApp {
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
             airports_loader: AirportsLoader::default(),
+            airports_drawer: AirportsDrawer::default(),
         }
     }
 }
@@ -63,8 +67,14 @@ impl App for AerolineasApp {
             );
 
             // Añadimos los plugins.
-            self.airports_loader.sync_zoom(zoom_lvl);
-            let map = map.with_plugin(&mut self.airports_loader);
+            let cur_airports = self.airports_loader.take_airports();
+            self.airports_drawer
+                .sync_airports(cur_airports)
+                .sync_zoom(zoom_lvl);
+
+            let map = map
+                .with_plugin(&mut self.airports_loader)
+                .with_plugin(&mut self.airports_drawer);
 
             ui.add(map);
 

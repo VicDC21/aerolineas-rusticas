@@ -4,10 +4,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{spawn, JoinHandle};
 use std::time::{Duration, Instant};
 
-use eframe::egui::{Painter, Response, Rgba, Stroke, Vec2};
+use eframe::egui::{Painter, Response, Vec2};
 use walkers::{Plugin, Position, Projector};
 
-use crate::data::airport_types::AirportType;
 use crate::data::airports::Airport;
 use crate::protocol::aliases::results::Result;
 
@@ -27,7 +26,7 @@ const AIRPORTS_INTERVAL_SECS: u64 = 5;
 /// Cargador de aeropuertos.
 pub struct AirportsLoader {
     /// Los aeropuertos actualmente en memoria.
-    airports: Vec<Airport>,
+    airports: Option<Vec<Airport>>,
 
     /// La última vez que [crate::interface::plugins::airports::loader::AirportsLoader::airports]
     /// fue modificado.
@@ -38,26 +37,21 @@ pub struct AirportsLoader {
 
     /// Hilo hijo, para cargar aeropuertos en área.
     area_child: AreaChild,
-
-    /// Propiedad de zoom.
-    zoom: f32,
 }
 
 impl AirportsLoader {
     /// Crea una nueva instancia del cargador de aeropuertos.
     pub fn new(
-        airports: Vec<Airport>,
+        airports: Option<Vec<Airport>>,
         receiver: Receiver<Vec<Airport>>,
         last_checked: Instant,
         area_child: AreaChild,
-        zoom: f32,
     ) -> Self {
         Self {
             airports,
             receiver,
             last_checked,
             area_child,
-            zoom,
         }
     }
 
@@ -102,9 +96,12 @@ impl AirportsLoader {
         (Some(area_handle), area_sender.clone())
     }
 
-    /// Actualiza el valor de zoom desde afuera.
-    pub fn sync_zoom(&mut self, real_zoom: f32) {
-        self.zoom = real_zoom;
+    /// **Consume** la lista de aeropuertos actualmente en memoria para devolverla, y en su lugar
+    /// deja [None].
+    ///
+    /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
+    pub fn take_airports(&mut self) -> Vec<Airport> {
+        self.airports.take().unwrap_or_default()
     }
 
     /// Resetea el chequeo al [Instant] actual.
@@ -137,60 +134,6 @@ impl AirportsLoader {
             }
         }
     }
-
-    /// Devuelve las propiedades necesarias para dibujar un círculo según el tipo de aeropuerto.
-    fn circle_by_airport_type(airport: &Airport) -> (f32, Rgba, Stroke) {
-        match airport.airport_type {
-            AirportType::LargeAirport => (
-                5.5,
-                Rgba::from_srgba_premultiplied(255, 0, 0, 255),
-                Stroke::new(1.0, Rgba::from_srgba_premultiplied(70, 60, 50, 100)),
-            ),
-            AirportType::MediumAirport => (
-                5.0,
-                Rgba::from_srgba_premultiplied(50, 150, 200, 255),
-                Stroke::new(1.0, Rgba::from_srgba_premultiplied(70, 60, 50, 100)),
-            ),
-            AirportType::SmallAirport => (
-                4.5,
-                Rgba::from_srgba_premultiplied(100, 255, 100, 255),
-                Stroke::new(1.0, Rgba::from_srgba_premultiplied(70, 60, 50, 100)),
-            ),
-            AirportType::Heliport => (
-                4.0,
-                Rgba::from_srgba_premultiplied(255, 200, 0, 255),
-                Stroke::new(1.0, Rgba::from_srgba_premultiplied(70, 60, 50, 100)),
-            ),
-            AirportType::SeaplaneBase => (
-                4.0,
-                Rgba::from_srgba_premultiplied(0, 230, 255, 255),
-                Stroke::new(1.0, Rgba::from_srgba_premultiplied(70, 60, 50, 100)),
-            ),
-            AirportType::BalloonBase => (
-                3.5,
-                Rgba::from_srgba_premultiplied(255, 0, 100, 255),
-                Stroke::new(1.0, Rgba::from_srgba_premultiplied(70, 60, 50, 100)),
-            ),
-            AirportType::Closed => (
-                4.5,
-                Rgba::from_srgba_premultiplied(155, 0, 0, 200),
-                Stroke::new(1.0, Rgba::from_srgba_premultiplied(70, 60, 50, 100)),
-            ),
-        }
-    }
-
-    /// Devuelve el nivel de zoom aceptable para mostrar el aeropuerto según el tipo.
-    fn zoom_is_showable(&self, airport_type: &AirportType) -> bool {
-        match airport_type {
-            AirportType::LargeAirport => self.zoom >= 0.0,
-            AirportType::MediumAirport => self.zoom >= 5.0,
-            AirportType::SmallAirport => self.zoom >= 10.0,
-            AirportType::Heliport => self.zoom >= 10.0,
-            AirportType::SeaplaneBase => self.zoom >= 10.0,
-            AirportType::BalloonBase => self.zoom >= 10.0,
-            AirportType::Closed => self.zoom >= 10.0,
-        }
-    }
 }
 
 impl Default for AirportsLoader {
@@ -198,17 +141,16 @@ impl Default for AirportsLoader {
         let (main_sender, main_receiver) = channel::<Vec<Airport>>();
 
         Self::new(
-            Vec::new(),
+            Some(Vec::new()),
             main_receiver,
             Instant::now(),
             Self::gen_area_child(main_sender.clone()),
-            0.0, // Esto debería cambiarse lo antes posible
         )
     }
 }
 
 impl Plugin for &mut AirportsLoader {
-    fn run(&mut self, response: &Response, painter: Painter, projector: &Projector) {
+    fn run(&mut self, response: &Response, _painter: Painter, projector: &Projector) {
         if self.elapsed_at_least(&Duration::from_secs(AIRPORTS_INTERVAL_SECS)) {
             self.reset_instant();
             // Necesitamos correrlo para arriba a la izquierda porque el proyector calcula
@@ -239,23 +181,8 @@ impl Plugin for &mut AirportsLoader {
         // y luego le pedimos si terminó (puede no ser en este frame)
         if let Ok(new_airports) = self.receiver.try_recv() {
             if !new_airports.is_empty() {
-                self.airports = new_airports;
+                self.airports = Some(new_airports);
             }
-        }
-
-        for airport in &self.airports {
-            if !self.zoom_is_showable(&airport.airport_type) {
-                // Sólo mostrar los aeropuertos con el nivel de zoom correcto
-                continue;
-            }
-
-            let (rad, color, stroke) = AirportsLoader::circle_by_airport_type(airport);
-            painter.circle(
-                projector.project(airport.position).to_pos2(),
-                rad,
-                color,
-                stroke,
-            );
         }
     }
 }

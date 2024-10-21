@@ -45,18 +45,12 @@ pub fn controls(
                         }
                     });
             });
-
-            // ui.collapsing("Images plugin", |ui| {
-            //     ui.add(Slider::new(&mut image.angle, 0.0..=360.0).text("Rotate"));
-            //     ui.add(Slider::new(&mut image.x_scale, 0.1..=3.0).text("Scale X"));
-            //     ui.add(Slider::new(&mut image.y_scale, 0.1..=3.0).text("Scale Y"));
-            // });
         });
 }
 
 /// Simple GUI to zoom in and out.
 pub fn zoom(ui: &Ui, map_memory: &mut MapMemory) {
-    Window::new("Map")
+    Window::new("Zoom Buttons")
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
@@ -76,19 +70,14 @@ pub fn zoom(ui: &Ui, map_memory: &mut MapMemory) {
 
 /// Cuando el foco se mueve del origen de coordenadas, aparece este botón para traerte de vuelta.
 pub fn go_to_my_position(ui: &Ui, map_memory: &mut MapMemory) {
-    if let Some(position) = map_memory.detached() {
-        Window::new("Centro")
+    if map_memory.detached().is_some() {
+        Window::new("Follow Pos")
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
             .anchor(Align2::RIGHT_BOTTOM, [-10., -10.])
             .show(ui.ctx(), |ui| {
-                ui.label("Pos: ");
-                ui.label(format!("{:.04} {:.04}", position.lon(), position.lat()));
-                if ui
-                    .button(RichText::new("Volver al punto de inicio").heading())
-                    .clicked()
-                {
+                if ui.button(RichText::new("📌").heading()).clicked() {
                     map_memory.follow_my_position();
                 }
             });
