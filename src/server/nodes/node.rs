@@ -3,10 +3,8 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    fs::create_dir,
     io::Read,
     net::TcpListener,
-    path::Path,
 };
 
 use crate::parser::{
