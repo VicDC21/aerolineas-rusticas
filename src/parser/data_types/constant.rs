@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 use crate::protocol::{
-    aliases::types::{Int, Uuid, Double},
+    aliases::types::{Double, Int, Uuid},
     errors::error::Error,
 };
 
