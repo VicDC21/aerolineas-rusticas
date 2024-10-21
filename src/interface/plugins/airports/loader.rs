@@ -15,6 +15,9 @@ use crate::protocol::aliases::results::Result;
 /// del hilo principal.
 pub type ChildHandle = JoinHandle<Result<()>>;
 
+/// El tipo de hilo hijo de área.
+pub type AreaChild = (Option<ChildHandle>, Sender<PosRect>);
+
 /// Un área de posiciciones geográficas.
 pub type PosRect = (Position, Position);
 
@@ -34,7 +37,10 @@ pub struct AirportsLoader {
     receiver: Receiver<Vec<Airport>>,
 
     /// Hilo hijo, para cargar aeropuertos en área.
-    area_child: (Option<ChildHandle>, Sender<PosRect>),
+    area_child: AreaChild,
+
+    /// Propiedad de zoom.
+    zoom: f32,
 }
 
 impl AirportsLoader {
@@ -43,14 +49,62 @@ impl AirportsLoader {
         airports: Vec<Airport>,
         receiver: Receiver<Vec<Airport>>,
         last_checked: Instant,
-        area_child: (Option<ChildHandle>, Sender<PosRect>),
+        area_child: AreaChild,
+        zoom: f32,
     ) -> Self {
         Self {
             airports,
             receiver,
             last_checked,
             area_child,
+            zoom,
         }
+    }
+
+    /// Genera el hilo cargador de área.
+    fn gen_area_child(to_parent: Sender<Vec<Airport>>) -> AreaChild {
+        let (area_sender, area_receiver) = channel::<PosRect>();
+        let area_handle = spawn(move || {
+            let equator_pos = Position::from_lat_lon(0.0, 0.0);
+
+            loop {
+                match area_receiver.recv() {
+                    Ok((pos_min, pos_max)) => {
+                        if (pos_min == equator_pos) && (pos_max == equator_pos) {
+                            break;
+                        }
+
+                        let airports = match Airport::by_area((&pos_min, &pos_max)) {
+                            Ok(loaded) => loaded,
+                            Err(err) => {
+                                println!("Error cargando los aeropuertos:\n\n{}", err);
+                                Vec::new()
+                            }
+                        };
+
+                        if let Err(err) = to_parent.send(airports) {
+                            println!(
+                                "Error al mandar a hilo principal los aeropuertos:\n\n{}",
+                                err
+                            );
+                        }
+                    }
+                    Err(err) => println!(
+                        "Ocurrió un error esperando mensajes del hilo principal:\n\n{}",
+                        err
+                    ),
+                }
+            }
+
+            Ok(())
+        });
+
+        (Some(area_handle), area_sender.clone())
+    }
+
+    /// Actualiza el valor de zoom desde afuera.
+    pub fn sync_zoom(&mut self, real_zoom: f32) {
+        self.zoom = real_zoom;
     }
 
     /// Resetea el chequeo al [Instant] actual.
@@ -85,7 +139,7 @@ impl AirportsLoader {
     }
 
     /// Devuelve las propiedades necesarias para dibujar un círculo según el tipo de aeropuerto.
-    pub fn circle_by_airport_type(airport: &Airport) -> (f32, Rgba, Stroke) {
+    fn circle_by_airport_type(airport: &Airport) -> (f32, Rgba, Stroke) {
         match airport.airport_type {
             AirportType::LargeAirport => (
                 5.5,
@@ -119,9 +173,22 @@ impl AirportsLoader {
             ),
             AirportType::Closed => (
                 4.5,
-                Rgba::from_srgba_premultiplied(255, 0, 0, 255),
+                Rgba::from_srgba_premultiplied(155, 0, 0, 200),
                 Stroke::new(1.0, Rgba::from_srgba_premultiplied(70, 60, 50, 100)),
             ),
+        }
+    }
+
+    /// Devuelve el nivel de zoom aceptable para mostrar el aeropuerto según el tipo.
+    fn zoom_is_showable(&self, airport_type: &AirportType) -> bool {
+        match airport_type {
+            AirportType::LargeAirport => self.zoom >= 0.0,
+            AirportType::MediumAirport => self.zoom >= 5.0,
+            AirportType::SmallAirport => self.zoom >= 10.0,
+            AirportType::Heliport => self.zoom >= 10.0,
+            AirportType::SeaplaneBase => self.zoom >= 10.0,
+            AirportType::BalloonBase => self.zoom >= 10.0,
+            AirportType::Closed => self.zoom >= 10.0,
         }
     }
 }
@@ -130,43 +197,19 @@ impl Default for AirportsLoader {
     fn default() -> Self {
         let (main_sender, main_receiver) = channel::<Vec<Airport>>();
 
-        // el proceso de cargador de área
-        let (area_sender, area_receiver) = channel::<PosRect>();
-        let area_handle = spawn(move || {
-            let to_parent = main_sender.clone();
-            let equator_pos = Position::from_lat_lon(0.0, 0.0);
-
-            loop {
-                if let Ok((pos_min, pos_max)) = area_receiver.recv() {
-                    if (pos_min == equator_pos) && (pos_max == equator_pos) {
-                        break;
-                    }
-
-                    if let Err(err) = to_parent.send(Airport::by_area((&pos_min, &pos_max))?) {
-                        println!(
-                            "Error al mandar a hilo principal los aeropuertos:\n\n{}",
-                            err
-                        );
-                    }
-                }
-            }
-
-            Ok(())
-        });
-
         Self::new(
             Vec::new(),
             main_receiver,
             Instant::now(),
-            (Some(area_handle), area_sender.clone()),
+            Self::gen_area_child(main_sender.clone()),
+            0.0, // Esto debería cambiarse lo antes posible
         )
     }
 }
 
 impl Plugin for &mut AirportsLoader {
     fn run(&mut self, response: &Response, painter: Painter, projector: &Projector) {
-        if response.dragged() && self.elapsed_at_least(&Duration::from_secs(AIRPORTS_INTERVAL_SECS))
-        {
+        if self.elapsed_at_least(&Duration::from_secs(AIRPORTS_INTERVAL_SECS)) {
             self.reset_instant();
             // Necesitamos correrlo para arriba a la izquierda porque el proyector calcula
             // cosas desde el centro de la pantalla.
@@ -192,16 +235,20 @@ impl Plugin for &mut AirportsLoader {
             if let Err(err) = area_sender.send(area) {
                 println!("Error al enviar área al cargador:\n\n{}", err);
             }
-
-            // y luego le pedimos si terminó (puede no ser en este frame)
-            if let Ok(new_airports) = self.receiver.try_recv() {
-                if !new_airports.is_empty() {
-                    self.airports = new_airports;
-                }
+        }
+        // y luego le pedimos si terminó (puede no ser en este frame)
+        if let Ok(new_airports) = self.receiver.try_recv() {
+            if !new_airports.is_empty() {
+                self.airports = new_airports;
             }
         }
 
         for airport in &self.airports {
+            if !self.zoom_is_showable(&airport.airport_type) {
+                // Sólo mostrar los aeropuertos con el nivel de zoom correcto
+                continue;
+            }
+
             let (rad, color, stroke) = AirportsLoader::circle_by_airport_type(airport);
             painter.circle(
                 projector.project(airport.position).to_pos2(),

@@ -33,8 +33,9 @@ impl AerolineasApp {
     /// Crea una nueva instancia de la aplicación.
     pub fn new(egui_ctx: Context) -> Self {
         install_image_loaders(&egui_ctx);
+
         let mut mem = MapMemory::default();
-        let _ = mem.set_zoom(7.0); // Queremos un zoom más lejos
+        let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
 
         Self {
             map_memory: mem,
@@ -54,6 +55,7 @@ impl App for AerolineasApp {
                 .unwrap()
                 .as_mut();
 
+            let zoom_lvl = self.map_memory.zoom(); // necesariamente antes de crear el mapa
             let map = Map::new(
                 Some(tiles),
                 &mut self.map_memory,
@@ -61,6 +63,7 @@ impl App for AerolineasApp {
             );
 
             // Añadimos los plugins.
+            self.airports_loader.sync_zoom(zoom_lvl);
             let map = map.with_plugin(&mut self.airports_loader);
 
             ui.add(map);
