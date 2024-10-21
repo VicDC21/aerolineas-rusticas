@@ -1117,6 +1117,62 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_01_basic_truncate_statement() -> Result<(), Error> {
+        let query = "TRUNCATE table_name";
+        let mut tokens = tokenize_query(query);
+
+        let result = truncate_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let truncate = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            truncate.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("table_name".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_truncate_statement_with_table_keyword() -> Result<(), Error> {
+        let query = "TRUNCATE TABLE table_name";
+        let mut tokens = tokenize_query(query);
+
+        let result = truncate_statement(&mut tokens)?;
+        let truncate = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            truncate.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("table_name".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_truncate_statement_with_quoted_table_name() -> Result<(), Error> {
+        let query = "TRUNCATE \"My Table\"";
+        let mut tokens = tokenize_query(query);
+
+        let result = truncate_statement(&mut tokens)?;
+        let truncate = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            truncate.table_name.name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Table".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_invalid_truncate_statement() -> Result<(), Error> {
+        let query = "TRUNCATE";
+        let mut tokens = tokenize_query(query);
+
+        let result = truncate_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
     // EMPTY INPUT TESTS:
     #[test]
     fn test_01_keyspace_empty_input() -> Result<(), Error> {
