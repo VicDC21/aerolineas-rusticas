@@ -1,5 +1,7 @@
 use super::expression::Expression;
 
+use crate::protocol::aliases::results::Result;
+
 /// Representa una cláusula WHERE en una declaración CQL.
 /// La cláusula WHERE se utiliza para filtrar filas de una tabla.
 pub struct Where {
@@ -13,7 +15,15 @@ impl Where {
         Where { expression }
     }
 
-    // pub fn add_condition(&mut self, relation: Relation) {
-    //     self.relations.push(relation);
-    // }
+    /// Evalúa la expresión de la cláusula WHERE.
+    pub fn filters(
+        &self,
+        line_to_review: &[String],
+        general_columns: &[String],
+    ) -> Result<bool> {
+        match &self.expression {
+            Some(value) => value.evaluate(line_to_review, general_columns),
+            None => Ok(true),
+        }
+    }
 }

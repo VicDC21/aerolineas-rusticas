@@ -6,7 +6,9 @@ use std::{
     path::Path,
 };
 
-use crate::parser::statements::dml_statement::main_statements::insert::Insert;
+use crate::parser::statements::dml_statement::main_statements::{
+    delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
+};
 use crate::protocol::{aliases::results::Result, errors::error::Error};
 
 use super::node::NodeId;
@@ -129,5 +131,20 @@ impl DiskHandler {
         }
 
         values_to_insert.join(",") + "\n"
+    }
+
+    /// Actualiza filas en una tabla en el caso que corresponda.
+    pub fn do_update(statement: Update, storage_addr: &str) -> Result<()> {
+        todo!()
+    }
+
+    /// Elimina filas en una tabla en el caso que corresponda.
+    pub fn do_delete(statement: Delete, storage_addr: &str) -> Result<()> {
+        todo!()
+    }
+
+    /// Selecciona filas en una tabla en el caso que corresponda.
+    pub fn do_select(statement: Select, storage_addr: &str) -> Result<()> {
+        todo!()
     }
 }

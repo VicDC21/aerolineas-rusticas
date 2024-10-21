@@ -1,6 +1,5 @@
-use crate::{
-    parser::data_types::identifier::identifier::Identifier, protocol::errors::error::Error,
-};
+use crate::parser::{data_types::identifier::identifier::Identifier, data_types::term::Term};
+use crate::protocol::{aliases::results::Result, errors::error::Error};
 
 use super::{and::And, operator::Operator, relation::Relation};
 
@@ -19,7 +18,7 @@ pub enum Expression {
 
 /// Parsea una expresión recursivamente.
 /// Una expresión puede ser una expresión simple o una expresión compuesta.
-pub fn expression(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
+pub fn expression(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>> {
     match and(lista)? {
         Some(expression) => Ok(Some(expression)),
         None => Ok(None),
@@ -27,7 +26,7 @@ pub fn expression(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Er
 }
 
 /// Parsea una operación lógica AND entre dos expresiones.
-pub fn and(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
+pub fn and(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>> {
     let a_relation = match relation(lista)? {
         Some(relation) => relation,
         None => return Ok(None),
@@ -39,7 +38,7 @@ pub fn and(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
 pub fn and_recursive(
     lista: &mut Vec<String>,
     a_relation: Box<Expression>,
-) -> Result<Option<Box<Expression>>, Error> {
+) -> Result<Option<Box<Expression>>> {
     if !lista.is_empty() {
         let value = lista.remove(0);
         if value == "AND" {
@@ -58,21 +57,37 @@ pub fn and_recursive(
 }
 
 /// Parsea una relación entre dos términos.
-pub fn relation(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>, Error> {
+pub fn relation(lista: &mut Vec<String>) -> Result<Option<Box<Expression>>> {
     if lista.len() >= 3 {
         if let Some(operator) = Operator::is_operator(&lista[1]) {
             lista.remove(1);
             let first = match Identifier::check_identifier(lista)? {
                 Some(value) => value,
-                None => return Err(Error::SyntaxError("Falta un operator".to_string())),
+                None => return Err(Error::SyntaxError("Falta un operator en el where".to_string())),
             };
-            let second = match Identifier::check_identifier(lista)? {
+            let second = match Term::is_term(lista)? {
                 Some(value) => value,
-                None => return Err(Error::SyntaxError("Falta un operator".to_string())),
+                None => return Err(Error::SyntaxError("Falta un operator en el where".to_string())),
             };
             let relation = Relation::new(first, operator, second);
             return Ok(Some(Box::new(Expression::Relation(relation))));
         }
     }
     Ok(None)
+}
+
+impl Expression{
+    /// Evalúa la expresión de la cláusula WHERE.
+    pub fn evaluate(
+        &self,
+        line_to_review: &[String],
+        general_columns: &[String],
+    ) -> Result<bool> {
+        let result = match &self {
+            Expression::Expression(another_expression) => another_expression.evaluate(line_to_review, general_columns)?,
+            Expression::And(and) => and.evaluate(line_to_review, general_columns)?,
+            Expression::Relation(relation) => relation.evaluate(line_to_review, general_columns)?,
+        };
+        Ok(result)
+    }
 }
