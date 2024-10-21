@@ -30,4 +30,17 @@ impl Insert {
             if_not_exists,
         }
     }
+
+    /// Devuelve las columnas a insertar en formato String.
+    pub fn get_columns_names(&self) -> Vec<String> {
+        self.names
+            .iter()
+            .map(|name| name.get_name().to_string())
+            .collect()
+    }
+
+    /// Devuelve los valores a insertar en formato String.
+    pub fn get_values(&self) -> Vec<String> {
+        self.values.get_values_as_string()
+    }
 }

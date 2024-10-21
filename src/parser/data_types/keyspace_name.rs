@@ -40,4 +40,11 @@ impl KeyspaceName {
         };
         Ok(None)
     }
+
+    /// Devuelve el nombre del keyspace como un String.
+    pub fn get_name(&self) -> &str {
+        match self {
+            KeyspaceName::UnquotedName(name) | KeyspaceName::QuotedName(name) => name.get_name(),
+        }
+    }
 }

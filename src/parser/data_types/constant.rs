@@ -162,4 +162,17 @@ impl Constant {
         };
         Int::from_str_radix(&value[2..], (value.len() - 2) as u32).is_ok()
     }
+
+    /// Devuelve el valor de la constante como un String.
+    pub fn get_value_as_string(&self) -> String {
+        match self {
+            Constant::String(value) => value.to_string(),
+            Constant::Integer(value) => value.to_string(),
+            Constant::Float(value) => value.to_string(),
+            Constant::Boolean(value) => value.to_string(),
+            Constant::Uuid(value) => value.to_string(),
+            Constant::Blob(value) => value.to_string(),
+            Constant::NULL => "".to_string(),
+        }
+    }
 }

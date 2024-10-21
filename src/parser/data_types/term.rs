@@ -25,4 +25,11 @@ impl Term {
         }
         Ok(None)
     }
+
+    /// Devuelve el valor del término como un String.
+    pub fn get_value_as_string(&self) -> String {
+        match self {
+            Term::Constant(constant) => constant.get_value_as_string(),
+        }
+    }
 }

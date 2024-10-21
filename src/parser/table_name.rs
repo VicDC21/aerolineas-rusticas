@@ -11,11 +11,11 @@ use super::data_types::keyspace_name::KeyspaceName;
 pub struct TableName {
     /// Un `Option<KeyspaceName>` que representa el keyspace opcional.
     /// keyspace_name::= identifier
-    pub keyspace: Option<KeyspaceName>,
+    keyspace: Option<KeyspaceName>,
 
     /// Un `KeyspaceName` que representa el nombre de la tabla.
     /// name::= identifier
-    pub name: KeyspaceName,
+    name: KeyspaceName,
 }
 
 impl TableName {
@@ -45,5 +45,17 @@ impl TableName {
             }
         };
         Ok(Some(TableName { keyspace, name }))
+    }
+
+    /// Devuelve el keyspace de la tabla como un `Option<String>`.
+    pub fn get_keyspace(&self) -> Option<String> {
+        self.keyspace
+            .as_ref()
+            .map(|keyspace| keyspace.get_name().to_string())
+    }
+
+    /// Devuelve el nombre de la tabla como un `String`.
+    pub fn get_name(&self) -> String {
+        self.name.get_name().to_string()
     }
 }

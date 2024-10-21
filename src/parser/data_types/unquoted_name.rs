@@ -22,4 +22,9 @@ impl UnquotedName {
         }
         word.chars().all(|c| c.is_ascii_alphanumeric())
     }
+
+    /// Devuelve el nombre como un String.
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
 }

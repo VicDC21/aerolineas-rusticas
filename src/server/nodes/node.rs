@@ -3,15 +3,18 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    io::Read,
+    fs::{create_dir, OpenOptions},
+    io::{BufRead, BufReader, Read, Write},
     net::TcpListener,
+    path::Path,
 };
 
 use crate::parser::{
     main_parser::make_parse,
     statements::{
         ddl_statement::ddl_statement_parser::DdlStatement,
-        dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+        dml_statement::{dml_statement_parser::DmlStatement, main_statements::insert::Insert},
+        statement::Statement,
     },
 };
 use crate::protocol::{
@@ -56,18 +59,36 @@ pub struct Node {
     endpoint_state: EndpointState,
 
     /// Dirección de almacenamiento en disco.
-    _storage_addr: String,
+    storage_addr: String,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Self {
+        let storage_addr = Self::new_node_storage(id);
+
         Self {
             id,
             neighbours_states: NodesMap::new(),
             endpoint_state: EndpointState::with_id_and_mode(id, mode),
-            _storage_addr: format!("storage/storage_node_{}.csv", id),
+            storage_addr,
         }
+    }
+
+    /// Crea una carpeta de almacenamiento para el nodo.
+    /// Devuelve la ruta a dicho almacenamiento.
+    fn new_node_storage(id: NodeId) -> String {
+        let path_folder = Path::new("storage");
+        if !path_folder.exists() && !path_folder.is_dir() {
+            create_dir(path_folder).expect("No se pudo crear la carpeta de almacenamiento");
+        }
+        let storage_addr: String = format!("storage/storage_node_{}", id);
+        let path_folder = Path::new(&storage_addr);
+        if !path_folder.exists() && !path_folder.is_dir() {
+            create_dir(path_folder)
+                .expect("No se pudo crear la carpeta de almacenamiento del nodo");
+        }
+        storage_addr
     }
 
     /// Consulta el ID del nodo.
@@ -295,7 +316,14 @@ impl Node {
                                     ConnectionMode::Echo => {
                                         println!("[{} - ECHO] {}", self.id, query)
                                     }
-                                    ConnectionMode::Parsing => self.handle_query(query),
+                                    ConnectionMode::Parsing => {
+                                        if let Err(err) = self.handle_query(query) {
+                                            println!(
+                                                "[{} - PARSING] Error en el query recibido: {}",
+                                                self.id, err
+                                            );
+                                        }
+                                    }
                                 }
                             } else {
                                 println!(
@@ -348,26 +376,27 @@ impl Node {
     }
 
     /// Maneja un query.
-    fn handle_query(&self, query: String) {
+    fn handle_query(&self, query: String) -> Result<()> {
         match make_parse(&mut tokenize_query(&query)) {
             Ok(statement) => match statement {
                 Statement::DdlStatement(ddl_statement) => {
                     self.handle_ddl_statement(ddl_statement);
                 }
                 Statement::DmlStatement(dml_statement) => {
-                    self.handle_dml_statement(dml_statement);
+                    self.handle_dml_statement(dml_statement)?;
                 }
                 Statement::UdtStatement(_udt_statement) => {
                     todo!();
                 }
             },
             Err(err) => {
-                println!(
+                return Err(Error::ServerError(format!(
                     "[{} - PARSING] Error en el query tokenizado: {}",
                     self.id, err
-                );
+                )));
             }
         }
+        Ok(())
     }
 
     /// Maneja una declaración DDL.
@@ -385,14 +414,85 @@ impl Node {
     }
 
     /// Maneja una declaración DML.
-    fn handle_dml_statement(&self, dml_statement: DmlStatement) {
+    fn handle_dml_statement(&self, dml_statement: DmlStatement) -> Result<()> {
         match dml_statement {
             DmlStatement::SelectStatement(_select) => {}
-            DmlStatement::InsertStatement(_insert) => {}
+            DmlStatement::InsertStatement(insert) => {
+                self.do_insert(insert)?;
+            }
             DmlStatement::UpdateStatement(_update) => {}
             DmlStatement::DeleteStatement(_delete) => {}
             DmlStatement::BatchStatement(_batch) => {}
         }
+        Ok(())
+    }
+
+    fn do_insert(&self, statement: Insert) -> Result<()> {
+        let keyspace = statement.table_name.get_keyspace();
+        let name = statement.table_name.get_name();
+        let table_addr = match keyspace {
+            Some(keyspace) => format!("{}/{}/{}.csv", self.storage_addr, keyspace, name),
+            None => format!("{}/{}.csv", self.storage_addr, name),
+        };
+
+        let mut file = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(&table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let mut reader = BufReader::new(&file);
+
+        let mut line = String::new();
+        let read_bytes = reader
+            .read_line(&mut line)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        if read_bytes == 0 {
+            return Err(Error::ServerError(format!(
+                "No se pudo leer la tabla con ruta {}",
+                &table_addr
+            )));
+        }
+        line = line.trim().to_string();
+
+        let table_cols: Vec<&str> = line.split(",").collect();
+        for col in &table_cols {
+            if !table_cols.contains(col) {
+                return Err(Error::ServerError(format!(
+                    "La tabla con ruta {} no contiene la columna {}",
+                    &table_addr, col
+                )));
+            }
+        }
+
+        let new_row = Self::generate_row_to_insert(
+            &statement.get_values(),
+            &statement.get_columns_names(),
+            &table_cols,
+        );
+        if file.write_all(new_row.as_bytes()).is_err() {
+            Err(Error::ServerError(format!(
+                "No se pudo escribir la tabla con ruta {}",
+                &table_addr
+            )))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn generate_row_to_insert(
+        values: &[String],
+        columns: &[String],
+        table_cols: &[&str],
+    ) -> String {
+        let mut values_to_insert: Vec<&str> = vec![""; table_cols.len()];
+
+        for i in 0..columns.len() {
+            if let Some(j) = table_cols.iter().position(|c| *c == columns[i]) {
+                values_to_insert[j] = values[i].as_str();
+            }
+        }
+
+        values_to_insert.join(",") + "\n"
     }
 }
 
