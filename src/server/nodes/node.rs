@@ -7,13 +7,6 @@ use std::{
     net::TcpListener,
 };
 
-use crate::parser::{
-    main_parser::make_parse,
-    statements::{
-        ddl_statement::ddl_statement_parser::DdlStatement,
-        dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
-    },
-};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -34,6 +27,18 @@ use crate::server::{
     },
 };
 use crate::tokenizer::tokenizer::tokenize_query;
+use crate::{
+    parser::{
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::ddl_statement_parser::DdlStatement,
+            dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+        },
+    },
+    protocol::headers::{
+        flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+    },
+};
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -270,7 +275,7 @@ impl Node {
                     )))
                 }
                 Ok(tcp_stream) => {
-                    let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
+                    let mut bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
                     match SvAction::get_action(&bytes[..]) {
                         Some(action) => match self.handle_sv_action(action) {
                             Ok(continue_loop) => {
@@ -286,19 +291,32 @@ impl Node {
                             }
                         },
                         None => {
-                            if let Ok(query) = String::from_utf8(bytes) {
-                                match self.mode() {
-                                    ConnectionMode::Echo => {
+                            match self.mode() {
+                                ConnectionMode::Echo => {
+                                    if let Ok(query) = String::from_utf8(bytes) {
                                         println!("[{} - ECHO] {}", self.id, query)
+                                    } else {
+                                        println!(
+                                            "[{} - PARSING] Error en el query recibido: no es UTF-8",
+                                            self.id
+                                        );
                                     }
-                                    ConnectionMode::Parsing => self.handle_query(query),
                                 }
-                            } else {
-                                println!(
-                                    "[{} - PARSING] Error en el query recibido: no es UTF-8",
-                                    self.id
-                                );
+                                ConnectionMode::Parsing => self.handle_request(&mut bytes)?,
                             }
+                            // if let Ok(query) = String::from_utf8(bytes) {
+                            //     match self.mode() {
+                            //         ConnectionMode::Echo => {
+                            //             println!("[{} - ECHO] {}", self.id, query)
+                            //         }
+                            //         ConnectionMode::Parsing => self.handle_query(query),
+                            //     }
+                            // } else {
+                            //     println!(
+                            //         "[{} - PARSING] Error en el query recibido: no es UTF-8",
+                            //         self.id
+                            //     );
+                            // }
                         }
                     }
                 }
@@ -343,27 +361,103 @@ impl Node {
         }
     }
 
-    /// Maneja un query.
-    fn handle_query(&self, query: String) {
-        match make_parse(&mut tokenize_query(&query)) {
-            Ok(statement) => match statement {
-                Statement::DdlStatement(ddl_statement) => {
-                    self.handle_ddl_statement(ddl_statement);
-                }
-                Statement::DmlStatement(dml_statement) => {
-                    self.handle_dml_statement(dml_statement);
-                }
-                Statement::UdtStatement(_udt_statement) => {
-                    todo!();
-                }
-            },
-            Err(err) => {
-                println!(
-                    "[{} - PARSING] Error en el query tokenizado: {}",
-                    self.id, err
-                );
-            }
+    /// Maneja una request.
+    fn handle_request(&self, request: &mut [Byte]) -> Result<()> {
+        if request.len() < 9 {
+            return Err(Error::ProtocolError(
+                "No se cumple el protocolo del header".to_string(),
+            ));
         }
+        let _version = Version::try_from(request[0])?;
+        let _flags = Flag::try_from(request[1])?;
+        let _stream = Stream::try_from(request[2..4].to_vec())?;
+        let opcode = Opcode::try_from(request[4])?;
+        let lenght = Length::try_from(request[5..9].to_vec())?;
+        let mut response: Vec<Byte> = Vec::new();
+        response.append(&mut request[..4].to_vec());
+        // VER QUE HACER CON LAS FLAGS
+
+        // Cada handler deberia devolver un Vec<Byte> que contenga: que opcode de respuesta mandar,
+        // con que lenght y el body si es que tiene
+        let mut _left_response = match opcode {
+            Opcode::Startup => self.handle_startup(request, lenght),
+            Opcode::Options => self.handle_options(),
+            Opcode::Query => self.handle_query(request, lenght),
+            Opcode::Prepare => self.handle_prepare(),
+            Opcode::Execute => self.handle_execute(),
+            Opcode::Register => self.handle_register(),
+            Opcode::Batch => self.handle_batch(),
+            Opcode::AuthResponse => self.handle_auth_response(),
+            _ => {
+                return Err(Error::ProtocolError(
+                    "El opcode recibido no es una request".to_string(),
+                ))
+            }
+        };
+
+        // response.append(&mut _left_response);
+        // aca deberiamos mandar la response de alguna manera
+        Ok(())
+    }
+
+    fn handle_startup(&self, _request: &mut [Byte], _lenght: Length) -> Vec<Byte> {
+        // El body es un [string map] con posibles opciones
+        vec![0]
+    }
+
+    fn handle_options(&self) -> Vec<Byte> {
+        // No tiene body
+        // Responder con supported
+        Opcode::Supported.as_bytes();
+        vec![0]
+    }
+
+    fn handle_query(&self, request: &mut [Byte], lenght: Length) -> Vec<Byte> {
+        if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
+            match make_parse(&mut tokenize_query(&query)) {
+                Ok(statement) => match statement {
+                    Statement::DdlStatement(ddl_statement) => {
+                        self.handle_ddl_statement(ddl_statement);
+                    }
+                    Statement::DmlStatement(dml_statement) => {
+                        self.handle_dml_statement(dml_statement);
+                    }
+                    Statement::UdtStatement(_udt_statement) => {
+                        todo!();
+                    }
+                },
+                Err(err) => {
+                    println!(
+                        "[{} - PARSING] Error en el query tokenizado: {}",
+                        self.id, err
+                    );
+                }
+            }
+            // aca usariamos la query como corresponda
+        }
+        vec![0]
+    }
+
+    fn handle_prepare(&self) -> Vec<Byte> {
+        // El body es <query><flags>[<keyspace>]
+        vec![0]
+    }
+
+    fn handle_execute(&self) -> Vec<Byte> {
+        // El body es <id><result_metadata_id><query_parameters>
+        vec![0]
+    }
+
+    fn handle_register(&self) -> Vec<Byte> {
+        vec![0]
+    }
+
+    fn handle_batch(&self) -> Vec<Byte> {
+        vec![0]
+    }
+
+    fn handle_auth_response(&self) -> Vec<Byte> {
+        vec![0]
     }
 
     /// Maneja una declaración DDL.

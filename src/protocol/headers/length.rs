@@ -8,7 +8,8 @@ use crate::protocol::traits::Byteable;
 ///
 /// _(Actualmente está limitado a 256 MB)_
 pub struct Length {
-    len: u32,
+    /// Largo de un cuerpo del frame
+    pub len: u32,
 }
 
 impl Length {
