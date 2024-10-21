@@ -80,6 +80,19 @@ impl AirportsDrawer {
         }
     }
 
+    // /// Devuelve la imagen a renderizar según el tipo de aeropuerto.
+    // pub fn img_by_airport_type(airport_type: &AirportType) {
+    //     match airport_type {
+    //         AirportType::LargeAirport => ,
+    //         AirportType::MediumAirport => ,
+    //         AirportType::SmallAirport => ,
+    //         AirportType::Heliport => ,
+    //         AirportType::SeaplaneBase => ,
+    //         AirportType::BalloonBase => ,
+    //         AirportType::Closed => ,
+    //     }
+    // }
+
     /// Devuelve el nivel de zoom aceptable para mostrar el aeropuerto según el tipo.
     fn zoom_is_showable(&self, airport_type: &AirportType) -> bool {
         match airport_type {
