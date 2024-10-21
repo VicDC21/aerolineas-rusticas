@@ -632,4 +632,177 @@ mod tests {
         assert!(result.is_err());
         Ok(())
     }
+
+    // ALTER KEYSPACE TESTS:
+    #[test]
+    fn test_01_basic_alter_keyspace_statement() -> Result<(), Error> {
+        let query = "ALTER KEYSPACE my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_keyspace_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            keyspace.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        assert!(!keyspace.if_exists);
+        assert!(!keyspace.options.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_alter_keyspace_with_if_exists() -> Result<(), Error> {
+        let query = "ALTER KEYSPACE IF EXISTS my_keyspace WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 3, 'dc2': 2}";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_keyspace_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            keyspace.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        assert!(keyspace.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_alter_keyspace_with_multiple_options() -> Result<(), Error> {
+        let query = "ALTER KEYSPACE my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1} AND durable_writes = false";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_keyspace_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            keyspace.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        assert!(!keyspace.if_exists);
+        assert_eq!(keyspace.options.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_alter_keyspace_with_quoted_name() -> Result<(), Error> {
+        let query = "ALTER KEYSPACE \"My Keyspace\" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_keyspace_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            keyspace.name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Keyspace".to_string())?)
+        );
+        assert!(!keyspace.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_invalid_alter_keyspace_statement() -> Result<(), Error> {
+        let query = "ALTER KEYSPACE";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_keyspace_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_alter_keyspace_missing_with_clause() -> Result<(), Error> {
+        let query = "ALTER KEYSPACE my_keyspace";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_keyspace_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_07_alter_keyspace_with_empty_input() -> Result<(), Error> {
+        let mut tokens = vec![];
+        let result = alter_keyspace_statement(&mut tokens)?;
+        assert!(result.is_none());
+        Ok(())
+    }
+
+    // DROP KEYSPACE TESTS:
+    #[test]
+    fn test_01_basic_drop_keyspace_statement() -> Result<(), Error> {
+        let query = "DROP KEYSPACE my_keyspace";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_keyspace_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            keyspace.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        assert!(!keyspace.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_drop_keyspace_with_if_exists() -> Result<(), Error> {
+        let query = "DROP KEYSPACE IF EXISTS my_keyspace";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_keyspace_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            keyspace.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_keyspace".to_string())?)
+        );
+        assert!(keyspace.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_drop_keyspace_with_quoted_name() -> Result<(), Error> {
+        let query = "DROP KEYSPACE \"My Keyspace\"";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_keyspace_statement(&mut tokens)?;
+        let keyspace = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            keyspace.name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Keyspace".to_string())?)
+        );
+        assert!(!keyspace.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_invalid_drop_keyspace_statement() -> Result<(), Error> {
+        let query = "DROP KEYSPACE";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_keyspace_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    // EMPTY INPUT TESTS:
+    #[test]
+    fn test_01_empty_input() -> Result<(), Error> {
+        let mut tokens = vec![];
+        let use_statement = use_statement(&mut tokens)?;
+        let create_keyspace = create_keyspace_statement(&mut tokens)?;
+        let alter_keyspace = alter_keyspace_statement(&mut tokens)?;
+        let drop_keyspace = drop_keyspace_statement(&mut tokens)?;
+        assert!(
+            use_statement.is_none()
+                && create_keyspace.is_none()
+                && alter_keyspace.is_none()
+                && drop_keyspace.is_none()
+        );
+        Ok(())
+    }
 }
