@@ -3,12 +3,13 @@ use super::expression::Expression;
 use crate::protocol::aliases::results::Result;
 
 /// Representa una operación lógica AND entre dos expresiones.
+#[derive(Debug)]
 pub struct And {
     /// Primera expresión.
     /// Puede ser una expresión simple o una expresión compuesta.
-    first_relation: Box<Expression>,
+    pub first_relation: Box<Expression>,
     /// Segunda expresión.
-    second_relation: Box<Expression>,
+    pub second_relation: Box<Expression>,
 }
 
 impl And {

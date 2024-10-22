@@ -5,6 +5,7 @@ use crate::{
 };
 
 /// column_definition::= column_name cql_type [ STATIC ] [ PRIMARY KEY]
+#[derive(Debug)]
 pub struct ColumnDefinition {
     /// column_name::= identifier  
     pub column_name: Identifier,

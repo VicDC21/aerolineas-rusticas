@@ -3,6 +3,7 @@ use crate::protocol::errors::error::Error;
 use super::cql_type::CQLType;
 
 /// TODO: Desc básica
+#[derive(Debug)]
 pub enum CollectionType {
     /// MAP '<' cql_type',' cql_type'>'
     Map(Box<CQLType>, Box<CQLType>),

@@ -7,6 +7,7 @@ use crate::protocol::traits::Byteable;
 /// Nivela los modos de consistencia para los _read request_.
 ///
 /// TODO: dejar mejores descripciones.
+#[derive(Debug)]
 pub enum Consistency {
     /// Buscar cualquier nodo
     Any,

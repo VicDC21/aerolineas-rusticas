@@ -3,6 +3,7 @@ use crate::parser::{primary_key::PrimaryKey, table_name::TableName};
 use super::column_definition::ColumnDefinition;
 
 /// Representa una declaración CREATE TABLE en CQL.
+#[derive(Debug)]
 pub struct CreateTable {
     /// Indica si se debe verificar la existencia de la tabla.
     pub if_not_exists: bool,

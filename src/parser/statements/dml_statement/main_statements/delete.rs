@@ -4,6 +4,7 @@ use crate::parser::{
 };
 
 /// Representa una declaración DELETE en el analizador.
+#[derive(Debug)]
 pub struct Delete {
     /// Columnas a eliminar.
     pub cols: Vec<String>,

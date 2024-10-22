@@ -6,15 +6,16 @@ use crate::protocol::{aliases::results::Result, errors::error::Error};
 use crate::tokenizer::tokenizer::tokenize_query;
 
 /// Representa una relación en una cláusula WHERE con dos columnas y un operador.
+#[derive(Debug)]
 pub struct Relation {
     /// Identificador de la primera columna.
     /// La primera columna es la columna de la izquierda en la relación.
-    column: Identifier,
+    pub column: Identifier,
     /// Operador de la relación.
     /// El operador se utiliza para comparar las dos columnas.
-    operator: Operator,
+    pub operator: Operator,
     /// Término con el que se comparará la primera columna.
-    term_to_compare: Term,
+    pub term_to_compare: Term,
 }
 
 impl Relation {

@@ -4,6 +4,7 @@ use crate::parser::data_types::cql_type::collection_type::expect_token;
 use crate::protocol::errors::error::Error;
 
 /// TODO: Desc básica
+#[derive(Debug)]
 pub enum TupleType {
     /// TODO: Desc básica
     Tuple(Box<Vec<CQLType>>),

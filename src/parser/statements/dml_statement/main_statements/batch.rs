@@ -1,7 +1,7 @@
 use crate::parser::statements::dml_statement::dml_statement_parser::DmlStatement;
 
 /// [ UNLOGGED | COUNTER ] el tipo de BATCH por defecto es LOGGED
-#[derive(Default)]
+#[derive(Default, Debug, PartialEq)]
 pub enum BatchType {
     #[default]
     /// Batch en estado default, asegura que eventualmente se completen todas las operaciones (o ninguna lo hara).
@@ -15,6 +15,7 @@ pub enum BatchType {
 /// batch_statement ::=  BEGIN [ UNLOGGED | COUNTER ] BATCH
 ///                      modification_statement ( ';' modification_statement )*
 ///                      APPLY BATCH
+#[derive(Debug)]
 pub struct Batch {
     /// Tipo de batch indicado mas especificamente en el tipo de dato correspondiente [BatchType].
     pub batch_type: BatchType,

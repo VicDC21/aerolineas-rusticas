@@ -3,6 +3,7 @@ use crate::parser::data_types::{identifier::identifier::Identifier, term::Term};
 use super::r#where::operator::Operator;
 
 /// Representa una condición IF en una declaración DML.
+#[derive(Debug, PartialEq)]
 pub enum IfCondition {
     /// Representa una condición IF EXISTS.    
     Exists,
@@ -13,16 +14,17 @@ pub enum IfCondition {
 }
 
 /// Representa una condición en una declaración DML.
+#[derive(Debug, PartialEq)]
 pub struct Condition {
     /// Identificador de la primera columna.
     /// La primera columna es la columna de la izquierda en la condicion.
-    _first_column: Identifier,
+    pub first_column: Identifier,
     /// Operador de la condicion.
     /// El operador se utiliza para comparar las dos columnas.
-    _operator: Operator,
+    pub operator: Operator,
     /// Termino de la segunda columna.
     /// La segunda columna es la columna de la derecha en la condicion.
-    _second_column: Term,
+    pub second_column: Term,
 }
 
 impl IfCondition {
@@ -44,11 +46,11 @@ impl IfCondition {
 
 impl Condition {
     /// Crea un nuevo Condition
-    pub fn new(_first_column: Identifier, _operator: Operator, _second_column: Term) -> Condition {
+    pub fn new(first_column: Identifier, operator: Operator, second_column: Term) -> Condition {
         Condition {
-            _first_column,
-            _operator,
-            _second_column,
+            first_column,
+            operator,
+            second_column,
         }
     }
 }

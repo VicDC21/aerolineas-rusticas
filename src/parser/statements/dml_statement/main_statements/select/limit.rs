@@ -1,4 +1,5 @@
 /// Una estructura que representa un límite en una consulta SQL.
+#[derive(Debug)]
 pub struct Limit {
     /// Límite de datos.
     pub limit: i32, // bind _marker

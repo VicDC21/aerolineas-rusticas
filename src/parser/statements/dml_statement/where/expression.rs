@@ -4,6 +4,7 @@ use crate::protocol::{aliases::results::Result, errors::error::Error};
 use super::{and::And, operator::Operator, relation::Relation};
 
 /// Representa diferentes tipos de expresiones en el analizador sintáctico.
+#[derive(Debug)]
 pub enum Expression {
     /// Representa una expresión simple.
     /// Una expresión simple consta de un solo término.
@@ -40,6 +41,10 @@ pub fn and_recursive(
     a_relation: Box<Expression>,
 ) -> Result<Option<Box<Expression>>> {
     if !lista.is_empty() {
+        if lista[0] == "IF" || lista[0] == ";" {
+            return Ok(Some(a_relation));
+        }
+
         let value = lista.remove(0);
         if value == "AND" {
             let second_parameter = match relation(lista)? {

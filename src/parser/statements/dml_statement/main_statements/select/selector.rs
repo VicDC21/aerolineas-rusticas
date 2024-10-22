@@ -1,6 +1,7 @@
 use crate::parser::data_types::{identifier::identifier::Identifier, term::Term};
 
 /// Representa un selector en una declaración SQL.
+#[derive(Debug, PartialEq)]
 pub enum Selector {
     /// Nombre de una columna.
     ColumnName(Identifier),

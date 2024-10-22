@@ -35,6 +35,7 @@ use super::r#where::operator::Operator;
 /// | update_statement
 /// | delete_statement
 /// | batch_statement
+#[derive(Debug)]
 pub enum DmlStatement {
     /// select_statement::= SELECT [ JSON | DISTINCT ] ( select_clause | '*' )
     /// FROM `table_name`
@@ -45,7 +46,7 @@ pub enum DmlStatement {
     /// [ LIMIT (`integer` | `bind_marker`) ]
     /// [ ALLOW FILTERING ]
     SelectStatement(Select), // EL bind_marker AUN NO ESTA IMPLEMENTADO, NO SABIA MUY BIEN PARA QUE SERVIA
-
+    // Tampoco eñ JSON / DISTINCT
     /// insert_statement::= INSERT INTO table_name names_values
     /// [ IF NOT EXISTS ]
     InsertStatement(Insert),
@@ -91,14 +92,22 @@ fn select_statement(list: &mut Vec<String>) -> Result<Option<Select>, Error> {
     if check_words(list, "SELECT") {
         let select_columns = kind_of_columns(list)?;
         let from = from_clause(list)?;
+        let the_where = where_clause(list)?;
+        let group_by = group_by_clause(list)?;
+        let order_by = ordering_clause(list)?;
+        let per_partition_limit = per_partition_limit_clause(list)?;
+        let limit = limit_clause(list)?;
+        let allow_filtering = allow_filtering_clause(list);
+
         let options = SelectOptions {
-            the_where: where_clause(list)?,
-            group_by: group_by_clause(list)?,
-            order_by: ordering_clause(list)?,
-            per_partition_limit: per_partition_limit_clause(list)?,
-            limit: limit_clause(list)?,
-            allow_filtering: allow_filtering_clause(list),
+            the_where,
+            group_by,
+            order_by,
+            per_partition_limit,
+            limit,
+            allow_filtering,
         };
+
         return Ok(Some(Select::new(select_columns, from, options)));
     }
     Ok(None)
@@ -115,7 +124,6 @@ fn insert_statement(list: &mut Vec<String>) -> Result<Option<Insert>, Error> {
             }
         };
         let names = check_insert_names(list)?;
-
         if !check_words(list, "VALUES") {
             return Err(Error::SyntaxError("Falto VALUES".to_string()));
         }
@@ -127,6 +135,13 @@ fn insert_statement(list: &mut Vec<String>) -> Result<Option<Insert>, Error> {
                 ))
             }
         };
+
+        if values.size() != names.len() {
+            return Err(Error::SyntaxError(
+                "El numero de columnas y valores no coincide".to_string(),
+            ));
+        }
+
         let if_not_exists = check_words(list, "IF NOT EXISTS");
         return Ok(Some(Insert::new(table_name, names, values, if_not_exists)));
     }
@@ -144,9 +159,12 @@ fn update_statement(list: &mut Vec<String>) -> Result<Option<Update>, Error> {
             }
         };
         let set = set_clause(list)?;
+        if list.first() != Some(&"WHERE".to_string()) {
+            return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
+        }
         let r#where = where_clause(list)?;
-        let if_exists = check_if_condition(list)?;
-        return Ok(Some(Update::new(table_name, set, r#where, if_exists)));
+        let if_condition = check_if_condition(list)?;
+        return Ok(Some(Update::new(table_name, set, r#where, if_condition)));
     }
 
     Ok(None)
@@ -158,23 +176,24 @@ fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
     }
 
     let mut cols = Vec::new();
-    while !check_words(list, "FROM") {
+    while list.first() != Some(&"FROM".to_string()) {
         if list.is_empty() {
             return Err(Error::SyntaxError(
                 "Se esperaba FROM después de las columnas".to_string(),
             ));
         }
         cols.push(list.remove(0));
+        check_words(list, ",");
     }
 
     let from = from_clause(list)?;
 
-    if !check_words(list, "WHERE") {
+    if list.first() != Some(&"WHERE".to_string()) {
         return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
     }
     let r#where = where_clause(list)?;
-    let if_exists = check_if_condition(list)?;
-    Ok(Some(Delete::new(cols, from, r#where, if_exists)))
+    let if_condition = check_if_condition(list)?;
+    Ok(Some(Delete::new(cols, from, r#where, if_condition)))
 }
 
 fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
@@ -196,18 +215,22 @@ fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
         if list.is_empty() {
             break;
         }
-        if check_words(list, "INSERT") {
+        if list[0] == "INSERT" {
             if let Some(insert_stmt) = insert_statement(list)? {
                 queries.push(DmlStatement::InsertStatement(insert_stmt));
             }
-        } else if check_words(list, "UPDATE") {
+        } else if list[0] == "UPDATE" {
             if let Some(update_stmt) = update_statement(list)? {
                 queries.push(DmlStatement::UpdateStatement(update_stmt));
             }
-        } else if check_words(list, "DELETE") {
+        } else if list[0] == "DELETE" {
             if let Some(delete_stmt) = delete_statement(list)? {
                 queries.push(DmlStatement::DeleteStatement(delete_stmt));
             }
+        } else if list[0] == "SELECT" {
+            return Err(Error::SyntaxError(
+                "No se puede hacer una consulta SELECT usando BATCH".to_string(),
+            ));
         }
         list.remove(0);
     }
@@ -273,10 +296,9 @@ fn from_clause(list: &mut Vec<String>) -> Result<TableName, Error> {
 
 fn where_clause(list: &mut Vec<String>) -> Result<Option<Where>, Error> {
     if check_words(list, "WHERE") {
-        Ok(Some(Where::new(expression(list)?)))
-    } else {
-        Ok(Some(Where::new(None)))
+        return Ok(Some(r#Where::new(expression(list)?)));
     }
+    Ok(None)
 }
 
 fn group_by_clause(list: &mut Vec<String>) -> Result<Option<GroupBy>, Error> {
@@ -485,4 +507,766 @@ fn check_if_condition(list: &mut Vec<String>) -> Result<IfCondition, Error> {
         }
     }
     Ok(IfCondition::None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        parser::{
+            data_types::{
+                identifier::{
+                    quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
+                },
+                unquoted_name::UnquotedName,
+            },
+            statements::dml_statement::r#where::expression::Expression,
+        },
+        tokenizer::tokenizer::tokenize_query,
+    };
+
+    // SELECT TESTS:
+    #[test]
+    fn test_01_basic_select_all() -> Result<(), Error> {
+        let query = "SELECT * FROM users";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(select.columns, KindOfColumns::All);
+        assert_eq!(
+            select.from,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(select.options.the_where.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_select_specific_columns() -> Result<(), Error> {
+        let query = "SELECT id, name FROM users";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        if let KindOfColumns::SelectClause(columns) = select.columns {
+            assert_eq!(columns.len(), 2);
+            assert!(matches!(columns[0], Selector::ColumnName(_)));
+            assert!(matches!(columns[1], Selector::ColumnName(_)));
+        } else {
+            return Err(Error::SyntaxError("Expected SelectClause".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_simple_where_clause() -> Result<(), Error> {
+        let query = "SELECT * FROM users WHERE id = 5";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(select.options.the_where.is_some());
+        if let Some(where_clause) = select.options.the_where {
+            if let Some(expr) = where_clause.expression {
+                if let Expression::Relation(relation) = *expr {
+                    assert_eq!(
+                        relation.first_column,
+                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new("id".to_string()))
+                    );
+                    assert_eq!(relation.operator, Operator::Equal);
+                    assert_eq!(
+                        relation.second_column,
+                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new("5".to_string()))
+                    );
+                } else {
+                    return Err(Error::SyntaxError("Expected Relation expression".into()));
+                }
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_select_with_group_by() -> Result<(), Error> {
+        let query = "SELECT country FROM users GROUP BY country";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert!(select.options.group_by.is_some());
+        if let Some(group_by) = select.options.group_by {
+            assert_eq!(group_by.columns.len(), 1);
+            assert!(matches!(
+                group_by.columns[0],
+                Identifier::UnquotedIdentifier(_) | Identifier::QuotedIdentifier(_)
+            ));
+        } else {
+            return Err(Error::SyntaxError("Expected Some GroupBy".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_select_with_order_by() -> Result<(), Error> {
+        let query = "SELECT * FROM users ORDER BY age DESC";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert!(select.options.order_by.is_some());
+        if let Some(order_by) = select.options.order_by {
+            assert_eq!(order_by.columns.len(), 1);
+            assert!(matches!(
+                order_by.columns[0].0,
+                Identifier::UnquotedIdentifier(_) | Identifier::QuotedIdentifier(_)
+            ));
+            assert_eq!(order_by.columns[0].1, Some(Ordering::Desc));
+        } else {
+            return Err(Error::SyntaxError("Expected Some OrderBy".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_select_with_limit() -> Result<(), Error> {
+        let query = "SELECT * FROM users LIMIT 10";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert!(select.options.limit.is_some());
+        if let Some(limit) = select.options.limit {
+            assert_eq!(limit.limit, 10);
+        } else {
+            return Err(Error::SyntaxError("Expected Some Limit".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_07_select_with_allow_filtering() -> Result<(), Error> {
+        let query = "SELECT * FROM users ALLOW FILTERING";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(select.options.allow_filtering, Some(true));
+        Ok(())
+    }
+
+    #[test]
+    fn test_08_invalid_select() -> Result<(), Error> {
+        let query = "SELECT FROM users";
+        let mut tokens = tokenize_query(query);
+
+        assert!(select_statement(&mut tokens).is_err());
+        Ok(())
+    }
+
+    /// WHERE TESTS:
+    #[test]
+    fn test_01_where_clause_with_and() -> Result<(), Error> {
+        let query = "SELECT * FROM users WHERE age > 18 AND country = 'USA'";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(select.options.the_where.is_some());
+        if let Some(where_clause) = select.options.the_where {
+            if let Some(expr) = where_clause.expression {
+                if let Expression::And(and_expr) = *expr {
+                    if let Expression::Relation(relation1) = *and_expr.first_relation {
+                        assert_eq!(
+                            relation1.first_column,
+                            Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                                "age".to_string()
+                            ))
+                        );
+                        assert_eq!(relation1.operator, Operator::Mayor);
+                        assert_eq!(
+                            relation1.second_column,
+                            Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                                "18".to_string()
+                            ))
+                        );
+                    } else {
+                        return Err(Error::SyntaxError(
+                            "Expected Relation expression for first part of AND".into(),
+                        ));
+                    }
+
+                    if let Expression::Relation(relation2) = *and_expr.second_relation {
+                        assert_eq!(
+                            relation2.first_column,
+                            Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                                "country".to_string()
+                            ))
+                        );
+                        assert_eq!(relation2.operator, Operator::Equal);
+                        assert_eq!(
+                            relation2.second_column,
+                            Identifier::QuotedIdentifier(QuotedIdentifier::new("USA".to_string()))
+                        );
+                    } else {
+                        return Err(Error::SyntaxError(
+                            "Expected Relation expression for second part of AND".into(),
+                        ));
+                    }
+                } else {
+                    return Err(Error::SyntaxError("Expected AND expression".into()));
+                }
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_where_clause_with_multiple_and() -> Result<(), Error> {
+        let query =
+            "SELECT * FROM products WHERE category = 'electronics' AND price < 1000 AND stock > 0";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(select.options.the_where.is_some());
+        if let Some(where_clause) = select.options.the_where {
+            if let Some(expr) = where_clause.expression {
+                if let Expression::And(and_expr1) = *expr {
+                    if let Expression::And(and_expr2) = *and_expr1.first_relation {
+                        if let Expression::Relation(relation1) = *and_expr2.first_relation {
+                            assert_eq!(
+                                relation1.first_column,
+                                Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                                    "category".to_string()
+                                ))
+                            );
+                            assert_eq!(relation1.operator, Operator::Equal);
+                            assert_eq!(
+                                relation1.second_column,
+                                Identifier::QuotedIdentifier(QuotedIdentifier::new(
+                                    "electronics".to_string()
+                                ))
+                            );
+                        } else {
+                            return Err(Error::SyntaxError(
+                                "Expected Relation expression for first part".into(),
+                            ));
+                        }
+                        if let Expression::Relation(relation2) = *and_expr2.second_relation {
+                            assert_eq!(
+                                relation2.first_column,
+                                Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                                    "price".to_string()
+                                ))
+                            );
+                            assert_eq!(relation2.operator, Operator::Minor);
+                            assert_eq!(
+                                relation2.second_column,
+                                Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                                    "1000".to_string()
+                                ))
+                            );
+                        } else {
+                            return Err(Error::SyntaxError(
+                                "Expected Relation expression for second part".into(),
+                            ));
+                        }
+                    } else {
+                        return Err(Error::SyntaxError("Expected nested AND expression".into()));
+                    }
+                    if let Expression::Relation(relation3) = *and_expr1.second_relation {
+                        assert_eq!(
+                            relation3.first_column,
+                            Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                                "stock".to_string()
+                            ))
+                        );
+                        assert_eq!(relation3.operator, Operator::Mayor);
+                        assert_eq!(
+                            relation3.second_column,
+                            Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                                "0".to_string()
+                            ))
+                        );
+                    } else {
+                        return Err(Error::SyntaxError(
+                            "Expected Relation expression for third part".into(),
+                        ));
+                    }
+                } else {
+                    return Err(Error::SyntaxError(
+                        "Expected top-level AND expression".into(),
+                    ));
+                }
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_where_clause_with_contains() -> Result<(), Error> {
+        let query = "SELECT * FROM users WHERE hobbies CONTAINS reading";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(select.options.the_where.is_some());
+        if let Some(where_clause) = select.options.the_where {
+            if let Some(expr) = where_clause.expression {
+                if let Expression::Relation(relation) = *expr {
+                    assert_eq!(
+                        relation.first_column,
+                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                            "hobbies".to_string()
+                        ))
+                    );
+                    assert_eq!(relation.operator, Operator::Contains);
+                    assert_eq!(
+                        relation.second_column,
+                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                            "reading".to_string()
+                        ))
+                    );
+                } else {
+                    return Err(Error::SyntaxError("Expected Relation expression".into()));
+                }
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_invalid_where_clause() -> Result<(), Error> {
+        let query = "SELECT * FROM users WHERE age >";
+        let mut tokens = tokenize_query(query);
+
+        let result = select_statement(&mut tokens)?;
+        let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert!(select.options.the_where.unwrap().expression.is_none());
+        Ok(())
+    }
+
+    // INSERT TESTS:
+    #[test]
+    fn test_01_basic_insert() -> Result<(), Error> {
+        let query =
+            "INSERT INTO users (id, name, email) VALUES (1, 'John Doe', 'john@example.com')";
+        let mut tokens = tokenize_query(query);
+
+        let result = insert_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let insert = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            insert.table.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(insert.names.len(), 3);
+        assert_eq!(insert.values.items.len(), 3);
+        assert!(!insert.if_not_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_insert_with_if_not_exists() -> Result<(), Error> {
+        let query = "INSERT INTO users (id, name) VALUES (2, 'Jane Doe') IF NOT EXISTS";
+        let mut tokens = tokenize_query(query);
+
+        let result = insert_statement(&mut tokens)?;
+        let insert = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(insert.if_not_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_insert_with_quoted_identifiers() -> Result<(), Error> {
+        let query = "INSERT INTO \'users\' (\'ID\', \'Name\') VALUES (3, 'Bob Smith')";
+        let mut tokens = tokenize_query(query);
+
+        let result = insert_statement(&mut tokens)?;
+        let insert = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            insert.table.name,
+            KeyspaceName::QuotedName(UnquotedName::new("users".to_string())?)
+        );
+
+        assert_eq!(insert.names.len(), 2);
+        assert_eq!(
+            insert.names[0],
+            Identifier::QuotedIdentifier(QuotedIdentifier::new("ID".to_string()))
+        );
+        assert_eq!(
+            insert.names[1],
+            Identifier::QuotedIdentifier(QuotedIdentifier::new("Name".to_string()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_insert_without_column_names() -> Result<(), Error> {
+        let query = "INSERT INTO logs VALUES (1001, 'Error', '2023-05-01 10:30:00')";
+        let mut tokens = tokenize_query(query);
+        assert!(insert_statement(&mut tokens).is_err());
+        Ok(())
+    }
+
+    // UPDATE TESTS:
+    #[test]
+    fn test_01_basic_update() -> Result<(), Error> {
+        let query = "UPDATE users SET name = 'John' WHERE id = 1";
+        let mut tokens = tokenize_query(query);
+
+        let result = update_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let update = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            update.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(update.set_parameter.len(), 1);
+        assert!(update.the_where.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_update_multiple_columns() -> Result<(), Error> {
+        let query = "UPDATE users SET name = 'John', age = 30 WHERE id = 1";
+        let mut tokens = tokenize_query(query);
+
+        let result = update_statement(&mut tokens)?;
+        let update = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(update.set_parameter.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_update_with_complex_where() -> Result<(), Error> {
+        let query = "UPDATE users SET status = 'active' WHERE age > 18 AND country = 'USA'";
+        let mut tokens = tokenize_query(query);
+
+        let result = update_statement(&mut tokens)?;
+        let update = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(update.the_where.is_some());
+        if let Some(where_clause) = update.the_where {
+            if let Some(expr) = where_clause.expression {
+                assert!(matches!(*expr, Expression::And(_)));
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_update_with_if_condition() -> Result<(), Error> {
+        let query =
+            "UPDATE users SET email = 'new@email.com' WHERE id = 1 IF email = 'old@email.com'";
+        let mut tokens = tokenize_query(query);
+
+        let result = update_statement(&mut tokens)?;
+        let update = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(matches!(update.if_condition, IfCondition::Conditions(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_update_with_if_exists() -> Result<(), Error> {
+        let query = "UPDATE users SET last_login = 'toTimestamp(now())' WHERE id = 1 IF EXISTS";
+        let mut tokens = tokenize_query(query);
+
+        let result = update_statement(&mut tokens)?;
+        let update = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(update.if_condition, IfCondition::Exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_invalid_update() -> Result<(), Error> {
+        let query = "UPDATE users SET name = 'John'";
+        let mut tokens = tokenize_query(query);
+        assert!(update_statement(&mut tokens).is_err());
+        Ok(())
+    }
+
+    // DELETE TESTS:
+    #[test]
+    fn test_01_basic_delete() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE id = 1";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            delete.from,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(delete.cols.is_empty());
+        assert!(delete.the_where.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_delete_specific_columns() -> Result<(), Error> {
+        let query = "DELETE name, email FROM users WHERE id = 1";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(delete.cols.len(), 2);
+        assert_eq!(delete.cols[0], "name");
+        assert_eq!(delete.cols[1], "email");
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_delete_with_complex_where() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE age > 18 AND country = 'USA'";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(delete.the_where.is_some());
+        if let Some(where_clause) = delete.the_where {
+            if let Some(expr) = where_clause.expression {
+                assert!(matches!(*expr, Expression::And(_)));
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_delete_with_if_condition() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE id = 1 IF email = 'old@email.com'";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(matches!(delete.if_condition, IfCondition::Conditions(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_delete_with_if_exists() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE id = 1 IF EXISTS";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(delete.if_condition, IfCondition::Exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_delete_with_contains() -> Result<(), Error> {
+        let query = "DELETE FROM users WHERE hobbies CONTAINS 'reading'";
+        let mut tokens = tokenize_query(query);
+
+        let result = delete_statement(&mut tokens)?;
+        let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert!(delete.the_where.is_some());
+        if let Some(where_clause) = delete.the_where {
+            if let Some(expr) = where_clause.expression {
+                if let Expression::Relation(relation) = *expr {
+                    assert_eq!(relation.operator, Operator::Contains);
+                } else {
+                    return Err(Error::SyntaxError("Expected Relation expression".into()));
+                }
+            } else {
+                return Err(Error::SyntaxError("Expected Some expression".into()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_07_invalid_delete() -> Result<(), Error> {
+        let query = "DELETE FROM users";
+        let mut tokens = tokenize_query(query);
+        assert!(delete_statement(&mut tokens).is_err());
+        Ok(())
+    }
+
+    // BATCH TESTS:
+    #[test]
+    fn test_01_basic_batch() -> Result<(), Error> {
+        let query = "BEGIN BATCH
+                     INSERT INTO users (id, name) VALUES (1, 'John');
+                     UPDATE users SET email = 'john@example.com' WHERE id = 1;
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(batch.batch_type, BatchType::Logged);
+        assert_eq!(batch.queries.len(), 2);
+        assert!(matches!(batch.queries[0], DmlStatement::InsertStatement(_)));
+        assert!(matches!(batch.queries[1], DmlStatement::UpdateStatement(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_unlogged_batch() -> Result<(), Error> {
+        let query = "BEGIN UNLOGGED BATCH
+                     INSERT INTO users (id, name) VALUES (2, 'Jane');
+                     DELETE FROM users WHERE id = 1;
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(batch.batch_type, BatchType::Unlogged);
+        assert_eq!(batch.queries.len(), 2);
+        assert!(matches!(batch.queries[0], DmlStatement::InsertStatement(_)));
+        assert!(matches!(batch.queries[1], DmlStatement::DeleteStatement(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_counter_batch() -> Result<(), Error> {
+        let query = "BEGIN COUNTER BATCH
+                     UPDATE counters SET views = views + 1 WHERE id = 'page1';
+                     UPDATE counters SET views = views + 1 WHERE id = 'page2';
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(batch.batch_type, BatchType::Counter);
+        assert_eq!(batch.queries.len(), 2);
+        assert!(matches!(batch.queries[0], DmlStatement::UpdateStatement(_)));
+        assert!(matches!(batch.queries[1], DmlStatement::UpdateStatement(_)));
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_batch_with_multiple_tables() -> Result<(), Error> {
+        let query = "BEGIN BATCH
+                     INSERT INTO users (id, name) VALUES (3, 'Alice');
+                     INSERT INTO logs (user_id, action) VALUES (3, 'created');
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(batch.queries.len(), 2);
+        if let DmlStatement::InsertStatement(insert1) = &batch.queries[0] {
+            assert_eq!(
+                insert1.table.name,
+                KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+            );
+        } else {
+            return Err(Error::SyntaxError("Expected InsertStatement".into()));
+        }
+        if let DmlStatement::InsertStatement(insert2) = &batch.queries[1] {
+            assert_eq!(
+                insert2.table.name,
+                KeyspaceName::UnquotedName(UnquotedName::new("logs".to_string())?)
+            );
+        } else {
+            return Err(Error::SyntaxError("Expected InsertStatement".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_batch_with_if_conditions() -> Result<(), Error> {
+        let query = "BEGIN BATCH
+                     INSERT INTO users (id, name) VALUES (4, 'Bob') IF NOT EXISTS;
+                     UPDATE users SET email = 'bob@example.com' WHERE id = 4 IF name = 'Bob';
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens)?;
+        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(batch.queries.len(), 2);
+        if let DmlStatement::InsertStatement(insert) = &batch.queries[0] {
+            assert!(insert.if_not_exists);
+        } else {
+            return Err(Error::SyntaxError("Expected InsertStatement".into()));
+        }
+        if let DmlStatement::UpdateStatement(update) = &batch.queries[1] {
+            assert!(matches!(update.if_condition, IfCondition::Conditions(_)));
+        } else {
+            return Err(Error::SyntaxError("Expected UpdateStatement".into()));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_empty_batch() -> Result<(), Error> {
+        let query = "BEGIN BATCH APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_07_invalid_batch() -> Result<(), Error> {
+        let query = "BEGIN BATCH
+                     INSERT INTO users (id, name) VALUES (5, 'Charlie');
+                     SELECT * FROM users;
+                     APPLY BATCH";
+        let mut tokens = tokenize_query(query);
+
+        let result = batch_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    // EMPTY INPUT TEST:
+    #[test]
+    fn test_01_empty_input() -> Result<(), Error> {
+        let mut tokens = vec![];
+        let select = select_statement(&mut tokens)?;
+        let update = update_statement(&mut tokens)?;
+        let insert = insert_statement(&mut tokens)?;
+        let delete = delete_statement(&mut tokens)?;
+        let batch = batch_statement(&mut tokens)?;
+
+        assert!(
+            select.is_none()
+                && update.is_none()
+                && insert.is_none()
+                && delete.is_none()
+                && batch.is_none()
+        );
+        Ok(())
+    }
 }

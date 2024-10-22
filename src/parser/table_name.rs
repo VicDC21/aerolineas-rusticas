@@ -8,6 +8,7 @@ use super::data_types::keyspace_name::KeyspaceName;
 ///
 /// * `keyspace` - Un `Option<KeyspaceName>` que representa el keyspace opcional.
 /// * `name` - Un `KeyspaceName` que representa el nombre de la tabla.
+#[derive(Debug)]
 pub struct TableName {
     /// Un `Option<KeyspaceName>` que representa el keyspace opcional.
     /// keyspace_name::= identifier
@@ -34,7 +35,12 @@ impl TableName {
         if lista.is_empty() {
             return Ok(None);
         }
-        let keyspace = KeyspaceName::check_kind_of_name(lista)?;
+
+        let keyspace = if lista[1] != "SET" && lista[1] != "(" && lista[0] != "\'" {
+            KeyspaceName::check_kind_of_name(lista)?
+        } else {
+            None
+        };
 
         let name = match KeyspaceName::check_kind_of_name(lista)? {
             Some(value) => value,

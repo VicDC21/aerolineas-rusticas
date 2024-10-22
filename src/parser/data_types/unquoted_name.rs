@@ -2,7 +2,7 @@ use crate::protocol::errors::error::Error;
 
 #[allow(dead_code)]
 /// re('[a-zA-Z_0-9]\{1, 48}')
-#[derive(Default)]
+#[derive(Default, Debug, PartialEq)]
 pub struct UnquotedName {
     /// TODO: Desc básica
     name: String,
@@ -20,7 +20,8 @@ impl UnquotedName {
         if !(1..=48).contains(&length) {
             return false;
         }
-        word.chars().all(|c| c.is_ascii_alphanumeric())
+        word.chars()
+            .all(|c| c.to_ascii_lowercase().is_ascii_alphanumeric() || c == '_' || c == ' ')
     }
 
     /// Devuelve el nombre como un String.

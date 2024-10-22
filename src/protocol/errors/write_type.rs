@@ -9,6 +9,8 @@ use crate::protocol::traits::Byteable;
 use crate::protocol::utils::{encode_string_to_bytes, parse_bytes_to_string};
 
 /// Es un [String] que representa el tipo de escritura que se estaba intentando realizar.
+
+#[derive(Debug)]
 pub enum WriteType {
     /// La escritura no fue de tipo batch ni de tipo counter.
     Simple,
