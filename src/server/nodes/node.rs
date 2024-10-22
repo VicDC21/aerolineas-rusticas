@@ -307,7 +307,7 @@ impl Node {
                                     }
                                     ConnectionMode::Parsing => {
                                         println!("Deberia mandarse lo de abajo");
-                                        // tcp_stream.write_all(&self.handle_query(query));
+                                        // tcp_stream.write_all(&mut self.handle_request(&mut bytes));
                                     }
                                 }
                         }
@@ -354,7 +354,7 @@ impl Node {
     }
 
     /// Maneja una request.
-    fn handle_request(&self, request: &mut [Byte]) -> Result<()> {
+    fn handle_request(&self, request: &mut [Byte]) -> Result<Vec<Byte>> {
         if request.len() < 9 {
             return Err(Error::ProtocolError(
                 "No se cumple el protocolo del header".to_string(),
@@ -382,14 +382,14 @@ impl Node {
             Opcode::AuthResponse => self.handle_auth_response(),
             _ => {
                 return Err(Error::ProtocolError(
-                    "El opcode recibido no es una request".to_string(),
+                    "El opcode recibido no es una request".to_string()
                 ))
             }
         };
-
         // response.append(&mut _left_response);
         // aca deberiamos mandar la response de alguna manera
-        Ok(())
+        response.append(&mut _left_response);
+        Ok(response)
     }
 
     fn handle_startup(&self, _request: &mut [Byte], _lenght: Length) -> Vec<Byte> {
@@ -406,28 +406,22 @@ impl Node {
 
     fn handle_query(&self, request: &mut [Byte], lenght: Length) -> Vec<Byte> {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
-            match make_parse(&mut tokenize_query(&query)) {
+            let res = match make_parse(&mut tokenize_query(&query)) {
                 Ok(statement) => match statement {
-                    Statement::DdlStatement(ddl_statement) => {
-                        self.handle_ddl_statement(ddl_statement);
-                    }
-                    Statement::DmlStatement(dml_statement) => {
-                        self.handle_dml_statement(dml_statement);
-                    }
+                    Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
+                    Statement::DmlStatement(dml_statement) => self.handle_dml_statement(dml_statement),
                     Statement::UdtStatement(_udt_statement) => {
                         todo!();
                     }
                 },
                 Err(err) => {
-                    println!(
-                        "[{} - PARSING] Error en el query tokenizado: {}",
-                        self.id, err
-                    );
+                    return err.as_bytes();
                 }
-            }
+            };
+            return res
             // aca usariamos la query como corresponda
         }
-        vec![0]
+        Error::ServerError("No se pudieron transformar los bytes a string".to_string()).as_bytes()
     }
 
     fn handle_prepare(&self) -> Vec<Byte> {
@@ -505,23 +499,6 @@ impl Node {
             Ok(value) => value,
             Err(err) => err.as_bytes(),
         }
-    }
-
-   /// Maneja un query.
-   fn handle_query(&self, query: String) -> Vec<Byte> {
-    let res = match make_parse(&mut tokenize_query(&query)) {
-        Ok(statement) => match statement {
-            Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
-            Statement::DmlStatement(dml_statement) => self.handle_dml_statement(dml_statement),
-            Statement::UdtStatement(_udt_statement) => {
-                todo!();
-            }
-        },
-        Err(err) => {
-            return err.as_bytes();
-        }
-    };
-    res
     }
 
 }

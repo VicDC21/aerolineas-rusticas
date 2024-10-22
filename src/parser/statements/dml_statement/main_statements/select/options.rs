@@ -5,6 +5,8 @@ use super::{
 };
 
 /// Opciones para la declaración SELECT.
+#[derive(Debug)]
+
 pub struct SelectOptions {
     /// Condición de selección.
     pub the_where: Option<Where>,

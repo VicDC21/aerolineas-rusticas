@@ -9,6 +9,7 @@ use super::data_types::keyspace_name::KeyspaceName;
 /// * `keyspace` - Un `Option<KeyspaceName>` que representa el keyspace opcional.
 /// * `name` - Un `KeyspaceName` que representa el nombre de la tabla.
 #[derive(Debug)]
+#[derive(PartialEq)]
 pub struct TableName {
     /// Un `Option<KeyspaceName>` que representa el keyspace opcional.
     /// keyspace_name::= identifier
@@ -16,7 +17,7 @@ pub struct TableName {
 
     /// Un `KeyspaceName` que representa el nombre de la tabla.
     /// name::= identifier
-    name: KeyspaceName,
+    pub name: KeyspaceName,
 }
 
 impl TableName {

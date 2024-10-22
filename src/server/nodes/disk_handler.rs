@@ -40,8 +40,8 @@ impl DiskHandler {
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
     pub fn do_insert(statement: Insert, storage_addr: &str) -> Result<Vec<Byte>> {
         let res: Vec<Byte> = vec![0x0, 0x0, 0x0, 0x2];
-        let keyspace = statement.table_name.get_keyspace();
-        let name = statement.table_name.get_name();
+        let keyspace = statement.table.get_keyspace();
+        let name = statement.table.get_name();
         let table_addr = match keyspace {
             Some(keyspace) => format!("{}/{}/{}.csv", storage_addr, keyspace, name),
             None => format!("{}/{}.csv", storage_addr, name),

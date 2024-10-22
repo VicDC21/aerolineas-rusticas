@@ -42,7 +42,7 @@ impl TupleLiteral {
 
     /// Devuelve los valores de la tupla como una lista de Strings.
     pub fn get_values_as_string(&self) -> Vec<String> {
-        self.values
+        self.items
             .iter()
             .map(|term| term.get_value_as_string())
             .collect()

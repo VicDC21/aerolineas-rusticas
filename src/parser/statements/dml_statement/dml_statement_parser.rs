@@ -14,7 +14,7 @@ use crate::{
                     insert::Insert,
                     select::{
                         group_by::GroupBy, kind_of_columns::KindOfColumns, limit::Limit,
-                        options::SelectOptions, order_by::OrderBy, ordering::Ordering,
+                        options::SelectOptions, order_by::OrderBy,
                         per_partition_limit::PerPartitionLimit, select_operation::Select,
                         selector::Selector,
                     },
@@ -28,7 +28,7 @@ use crate::{
     protocol::errors::error::Error,
 };
 
-use super::r#where::operator::Operator;
+use super::{main_statements::select::order_by::ProtocolOrdering, r#where::operator::Operator};
 
 /// dml_statement::= select_statement
 /// | insert_statement
@@ -324,7 +324,7 @@ fn group_by_clause(list: &mut Vec<String>) -> Result<Option<GroupBy>, Error> {
 
 fn ordering_clause(list: &mut Vec<String>) -> Result<Option<OrderBy>, Error> {
     if check_words(list, "ORDER BY") {
-        let mut columns: Vec<(Identifier, Option<Ordering>)> = Vec::new();
+        let mut columns: Vec<(Identifier, Option<ProtocolOrdering>)> = Vec::new();
         loop {
             let value = match Identifier::check_identifier(list)? {
                 Some(value) => value,
@@ -335,9 +335,9 @@ fn ordering_clause(list: &mut Vec<String>) -> Result<Option<OrderBy>, Error> {
                 }
             };
             if check_words(list, "ASC") {
-                columns.push((value, Some(Ordering::Asc)));
+                columns.push((value, Some(ProtocolOrdering::Asc)));
             } else if check_words(list, "DESC") {
-                columns.push((value, Some(Ordering::Desc)));
+                columns.push((value, Some(ProtocolOrdering::Desc)));
             } else {
                 columns.push((value, None));
             }
@@ -517,10 +517,9 @@ mod tests {
             data_types::{
                 identifier::{
                     quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
-                },
-                unquoted_name::UnquotedName,
+                }, keyspace_name::KeyspaceName, unquoted_name::UnquotedName
             },
-            statements::dml_statement::r#where::expression::Expression,
+            statements::dml_statement::{main_statements::select::order_by::ProtocolOrdering, r#where::expression::Expression},
         },
         tokenizer::tokenizer::tokenize_query,
     };
@@ -536,7 +535,7 @@ mod tests {
         assert_eq!(select.columns, KindOfColumns::All);
         assert_eq!(
             select.from,
-            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+            TableName::check_kind_of_name(&mut vec!["users".to_string()]).unwrap().unwrap()
         );
         assert!(select.options.the_where.is_none());
         Ok(())
@@ -572,12 +571,12 @@ mod tests {
             if let Some(expr) = where_clause.expression {
                 if let Expression::Relation(relation) = *expr {
                     assert_eq!(
-                        relation.first_column,
+                        relation.column,
                         Identifier::UnquotedIdentifier(UnquotedIdentifier::new("id".to_string()))
                     );
                     assert_eq!(relation.operator, Operator::Equal);
                     assert_eq!(
-                        relation.second_column,
+                        relation.column,
                         Identifier::UnquotedIdentifier(UnquotedIdentifier::new("5".to_string()))
                     );
                 } else {
@@ -619,12 +618,12 @@ mod tests {
         let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
         assert!(select.options.order_by.is_some());
         if let Some(order_by) = select.options.order_by {
-            assert_eq!(order_by.columns.len(), 1);
+            assert_eq!(order_by.order_columns.len(), 1);
             assert!(matches!(
-                order_by.columns[0].0,
+                order_by.order_columns[0].0,
                 Identifier::UnquotedIdentifier(_) | Identifier::QuotedIdentifier(_)
             ));
-            assert_eq!(order_by.columns[0].1, Some(Ordering::Desc));
+            assert_eq!(order_by.order_columns[0].1, Some(ProtocolOrdering::Desc));
         } else {
             return Err(Error::SyntaxError("Expected Some OrderBy".into()));
         }
@@ -682,17 +681,15 @@ mod tests {
                 if let Expression::And(and_expr) = *expr {
                     if let Expression::Relation(relation1) = *and_expr.first_relation {
                         assert_eq!(
-                            relation1.first_column,
+                            relation1.column,
                             Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
                                 "age".to_string()
                             ))
                         );
                         assert_eq!(relation1.operator, Operator::Mayor);
                         assert_eq!(
-                            relation1.second_column,
-                            Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
-                                "18".to_string()
-                            ))
+                            relation1.term_to_compare,
+                            Term::is_term(&mut vec!["18".to_string()]).unwrap().unwrap()
                         );
                     } else {
                         return Err(Error::SyntaxError(
@@ -702,15 +699,15 @@ mod tests {
 
                     if let Expression::Relation(relation2) = *and_expr.second_relation {
                         assert_eq!(
-                            relation2.first_column,
+                            relation2.column,
                             Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
                                 "country".to_string()
                             ))
                         );
                         assert_eq!(relation2.operator, Operator::Equal);
                         assert_eq!(
-                            relation2.second_column,
-                            Identifier::QuotedIdentifier(QuotedIdentifier::new("USA".to_string()))
+                            relation2.term_to_compare,
+                            Term::is_term(&mut vec!["USA".to_string()]).unwrap().unwrap()
                         );
                     } else {
                         return Err(Error::SyntaxError(
@@ -743,17 +740,15 @@ mod tests {
                     if let Expression::And(and_expr2) = *and_expr1.first_relation {
                         if let Expression::Relation(relation1) = *and_expr2.first_relation {
                             assert_eq!(
-                                relation1.first_column,
+                                relation1.column,
                                 Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
                                     "category".to_string()
                                 ))
                             );
                             assert_eq!(relation1.operator, Operator::Equal);
                             assert_eq!(
-                                relation1.second_column,
-                                Identifier::QuotedIdentifier(QuotedIdentifier::new(
-                                    "electronics".to_string()
-                                ))
+                                relation1.term_to_compare,
+                                Term::is_term(&mut vec!["electronics".to_string()]).unwrap().unwrap()
                             );
                         } else {
                             return Err(Error::SyntaxError(
@@ -762,17 +757,15 @@ mod tests {
                         }
                         if let Expression::Relation(relation2) = *and_expr2.second_relation {
                             assert_eq!(
-                                relation2.first_column,
+                                relation2.column,
                                 Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
                                     "price".to_string()
                                 ))
                             );
                             assert_eq!(relation2.operator, Operator::Minor);
                             assert_eq!(
-                                relation2.second_column,
-                                Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
-                                    "1000".to_string()
-                                ))
+                                relation2.term_to_compare,
+                                Term::is_term(&mut vec!["1000".to_string()]).unwrap().unwrap()
                             );
                         } else {
                             return Err(Error::SyntaxError(
@@ -784,17 +777,16 @@ mod tests {
                     }
                     if let Expression::Relation(relation3) = *and_expr1.second_relation {
                         assert_eq!(
-                            relation3.first_column,
+                            relation3.column,
                             Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
                                 "stock".to_string()
                             ))
                         );
                         assert_eq!(relation3.operator, Operator::Mayor);
                         assert_eq!(
-                            relation3.second_column,
-                            Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
-                                "0".to_string()
-                            ))
+                            relation3.term_to_compare,
+                            Term::is_term(&mut vec!["0".to_string()]).unwrap().unwrap()
+
                         );
                     } else {
                         return Err(Error::SyntaxError(
@@ -826,17 +818,16 @@ mod tests {
             if let Some(expr) = where_clause.expression {
                 if let Expression::Relation(relation) = *expr {
                     assert_eq!(
-                        relation.first_column,
+                        relation.column,
                         Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
                             "hobbies".to_string()
                         ))
                     );
                     assert_eq!(relation.operator, Operator::Contains);
                     assert_eq!(
-                        relation.second_column,
-                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
-                            "reading".to_string()
-                        ))
+                        relation.term_to_compare,
+                        Term::is_term(&mut vec!["reading".to_string()]).unwrap().unwrap()
+
                     );
                 } else {
                     return Err(Error::SyntaxError("Expected Relation expression".into()));
@@ -1020,7 +1011,7 @@ mod tests {
         let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
         assert_eq!(
             delete.from,
-            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+            TableName::check_kind_of_name(&mut vec!["users".to_string()]).unwrap().unwrap()
         );
         assert!(delete.cols.is_empty());
         assert!(delete.the_where.is_some());
