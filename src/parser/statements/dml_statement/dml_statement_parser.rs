@@ -2,8 +2,7 @@ use crate::{
     parser::{
         assignment::Assignment,
         data_types::{
-            identifier::identifier::Identifier, keyspace_name::KeyspaceName,
-            literal::tuple_literal::TupleLiteral, term::Term,
+            identifier::identifier::Identifier, literal::tuple_literal::TupleLiteral, term::Term,
         },
         statements::{
             ddl_statement::ddl_statement_parser::check_words,
@@ -14,11 +13,9 @@ use crate::{
                     delete::Delete,
                     insert::Insert,
                     select::{
-                        group_by::GroupBy,
-                        limit::Limit,
-                        order_by::{OrderBy, Ordering},
-                        per_partition_limit::PerPartitionLimit,
-                        select_operation::{KindOfColumns, Select, SelectOptions},
+                        group_by::GroupBy, kind_of_columns::KindOfColumns, limit::Limit,
+                        options::SelectOptions, order_by::OrderBy, ordering::Ordering,
+                        per_partition_limit::PerPartitionLimit, select_operation::Select,
                         selector::Selector,
                     },
                     update::Update,
@@ -256,16 +253,20 @@ fn kind_of_columns(list: &mut Vec<String>) -> Result<KindOfColumns, Error> {
     }
 }
 
-fn from_clause(list: &mut Vec<String>) -> Result<KeyspaceName, Error> {
+fn from_clause(list: &mut Vec<String>) -> Result<TableName, Error> {
     if check_words(list, "FROM") {
-        let table_name = match KeyspaceName::check_kind_of_name(list)? {
+        let table_name = match TableName::check_kind_of_name(list)? {
             Some(value) => value,
-            None => return Err(Error::SyntaxError("Tipo de dato no admitido".to_string())),
+            None => {
+                return Err(Error::SyntaxError(
+                    "El nombre de la tabla no es sintacticamente valido".to_string(),
+                ))
+            }
         };
         Ok(table_name)
     } else {
         Err(Error::SyntaxError(
-            "Falta el from en la consulta".to_string(),
+            "Falta el FROM en la consulta".to_string(),
         ))
     }
 }

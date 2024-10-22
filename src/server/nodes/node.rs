@@ -399,7 +399,9 @@ impl Node {
     /// Maneja una declaración DML.
     fn handle_dml_statement(&self, dml_statement: DmlStatement) -> Result<()> {
         match dml_statement {
-            DmlStatement::SelectStatement(_select) => {}
+            DmlStatement::SelectStatement(select) => {
+                DiskHandler::do_select(select, &self.storage_addr)?;
+            }
             DmlStatement::InsertStatement(insert) => {
                 DiskHandler::do_insert(insert, &self.storage_addr)?;
             }
