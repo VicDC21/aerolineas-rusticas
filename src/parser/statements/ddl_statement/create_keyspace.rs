@@ -2,6 +2,7 @@ use super::option::Options;
 use crate::parser::data_types::keyspace_name::KeyspaceName;
 
 /// Representa una declaración CQL `CREATE KEYSPACE`.
+#[derive(Debug)]
 pub struct CreateKeyspace {
     /// Indica si la declaración contiene la cláusula `IF NOT EXISTS`.
     pub if_not_exist: bool,

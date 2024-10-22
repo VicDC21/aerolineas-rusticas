@@ -19,7 +19,7 @@ fn main() {
         }
 
         "cli" => {
-            let client = Client::new(Server::default_addr());
+            let mut client = Client::new(Server::default_addr());
             if let Err(err) = client.echo() {
                 println!("{}", err);
             }

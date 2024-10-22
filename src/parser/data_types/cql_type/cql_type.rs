@@ -5,6 +5,7 @@ use crate::parser::data_types::user_defined_type::UserDefinedType;
 use crate::protocol::errors::error::Error;
 
 /// TODO: Desc básica
+#[derive(Debug, PartialEq)]
 pub enum CQLType {
     /// TODO: Desc básica
     NativeType(NativeType),

@@ -7,15 +7,16 @@ use crate::{
 
 #[allow(dead_code)]
 /// tuple_literal::= '(' term( ',' term )* ')'
+#[derive(Debug)]
 pub struct TupleLiteral {
     /// TODO: Desc básica
-    values: Vec<Term>,
+    pub items: Vec<Term>,
 }
 
 impl TupleLiteral {
     /// TODO: Desc básica
     pub fn check_tuple_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
-        let mut values: Vec<Term> = Vec::new();
+        let mut items: Vec<Term> = Vec::new();
         if check_words(lista, "(") {
             while check_words(lista, ",") || !check_words(lista, ")") {
                 let term = match Term::is_term(lista)? {
@@ -26,11 +27,24 @@ impl TupleLiteral {
                         ))
                     }
                 };
-                values.push(term);
+                items.push(term);
             }
-            Ok(Some(TupleLiteral { values }))
+            Ok(Some(TupleLiteral { items }))
         } else {
             Ok(None)
         }
+    }
+
+    /// TODO: Desc básica
+    pub fn size(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Devuelve los valores de la tupla como una lista de Strings.
+    pub fn get_values_as_string(&self) -> Vec<String> {
+        self.items
+            .iter()
+            .map(|term| term.get_value_as_string())
+            .collect()
     }
 }

@@ -1,5 +1,6 @@
 /// re('[a-zA-Z][link:[a-zA-Z0-9]]*')
 
+#[derive(Debug, PartialEq)]
 pub struct UnquotedIdentifier {
     text: String,
 }
@@ -15,9 +16,6 @@ impl UnquotedIdentifier {
     }
     /// TODO: Desc básica
     pub fn check_unquoted_identifier(first: &str) -> bool {
-        if !first.chars().all(char::is_alphabetic) {
-            return false;
-        }
-        true
+        first.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
     }
 }

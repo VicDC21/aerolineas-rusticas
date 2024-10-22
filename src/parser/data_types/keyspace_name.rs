@@ -4,6 +4,8 @@ use super::unquoted_name::UnquotedName;
 
 /// keyspace_name::= name
 /// name::= unquoted_name | quoted_name
+
+#[derive(Debug, PartialEq)]
 pub enum KeyspaceName {
     /// TODO: Desc básica
     UnquotedName(UnquotedName),
@@ -23,7 +25,10 @@ impl KeyspaceName {
         if lista.is_empty() {
             return Err(Error::SyntaxError("Faltan argumentos".to_string()));
         }
-        if lista.len() > 2 && lista[0] == "\"" && lista[2] == "\"" {
+        if lista.len() > 2
+            && (lista[0] == "\"" || lista[0] == "\'")
+            && (lista[2] == "\"" || lista[2] == "\'")
+        {
             lista.remove(0);
             if !UnquotedName::is_unquoted_name(&lista[0]) {
                 return Err(Error::SyntaxError(
@@ -39,5 +44,12 @@ impl KeyspaceName {
             return Ok(Some(keyspace_name));
         };
         Ok(None)
+    }
+
+    /// Devuelve el nombre del keyspace como un String.
+    pub fn get_name(&self) -> &str {
+        match self {
+            KeyspaceName::UnquotedName(name) | KeyspaceName::QuotedName(name) => name.get_name(),
+        }
     }
 }

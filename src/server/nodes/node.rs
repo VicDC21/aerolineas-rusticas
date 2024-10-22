@@ -3,7 +3,7 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    io::Read,
+    io::{Read, Write},
     net::TcpListener,
 };
 
@@ -26,6 +26,21 @@ use crate::server::{
         utils::send_to_node,
     },
 };
+use crate::tokenizer::tokenizer::tokenize_query;
+use crate::{
+    parser::{
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::ddl_statement_parser::DdlStatement,
+            dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+        },
+    },
+    protocol::headers::{
+        flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+    },
+};
+
+use super::disk_handler::DiskHandler;
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -46,15 +61,21 @@ pub struct Node {
 
     /// Estado actual del nodo.
     endpoint_state: EndpointState,
+
+    /// Dirección de almacenamiento en disco.
+    storage_addr: String,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Self {
+        let storage_addr = DiskHandler::new_node_storage(id);
+
         Self {
             id,
             neighbours_states: NodesMap::new(),
             endpoint_state: EndpointState::with_id_and_mode(id, mode),
+            storage_addr,
         }
     }
 
@@ -262,51 +283,224 @@ impl Node {
                     )))
                 }
                 Ok(tcp_stream) => {
-                    let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
+                    let mut bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
                     match SvAction::get_action(&bytes[..]) {
-                        Some(action) => match action {
-                            SvAction::Exit => break,
-                            SvAction::Beat => {
-                                self.beat();
+                        Some(action) => match self.handle_sv_action(action) {
+                            Ok(continue_loop) => {
+                                if !continue_loop {
+                                    break;
+                                }
                             }
-                            SvAction::Gossip(neighbours) => {
-                                self.gossip(neighbours)?;
-                            }
-                            SvAction::Syn(emissor_id, gossip_info) => {
-                                self.syn(emissor_id, gossip_info)?;
-                            }
-                            SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
-                                self.ack(receptor_id, gossip_info, nodes_map)?;
-                            }
-                            SvAction::Ack2(nodes_map) => {
-                                self.ack2(nodes_map)?;
-                            }
-                            SvAction::NewNeighbour(state) => {
-                                self.add_neighbour_state(state);
-                            }
-                            SvAction::SendEndpointState(id) => {
-                                self.send_endpoint_state(id);
+                            Err(err) => {
+                                println!(
+                                    "[{} - ACTION] Error en la acción del servidor: {}",
+                                    self.id, err
+                                );
                             }
                         },
                         None => {
-                            match self.mode() {
-                                ConnectionMode::Echo => {
-                                    if let Ok(line) = String::from_utf8(bytes) {
-                                        println!("[{} - ECHO] {}", self.id, line);
+                                match self.mode() {
+                                    ConnectionMode::Echo => {
+                                        if let Ok(query) = String::from_utf8(bytes) {
+
+                                            println!("[{} - ECHO] {}", self.id, query)}
+                                    }
+                                    ConnectionMode::Parsing => {
+                                        println!("Deberia mandarse lo de abajo");
+                                        // tcp_stream.write_all(&mut self.handle_request(&mut bytes));
                                     }
                                 }
-                                ConnectionMode::Parsing => {
-                                    // Parsear la query
-                                }
-                            }
                         }
                     }
                 }
             }
         }
-
         Ok(())
     }
+
+    /// Maneja una acción de servidor.
+    fn handle_sv_action(&mut self, action: SvAction) -> Result<bool> {
+        match action {
+            SvAction::Exit => Ok(false),
+            SvAction::Beat => {
+                self.beat();
+                Ok(true)
+            }
+            SvAction::Gossip(neighbours) => {
+                self.gossip(neighbours)?;
+                Ok(true)
+            }
+            SvAction::Syn(emissor_id, gossip_info) => {
+                self.syn(emissor_id, gossip_info)?;
+                Ok(true)
+            }
+            SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
+                self.ack(receptor_id, gossip_info, nodes_map)?;
+                Ok(true)
+            }
+            SvAction::Ack2(nodes_map) => {
+                self.ack2(nodes_map)?;
+                Ok(true)
+            }
+            SvAction::NewNeighbour(state) => {
+                self.add_neighbour_state(state);
+                Ok(true)
+            }
+            SvAction::SendEndpointState(id) => {
+                self.send_endpoint_state(id);
+                Ok(true)
+            }
+        }
+    }
+
+    /// Maneja una request.
+    fn handle_request(&self, request: &mut [Byte]) -> Result<Vec<Byte>> {
+        if request.len() < 9 {
+            return Err(Error::ProtocolError(
+                "No se cumple el protocolo del header".to_string(),
+            ));
+        }
+        let _version = Version::try_from(request[0])?;
+        let _flags = Flag::try_from(request[1])?;
+        let _stream = Stream::try_from(request[2..4].to_vec())?;
+        let opcode = Opcode::try_from(request[4])?;
+        let lenght = Length::try_from(request[5..9].to_vec())?;
+        let mut response: Vec<Byte> = Vec::new();
+        response.append(&mut request[..4].to_vec());
+        // VER QUE HACER CON LAS FLAGS
+
+        // Cada handler deberia devolver un Vec<Byte> que contenga: que opcode de respuesta mandar,
+        // con que lenght y el body si es que tiene
+        let mut _left_response = match opcode {
+            Opcode::Startup => self.handle_startup(request, lenght),
+            Opcode::Options => self.handle_options(),
+            Opcode::Query => self.handle_query(request, lenght),
+            Opcode::Prepare => self.handle_prepare(),
+            Opcode::Execute => self.handle_execute(),
+            Opcode::Register => self.handle_register(),
+            Opcode::Batch => self.handle_batch(),
+            Opcode::AuthResponse => self.handle_auth_response(),
+            _ => {
+                return Err(Error::ProtocolError(
+                    "El opcode recibido no es una request".to_string()
+                ))
+            }
+        };
+        // response.append(&mut _left_response);
+        // aca deberiamos mandar la response de alguna manera
+        response.append(&mut _left_response);
+        Ok(response)
+    }
+
+    fn handle_startup(&self, _request: &mut [Byte], _lenght: Length) -> Vec<Byte> {
+        // El body es un [string map] con posibles opciones
+        vec![0]
+    }
+
+    fn handle_options(&self) -> Vec<Byte> {
+        // No tiene body
+        // Responder con supported
+        Opcode::Supported.as_bytes();
+        vec![0]
+    }
+
+    fn handle_query(&self, request: &mut [Byte], lenght: Length) -> Vec<Byte> {
+        if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
+            let res = match make_parse(&mut tokenize_query(&query)) {
+                Ok(statement) => match statement {
+                    Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
+                    Statement::DmlStatement(dml_statement) => self.handle_dml_statement(dml_statement),
+                    Statement::UdtStatement(_udt_statement) => {
+                        todo!();
+                    }
+                },
+                Err(err) => {
+                    return err.as_bytes();
+                }
+            };
+            return res
+            // aca usariamos la query como corresponda
+        }
+        Error::ServerError("No se pudieron transformar los bytes a string".to_string()).as_bytes()
+    }
+
+    fn handle_prepare(&self) -> Vec<Byte> {
+        // El body es <query><flags>[<keyspace>]
+        vec![0]
+    }
+
+    fn handle_execute(&self) -> Vec<Byte> {
+        // El body es <id><result_metadata_id><query_parameters>
+        vec![0]
+    }
+
+    fn handle_register(&self) -> Vec<Byte> {
+        vec![0]
+    }
+
+    fn handle_batch(&self) -> Vec<Byte> {
+        vec![0]
+    }
+
+    fn handle_auth_response(&self) -> Vec<Byte> {
+        vec![0]
+    }
+
+    /// Maneja una declaración DDL.
+    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) -> Vec<Byte> {
+        match ddl_statement {
+            DdlStatement::UseStatement(_keyspace_name) => {
+                todo!()
+            }
+            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {
+                todo!()
+            }
+            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
+                todo!()
+            }
+            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
+                todo!()
+            }
+            DdlStatement::CreateTableStatement(_create_table) => {
+                todo!()
+            }
+            DdlStatement::AlterTableStatement(_alter_table) => {
+                todo!()
+            }
+            DdlStatement::DropTableStatement(_drop_table) => {
+                todo!()
+            }
+            DdlStatement::TruncateStatement(_truncate) => {
+                todo!()
+            }
+        }
+    }
+
+    /// Maneja una declaración DML.
+    fn handle_dml_statement(&self, dml_statement: DmlStatement) -> Vec<Byte> {
+        let res: Result<Vec<Byte>> = match dml_statement {
+            DmlStatement::SelectStatement(select) => {
+                DiskHandler::do_select(select, &self.storage_addr)
+            }
+            DmlStatement::InsertStatement(insert) => {
+                DiskHandler::do_insert(insert, &self.storage_addr)
+            }
+            DmlStatement::UpdateStatement(_update) => {
+                todo!()
+            }
+            DmlStatement::DeleteStatement(_delete) => {
+                todo!()
+            }
+            DmlStatement::BatchStatement(_batch) => {
+                todo!()
+            }
+        };
+        match res {
+            Ok(value) => value,
+            Err(err) => err.as_bytes(),
+        }
+    }
+
 }
 
 impl PartialEq for Node {
@@ -314,3 +508,4 @@ impl PartialEq for Node {
         self.endpoint_state.eq(&other.endpoint_state)
     }
 }
+

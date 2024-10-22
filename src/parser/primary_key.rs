@@ -1,8 +1,11 @@
 use crate::protocol::errors::error::Error;
 
+use super::statements::ddl_statement::ddl_statement_parser::check_words;
+
 /// Representa la clave primaria de una tabla.
 /// primary_key ::= PRIMARY KEY '(' column_name (',' column_name)* ')'
 
+#[derive(Debug)]
 pub struct PrimaryKey {
     /// Un vector de nombres de columnas que componen la clave primaria.
     /// columns ::= column_name (',' column_name)*
@@ -21,7 +24,8 @@ impl PrimaryKey {
     /// * `Result<Self, Error>` - Un resultado que contiene el `PrimaryKey` si tiene éxito, o un `Error` si el análisis falla.
     pub fn parse(lista: &mut Vec<String>) -> Result<Self, Error> {
         let mut columns = Vec::new();
-        while !lista.is_empty() && lista[0] != ")" {
+        while !lista.is_empty() && !check_words(lista, ")") {
+            check_words(lista, ",");
             columns.push(lista.remove(0));
         }
         Ok(PrimaryKey { columns })

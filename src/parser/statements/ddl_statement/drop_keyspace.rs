@@ -1,6 +1,7 @@
 use crate::parser::data_types::keyspace_name::KeyspaceName;
 
 /// Representa una sentencia CQL DROP KEYSPACE.
+#[derive(Debug)]
 pub struct DropKeyspace {
     /// Indica si se debe verificar la existencia de la tabla.
     pub if_exists: bool,

@@ -3,6 +3,8 @@ use crate::protocol::errors::error::Error;
 /// Representa diferentes tipos de declaraciones de UDT (Tipo Definido por el Usuario) personalizado.
 /// Las declaraciones UDT se utilizan para definir un nuevo tipo de datos personalizado.
 /// Este tipo de datos personalizado se puede utilizar en la definición de columnas de una tabla.
+
+#[derive(Debug)]
 pub enum UdtStatement {
     /// Representa una declaración CREATE TYPE.
     /// Dicha declaración se utiliza para crear un nuevo tipo de datos personalizado.

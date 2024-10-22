@@ -1,6 +1,9 @@
 use crate::protocol::errors::error::Error;
 
-use super::data_types::keyspace_name::KeyspaceName;
+use super::{
+    data_types::keyspace_name::KeyspaceName,
+    statements::ddl_statement::ddl_statement_parser::check_words,
+};
 
 /// Representa un nombre de tabla en Cassandra, que puede incluir un keyspace opcional.
 /// table_name::= [keyspace_name '.' ] name
@@ -8,10 +11,16 @@ use super::data_types::keyspace_name::KeyspaceName;
 ///
 /// * `keyspace` - Un `Option<KeyspaceName>` que representa el keyspace opcional.
 /// * `name` - Un `KeyspaceName` que representa el nombre de la tabla.
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub struct TableName {
+    /// Un `bool` que indica si la tabla existe.
+    /// if_exists::= 'IF' 'EXISTS'
+    pub if_exists: bool,
+
     /// Un `Option<KeyspaceName>` que representa el keyspace opcional.
     /// keyspace_name::= identifier
-    pub keyspace: Option<KeyspaceName>,
+    keyspace: Option<KeyspaceName>,
 
     /// Un `KeyspaceName` que representa el nombre de la tabla.
     /// name::= identifier
@@ -34,7 +43,30 @@ impl TableName {
         if lista.is_empty() {
             return Ok(None);
         }
-        let keyspace = KeyspaceName::check_kind_of_name(lista)?;
+
+        let mut if_exists = false;
+        let mut keyspace = None;
+        if lista.len() > 1 {
+            if check_words(lista, "IF EXISTS") {
+                if_exists = true;
+            }
+
+            if lista.len() > 3 {
+                keyspace = if lista[1] != "SET"
+                    && lista[1] != "("
+                    && lista[0] != "\'"
+                    && lista[3] != "("
+                    && lista[1] != "ADD"
+                    && lista[1] != "DROP"
+                    && lista[1] != "WITH"
+                    && lista[1] != "RENAME"
+                {
+                    KeyspaceName::check_kind_of_name(lista)?
+                } else {
+                    None
+                };
+            }
+        }
 
         let name = match KeyspaceName::check_kind_of_name(lista)? {
             Some(value) => value,
@@ -44,6 +76,23 @@ impl TableName {
                 ))
             }
         };
-        Ok(Some(TableName { keyspace, name }))
+
+        Ok(Some(TableName {
+            if_exists,
+            keyspace,
+            name,
+        }))
+    }
+
+    /// Devuelve el keyspace de la tabla como un `Option<String>`.
+    pub fn get_keyspace(&self) -> Option<String> {
+        self.keyspace
+            .as_ref()
+            .map(|keyspace| keyspace.get_name().to_string())
+    }
+
+    /// Devuelve el nombre de la tabla como un `String`.
+    pub fn get_name(&self) -> String {
+        self.name.get_name().to_string()
     }
 }

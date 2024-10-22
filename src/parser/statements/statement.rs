@@ -5,6 +5,8 @@ use crate::parser::statements::udt_statement::udt_statement_parser::UdtStatement
 
 /// Representa una declaración CQL (Cassandra Query Language).
 /// Las declaraciones CQL se utilizan para definir y manipular la estructura y los datos de la base de datos.
+
+#[derive(Debug)]
 pub enum Statement {
     /// Representa una declaración DDL (Data Definition Language).
     /// Las declaraciones DDL se utilizan para definir y modificar la estructura de la base de datos,

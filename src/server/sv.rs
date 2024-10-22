@@ -20,6 +20,9 @@ pub struct Server {
     graph: NodeGraph,
 }
 
+/// Cantidad de nodos a levantar al iniciar el servidor.
+const NODES_TO_BOOT: u8 = 5;
+
 impl Server {
     /// Crea una nueva instancia del servidor.
     pub fn new(addr: SocketAddr, mode: ConnectionMode) -> Self {
@@ -59,7 +62,7 @@ impl Server {
         let mut handlers: Vec<JoinHandle<Result<()>>> = Vec::new();
         handlers.push(self.graph.beater()?);
         handlers.push(self.graph.gossip_round()?);
-        handlers.extend(self.graph.bootup(5)?);
+        handlers.extend(self.graph.bootup(NODES_TO_BOOT)?);
 
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {

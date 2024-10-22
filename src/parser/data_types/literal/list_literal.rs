@@ -7,6 +7,7 @@ use crate::{
 
 #[allow(dead_code)]
 /// TODO: Desc básica
+#[derive(Debug)]
 pub struct ListLiteral {
     /// TODO: Desc básica
     values: Vec<Term>,

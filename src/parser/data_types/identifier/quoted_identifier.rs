@@ -1,5 +1,6 @@
 /// '"' (any character where " can appear if doubled)+ '"'
 
+#[derive(Debug, PartialEq)]
 pub struct QuotedIdentifier {
     text: String,
 }
@@ -16,15 +17,14 @@ impl QuotedIdentifier {
     }
 
     /// TODO: Desc básica
-    pub fn check_quoted_identifier(
-        first_quotes: &String,
-        word: &str,
-        second_quotes: &String,
-    ) -> bool {
-        if first_quotes != "\"" || second_quotes != "\"" {
+    pub fn check_quoted_identifier(first_quotes: &str, word: &str, second_quotes: &str) -> bool {
+        if (first_quotes != "\"" && first_quotes != "\'")
+            || (second_quotes != "\"" && second_quotes != "\'")
+        {
             return false;
         }
-        if !word.chars().all(char::is_alphabetic) {
+
+        if !word.chars().all(|c| c.is_ascii_alphanumeric() || c != '_') {
             return false;
         }
         true
