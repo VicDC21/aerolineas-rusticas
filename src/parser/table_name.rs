@@ -1,6 +1,9 @@
 use crate::protocol::errors::error::Error;
 
-use super::data_types::keyspace_name::KeyspaceName;
+use super::{
+    data_types::keyspace_name::KeyspaceName,
+    statements::ddl_statement::ddl_statement_parser::check_words,
+};
 
 /// Representa un nombre de tabla en Cassandra, que puede incluir un keyspace opcional.
 /// table_name::= [keyspace_name '.' ] name
@@ -11,6 +14,10 @@ use super::data_types::keyspace_name::KeyspaceName;
 #[derive(Debug)]
 #[derive(PartialEq)]
 pub struct TableName {
+    /// Un `bool` que indica si la tabla existe.
+    /// if_exists::= 'IF' 'EXISTS'
+    pub if_exists: bool,
+
     /// Un `Option<KeyspaceName>` que representa el keyspace opcional.
     /// keyspace_name::= identifier
     keyspace: Option<KeyspaceName>,
@@ -37,11 +44,29 @@ impl TableName {
             return Ok(None);
         }
 
-        let keyspace = if lista[1] != "SET" && lista[1] != "(" && lista[0] != "\'" {
-            KeyspaceName::check_kind_of_name(lista)?
-        } else {
-            None
-        };
+        let mut if_exists = false;
+        let mut keyspace = None;
+        if lista.len() > 1 {
+            if check_words(lista, "IF EXISTS") {
+                if_exists = true;
+            }
+
+            if lista.len() > 3 {
+                keyspace = if lista[1] != "SET"
+                    && lista[1] != "("
+                    && lista[0] != "\'"
+                    && lista[3] != "("
+                    && lista[1] != "ADD"
+                    && lista[1] != "DROP"
+                    && lista[1] != "WITH"
+                    && lista[1] != "RENAME"
+                {
+                    KeyspaceName::check_kind_of_name(lista)?
+                } else {
+                    None
+                };
+            }
+        }
 
         let name = match KeyspaceName::check_kind_of_name(lista)? {
             Some(value) => value,
@@ -51,7 +76,12 @@ impl TableName {
                 ))
             }
         };
-        Ok(Some(TableName { keyspace, name }))
+
+        Ok(Some(TableName {
+            if_exists,
+            keyspace,
+            name,
+        }))
     }
 
     /// Devuelve el keyspace de la tabla como un `Option<String>`.

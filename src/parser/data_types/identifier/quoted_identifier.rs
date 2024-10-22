@@ -24,7 +24,7 @@ impl QuotedIdentifier {
             return false;
         }
 
-        if !word.chars().all(|c| c.is_ascii_alphanumeric()) {
+        if !word.chars().all(|c| c.is_ascii_alphanumeric() || c != '_') {
             return false;
         }
         true

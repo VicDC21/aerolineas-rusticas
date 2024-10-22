@@ -188,15 +188,24 @@ fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>,
         if !check_words(list, "WITH") {
             return Err(Error::SyntaxError("Falta la condición WITH".to_string()));
         }
+
         let options = parse_table_options(list)?;
         let mut compact_storage = false;
         let mut clustering_order = None;
 
         for option in options {
-            if let Options::Identifier(id) = option {
-                match id.get_name() {
+            if let Options::Constant(term) = option {
+                match term.get_value().as_str() {
                     "COMPACT STORAGE" => compact_storage = true,
-                    "CLUSTERING ORDER" => {
+                    "CLUSTERING ORDER BY" => {
+                        clustering_order = Some(parse_clustering_order(&list.join(" "))?);
+                    }
+                    _ => {}
+                }
+            } else if let Options::Identifier(term) = option {
+                match term.get_name() {
+                    "COMPACT STORAGE" => compact_storage = true,
+                    "CLUSTERING ORDER BY" => {
                         clustering_order = Some(parse_clustering_order(&list.join(" "))?);
                     }
                     _ => {}
@@ -228,7 +237,6 @@ fn alter_table_statement(list: &mut Vec<String>) -> Result<Option<AlterTable>, E
         };
 
         let instruction = parse_alter_table_instruction(list)?;
-
         return Ok(Some(AlterTable::new(name, instruction)));
     }
     Ok(None)
@@ -236,7 +244,6 @@ fn alter_table_statement(list: &mut Vec<String>) -> Result<Option<AlterTable>, E
 
 fn drop_table_statement(list: &mut Vec<String>) -> Result<Option<DropTable>, Error> {
     if check_words(list, "DROP TABLE") {
-        let exist = check_words(list, "IF EXISTS");
         let table_name = match TableName::check_kind_of_name(list)? {
             Some(value) => value,
             None => {
@@ -245,7 +252,7 @@ fn drop_table_statement(list: &mut Vec<String>) -> Result<Option<DropTable>, Err
                 ))
             }
         };
-        return Ok(Some(DropTable::new(exist, table_name)));
+        return Ok(Some(DropTable::new(table_name)));
     }
     Ok(None)
 }
@@ -365,6 +372,7 @@ fn parse_clustering_order(order: &str) -> Result<Vec<(String, String)>, Error> {
 fn parse_column_definitions(list: &mut Vec<String>) -> Result<Vec<ColumnDefinition>, Error> {
     let mut columns = Vec::new();
     loop {
+        check_words(list, "(");
         let column = ColumnDefinition::parse(list)?;
         columns.push(column);
         if !check_words(list, ",") {
@@ -385,13 +393,8 @@ fn parse_primary_key(list: &mut Vec<String>) -> Result<Option<PrimaryKey>, Error
             ));
         }
 
+        check_words(list, "(");
         let primary_key = PrimaryKey::parse(list)?;
-
-        if !check_words(list, ")") {
-            return Err(Error::SyntaxError(
-                "Falta el paréntesis de cierre en PRIMARY KEY".to_string(),
-            ));
-        }
 
         Ok(Some(primary_key))
     } else {
@@ -479,8 +482,16 @@ fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::data_types::cql_type::cql_type::CQLType;
     use crate::{
-        parser::data_types::unquoted_name::UnquotedName, tokenizer::tokenizer::tokenize_query,
+        parser::data_types::{
+            cql_type::native_types::NativeType::{Int, Text},
+            identifier::{
+                quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
+            },
+            unquoted_name::UnquotedName,
+        },
+        tokenizer::tokenizer::tokenize_query,
     };
 
     // USE STATEMENT TESTS:
@@ -535,14 +546,6 @@ mod tests {
 
         let result = use_statement(&mut tokens);
         assert!(result.is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_05_use_statement_with_empty_input() -> Result<(), Error> {
-        let mut tokens = vec![];
-        let result = use_statement(&mut tokens)?;
-        assert!(result.is_none());
         Ok(())
     }
 
@@ -721,14 +724,6 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_07_alter_keyspace_with_empty_input() -> Result<(), Error> {
-        let mut tokens = vec![];
-        let result = alter_keyspace_statement(&mut tokens)?;
-        assert!(result.is_none());
-        Ok(())
-    }
-
     // DROP KEYSPACE TESTS:
     #[test]
     fn test_01_basic_drop_keyspace_statement() -> Result<(), Error> {
@@ -789,9 +784,398 @@ mod tests {
         Ok(())
     }
 
+    // CREATE TABLE TESTS:
+    #[test]
+    fn test_01_basic_create_table_statement() -> Result<(), Error> {
+        let query =
+            "CREATE TABLE users (id UUID PRIMARY KEY, name TEXT, age INT) WITH 'COMPACT STORAGE'";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(!table.if_not_exists);
+        assert_eq!(table.columns.len(), 3);
+        assert_eq!(
+            table.primary_key.as_ref().map_or(1, |pk| pk.columns.len()),
+            1
+        );
+        assert!(table.compact_storage);
+        assert!(table.clustering_order.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_create_table_with_if_not_exists() -> Result<(), Error> {
+        let query = "CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, name TEXT, age INT) WITH 'COMPACT STORAGE'";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(table.if_not_exists);
+        assert!(table.compact_storage);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_create_table_with_compound_primary_key() -> Result<(), Error> {
+        let query = "CREATE TABLE posts (
+            user_id UUID,
+            post_id TIMEUUID,
+            content TEXT,
+            PRIMARY KEY (user_id, post_id)
+        ) WITH 'CLUSTERING ORDER BY' (post_id DESC)";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(table.columns.len(), 3);
+        assert_eq!(
+            table.primary_key.as_ref().map_or(0, |pk| pk.columns.len()),
+            2
+        );
+        assert!(table.clustering_order.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_create_table_without_compact_storage() -> Result<(), Error> {
+        let query = "CREATE TABLE events (
+            id UUID PRIMARY KEY,
+            data TEXT
+        ) WITH read_repair_chance = 1.0";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(table.columns.len(), 2);
+        assert!(!table.compact_storage);
+        assert!(table.clustering_order.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_create_table_with_quoted_names() -> Result<(), Error> {
+        let query = "CREATE TABLE \"My Table\" (
+            \"User ID\" UUID PRIMARY KEY,
+            \"Full Name\" TEXT
+        ) WITH 'COMPACT STORAGE'";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            table.name.name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Table".to_string())?)
+        );
+        assert_eq!(table.columns.len(), 2);
+        assert_eq!(
+            table.columns[0].column_name,
+            Identifier::QuotedIdentifier(QuotedIdentifier::new("User ID".to_string()))
+        );
+        assert_eq!(
+            table.columns[1].column_name,
+            Identifier::QuotedIdentifier(QuotedIdentifier::new("Full Name".to_string()))
+        );
+        assert!(table.compact_storage);
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_invalid_create_table_statement() -> Result<(), Error> {
+        let query = "CREATE TABLE";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_07_create_table_missing_with_clause() -> Result<(), Error> {
+        let query = "CREATE TABLE users (id UUID PRIMARY KEY, name TEXT)";
+        let mut tokens = tokenize_query(query);
+        assert!(create_table_statement(&mut tokens).is_err());
+        Ok(())
+    }
+
+    // ALTER TABLE TESTS:
+
+    #[test]
+    fn test_01_basic_alter_table_statement() -> Result<(), Error> {
+        let query = "ALTER TABLE users ADD new_column TEXT";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(
+            alter_table.instruction,
+            AlterTableInstruction::AddColumns(
+                false,
+                vec![ColumnDefinition::new(
+                    Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                        "new_column".to_string()
+                    )),
+                    CQLType::NativeType(Text),
+                    false,
+                    false
+                )]
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_alter_table_add_columns_with_if_not_exists() -> Result<(), Error> {
+        let query = "ALTER TABLE users ADD IF NOT EXISTS (new_column1 TEXT, new_column2 INT)";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(
+            alter_table.instruction,
+            AlterTableInstruction::AddColumns(
+                true,
+                vec![
+                    ColumnDefinition::new(
+                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                            "new_column1".to_string()
+                        )),
+                        CQLType::NativeType(Text),
+                        false,
+                        false
+                    ),
+                    ColumnDefinition::new(
+                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new(
+                            "new_column2".to_string()
+                        )),
+                        CQLType::NativeType(Int),
+                        false,
+                        false
+                    )
+                ]
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_alter_table_drop_columns_with_if_exists() -> Result<(), Error> {
+        let query = "ALTER TABLE users DROP IF EXISTS old_column1, old_column2";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(
+            alter_table.instruction,
+            AlterTableInstruction::DropColumns(
+                true,
+                vec!["old_column1".to_string(), "old_column2".to_string()]
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_alter_table_rename_columns() -> Result<(), Error> {
+        let query =
+            "ALTER TABLE users RENAME old_column1 TO new_column1 AND old_column2 TO new_column2";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert_eq!(
+            alter_table.instruction,
+            AlterTableInstruction::RenameColumns(
+                false,
+                vec!(
+                    ("old_column1".to_string(), "new_column1".to_string()),
+                    ("old_column2".to_string(), "new_column2".to_string())
+                )
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_alter_table_with_if_exists() -> Result<(), Error> {
+        let query = "ALTER TABLE IF EXISTS users RENAME old_column TO new_column";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens)?;
+        let alter_table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            alter_table.name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
+        );
+        assert!(alter_table.name.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_06_invalid_alter_table_statement() -> Result<(), Error> {
+        let query = "ALTER TABLE";
+        let mut tokens = tokenize_query(query);
+
+        let result = alter_table_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    // DROP TABLE TESTS:
+    #[test]
+    fn test_01_basic_drop_table_statement() -> Result<(), Error> {
+        let query = "DROP TABLE my_table";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_table_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            table.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_table".to_string())?)
+        );
+        assert!(!table.table_name.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_drop_table_with_if_exists() -> Result<(), Error> {
+        let query = "DROP TABLE IF EXISTS my_table";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            table.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("my_table".to_string())?)
+        );
+        assert!(table.table_name.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_drop_table_with_quoted_name() -> Result<(), Error> {
+        let query = "DROP TABLE \"My Table\"";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            table.table_name.name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Table".to_string())?)
+        );
+        assert!(!table.table_name.if_exists);
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_invalid_drop_table_statement() -> Result<(), Error> {
+        let query = "DROP TABLE";
+        let mut tokens = tokenize_query(query);
+
+        let result = drop_table_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_01_basic_truncate_statement() -> Result<(), Error> {
+        let query = "TRUNCATE table_name";
+        let mut tokens = tokenize_query(query);
+
+        let result = truncate_statement(&mut tokens)?;
+        assert!(result.is_some());
+
+        let truncate = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+        assert_eq!(
+            truncate.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("table_name".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_truncate_statement_with_table_keyword() -> Result<(), Error> {
+        let query = "TRUNCATE TABLE table_name";
+        let mut tokens = tokenize_query(query);
+
+        let result = truncate_statement(&mut tokens)?;
+        let truncate = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            truncate.table_name.name,
+            KeyspaceName::UnquotedName(UnquotedName::new("table_name".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_03_truncate_statement_with_quoted_table_name() -> Result<(), Error> {
+        let query = "TRUNCATE \"My Table\"";
+        let mut tokens = tokenize_query(query);
+
+        let result = truncate_statement(&mut tokens)?;
+        let truncate = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(
+            truncate.table_name.name,
+            KeyspaceName::QuotedName(UnquotedName::new("My Table".to_string())?)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_04_invalid_truncate_statement() -> Result<(), Error> {
+        let query = "TRUNCATE";
+        let mut tokens = tokenize_query(query);
+
+        let result = truncate_statement(&mut tokens);
+        assert!(result.is_err());
+        Ok(())
+    }
+
     // EMPTY INPUT TESTS:
     #[test]
-    fn test_01_empty_input() -> Result<(), Error> {
+    fn test_01_keyspace_empty_input() -> Result<(), Error> {
         let mut tokens = vec![];
         let use_statement = use_statement(&mut tokens)?;
         let create_keyspace = create_keyspace_statement(&mut tokens)?;
@@ -802,6 +1186,22 @@ mod tests {
                 && create_keyspace.is_none()
                 && alter_keyspace.is_none()
                 && drop_keyspace.is_none()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_02_table_empty_input() -> Result<(), Error> {
+        let mut tokens = vec![];
+        let create_table = create_table_statement(&mut tokens)?;
+        let alter_table = alter_table_statement(&mut tokens)?;
+        let drop_table = drop_table_statement(&mut tokens)?;
+        let truncate = truncate_statement(&mut tokens)?;
+        assert!(
+            create_table.is_none()
+                && alter_table.is_none()
+                && drop_table.is_none()
+                && truncate.is_none()
         );
         Ok(())
     }
