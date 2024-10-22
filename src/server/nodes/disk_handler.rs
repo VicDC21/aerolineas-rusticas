@@ -6,11 +6,14 @@ use std::{
     path::Path,
 };
 
-use crate::parser::statements::dml_statement::main_statements::{
-    insert::Insert,
-    select::{order_by::OrderBy, select_operation::Select},
-};
 use crate::protocol::{aliases::results::Result, errors::error::Error};
+use crate::{
+    parser::statements::dml_statement::main_statements::{
+        insert::Insert,
+        select::{order_by::OrderBy, select_operation::Select},
+    },
+    protocol::aliases::types::Byte,
+};
 
 use super::node::NodeId;
 
@@ -35,7 +38,8 @@ impl DiskHandler {
     }
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
-    pub fn do_insert(statement: Insert, storage_addr: &str) -> Result<()> {
+    pub fn do_insert(statement: Insert, storage_addr: &str) -> Result<Vec<Byte>> {
+        let res: Vec<Byte> = vec![0x0, 0x0, 0x0, 0x2];
         let keyspace = statement.table_name.get_keyspace();
         let name = statement.table_name.get_name();
         let table_addr = match keyspace {
@@ -87,7 +91,7 @@ impl DiskHandler {
         }
         // Si el ID existe y no se debe sobreescribir la línea, no hago nada
         if id_exists && statement.if_not_exists {
-            return Ok(());
+            return Ok(res);
         }
 
         // Abro el archivo nuevamente para escribir
@@ -114,8 +118,7 @@ impl DiskHandler {
                 .write_all(new_row.as_bytes())
                 .map_err(|e| Error::ServerError(e.to_string()))?;
         }
-
-        Ok(())
+        Ok(res)
     }
 
     fn generate_row_to_insert(
@@ -135,7 +138,7 @@ impl DiskHandler {
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
-    pub fn do_select(statement: Select, storage_addr: &str) -> Result<Vec<u8>> {
+    pub fn do_select(statement: Select, storage_addr: &str) -> Result<Vec<Byte>> {
         let keyspace = statement.from.get_keyspace();
         let name = statement.from.get_name();
         let table_addr = match keyspace {
@@ -197,6 +200,8 @@ impl DiskHandler {
         query_cols: &[String],
         table_cols: &[String],
     ) -> Vec<u8> {
+        //kind of Result
+        let mut res: Vec<u8> = vec![0x0, 0x0, 0x0, 0x2];
         let mut metadata: Vec<u8> = Vec::new();
 
         // <flags>, por ahora la mascara tiene seteados todos los valores en 0
@@ -218,7 +223,6 @@ impl DiskHandler {
             .flat_map(|subvec| subvec.into_iter().flat_map(|s| s.into_bytes()))
             .collect();
 
-        let mut res = Vec::new();
         res.append(&mut metadata);
         res.append(&mut rows_count.to_be_bytes().to_vec());
         res.append(&mut rows_content);

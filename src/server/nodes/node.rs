@@ -3,7 +3,7 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    io::Read,
+    io::{Read, Write},
     net::TcpListener,
 };
 
@@ -300,12 +300,8 @@ impl Node {
                                         println!("[{} - ECHO] {}", self.id, query)
                                     }
                                     ConnectionMode::Parsing => {
-                                        if let Err(err) = self.handle_query(query) {
-                                            println!(
-                                                "[{} - PARSING] Error en el query recibido: {}",
-                                                self.id, err
-                                            );
-                                        }
+                                        println!("Deberia mandarse lo de abajo");
+                                        // tcp_stream.write_all(&self.handle_query(query));
                                     }
                                 }
                             } else {
@@ -319,7 +315,6 @@ impl Node {
                 }
             }
         }
-
         Ok(())
     }
 
@@ -359,57 +354,75 @@ impl Node {
     }
 
     /// Maneja un query.
-    fn handle_query(&self, query: String) -> Result<()> {
-        match make_parse(&mut tokenize_query(&query)) {
+    fn handle_query(&self, query: String) -> Vec<Byte> {
+        let res = match make_parse(&mut tokenize_query(&query)) {
             Ok(statement) => match statement {
-                Statement::DdlStatement(ddl_statement) => {
-                    self.handle_ddl_statement(ddl_statement);
-                }
-                Statement::DmlStatement(dml_statement) => {
-                    self.handle_dml_statement(dml_statement)?;
-                }
+                Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
+                Statement::DmlStatement(dml_statement) => self.handle_dml_statement(dml_statement),
                 Statement::UdtStatement(_udt_statement) => {
                     todo!();
                 }
             },
             Err(err) => {
-                return Err(Error::ServerError(format!(
-                    "[{} - PARSING] Error en el query tokenizado: {}",
-                    self.id, err
-                )));
+                return err.as_bytes();
             }
-        }
-        Ok(())
+        };
+        res
     }
 
     /// Maneja una declaración DDL.
-    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) {
+    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) -> Vec<Byte> {
         match ddl_statement {
-            DdlStatement::UseStatement(_keyspace_name) => {}
-            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {}
-            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {}
-            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {}
-            DdlStatement::CreateTableStatement(_create_table) => {}
-            DdlStatement::AlterTableStatement(_alter_table) => {}
-            DdlStatement::DropTableStatement(_drop_table) => {}
-            DdlStatement::TruncateStatement(_truncate) => {}
+            DdlStatement::UseStatement(_keyspace_name) => {
+                todo!()
+            }
+            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {
+                todo!()
+            }
+            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
+                todo!()
+            }
+            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
+                todo!()
+            }
+            DdlStatement::CreateTableStatement(_create_table) => {
+                todo!()
+            }
+            DdlStatement::AlterTableStatement(_alter_table) => {
+                todo!()
+            }
+            DdlStatement::DropTableStatement(_drop_table) => {
+                todo!()
+            }
+            DdlStatement::TruncateStatement(_truncate) => {
+                todo!()
+            }
         }
     }
 
     /// Maneja una declaración DML.
-    fn handle_dml_statement(&self, dml_statement: DmlStatement) -> Result<()> {
-        match dml_statement {
+    fn handle_dml_statement(&self, dml_statement: DmlStatement) -> Vec<Byte> {
+        let res: Result<Vec<Byte>> = match dml_statement {
             DmlStatement::SelectStatement(select) => {
-                DiskHandler::do_select(select, &self.storage_addr)?;
+                DiskHandler::do_select(select, &self.storage_addr)
             }
             DmlStatement::InsertStatement(insert) => {
-                DiskHandler::do_insert(insert, &self.storage_addr)?;
+                DiskHandler::do_insert(insert, &self.storage_addr)
             }
-            DmlStatement::UpdateStatement(_update) => {}
-            DmlStatement::DeleteStatement(_delete) => {}
-            DmlStatement::BatchStatement(_batch) => {}
+            DmlStatement::UpdateStatement(_update) => {
+                todo!()
+            }
+            DmlStatement::DeleteStatement(_delete) => {
+                todo!()
+            }
+            DmlStatement::BatchStatement(_batch) => {
+                todo!()
+            }
+        };
+        match res {
+            Ok(value) => value,
+            Err(err) => err.as_bytes(),
         }
-        Ok(())
     }
 }
 
