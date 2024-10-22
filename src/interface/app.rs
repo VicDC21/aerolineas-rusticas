@@ -2,10 +2,12 @@
 
 use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
+use egui_extras::install_image_loaders;
 use walkers::{Map, MapMemory, Position};
 
 use crate::interface::map::providers::{Provider, ProvidersMap};
-use crate::interface::map::windows::{acknowledge, controls, go_to_my_position, zoom};
+use crate::interface::map::windows::{controls, go_to_my_position, zoom};
+use crate::interface::plugins::airports::{drawer::AirportsDrawer, loader::AirportsLoader};
 
 /// Latitud de la coordenada de origen de nuestro mapa.
 pub const ORIG_LAT: f64 = -34.61760464833609;
@@ -22,15 +24,28 @@ pub struct AerolineasApp {
 
     /// El proveedor actualmente en uso.
     selected_provider: Provider,
+
+    /// El cargador de aeropuertos.
+    airports_loader: AirportsLoader,
+
+    /// El renderizador de aeropuertos.
+    airports_drawer: AirportsDrawer,
 }
 
 impl AerolineasApp {
     /// Crea una nueva instancia de la aplicación.
     pub fn new(egui_ctx: Context) -> Self {
+        install_image_loaders(&egui_ctx);
+
+        let mut mem = MapMemory::default();
+        let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
+
         Self {
-            map_memory: MapMemory::default(),
+            map_memory: mem,
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
+            airports_loader: AirportsLoader::default(),
+            airports_drawer: AirportsDrawer::default(),
         }
     }
 }
@@ -38,26 +53,28 @@ impl AerolineasApp {
 impl App for AerolineasApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            let scroll_delta = ctx.input(|input_state| input_state.scroll_delta);
-            if scroll_delta.y > 0.0 {
-                // scrollea para arriba
-                let _ = self.map_memory.zoom_in();
-            } else if scroll_delta.y < 0.0 {
-                let _ = self.map_memory.zoom_out();
-            }
-
             let tiles = self
                 .map_providers
                 .get_mut(&self.selected_provider)
                 .unwrap()
                 .as_mut();
-            let attribution = tiles.attribution();
 
+            let zoom_lvl = self.map_memory.zoom(); // necesariamente antes de crear el mapa
             let map = Map::new(
                 Some(tiles),
                 &mut self.map_memory,
                 Position::from_lat_lon(ORIG_LAT, ORIG_LONG),
             );
+
+            // Añadimos los plugins.
+            let cur_airports = self.airports_loader.take_airports();
+            self.airports_drawer
+                .sync_airports(cur_airports)
+                .sync_zoom(zoom_lvl);
+
+            let map = map
+                .with_plugin(&mut self.airports_loader)
+                .with_plugin(&mut self.airports_drawer);
 
             ui.add(map);
 
@@ -69,7 +86,14 @@ impl App for AerolineasApp {
                 &mut self.map_providers.keys(),
                 // &mut self.images_plugin_data,
             );
-            acknowledge(ui, attribution);
         });
+    }
+}
+
+impl Drop for AerolineasApp {
+    fn drop(&mut self) {
+        // Por si se cierra la ventana sin dejar que los hilos hijos del cargador
+        // se cierren antes.
+        self.airports_loader.wait_children();
     }
 }

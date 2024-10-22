@@ -3,12 +3,12 @@
 use std::collections::HashMap;
 
 use eframe::egui::Context;
-use walkers::{HttpOptions, Tiles, TilesManager};
+use walkers::{HttpOptions, HttpTiles, Tiles};
 
 use crate::interface::map::local_tiles::LocalTiles;
 
 /// _Hashmap_ de proveedores de tiles para un mapa geográfico.
-pub type ProvidersMap = HashMap<Provider, Box<dyn TilesManager + Send>>;
+pub type ProvidersMap = HashMap<Provider, Box<dyn Tiles + Send>>;
 
 /// Un servicio del que descargar las tiles de un mapa.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -40,6 +40,7 @@ impl Provider {
             } else {
                 Some(".cache".into())
             },
+            ..Default::default()
         }
     }
 
@@ -49,7 +50,7 @@ impl Provider {
 
         providers.insert(
             Provider::OpenStreetMap,
-            Box::new(Tiles::with_options(
+            Box::new(HttpTiles::with_options(
                 walkers::sources::OpenStreetMap,
                 Self::http_options(),
                 egui_ctx.to_owned(),
@@ -58,7 +59,7 @@ impl Provider {
 
         providers.insert(
             Provider::Geoportal,
-            Box::new(Tiles::with_options(
+            Box::new(HttpTiles::with_options(
                 walkers::sources::Geoportal,
                 Self::http_options(),
                 egui_ctx.to_owned(),
@@ -76,7 +77,7 @@ impl Provider {
         if let Some(token) = mapbox_access_token {
             providers.insert(
                 Provider::MapboxStreets,
-                Box::new(Tiles::with_options(
+                Box::new(HttpTiles::with_options(
                     walkers::sources::Mapbox {
                         style: walkers::sources::MapboxStyle::Streets,
                         access_token: token.to_string(),
@@ -88,7 +89,7 @@ impl Provider {
             );
             providers.insert(
                 Provider::MapboxSatellite,
-                Box::new(Tiles::with_options(
+                Box::new(HttpTiles::with_options(
                     walkers::sources::Mapbox {
                         style: walkers::sources::MapboxStyle::Satellite,
                         access_token: token.to_string(),
