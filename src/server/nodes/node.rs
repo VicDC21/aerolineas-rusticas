@@ -101,7 +101,7 @@ impl Node {
     /// Verifica rápidamente si un mensaje es de tipo [EXIT](SvAction::Exit).
     fn is_exit(bytes: &[Byte]) -> bool {
         if let Some(action) = SvAction::get_action(bytes) {
-            if matches!(action, SvAction::Exit) {
+            if matches!(action, SvAction::Exit(_)) {
                 return true;
             }
         }
@@ -159,11 +159,6 @@ impl Node {
         gossip_info
     }
 
-    /// Ve si el nodo es un nodo "hoja".
-    pub fn leaf(&self) -> bool {
-        self.neighbours_states.is_empty()
-    }
-
     /// Consulta el modo de conexión del nodo.
     pub fn mode(&self) -> &ConnectionMode {
         self.endpoint_state.get_appstate().get_mode()
@@ -210,9 +205,8 @@ impl Node {
     /// sino es con mensajes al puerto de escucha.
     pub fn request_processor(
         mut self,
-        _sender: Sender<Vec<Byte>>, // es pasado únicamente para que no muera el canal hasta que sea necesario
         receiver: Receiver<Vec<Byte>>,
-        mut listeners: Vec<Option<NodeHandle>>,
+        listeners: Vec<NodeHandle>,
     ) -> Result<NodeHandle> {
         let builder = Builder::new().name("processor".to_string());
         match builder.spawn(move || {
@@ -236,13 +230,9 @@ impl Node {
             }
 
             // Esperamos primero a que todos los hilos relacionados mueran primero.
-            for listener_opt in &mut listeners {
-                if let Some(listener) = listener_opt.take() {
-                    if listener.join().is_err() {
-                        println!(
-                            "Ocurrió un error mientras se esperaba a que termine un escuchador."
-                        );
-                    }
+            for listener in listeners {
+                if listener.join().is_err() {
+                    println!("Ocurrió un error mientras se esperaba a que termine un escuchador.");
                 }
             }
 
@@ -380,13 +370,14 @@ impl Node {
                 }
                 Ok(tcp_stream) => {
                     let bytes_vec: Vec<Byte> = tcp_stream.bytes().flatten().collect();
-                    // El procesamiento del stream ocurre en otro hilo, así que necesitamos
-                    // verificar si salimos aparte.
-                    if Self::is_exit(&bytes_vec[..]) {
-                        break;
-                    }
+                    let can_exit = Self::is_exit(&bytes_vec[..]);
                     if let Err(err) = proc_sender.send(bytes_vec) {
                         println!("Error mandando bytes al procesador:\n\n{}", err);
+                    }
+                    // El procesamiento del stream ocurre en otro hilo, así que necesitamos
+                    // verificar si salimos aparte.
+                    if can_exit {
+                        break;
                     }
                 }
             }
@@ -403,7 +394,7 @@ impl Node {
     pub fn process_tcp(&mut self, bytes: &[Byte]) -> Result<bool> {
         match SvAction::get_action(bytes) {
             Some(action) => match self.handle_sv_action(action) {
-                Ok(continue_loop) => Ok(!continue_loop),
+                Ok(stop_loop) => Ok(stop_loop),
                 Err(err) => {
                     println!(
                         "[{} - ACTION] Error en la acción del servidor: {}",
@@ -433,43 +424,43 @@ impl Node {
     /// Maneja una acción de servidor.
     fn handle_sv_action(&mut self, action: SvAction) -> Result<bool> {
         match action {
-            SvAction::Exit => Ok(false),
+            SvAction::Exit(proc_stop) => Ok(proc_stop),
             SvAction::Beat => {
                 self.beat();
-                Ok(true)
+                Ok(false)
             }
             SvAction::Gossip(neighbours) => {
                 self.gossip(neighbours)?;
-                Ok(true)
+                Ok(false)
             }
             SvAction::Syn(emissor_id, gossip_info) => {
                 self.syn(emissor_id, gossip_info)?;
-                Ok(true)
+                Ok(false)
             }
             SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
                 self.ack(receptor_id, gossip_info, nodes_map)?;
-                Ok(true)
+                Ok(false)
             }
             SvAction::Ack2(nodes_map) => {
                 self.ack2(nodes_map)?;
-                Ok(true)
+                Ok(false)
             }
             SvAction::NewNeighbour(state) => {
                 self.add_neighbour_state(state);
-                Ok(true)
+                Ok(false)
             }
             SvAction::SendEndpointState(id) => {
                 self.send_endpoint_state(id);
-                Ok(true)
+                Ok(false)
             }
             SvAction::Shutdown => {
                 for socket in get_available_sockets() {
                     let node_id = guess_id(&socket.ip());
-                    let _ = send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Cli);
-                    let _ = send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv);
+                    send_to_node(node_id, SvAction::Exit(false).as_bytes(), PortType::Cli)?;
+                    send_to_node(node_id, SvAction::Exit(true).as_bytes(), PortType::Priv)?;
                 }
                 // no interrumpe el nodo porque es el trabajo de EXIT
-                Ok(true)
+                Ok(false)
             }
         }
     }

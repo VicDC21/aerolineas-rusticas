@@ -131,7 +131,7 @@ impl NodesGraph {
 
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         for i in 0..n {
-            let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
+            let mut node_listeners: Vec<NodeHandle> = Vec::new();
             let current_id = self.add_node_id();
             let node = Node::new(current_id, self.preferred_mode.clone());
 
@@ -147,7 +147,7 @@ impl NodesGraph {
             let cli_builder = Builder::new().name(format!("{}_cli", current_id));
             let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_sender));
             match cli_res {
-                Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
+                Ok(cli_handler) => node_listeners.push(cli_handler),
                 Err(err) => {
                     return Err(Error::ServerError(format!(
                         "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
@@ -159,7 +159,7 @@ impl NodesGraph {
             let priv_builder = Builder::new().name(format!("{}_priv", current_id));
             let priv_res = priv_builder.spawn(move || Node::priv_listen(priv_socket, priv_sender));
             match priv_res {
-                Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
+                Ok(priv_handler) => node_listeners.push(priv_handler),
                 Err(err) => {
                     return Err(Error::ServerError(format!(
                         "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
@@ -167,7 +167,7 @@ impl NodesGraph {
                     )));
                 }
             }
-            let processor = node.request_processor(proc_sender, proc_receiver, node_listeners)?;
+            let processor = node.request_processor(proc_receiver, node_listeners)?;
 
             // Los join de los listeners están dentro del procesador
             handlers.push(Some(processor));
@@ -323,15 +323,6 @@ impl NodesGraph {
     /// Manda un mensaje al nodo relevante mediante el _hashing_ del mensaje.
     pub fn send_message(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
         send_to_node(self.select_node(&bytes), bytes, port_type)
-    }
-
-    /// Apaga todos los nodos.
-    pub fn shutdown(&mut self) {
-        for node_id in self.get_ids() {
-            if let Err(err) = send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv) {
-                println!("Ocurrió un error saliendo de un nodo:\n\n{}", err);
-            }
-        }
     }
 
     /// Espera a que terminen todos los handlers.
