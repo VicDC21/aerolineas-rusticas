@@ -3,7 +3,7 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    io::{Read, Write},
+    io::Read,
     net::TcpListener,
 };
 
@@ -23,6 +23,7 @@ use crate::server::{
                 HeartbeatState, {GenType, VerType},
             },
         },
+        port_type::PortType,
         utils::send_to_node,
     },
 };
@@ -99,6 +100,7 @@ impl Node {
         if let Err(err) = send_to_node(
             id,
             SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
+            PortType::Priv.into()
         ) {
             println!(
                 "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
@@ -176,6 +178,7 @@ impl Node {
             if let Err(err) = send_to_node(
                 neighbour_id,
                 SvAction::Syn(self.get_id().to_owned(), self.get_gossip_info()).as_bytes(),
+                PortType::Priv.into()
             ) {
                 println!(
                     "Ocurrió un error al mandar un mensaje SYN al nodo [{}]:\n\n{}",
@@ -219,6 +222,7 @@ impl Node {
         if let Err(err) = send_to_node(
             emissor_id,
             SvAction::Ack(self.get_id().to_owned(), own_gossip, response_nodes).as_bytes(),
+            PortType::Priv.into()
         ) {
             println!(
                 "Ocurrió un error al mandar un mensaje ACK al nodo [{}]:\n\n{}",
@@ -248,7 +252,7 @@ impl Node {
         // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
         self.update_neighbours(nodes_map)?;
 
-        if let Err(err) = send_to_node(receptor_id, SvAction::Ack2(nodes_for_receptor).as_bytes()) {
+        if let Err(err) = send_to_node(receptor_id, SvAction::Ack2(nodes_for_receptor).as_bytes(), PortType::Priv.into()) {
             println!(
                 "Ocurrió un error al mandar un mensaje ACK2 al nodo [{}]:\n\n{}",
                 receptor_id, err
@@ -262,14 +266,15 @@ impl Node {
         self.update_neighbours(nodes_map)
     }
 
-    /// Escucha por los eventos que recibe.
-    pub fn listen(&mut self) -> Result<()> {
-        let listener = match TcpListener::bind(self.endpoint_state.get_addr()) {
+    /// Escucha por los eventos que recibe del cliente.
+    pub fn cli_listen(&mut self) -> Result<()> {
+        let socket = self.endpoint_state.socket(PortType::Cli);
+        let listener = match TcpListener::bind(socket) {
             Ok(tcp_listener) => tcp_listener,
             Err(_) => {
                 return Err(Error::ServerError(format!(
                     "No se pudo bindear a la dirección '{}'",
-                    self.endpoint_state.get_addr()
+                    socket
                 )))
             }
         };
@@ -283,7 +288,7 @@ impl Node {
                     )))
                 }
                 Ok(tcp_stream) => {
-                    let mut bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
+                    let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
                     match SvAction::get_action(&bytes[..]) {
                         Some(action) => match self.handle_sv_action(action) {
                             Ok(continue_loop) => {

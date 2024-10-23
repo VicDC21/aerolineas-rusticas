@@ -9,7 +9,7 @@ use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
 };
-use crate::server::{actions::opcode::SvAction, modes::ConnectionMode, nodes::graph::NodeGraph};
+use crate::server::{actions::opcode::SvAction, modes::ConnectionMode, nodes::graph::NodesGraph};
 
 /// Estructura principal de servidor.
 pub struct Server {
@@ -17,7 +17,7 @@ pub struct Server {
     addr: SocketAddr,
 
     /// El grafo de nodos.
-    graph: NodeGraph,
+    graph: NodesGraph,
 }
 
 /// Cantidad de nodos a levantar al iniciar el servidor.
@@ -28,7 +28,7 @@ impl Server {
     pub fn new(addr: SocketAddr, mode: ConnectionMode) -> Self {
         Self {
             addr,
-            graph: NodeGraph::with_mode(mode),
+            graph: NodesGraph::with_mode(mode),
         }
     }
 
@@ -60,9 +60,9 @@ impl Server {
         };
 
         let mut handlers: Vec<JoinHandle<Result<()>>> = Vec::new();
-        handlers.push(self.graph.beater()?);
-        handlers.push(self.graph.gossip_round()?);
-        handlers.extend(self.graph.bootup(NODES_TO_BOOT)?);
+        // handlers.push(self.graph.beater()?);
+        // handlers.push(self.graph.gossiper()?);
+        // handlers.extend(self.graph.bootup_nodes(NODES_TO_BOOT)?);
 
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
