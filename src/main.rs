@@ -2,6 +2,14 @@ use std::env::args;
 
 use aerolineas::interface::run::run_app;
 use aerolineas::{client::cli::Client, server::sv::Server};
+use aerolineas::protocol::aliases::results::Result;
+
+/// Imprime por pantalla el error
+fn print_err(res: Result<_>) {
+    if let Err(err) = res {
+        println!("{}", err);
+    }
+}
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
@@ -13,21 +21,15 @@ fn main() {
     match argv[1].as_str() {
         "sv" => {
             let mut server = Server::echo_mode();
-            if let Err(err) = server.listen() {
-                println!("{}", err);
-            }
+            print_err(server.listen());
         }
 
         "cli" => {
             let mut client = Client::new(Server::default_addr());
-            if let Err(err) = client.echo() {
-                println!("{}", err);
-            }
+            print_err(client.echo());
         }
         "gui" => {
-            if let Err(err) = run_app() {
-                println!("{}", err);
-            }
+            print_err(run_app());
         }
         _ => {
             println!("Se debe elegir o 'sv' o 'cli', no '{}'...", argv[1]);
