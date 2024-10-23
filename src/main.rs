@@ -2,11 +2,10 @@ use std::env::args;
 
 use aerolineas::interface::run::run_app;
 use aerolineas::protocol::aliases::results::Result;
-use aerolineas::server::nodes::graph::NodesGraph;
-use aerolineas::{client::cli::Client, server::sv::nodes::graph::NodeGraph};
+use aerolineas::{client::cli::Client, server::nodes::graph::NodesGraph};
 
 /// Imprime por pantalla el error
-fn print_err(res: Result<_>) {
+fn print_err(res: Result<()>) {
     if let Err(err) = res {
         println!("{}", err);
     }

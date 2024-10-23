@@ -71,7 +71,9 @@ impl Client {
                 break;
             }
             if line.eq_ignore_ascii_case("shutdown") {
-                let _ = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]);
+                if let Err(err) = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]) {
+                    println!("Error mandando el mensaje de shutdown:\n\n{}", err);
+                }
                 break;
             }
 

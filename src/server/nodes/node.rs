@@ -4,7 +4,9 @@ use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
     io::Read,
-    net::{TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener},
+    sync::mpsc::{channel, Receiver, Sender},
+    thread::Builder,
 };
 
 use crate::protocol::{
@@ -16,6 +18,8 @@ use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
     nodes::{
+        disk_handler::DiskHandler,
+        graph::NodeHandle,
         port_type::PortType,
         states::{
             appstatus::AppStatus,
@@ -41,8 +45,6 @@ use crate::{
         flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
     },
 };
-
-use super::disk_handler::DiskHandler;
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -96,12 +98,22 @@ impl Node {
         self.endpoint_state.is_newer(&other.endpoint_state)
     }
 
+    /// Verifica rápidamente si un mensaje es de tipo [EXIT](SvAction::Exit).
+    fn is_exit(bytes: &[Byte]) -> bool {
+        if let Some(action) = SvAction::get_action(bytes) {
+            if matches!(action, SvAction::Exit) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Envia su endpoint state al nodo del ID correspondiente.
     fn send_endpoint_state(&mut self, id: NodeId) {
         if let Err(err) = send_to_node(
             id,
             SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
-            PortType::Priv.into(),
+            PortType::Priv,
         ) {
             println!(
                 "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
@@ -181,7 +193,7 @@ impl Node {
             if let Err(err) = send_to_node(
                 neighbour_id,
                 SvAction::Syn(self.get_id().to_owned(), self.get_gossip_info()).as_bytes(),
-                PortType::Priv.into(),
+                PortType::Priv,
             ) {
                 println!(
                     "Ocurrió un error al mandar un mensaje SYN al nodo [{}]:\n\n{}",
@@ -190,6 +202,58 @@ impl Node {
             }
         }
         Ok(())
+    }
+
+    /// Crea el hilo que procesa _requests_.
+    ///
+    /// Dicho hilo toma _ownership_ del nodo, por lo que ya no es accesible después
+    /// sino es con mensajes al puerto de escucha.
+    pub fn request_processor(
+        mut self,
+        _sender: Sender<Vec<Byte>>, // es pasado únicamente para que no muera el canal hasta que sea necesario
+        receiver: Receiver<Vec<Byte>>,
+        mut listeners: Vec<Option<NodeHandle>>,
+    ) -> Result<NodeHandle> {
+        let builder = Builder::new().name("processor".to_string());
+        match builder.spawn(move || {
+            loop {
+                match receiver.recv() {
+                    Err(err) => {
+                        println!("Error recibiendo request en hilo procesador:\n\n{}", err);
+                        break;
+                    }
+                    Ok(bytes) => match self.process_tcp(&bytes[..]) {
+                        Ok(stop) => {
+                            if stop {
+                                break;
+                            }
+                        }
+                        Err(err) => {
+                            println!("Error procesando request en hilo procesador:\n\n{}", err);
+                        }
+                    },
+                }
+            }
+
+            // Esperamos primero a que todos los hilos relacionados mueran primero.
+            for listener_opt in &mut listeners {
+                if let Some(listener) = listener_opt.take() {
+                    if listener.join().is_err() {
+                        println!(
+                            "Ocurrió un error mientras se esperaba a que termine un escuchador."
+                        );
+                    }
+                }
+            }
+
+            Ok(())
+        }) {
+            Ok(proc_handler) => Ok(proc_handler),
+            Err(err) => Err(Error::ServerError(format!(
+                "Error em el hilo prcesador:\n\n{}",
+                err
+            ))),
+        }
     }
 
     /// Se recibe un mensaje [SYN](crate::server::actions::opcode::SvAction::Syn).
@@ -225,7 +289,7 @@ impl Node {
         if let Err(err) = send_to_node(
             emissor_id,
             SvAction::Ack(self.get_id().to_owned(), own_gossip, response_nodes).as_bytes(),
-            PortType::Priv.into(),
+            PortType::Priv,
         ) {
             println!(
                 "Ocurrió un error al mandar un mensaje ACK al nodo [{}]:\n\n{}",
@@ -258,7 +322,7 @@ impl Node {
         if let Err(err) = send_to_node(
             receptor_id,
             SvAction::Ack2(nodes_for_receptor).as_bytes(),
-            PortType::Priv.into(),
+            PortType::Priv,
         ) {
             println!(
                 "Ocurrió un error al mandar un mensaje ACK2 al nodo [{}]:\n\n{}",
@@ -274,44 +338,23 @@ impl Node {
     }
 
     /// Escucha por los eventos que recibe del cliente.
-    pub fn cli_listen(&mut self) -> Result<()> {
-        let socket = self.endpoint_state.socket(PortType::Cli);
-        let listener = match TcpListener::bind(socket) {
-            Ok(tcp_listener) => tcp_listener,
-            Err(_) => {
-                return Err(Error::ServerError(format!(
-                    "No se pudo bindear a la dirección '{}'",
-                    socket
-                )))
-            }
-        };
-
-        for tcp_stream_res in listener.incoming() {
-            match tcp_stream_res {
-                Err(_) => {
-                    return Err(Error::ServerError(format!(
-                        "Un cliente no pudo conectarse al nodo con ID {}",
-                        self.id
-                    )))
-                }
-                Ok(tcp_stream) => match self.process_tcp(tcp_stream) {
-                    Ok(stop) => {
-                        if stop {
-                            break;
-                        }
-                    }
-                    Err(err) => {
-                        println!("Ocurrió un error al procesar el stream:\n\n{}", err)
-                    }
-                },
-            }
-        }
-        Ok(())
+    pub fn cli_listen(socket: SocketAddr, proc_sender: Sender<Vec<Byte>>) -> Result<()> {
+        Self::listen(socket, proc_sender, PortType::Cli)
     }
 
     /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-    pub fn priv_listen(&mut self) -> Result<()> {
-        let socket = self.endpoint_state.socket(PortType::Priv);
+    pub fn priv_listen(socket: SocketAddr, proc_sender: Sender<Vec<Byte>>) -> Result<()> {
+        Self::listen(socket, proc_sender, PortType::Priv)
+    }
+
+    /// El escuchador de verdad.
+    ///
+    /// Las otras funciones son wrappers para no repetir código.
+    fn listen(
+        socket: SocketAddr,
+        proc_sender: Sender<Vec<Byte>>,
+        port_type: PortType,
+    ) -> Result<()> {
         let listener = match TcpListener::bind(socket) {
             Ok(tcp_listener) => tcp_listener,
             Err(_) => {
@@ -325,33 +368,40 @@ impl Node {
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
                 Err(_) => {
+                    let falla = match &port_type {
+                        PortType::Cli => "cliente",
+                        PortType::Priv => "nodo o estructura interna",
+                    };
                     return Err(Error::ServerError(format!(
-                        "Un cliente no pudo conectarse al nodo con ID {}",
-                        self.id
+                        "Un {} no pudo conectarse al nodo con ID {}",
+                        falla,
+                        guess_id(&socket.ip())
                     )));
                 }
-                Ok(tcp_stream) => match self.process_tcp(tcp_stream) {
-                    Ok(stop) => {
-                        if stop {
-                            break;
-                        }
+                Ok(tcp_stream) => {
+                    let bytes_vec: Vec<Byte> = tcp_stream.bytes().flatten().collect();
+                    // El procesamiento del stream ocurre en otro hilo, así que necesitamos
+                    // verificar si salimos aparte.
+                    if Self::is_exit(&bytes_vec[..]) {
+                        break;
                     }
-                    Err(err) => {
-                        println!("Ocurrió un error al procesar el stream:\n\n{}", err)
+                    if let Err(err) = proc_sender.send(bytes_vec) {
+                        println!("Error mandando bytes al procesador:\n\n{}", err);
                     }
-                },
+                }
             }
         }
 
         Ok(())
     }
 
-    /// Procesa una _request_ de un [TcpStream].
+    /// Procesa una _request_ en forma de [Byte]s.
+    /// También devuelve un [bool] indicando si se debe parar el hilo.
     ///
-    /// Devuelve un [bool] indicando si se debe detener el stream.
-    fn process_tcp(&mut self, tcp_stream: TcpStream) -> Result<bool> {
-        let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
-        match SvAction::get_action(&bytes[..]) {
+    /// Esta función no debería ser llamada en los listeners, y está más pensada para el hilo
+    /// procesador del nodo.
+    pub fn process_tcp(&mut self, bytes: &[Byte]) -> Result<bool> {
+        match SvAction::get_action(bytes) {
             Some(action) => match self.handle_sv_action(action) {
                 Ok(continue_loop) => Ok(!continue_loop),
                 Err(err) => {
@@ -365,7 +415,7 @@ impl Node {
             None => {
                 match self.mode() {
                     ConnectionMode::Echo => {
-                        if let Ok(query) = String::from_utf8(bytes) {
+                        if let Ok(query) = String::from_utf8(bytes.to_vec()) {
                             println!("[{} - ECHO] {}", self.id, query)
                         }
                         Ok(false)
@@ -415,8 +465,8 @@ impl Node {
             SvAction::Shutdown => {
                 for socket in get_available_sockets() {
                     let node_id = guess_id(&socket.ip());
-                    send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Cli);
-                    send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv);
+                    let _ = send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Cli);
+                    let _ = send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv);
                 }
                 // no interrumpe el nodo porque es el trabajo de EXIT
                 Ok(true)

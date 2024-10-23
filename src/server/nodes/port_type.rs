@@ -19,3 +19,12 @@ impl Into<u16> for PortType {
         }
     }
 }
+
+impl Into<u16> for &PortType {
+    fn into(self) -> u16 {
+        match self {
+            PortType::Cli => 8080,
+            PortType::Priv => 6174,
+        }
+    }
+}

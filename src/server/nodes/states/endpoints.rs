@@ -94,7 +94,7 @@ impl EndpointState {
     }
 
     /// Gets a socket depending of the selected port.
-    pub fn socket(&self, port_type: PortType) -> SocketAddr {
+    pub fn socket(&self, port_type: &PortType) -> SocketAddr {
         let ipaddr = self.ipaddr.clone();
         match ipaddr {
             IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(ipv4, port_type.into())),

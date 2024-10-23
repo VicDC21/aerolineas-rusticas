@@ -101,17 +101,14 @@ impl NodesGraph {
 
         self.handlers.extend(nodes);
 
-        // Una vez que creamos los handlers, esperamos a que terminen.
+        // Paramos los handlers especiales primero
+        let _ = gossip_stopper.send(true);
+        let _ = gossiper.join();
+
+        let _ = beat_stopper.send(true);
+        let _ = beater.join();
+
         self.wait();
-
-        // A este punto todos los nodos están muertos, así que apagamos los
-        // handlers especiales también
-        gossip_stopper.send(true);
-        gossiper.join();
-
-        beat_stopper.send(true);
-        beater.join();
-
         Ok(())
     }
 
@@ -133,15 +130,47 @@ impl NodesGraph {
         self.node_weights[0] *= 3; // El primer nodo tiene el triple de probabilidades de ser elegido.
 
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
-        for _ in 0..n {
+        for i in 0..n {
+            let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
             let current_id = self.add_node_id();
-            let mut node = Node::new(current_id, self.preferred_mode.clone());
+            let node = Node::new(current_id, self.preferred_mode.clone());
+
+            let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
+            let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
+
+            let (proc_sender, proc_receiver) = channel::<Vec<Byte>>();
+
+            // Sino aparentemente el hilo toma ownership antes de poder clonarlo.
+            let cli_sender = proc_sender.clone();
+            let priv_sender = proc_sender.clone();
 
             let cli_builder = Builder::new().name(format!("{}_cli", current_id));
-            let cli_res = cli_builder.spawn(move || node.cli_listen());
-            if let Ok(cli_handler) = cli_res {
-                handlers.push(Some(cli_handler));
+            let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_sender));
+            match cli_res {
+                Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
+                Err(err) => {
+                    return Err(Error::ServerError(format!(
+                        "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
+                        i, err
+                    )));
+                }
             }
+
+            let priv_builder = Builder::new().name(format!("{}_priv", current_id));
+            let priv_res = priv_builder.spawn(move || Node::priv_listen(priv_socket, priv_sender));
+            match priv_res {
+                Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
+                Err(err) => {
+                    return Err(Error::ServerError(format!(
+                        "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
+                        i, err
+                    )));
+                }
+            }
+            let processor = node.request_processor(proc_sender, proc_receiver, node_listeners)?;
+
+            // Los join de los listeners están dentro del procesador
+            handlers.push(Some(processor));
         }
         // Llenamos de información al nodo "seed".
         self.send_states_to_node(self.max_weight());
@@ -195,7 +224,7 @@ impl NodesGraph {
                     if let Err(err) = send_to_node(
                         selected_id as NodeId,
                         SvAction::Gossip(neighbours).as_bytes(),
-                        PortType::Priv.into(),
+                        PortType::Priv,
                     ) {
                         println!("Ocurrió un error enviando mensaje de gossip:\n\n{}", err);
                     }
@@ -239,7 +268,7 @@ impl NodesGraph {
             if let Err(err) = send_to_node(
                 node_id,
                 SvAction::SendEndpointState(id).as_bytes(),
-                PortType::Priv.into(),
+                PortType::Priv,
             ) {
                 println!(
                     "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
@@ -263,9 +292,7 @@ impl NodesGraph {
                     }
                 }
                 for node_id in &ids {
-                    if send_to_node(*node_id, SvAction::Beat.as_bytes(), PortType::Priv.into())
-                        .is_err()
-                    {
+                    if send_to_node(*node_id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
                         return Err(Error::ServerError(format!(
                             "Error enviado mensaje de heartbeat a nodo {}",
                             node_id
@@ -301,9 +328,7 @@ impl NodesGraph {
     /// Apaga todos los nodos.
     pub fn shutdown(&mut self) {
         for node_id in self.get_ids() {
-            if let Err(err) =
-                send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv.into())
-            {
+            if let Err(err) = send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv) {
                 println!("Ocurrió un error saliendo de un nodo:\n\n{}", err);
             }
         }
@@ -329,11 +354,5 @@ impl NodesGraph {
 impl Default for NodesGraph {
     fn default() -> Self {
         Self::new(Vec::new(), START_ID, ConnectionMode::Parsing)
-    }
-}
-
-impl Drop for NodesGraph {
-    fn drop(&mut self) {
-        self.shutdown();
     }
 }
