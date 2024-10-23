@@ -415,13 +415,11 @@ impl Node {
             SvAction::Shutdown => {
                 for socket in get_available_sockets() {
                     let node_id = guess_id(&socket.ip());
-                    if self.id == node_id {
-                        // no mandarse el mensaje a sí mismo
-                        continue;
-                    }
+                    send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Cli);
                     send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv);
                 }
-                Ok(false)
+                // no interrumpe el nodo porque es el trabajo de EXIT
+                Ok(true)
             }
         }
     }
