@@ -1,9 +1,9 @@
 use std::env::args;
 
 use aerolineas::interface::run::run_app;
+use aerolineas::protocol::aliases::results::Result;
 use aerolineas::server::nodes::graph::NodesGraph;
 use aerolineas::{client::cli::Client, server::sv::nodes::graph::NodeGraph};
-use aerolineas::protocol::aliases::results::Result;
 
 /// Imprime por pantalla el error
 fn print_err(res: Result<_>) {
@@ -33,7 +33,10 @@ fn main() {
             print_err(run_app());
         }
         _ => {
-            println!("Se debe elegir o 'sv', 'cli' o 'gui', pero no '{}'...", argv[1]);
+            println!(
+                "Se debe elegir o 'sv', 'cli' o 'gui', pero no '{}'...",
+                argv[1]
+            );
         }
     }
 }

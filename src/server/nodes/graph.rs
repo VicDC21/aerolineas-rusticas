@@ -40,7 +40,7 @@ const HANDSHAKE_NEIGHBOURS: u8 = 3;
 const SIMULTANEOUS_GOSSIPERS: u8 = 3;
 
 /// Un grafo es una colección de nodos.
-/// 
+///
 /// El mismo se encarga principalmente de gestionar los hilos en donde corren los nodos,
 /// y manteners sus _handlers_ para luego finalizarlos, así como contar cuántos son para crear
 /// nuevo, etc.
@@ -61,7 +61,7 @@ pub struct NodesGraph {
     preferred_mode: ConnectionMode,
 
     /// Todos los hilos bajo este grafo.
-    /// 
+    ///
     /// NO incluye hilos especiales como el beater.
     handlers: Vec<Option<NodeHandle>>,
 }
@@ -165,7 +165,10 @@ impl NodesGraph {
                 let dist = if let Ok(dist) = WeightedIndex::new(&weights) {
                     dist
                 } else {
-                    return Err(Error::ServerError(format!("No se pudo crear una distribución de pesos con {:?}.", &weights)));
+                    return Err(Error::ServerError(format!(
+                        "No se pudo crear una distribución de pesos con {:?}.",
+                        &weights
+                    )));
                 };
 
                 let mut rng = thread_rng();
@@ -192,7 +195,7 @@ impl NodesGraph {
                     if let Err(err) = send_to_node(
                         selected_id as NodeId,
                         SvAction::Gossip(neighbours).as_bytes(),
-                        PortType::Priv.into()
+                        PortType::Priv.into(),
                     ) {
                         println!("Ocurrió un error enviando mensaje de gossip:\n\n{}", err);
                     }
@@ -236,7 +239,8 @@ impl NodesGraph {
             if let Err(err) = send_to_node(
                 node_id,
                 SvAction::SendEndpointState(id).as_bytes(),
-                PortType::Priv.into()) {
+                PortType::Priv.into(),
+            ) {
                 println!(
                     "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
                     err
@@ -259,7 +263,9 @@ impl NodesGraph {
                     }
                 }
                 for node_id in &ids {
-                    if send_to_node(*node_id, SvAction::Beat.as_bytes(), PortType::Priv.into()).is_err() {
+                    if send_to_node(*node_id, SvAction::Beat.as_bytes(), PortType::Priv.into())
+                        .is_err()
+                    {
                         return Err(Error::ServerError(format!(
                             "Error enviado mensaje de heartbeat a nodo {}",
                             node_id
@@ -295,14 +301,16 @@ impl NodesGraph {
     /// Apaga todos los nodos.
     pub fn shutdown(&mut self) {
         for node_id in self.get_ids() {
-            if let Err(err) = send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv.into()) {
+            if let Err(err) =
+                send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv.into())
+            {
                 println!("Ocurrió un error saliendo de un nodo:\n\n{}", err);
             }
         }
     }
 
     /// Espera a que terminen todos los handlers.
-    /// 
+    ///
     /// Esto idealmente sólo debería llamarse una vez, ya que consume los handlers y además
     /// bloquea el hilo actual.
     pub fn wait(&mut self) {

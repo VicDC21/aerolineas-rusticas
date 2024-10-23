@@ -9,18 +9,14 @@ use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
 };
-use crate::server::nodes::{
-    node::NodeId,
-    port_type::PortType,
-};
+use crate::server::nodes::{node::NodeId, port_type::PortType};
 
 /// Genera una dirección de socket a partir de un ID.
 pub fn guess_socket(id: NodeId, port_type: PortType) -> SocketAddr {
-    SocketAddr::V4(
-        SocketAddrV4::new(
-            Ipv4Addr::new(127, 0, 0, id), 
-            port_type.into())
-    )
+    SocketAddr::V4(SocketAddrV4::new(
+        Ipv4Addr::new(127, 0, 0, id),
+        port_type.into(),
+    ))
 }
 
 /// Manda un mensaje a un nodo específico.

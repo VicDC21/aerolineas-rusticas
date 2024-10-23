@@ -16,6 +16,7 @@ use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
     nodes::{
+        port_type::PortType,
         states::{
             appstatus::AppStatus,
             endpoints::EndpointState,
@@ -23,7 +24,6 @@ use crate::server::{
                 HeartbeatState, {GenType, VerType},
             },
         },
-        port_type::PortType,
         utils::{guess_id, send_to_node},
     },
     utils::get_available_sockets,
@@ -101,7 +101,7 @@ impl Node {
         if let Err(err) = send_to_node(
             id,
             SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
-            PortType::Priv.into()
+            PortType::Priv.into(),
         ) {
             println!(
                 "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
@@ -115,12 +115,14 @@ impl Node {
     /// No compara los estados en profundidad, sólo verifica si se tiene un estado
     /// con la misma IP.
     pub fn has_endpoint_state(&self, state: &EndpointState) -> bool {
-        self.neighbours_states.contains_key(&guess_id(state.get_addr()))
+        self.neighbours_states
+            .contains_key(&guess_id(state.get_addr()))
     }
 
     fn add_neighbour_state(&mut self, state: EndpointState) {
         if !self.has_endpoint_state(&state) {
-            self.neighbours_states.insert(guess_id(state.get_addr()), state);
+            self.neighbours_states
+                .insert(guess_id(state.get_addr()), state);
         }
     }
 
@@ -179,7 +181,7 @@ impl Node {
             if let Err(err) = send_to_node(
                 neighbour_id,
                 SvAction::Syn(self.get_id().to_owned(), self.get_gossip_info()).as_bytes(),
-                PortType::Priv.into()
+                PortType::Priv.into(),
             ) {
                 println!(
                     "Ocurrió un error al mandar un mensaje SYN al nodo [{}]:\n\n{}",
@@ -223,7 +225,7 @@ impl Node {
         if let Err(err) = send_to_node(
             emissor_id,
             SvAction::Ack(self.get_id().to_owned(), own_gossip, response_nodes).as_bytes(),
-            PortType::Priv.into()
+            PortType::Priv.into(),
         ) {
             println!(
                 "Ocurrió un error al mandar un mensaje ACK al nodo [{}]:\n\n{}",
@@ -253,7 +255,11 @@ impl Node {
         // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
         self.update_neighbours(nodes_map)?;
 
-        if let Err(err) = send_to_node(receptor_id, SvAction::Ack2(nodes_for_receptor).as_bytes(), PortType::Priv.into()) {
+        if let Err(err) = send_to_node(
+            receptor_id,
+            SvAction::Ack2(nodes_for_receptor).as_bytes(),
+            PortType::Priv.into(),
+        ) {
             println!(
                 "Ocurrió un error al mandar un mensaje ACK2 al nodo [{}]:\n\n{}",
                 receptor_id, err
@@ -288,18 +294,16 @@ impl Node {
                         self.id
                     )))
                 }
-                Ok(tcp_stream) => {
-                    match self.process_tcp(tcp_stream) {
-                        Ok(stop) => {
-                            if stop {
-                                break;
-                            }
-                        },
-                        Err(err) => {
-                            println!("Ocurrió un error al procesar el stream:\n\n{}", err)
+                Ok(tcp_stream) => match self.process_tcp(tcp_stream) {
+                    Ok(stop) => {
+                        if stop {
+                            break;
                         }
                     }
-                }
+                    Err(err) => {
+                        println!("Ocurrió un error al procesar el stream:\n\n{}", err)
+                    }
+                },
             }
         }
         Ok(())
@@ -326,18 +330,16 @@ impl Node {
                         self.id
                     )));
                 }
-                Ok(tcp_stream) => {
-                    match self.process_tcp(tcp_stream) {
-                        Ok(stop) => {
-                            if stop {
-                                break;
-                            }
-                        },
-                        Err(err) => {
-                            println!("Ocurrió un error al procesar el stream:\n\n{}", err)
+                Ok(tcp_stream) => match self.process_tcp(tcp_stream) {
+                    Ok(stop) => {
+                        if stop {
+                            break;
                         }
                     }
-                }
+                    Err(err) => {
+                        println!("Ocurrió un error al procesar el stream:\n\n{}", err)
+                    }
+                },
             }
         }
 
@@ -345,7 +347,7 @@ impl Node {
     }
 
     /// Procesa una _request_ de un [TcpStream].
-    /// 
+    ///
     /// Devuelve un [bool] indicando si se debe detener el stream.
     fn process_tcp(&mut self, tcp_stream: TcpStream) -> Result<bool> {
         let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
@@ -361,19 +363,19 @@ impl Node {
                 }
             },
             None => {
-                    match self.mode() {
-                        ConnectionMode::Echo => {
-                            if let Ok(query) = String::from_utf8(bytes) {
-                                println!("[{} - ECHO] {}", self.id, query)
-                            }
-                            Ok(false)
+                match self.mode() {
+                    ConnectionMode::Echo => {
+                        if let Ok(query) = String::from_utf8(bytes) {
+                            println!("[{} - ECHO] {}", self.id, query)
                         }
-                        ConnectionMode::Parsing => {
-                            println!("Deberia mandarse lo de abajo");
-                            // tcp_stream.write_all(&mut self.handle_request(&mut bytes));
-                            Ok(false)
-                        }
+                        Ok(false)
                     }
+                    ConnectionMode::Parsing => {
+                        println!("Deberia mandarse lo de abajo");
+                        // tcp_stream.write_all(&mut self.handle_request(&mut bytes));
+                        Ok(false)
+                    }
+                }
             }
         }
     }
@@ -409,16 +411,15 @@ impl Node {
             SvAction::SendEndpointState(id) => {
                 self.send_endpoint_state(id);
                 Ok(true)
-            },
+            }
             SvAction::Shutdown => {
                 for socket in get_available_sockets() {
                     let node_id = guess_id(&socket.ip());
-                    if self.id == node_id { // no mandarse el mensaje a sí mismo
+                    if self.id == node_id {
+                        // no mandarse el mensaje a sí mismo
                         continue;
                     }
-                    send_to_node(node_id,
-                                 SvAction::Exit.as_bytes(),
-                                 PortType::Priv);
+                    send_to_node(node_id, SvAction::Exit.as_bytes(), PortType::Priv);
                 }
                 Ok(false)
             }
@@ -454,7 +455,7 @@ impl Node {
             Opcode::AuthResponse => self.handle_auth_response(),
             _ => {
                 return Err(Error::ProtocolError(
-                    "El opcode recibido no es una request".to_string()
+                    "El opcode recibido no es una request".to_string(),
                 ))
             }
         };
@@ -480,8 +481,12 @@ impl Node {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
                 Ok(statement) => match statement {
-                    Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
-                    Statement::DmlStatement(dml_statement) => self.handle_dml_statement(dml_statement),
+                    Statement::DdlStatement(ddl_statement) => {
+                        self.handle_ddl_statement(ddl_statement)
+                    }
+                    Statement::DmlStatement(dml_statement) => {
+                        self.handle_dml_statement(dml_statement)
+                    }
                     Statement::UdtStatement(_udt_statement) => {
                         todo!();
                     }
@@ -490,7 +495,7 @@ impl Node {
                     return err.as_bytes();
                 }
             };
-            return res
+            return res;
             // aca usariamos la query como corresponda
         }
         Error::ServerError("No se pudieron transformar los bytes a string".to_string()).as_bytes()
@@ -572,7 +577,6 @@ impl Node {
             Err(err) => err.as_bytes(),
         }
     }
-
 }
 
 impl PartialEq for Node {
@@ -580,4 +584,3 @@ impl PartialEq for Node {
         self.endpoint_state.eq(&other.endpoint_state)
     }
 }
-

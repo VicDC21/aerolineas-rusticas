@@ -202,7 +202,7 @@ impl Byteable for SvAction {
                 let mut bytes = vec![0xF7];
                 bytes.extend(state.as_bytes());
                 bytes
-            },
+            }
             Self::Shutdown => vec![0xF8],
         }
     }
@@ -291,12 +291,12 @@ impl TryFrom<&[Byte]> for SvAction {
                     ));
                 }
                 Ok(Self::SendEndpointState(bytes[1]))
-            },
+            }
             0xF8 => Ok(Self::Shutdown),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first
-            )))
+            ))),
         }
     }
 }

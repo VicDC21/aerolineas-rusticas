@@ -517,9 +517,14 @@ mod tests {
             data_types::{
                 identifier::{
                     quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
-                }, keyspace_name::KeyspaceName, unquoted_name::UnquotedName
+                },
+                keyspace_name::KeyspaceName,
+                unquoted_name::UnquotedName,
             },
-            statements::dml_statement::{main_statements::select::order_by::ProtocolOrdering, r#where::expression::Expression},
+            statements::dml_statement::{
+                main_statements::select::order_by::ProtocolOrdering,
+                r#where::expression::Expression,
+            },
         },
         tokenizer::tokenizer::tokenize_query,
     };
@@ -535,7 +540,9 @@ mod tests {
         assert_eq!(select.columns, KindOfColumns::All);
         assert_eq!(
             select.from,
-            TableName::check_kind_of_name(&mut vec!["users".to_string()]).unwrap().unwrap()
+            TableName::check_kind_of_name(&mut vec!["users".to_string()])
+                .unwrap()
+                .unwrap()
         );
         assert!(select.options.the_where.is_none());
         Ok(())
@@ -707,7 +714,9 @@ mod tests {
                         assert_eq!(relation2.operator, Operator::Equal);
                         assert_eq!(
                             relation2.term_to_compare,
-                            Term::is_term(&mut vec!["USA".to_string()]).unwrap().unwrap()
+                            Term::is_term(&mut vec!["USA".to_string()])
+                                .unwrap()
+                                .unwrap()
                         );
                     } else {
                         return Err(Error::SyntaxError(
@@ -748,7 +757,9 @@ mod tests {
                             assert_eq!(relation1.operator, Operator::Equal);
                             assert_eq!(
                                 relation1.term_to_compare,
-                                Term::is_term(&mut vec!["electronics".to_string()]).unwrap().unwrap()
+                                Term::is_term(&mut vec!["electronics".to_string()])
+                                    .unwrap()
+                                    .unwrap()
                             );
                         } else {
                             return Err(Error::SyntaxError(
@@ -765,7 +776,9 @@ mod tests {
                             assert_eq!(relation2.operator, Operator::Minor);
                             assert_eq!(
                                 relation2.term_to_compare,
-                                Term::is_term(&mut vec!["1000".to_string()]).unwrap().unwrap()
+                                Term::is_term(&mut vec!["1000".to_string()])
+                                    .unwrap()
+                                    .unwrap()
                             );
                         } else {
                             return Err(Error::SyntaxError(
@@ -786,7 +799,6 @@ mod tests {
                         assert_eq!(
                             relation3.term_to_compare,
                             Term::is_term(&mut vec!["0".to_string()]).unwrap().unwrap()
-
                         );
                     } else {
                         return Err(Error::SyntaxError(
@@ -826,8 +838,9 @@ mod tests {
                     assert_eq!(relation.operator, Operator::Contains);
                     assert_eq!(
                         relation.term_to_compare,
-                        Term::is_term(&mut vec!["reading".to_string()]).unwrap().unwrap()
-
+                        Term::is_term(&mut vec!["reading".to_string()])
+                            .unwrap()
+                            .unwrap()
                     );
                 } else {
                     return Err(Error::SyntaxError("Expected Relation expression".into()));
@@ -1011,7 +1024,9 @@ mod tests {
         let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
         assert_eq!(
             delete.from,
-            TableName::check_kind_of_name(&mut vec!["users".to_string()]).unwrap().unwrap()
+            TableName::check_kind_of_name(&mut vec!["users".to_string()])
+                .unwrap()
+                .unwrap()
         );
         assert!(delete.cols.is_empty());
         assert!(delete.the_where.is_some());

@@ -23,10 +23,7 @@ use crate::{
 };
 use crate::{
     protocol::headers::{length::Length, opcode::Opcode},
-    server::{
-        actions::opcode::SvAction,
-        utils::get_available_sockets,
-    },
+    server::{actions::opcode::SvAction, utils::get_available_sockets},
 };
 
 /// Estructura principal de un cliente.
@@ -50,7 +47,7 @@ impl Client {
         match TcpStream::connect(&self.addrs[..]) {
             Ok(tcp_stream) => Ok(tcp_stream),
             Err(_) => Err(Error::ServerError(
-                "No se pudo conectar con ningún socket.".to_string()
+                "No se pudo conectar con ningún socket.".to_string(),
             )),
         }
     }
@@ -158,7 +155,7 @@ impl Client {
 
         if tcp_stream.write_all(bytes).is_err() {
             return Err(Error::ServerError(
-                "No se pudo escribir mandar el contenido".to_string()
+                "No se pudo escribir mandar el contenido".to_string(),
             ));
         }
         Ok(())

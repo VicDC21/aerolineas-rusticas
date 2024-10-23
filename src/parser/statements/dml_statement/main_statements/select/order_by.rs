@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 
 use crate::parser::data_types::identifier::identifier::Identifier;
 
-
 /// ordering_clause::= column_name [ ASC | DESC ] ( ',' column_name [ ASC | DESC ] )*
 #[derive(Debug)]
 pub struct OrderBy {

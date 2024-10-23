@@ -39,9 +39,7 @@ pub struct EndpointState {
 impl EndpointState {
     /// Genera un socket basado en un id dado.
     fn generate_ipaddr(id: NodeId) -> IpAddr {
-        IpAddr::V4(
-            Ipv4Addr::new(127, 0, 0, id)
-        )
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, id))
     }
 
     /// Instancia las propiedades del nodo.
@@ -99,12 +97,8 @@ impl EndpointState {
     pub fn socket(&self, port_type: PortType) -> SocketAddr {
         let ipaddr = self.ipaddr.clone();
         match ipaddr {
-            IpAddr::V4(ipv4) => {
-                SocketAddr::V4(SocketAddrV4::new(ipv4, port_type.into()))
-            },
-            IpAddr::V6(ipv6) => {
-                SocketAddr::V6(SocketAddrV6::new(ipv6, port_type.into(), 0, 0))
-            }
+            IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(ipv4, port_type.into())),
+            IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(ipv6, port_type.into(), 0, 0)),
         }
     }
 
