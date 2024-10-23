@@ -1,7 +1,15 @@
 use std::env::args;
 
 use aerolineas::interface::run::run_app;
-use aerolineas::{client::cli::Client, server::sv::Server};
+use aerolineas::protocol::aliases::results::Result;
+use aerolineas::{client::cli::Client, server::nodes::graph::NodesGraph};
+
+/// Imprime por pantalla el error
+fn print_err(res: Result<()>) {
+    if let Err(err) = res {
+        println!("{}", err);
+    }
+}
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
@@ -12,25 +20,22 @@ fn main() {
 
     match argv[1].as_str() {
         "sv" => {
-            let mut server = Server::echo_mode();
-            if let Err(err) = server.listen() {
-                println!("{}", err);
-            }
+            let mut graph = NodesGraph::echo_mode();
+            print_err(graph.init());
         }
 
         "cli" => {
-            let mut client = Client::new(Server::default_addr());
-            if let Err(err) = client.echo() {
-                println!("{}", err);
-            }
+            let mut client = Client::default();
+            print_err(client.echo());
         }
         "gui" => {
-            if let Err(err) = run_app() {
-                println!("{}", err);
-            }
+            print_err(run_app());
         }
         _ => {
-            println!("Se debe elegir o 'sv' o 'cli', no '{}'...", argv[1]);
+            println!(
+                "Se debe elegir o 'sv', 'cli' o 'gui', pero no '{}'...",
+                argv[1]
+            );
         }
     }
 }

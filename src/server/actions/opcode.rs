@@ -32,7 +32,9 @@ const ACTION_MASK: u8 = 0xF0;
 /// del parseo de _queries_.
 pub enum SvAction {
     /// Finalizar la conexión actual.
-    Exit,
+    ///
+    /// Lo acompaña un [bool] indicando si también terminar las estructuras internas.
+    Exit(bool),
 
     /// Aumentar en el tiempo los estados de los nodos.
     Beat,
@@ -66,6 +68,10 @@ pub enum SvAction {
 
     /// Pedirle a este nodo que envie su endpoint state a otro nodo, dado el ID de este último.
     SendEndpointState(NodeId),
+
+    /// Mandar un mensaje de [EXIT](crate::server::actions::opcode::SvAction::Exit) a todos
+    /// los nodos salvo sí mismo, y luego salir.
+    Shutdown,
 }
 
 impl SvAction {
@@ -169,7 +175,7 @@ impl SvAction {
 impl Byteable for SvAction {
     fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::Exit => vec![0xF0],
+            Self::Exit(proc_stop) => vec![0xF0, (if *proc_stop { 0xF1 } else { 0xF0 })],
             Self::Beat => vec![0xF1],
             Self::Gossip(neighbours) => {
                 let mut bytes_vec = vec![0xF2];
@@ -199,6 +205,7 @@ impl Byteable for SvAction {
                 bytes.extend(state.as_bytes());
                 bytes
             }
+            Self::Shutdown => vec![0xF8],
         }
     }
 }
@@ -222,7 +229,7 @@ impl TryFrom<&[Byte]> for SvAction {
         }
 
         match first {
-            0xF0 => Ok(Self::Exit),
+            0xF0 => Ok(Self::Exit(bytes[i + 1] != 0x0)),
             0xF1 => Ok(Self::Beat),
             0xF2 => {
                 i += 1;
@@ -287,6 +294,7 @@ impl TryFrom<&[Byte]> for SvAction {
                 }
                 Ok(Self::SendEndpointState(bytes[1]))
             }
+            0xF8 => Ok(Self::Shutdown),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

@@ -11,8 +11,7 @@ use super::{
 ///
 /// * `keyspace` - Un `Option<KeyspaceName>` que representa el keyspace opcional.
 /// * `name` - Un `KeyspaceName` que representa el nombre de la tabla.
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct TableName {
     /// Un `bool` que indica si la tabla existe.
     /// if_exists::= 'IF' 'EXISTS'

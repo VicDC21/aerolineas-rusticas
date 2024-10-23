@@ -2,11 +2,11 @@
 
 use std::{
     cmp::PartialEq,
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 
 use crate::protocol::{
-    aliases::types::{Byte, Int},
+    aliases::types::Byte,
     errors::error::Error,
     traits::Byteable,
     utils::{encode_ipaddr_to_bytes, parse_bytes_to_ipaddr},
@@ -15,6 +15,7 @@ use crate::server::{
     modes::ConnectionMode,
     nodes::{
         node::NodeId,
+        port_type::PortType,
         states::{
             application::AppState, appstatus::AppStatus, heartbeat::HeartbeatState,
             heartbeat::VerType,
@@ -22,14 +23,11 @@ use crate::server::{
     },
 };
 
-/// El puerto preferido para las IPs
-pub const PORT: u16 = 8080;
-
 /// Las propiedades de un nodo.
 #[derive(Clone)]
 pub struct EndpointState {
     /// La dirección de _socket_ del nodo.
-    addr: SocketAddr,
+    ipaddr: IpAddr,
 
     /// La info de un nodo que cambia a cada instante.
     heartbeat: HeartbeatState,
@@ -40,14 +38,14 @@ pub struct EndpointState {
 
 impl EndpointState {
     /// Genera un socket basado en un id dado.
-    fn generate_ipaddr(id: NodeId) -> SocketAddr {
-        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, id), PORT))
+    fn generate_ipaddr(id: NodeId) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, id))
     }
 
     /// Instancia las propiedades del nodo.
-    pub fn new(addr: SocketAddr, heartbeat: HeartbeatState, application: AppState) -> Self {
+    pub fn new(ipaddr: IpAddr, heartbeat: HeartbeatState, application: AppState) -> Self {
         Self {
-            addr,
+            ipaddr,
             heartbeat,
             application,
         }
@@ -64,24 +62,9 @@ impl EndpointState {
 
     /// Crea una instancia dado un ID y modo de conexión.
     pub fn with_id_and_mode(id: NodeId, mode: ConnectionMode) -> Self {
-        Self::new(
-            Self::generate_ipaddr(id),
-            HeartbeatState::default(),
-            AppState::new(AppStatus::Bootstrap, mode),
-        )
-    }
-
-    /// Adivina el ID del nodo a partir de la IP del estado.
-    pub fn guess_id(&self) -> NodeId {
-        match self.addr.ip() {
-            IpAddr::V4(ipv4) => {
-                let [_, _, _, id] = ipv4.octets();
-                id
-            }
-            IpAddr::V6(ipv6) => {
-                let [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, id] = ipv6.octets();
-                id
-            }
+        Self {
+            application: AppState::new(AppStatus::Bootstrap, mode),
+            ..Self::with_id(id)
         }
     }
 
@@ -90,9 +73,9 @@ impl EndpointState {
         self.heartbeat > other.heartbeat
     }
 
-    /// Consulta la dirección del _socket_.
-    pub fn get_addr(&self) -> &SocketAddr {
-        &self.addr
+    /// Consulta la dirección de la IP.
+    pub fn get_addr(&self) -> &IpAddr {
+        &self.ipaddr
     }
 
     /// Consulta el estado _heartbeat_.
@@ -110,6 +93,14 @@ impl EndpointState {
         &self.application
     }
 
+    /// Gets a socket depending of the selected port.
+    pub fn socket(&self, port_type: &PortType) -> SocketAddr {
+        match self.ipaddr {
+            IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(ipv4, port_type.into())),
+            IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(ipv6, port_type.into(), 0, 0)),
+        }
+    }
+
     /// Aumenta el estado de _heartbeat_.
     pub fn beat(&mut self) -> VerType {
         self.heartbeat.beat()
@@ -118,15 +109,14 @@ impl EndpointState {
 
 impl PartialEq for EndpointState {
     fn eq(&self, other: &Self) -> bool {
-        self.addr == other.addr && self.heartbeat.eq(&other.heartbeat)
+        self.ipaddr == other.ipaddr && self.heartbeat.eq(&other.heartbeat)
     }
 }
 
 impl Byteable for EndpointState {
     fn as_bytes(&self) -> Vec<Byte> {
         let mut bytes = Vec::new();
-        bytes.extend(encode_ipaddr_to_bytes(&self.addr.ip()));
-        bytes.extend((self.addr.port() as Int).to_be_bytes());
+        bytes.extend(encode_ipaddr_to_bytes(&self.ipaddr));
 
         bytes.extend(self.heartbeat.as_bytes());
         bytes.extend(self.application.as_bytes());
@@ -141,14 +131,11 @@ impl TryFrom<&[Byte]> for EndpointState {
         let mut i = 0;
 
         let ipaddr = parse_bytes_to_ipaddr(bytes, &mut i)?;
-        let port = Int::from_be_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]]);
-        i += 4;
 
-        let addr = SocketAddr::new(ipaddr, port as u16);
         let heartbeat = HeartbeatState::try_from(&bytes[i..])?;
         i += heartbeat.as_bytes().len();
 
         let application = AppState::try_from(&bytes[i..])?;
-        Ok(Self::new(addr, heartbeat, application))
+        Ok(Self::new(ipaddr, heartbeat, application))
     }
 }

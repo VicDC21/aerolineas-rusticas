@@ -1,7 +1,6 @@
 use super::selector::Selector;
 
-#[derive(Default)]
-#[derive(Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq)]
 
 /// Representa el tipo de columnas a seleccionar.
 pub enum KindOfColumns {

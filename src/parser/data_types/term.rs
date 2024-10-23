@@ -1,6 +1,6 @@
-use std::cmp::Ordering;
 use super::constant::Constant;
 use crate::protocol::errors::error::Error;
+use std::cmp::Ordering;
 
 #[allow(dead_code)]
 /// TODO: Desc básica

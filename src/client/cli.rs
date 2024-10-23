@@ -23,38 +23,36 @@ use crate::{
 };
 use crate::{
     protocol::headers::{length::Length, opcode::Opcode},
-    server::actions::opcode::SvAction,
+    server::{actions::opcode::SvAction, utils::get_available_sockets},
 };
 
 /// Estructura principal de un cliente.
 pub struct Client {
     /// La dirección del _socket_ al que conectarse al mandar cosas.
-    addr: SocketAddr,
+    addrs: Vec<SocketAddr>,
     requests_stream: HashSet<i16>,
 }
 
 impl Client {
     /// Crea una nueva instancia de cliente.
-    pub fn new(addr: SocketAddr) -> Self {
-        let requests_stream = HashSet::new();
+    pub fn new(addrs: Vec<SocketAddr>, requests_stream: HashSet<i16>) -> Self {
         Self {
-            addr,
+            addrs,
             requests_stream,
         }
     }
 
-    /// Conecta con el _socket_ guardado.
+    /// Conecta con alguno de los _sockets_ guardados.
     pub fn connect(&self) -> Result<TcpStream> {
-        match TcpStream::connect(self.addr) {
+        match TcpStream::connect(&self.addrs[..]) {
             Ok(tcp_stream) => Ok(tcp_stream),
-            Err(_) => Err(Error::ServerError(format!(
-                "No se pudo conectar al socket '{}'",
-                self.addr
-            ))),
+            Err(_) => Err(Error::ServerError(
+                "No se pudo conectar con ningún socket.".to_string(),
+            )),
         }
     }
 
-    /// Conecta con el _socket_ guardado usando `stdin` como _stream_ de entrada.
+    /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
     ///
     /// <div class="warning">
     ///
@@ -73,7 +71,9 @@ impl Client {
                 break;
             }
             if line.eq_ignore_ascii_case("shutdown") {
-                let _ = tcp_stream.write_all(&SvAction::Exit.as_bytes()[..]);
+                if let Err(err) = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]) {
+                    println!("Error mandando el mensaje de shutdown:\n\n{}", err);
+                }
                 break;
             }
 
@@ -156,11 +156,16 @@ impl Client {
         let mut tcp_stream = self.connect()?;
 
         if tcp_stream.write_all(bytes).is_err() {
-            return Err(Error::ServerError(format!(
-                "No se pudo escribir el contenido en {}",
-                self.addr
-            )));
+            return Err(Error::ServerError(
+                "No se pudo escribir mandar el contenido".to_string(),
+            ));
         }
         Ok(())
+    }
+}
+
+impl Default for Client {
+    fn default() -> Self {
+        Self::new(get_available_sockets(), HashSet::<i16>::new())
     }
 }

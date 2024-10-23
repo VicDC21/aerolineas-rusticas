@@ -16,7 +16,7 @@ pub enum Constant {
     /// re('-?[0-9]+'). Es un i32 normalito.
     Integer(Int),
 
-    /// re('-?[0-9]+(.[0-9]*)?([eE][+-]?[0-9+])?') | NAN | INFINITY. Es un f64, con eso alcanza para representar las posibilidades.
+    /// re('-?[0-9]+(.[0-9]*)?([eE][+-]?[0-9+])?') | NAN | INFINITY. Es un [f64], con eso alcanza para representar las posibilidades.
     Double(Double),
 
     /// TRUE | FALSE
@@ -38,7 +38,7 @@ impl Constant {
         match self {
             Constant::String(s) => s.to_string(),
             Constant::Integer(i) => i.to_string(),
-            Constant::Float(f) => f.to_string(),
+            Constant::Double(f) => f.to_string(),
             Constant::Boolean(b) => b.to_string(),
             Constant::Uuid(u) => u.to_string(),
             Constant::Blob(b) => b.to_string(),
