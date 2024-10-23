@@ -70,20 +70,6 @@ impl EndpointState {
         }
     }
 
-    /// Adivina el ID del nodo a partir de la IP del estado.
-    pub fn guess_id(&self) -> NodeId {
-        match self.ipaddr {
-            IpAddr::V4(ipv4) => {
-                let [_, _, _, id] = ipv4.octets();
-                id
-            }
-            IpAddr::V6(ipv6) => {
-                let [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, id] = ipv6.octets();
-                id
-            }
-        }
-    }
-
     /// Compara si el _heartbeat_ de este estado es más nuevo que otro.
     pub fn is_newer(&self, other: &Self) -> bool {
         self.heartbeat > other.heartbeat

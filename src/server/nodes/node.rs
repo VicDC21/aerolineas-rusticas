@@ -4,7 +4,7 @@ use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
     io::Read,
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
 };
 
 use crate::protocol::{
@@ -24,8 +24,9 @@ use crate::server::{
             },
         },
         port_type::PortType,
-        utils::send_to_node,
+        utils::{guess_id, send_to_node},
     },
+    utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 use crate::{
@@ -114,12 +115,12 @@ impl Node {
     /// No compara los estados en profundidad, sólo verifica si se tiene un estado
     /// con la misma IP.
     pub fn has_endpoint_state(&self, state: &EndpointState) -> bool {
-        self.neighbours_states.contains_key(&state.guess_id())
+        self.neighbours_states.contains_key(&guess_id(state.get_addr()))
     }
 
     fn add_neighbour_state(&mut self, state: EndpointState) {
         if !self.has_endpoint_state(&state) {
-            self.neighbours_states.insert(state.guess_id(), state);
+            self.neighbours_states.insert(guess_id(state.get_addr()), state);
         }
     }
 
@@ -288,39 +289,93 @@ impl Node {
                     )))
                 }
                 Ok(tcp_stream) => {
-                    let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
-                    match SvAction::get_action(&bytes[..]) {
-                        Some(action) => match self.handle_sv_action(action) {
-                            Ok(continue_loop) => {
-                                if !continue_loop {
-                                    break;
-                                }
-                            }
-                            Err(err) => {
-                                println!(
-                                    "[{} - ACTION] Error en la acción del servidor: {}",
-                                    self.id, err
-                                );
+                    match self.process_tcp(tcp_stream) {
+                        Ok(stop) => {
+                            if stop {
+                                break;
                             }
                         },
-                        None => {
-                                match self.mode() {
-                                    ConnectionMode::Echo => {
-                                        if let Ok(query) = String::from_utf8(bytes) {
-
-                                            println!("[{} - ECHO] {}", self.id, query)}
-                                    }
-                                    ConnectionMode::Parsing => {
-                                        println!("Deberia mandarse lo de abajo");
-                                        // tcp_stream.write_all(&mut self.handle_request(&mut bytes));
-                                    }
-                                }
+                        Err(err) => {
+                            println!("Ocurrió un error al procesar el stream:\n\n{}", err)
                         }
                     }
                 }
             }
         }
         Ok(())
+    }
+
+    /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
+    pub fn priv_listen(&mut self) -> Result<()> {
+        let socket = self.endpoint_state.socket(PortType::Priv);
+        let listener = match TcpListener::bind(socket) {
+            Ok(tcp_listener) => tcp_listener,
+            Err(_) => {
+                return Err(Error::ServerError(format!(
+                    "No se pudo bindear a la dirección '{}'",
+                    socket
+                )))
+            }
+        };
+
+        for tcp_stream_res in listener.incoming() {
+            match tcp_stream_res {
+                Err(_) => {
+                    return Err(Error::ServerError(format!(
+                        "Un cliente no pudo conectarse al nodo con ID {}",
+                        self.id
+                    )));
+                }
+                Ok(tcp_stream) => {
+                    match self.process_tcp(tcp_stream) {
+                        Ok(stop) => {
+                            if stop {
+                                break;
+                            }
+                        },
+                        Err(err) => {
+                            println!("Ocurrió un error al procesar el stream:\n\n{}", err)
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Procesa una _request_ de un [TcpStream].
+    /// 
+    /// Devuelve un [bool] indicando si se debe detener el stream.
+    fn process_tcp(&mut self, tcp_stream: TcpStream) -> Result<bool> {
+        let bytes: Vec<Byte> = tcp_stream.bytes().flatten().collect();
+        match SvAction::get_action(&bytes[..]) {
+            Some(action) => match self.handle_sv_action(action) {
+                Ok(continue_loop) => Ok(!continue_loop),
+                Err(err) => {
+                    println!(
+                        "[{} - ACTION] Error en la acción del servidor: {}",
+                        self.id, err
+                    );
+                    Ok(false)
+                }
+            },
+            None => {
+                    match self.mode() {
+                        ConnectionMode::Echo => {
+                            if let Ok(query) = String::from_utf8(bytes) {
+                                println!("[{} - ECHO] {}", self.id, query)
+                            }
+                            Ok(false)
+                        }
+                        ConnectionMode::Parsing => {
+                            println!("Deberia mandarse lo de abajo");
+                            // tcp_stream.write_all(&mut self.handle_request(&mut bytes));
+                            Ok(false)
+                        }
+                    }
+            }
+        }
     }
 
     /// Maneja una acción de servidor.
@@ -354,6 +409,18 @@ impl Node {
             SvAction::SendEndpointState(id) => {
                 self.send_endpoint_state(id);
                 Ok(true)
+            },
+            SvAction::Shutdown => {
+                for socket in get_available_sockets() {
+                    let node_id = guess_id(&socket.ip());
+                    if self.id == node_id { // no mandarse el mensaje a sí mismo
+                        continue;
+                    }
+                    send_to_node(node_id,
+                                 SvAction::Exit.as_bytes(),
+                                 PortType::Priv);
+                }
+                Ok(false)
             }
         }
     }

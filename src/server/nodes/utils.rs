@@ -2,7 +2,7 @@
 
 use std::{
     io::Write,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
 };
 
 use crate::protocol::{
@@ -42,4 +42,18 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
         )));
     }
     Ok(())
+}
+
+/// Adivina el ID del nodo a partir de una IP.
+pub fn guess_id(ipaddr: &IpAddr) -> NodeId {
+    match ipaddr {
+        IpAddr::V4(ipv4) => {
+            let [_, _, _, id] = ipv4.octets();
+            id
+        }
+        IpAddr::V6(ipv6) => {
+            let [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, id] = ipv6.octets();
+            id
+        }
+    }
 }

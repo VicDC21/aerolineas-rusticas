@@ -3,7 +3,7 @@
 use std::{
     collections::HashSet,
     io::{stdin, BufRead, BufReader, Write},
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    net::{SocketAddr, TcpStream},
 };
 
 use crate::{
@@ -25,10 +25,7 @@ use crate::{
     protocol::headers::{length::Length, opcode::Opcode},
     server::{
         actions::opcode::SvAction,
-        nodes::{
-            graph::{N_NODES, START_ID},
-            port_type::PortType,
-        },
+        utils::get_available_sockets,
     },
 };
 
@@ -46,22 +43,6 @@ impl Client {
             addrs,
             requests_stream,
         }
-    }
-
-    /// Consigue las direcciones a las que intentará conectarse.
-    /// 
-    /// ~~_(Medio hardcodeado pero sirve por ahora)_~~
-    pub fn get_available_sockets() -> Vec<SocketAddr> {
-        let mut sockets = Vec::<SocketAddr>::new();
-        for i in 0..N_NODES {
-            sockets.push(
-                SocketAddr::V4(SocketAddrV4::new(
-                    Ipv4Addr::new(127, 0, 0, START_ID + i),
-                    PortType::Cli.into())
-                )
-            );
-        }
-        sockets
     }
 
     /// Conecta con alguno de los _sockets_ guardados.
@@ -93,7 +74,7 @@ impl Client {
                 break;
             }
             if line.eq_ignore_ascii_case("shutdown") {
-                let _ = tcp_stream.write_all(&SvAction::Exit.as_bytes()[..]);
+                let _ = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]);
                 break;
             }
 
@@ -186,6 +167,6 @@ impl Client {
 
 impl Default for Client {
     fn default() -> Self {
-        Self::new(Self::get_available_sockets(), HashSet::<i16>::new())
+        Self::new(get_available_sockets(), HashSet::<i16>::new())
     }
 }
