@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashSet,
-    io::{stdin, BufRead, BufReader, Write},
+    io::{stdin, BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
 };
 
@@ -85,10 +85,22 @@ impl Client {
             let mut header: Vec<u8> = vec![0x05, 0x00, stream_id as u8];
             // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
             // Numero de stream, tiene que ser positivo en cliente
-            // self.parse_request(&line, &mut header);
             if self.parse_request(&line, &mut header) {
                 let _ = tcp_stream.write_all(&header);
                 let _ = tcp_stream.write_all(line.as_bytes());
+
+                // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
+                if let Err(err) = tcp_stream.flush() {
+                    println!("Error haciendo flush desde el cliente:\n\n{}", err);
+                }
+
+                let mut buf = Vec::<Byte>::new();
+                match tcp_stream.read_to_end(&mut buf) {
+                    Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
+                    Ok(_) => {
+                        todo!("deserializar headers y body de response")
+                    }
+                }
             }
         }
         Ok(())
@@ -149,18 +161,6 @@ impl Client {
             DmlStatement::DeleteStatement(_delete) => {}
             DmlStatement::BatchStatement(_batch) => {}
         }
-    }
-
-    /// Intenta un objeto al _socket_ guardado.
-    pub fn send_bytes(&self, bytes: &[Byte]) -> Result<()> {
-        let mut tcp_stream = self.connect()?;
-
-        if tcp_stream.write_all(bytes).is_err() {
-            return Err(Error::ServerError(
-                "No se pudo escribir mandar el contenido".to_string(),
-            ));
-        }
-        Ok(())
     }
 }
 
