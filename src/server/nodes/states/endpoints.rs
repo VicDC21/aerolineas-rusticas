@@ -96,8 +96,8 @@ impl EndpointState {
     /// Gets a socket depending of the selected port.
     pub fn socket(&self, port_type: &PortType) -> SocketAddr {
         match self.ipaddr {
-            IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(ipv4, port_type.into())),
-            IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(ipv6, port_type.into(), 0, 0)),
+            IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(ipv4, port_type.to_num())),
+            IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(ipv6, port_type.to_num(), 0, 0)),
         }
     }
 

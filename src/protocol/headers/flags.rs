@@ -35,6 +35,28 @@ pub enum Flag {
     Default,
 }
 
+impl Flag {
+    /// Descompone un valor en los tipos de máscaras.
+    pub fn decompose(base: &Byte) -> Vec<Self> {
+        let mut masks_vec = Vec::<Self>::new();
+
+        for flag_type in [
+            Self::Compression,
+            Self::Tracing,
+            Self::CustomPayload,
+            Self::Warning,
+            Self::Beta,
+            Self::Default,
+        ] {
+            if Self::has_mask(base, &flag_type) {
+                masks_vec.push(flag_type);
+            }
+        }
+
+        masks_vec
+    }
+}
+
 impl Byteable for Flag {
     fn as_bytes(&self) -> Vec<Byte> {
         match self {
@@ -43,7 +65,7 @@ impl Byteable for Flag {
             Self::CustomPayload => vec![0x4],
             Self::Warning => vec![0x8],
             Self::Beta => vec![0x10],
-            Self::Default => vec![],
+            Self::Default => vec![0x0],
         }
     }
 }

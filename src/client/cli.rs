@@ -17,13 +17,15 @@ use crate::{
     protocol::{
         aliases::{results::Result, types::Byte},
         errors::error::Error,
+        headers::{
+            flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
+            version::Version,
+        },
         traits::Byteable,
+        utils::encode_string_to_bytes,
     },
-    tokenizer::tokenizer::tokenize_query,
-};
-use crate::{
-    protocol::headers::{length::Length, opcode::Opcode},
     server::{actions::opcode::SvAction, utils::get_available_sockets},
+    tokenizer::tokenizer::tokenize_query,
 };
 
 /// Estructura principal de un cliente.
@@ -82,10 +84,10 @@ impl Client {
                 stream_id += 1;
             }
             self.requests_stream.insert(stream_id);
-            let mut header: Vec<u8> = vec![0x05, 0x00, stream_id as u8];
+            let mut header = Vec::<Byte>::new();
             // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
             // Numero de stream, tiene que ser positivo en cliente
-            if self.parse_request(&line, &mut header) {
+            if self.parse_request(&line, &mut header, stream_id) {
                 let _ = tcp_stream.write_all(&header);
                 let _ = tcp_stream.write_all(line.as_bytes());
 
@@ -106,26 +108,20 @@ impl Client {
         Ok(())
     }
 
-    fn parse_request(&mut self, line: &str, header: &mut Vec<u8>) -> bool {
+    fn parse_request(&mut self, line: &str, header: &mut Vec<Byte>, stream_id: i16) -> bool {
         match make_parse(&mut tokenize_query(line)) {
             Ok(statement) => {
                 match statement {
                     Statement::DdlStatement(ddl_statement) => {
-                        header.push(Opcode::Query.as_bytes()[0]);
-                        let lenght = Length::new(line.len() as u32);
-                        header.append(&mut lenght.as_bytes());
+                        Self::fill_headers(line, header, stream_id);
                         self.handle_ddl_statement(ddl_statement);
                     }
                     Statement::DmlStatement(dml_statement) => {
-                        header.push(Opcode::Query.as_bytes()[0]);
-                        let lenght = Length::new(line.len() as u32);
-                        header.append(&mut lenght.as_bytes());
+                        Self::fill_headers(line, header, stream_id);
                         self.handle_dml_statement(dml_statement);
                     }
                     Statement::UdtStatement(_udt_statement) => {
-                        header.push(Opcode::Query.as_bytes()[0]);
-                        let lenght = Length::new(line.len() as u32);
-                        header.append(&mut lenght.as_bytes());
+                        Self::fill_headers(line, header, stream_id);
                         todo!();
                     }
                 };
@@ -136,6 +132,20 @@ impl Client {
                 false
             }
         }
+    }
+
+    /// Llena el resto de headers.
+    fn fill_headers(line: &str, header: &mut Vec<Byte>, stream_id: i16) {
+        let version = Version::RequestV5;
+        let flags = Flag::Default;
+        let stream = Stream::new(stream_id);
+        let opcode = Opcode::Query;
+        // Esto está mal, el body de una query tiene un montón de metadatos,
+        // y el len se le hace al vector de bytes serializados.
+        let line_bytes = encode_string_to_bytes(line);
+        let length = Length::new(line_bytes.len() as u32);
+
+        header.extend(Headers::new(version, vec![flags], stream, opcode, length).as_bytes());
     }
 
     /// Maneja una declaración DDL.

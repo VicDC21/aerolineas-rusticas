@@ -5,7 +5,12 @@ use rand::{
     thread_rng,
 };
 use std::{
-    collections::HashSet, hash::{DefaultHasher, Hash, Hasher}, net::TcpStream, sync::mpsc::{channel, Sender}, thread::{sleep, Builder, JoinHandle}, time::Duration
+    collections::HashSet,
+    hash::{DefaultHasher, Hash, Hasher},
+    net::TcpStream,
+    sync::mpsc::{channel, Sender},
+    thread::{sleep, Builder, JoinHandle},
+    time::Duration,
 };
 
 use crate::protocol::{
