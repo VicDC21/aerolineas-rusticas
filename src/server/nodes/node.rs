@@ -3,9 +3,9 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    io::Read,
-    net::{SocketAddr, TcpListener},
-    sync::mpsc::{channel, Receiver, Sender},
+    io::{Read, Write},
+    net::{SocketAddr, TcpListener, TcpStream},
+    sync::mpsc::{Receiver, Sender},
     thread::Builder,
 };
 
@@ -205,7 +205,7 @@ impl Node {
     /// sino es con mensajes al puerto de escucha.
     pub fn request_processor(
         mut self,
-        receiver: Receiver<Vec<Byte>>,
+        receiver: Receiver<TcpStream>,
         listeners: Vec<NodeHandle>,
     ) -> Result<NodeHandle> {
         let builder = Builder::new().name("processor".to_string());
@@ -216,7 +216,7 @@ impl Node {
                         println!("Error recibiendo request en hilo procesador:\n\n{}", err);
                         break;
                     }
-                    Ok(bytes) => match self.process_tcp(&bytes[..]) {
+                    Ok(tcp_stream) => match self.process_tcp(tcp_stream) {
                         Ok(stop) => {
                             if stop {
                                 break;
@@ -328,12 +328,12 @@ impl Node {
     }
 
     /// Escucha por los eventos que recibe del cliente.
-    pub fn cli_listen(socket: SocketAddr, proc_sender: Sender<Vec<Byte>>) -> Result<()> {
+    pub fn cli_listen(socket: SocketAddr, proc_sender: Sender<TcpStream>) -> Result<()> {
         Self::listen(socket, proc_sender, PortType::Cli)
     }
 
     /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-    pub fn priv_listen(socket: SocketAddr, proc_sender: Sender<Vec<Byte>>) -> Result<()> {
+    pub fn priv_listen(socket: SocketAddr, proc_sender: Sender<TcpStream>) -> Result<()> {
         Self::listen(socket, proc_sender, PortType::Priv)
     }
 
@@ -342,7 +342,7 @@ impl Node {
     /// Las otras funciones son wrappers para no repetir código.
     fn listen(
         socket: SocketAddr,
-        proc_sender: Sender<Vec<Byte>>,
+        proc_sender: Sender<TcpStream>,
         port_type: PortType,
     ) -> Result<()> {
         let listener = match TcpListener::bind(socket) {
@@ -369,9 +369,9 @@ impl Node {
                     )));
                 }
                 Ok(tcp_stream) => {
-                    let bytes_vec: Vec<Byte> = tcp_stream.bytes().flatten().collect();
+                    let bytes_vec: Vec<Byte> = (&tcp_stream).bytes().flatten().collect();
                     let can_exit = Self::is_exit(&bytes_vec[..]);
-                    if let Err(err) = proc_sender.send(bytes_vec) {
+                    if let Err(err) = proc_sender.send(tcp_stream) {
                         println!("Error mandando bytes al procesador:\n\n{}", err);
                     }
                     // El procesamiento del stream ocurre en otro hilo, así que necesitamos
@@ -391,8 +391,9 @@ impl Node {
     ///
     /// Esta función no debería ser llamada en los listeners, y está más pensada para el hilo
     /// procesador del nodo.
-    pub fn process_tcp(&mut self, bytes: &[Byte]) -> Result<bool> {
-        match SvAction::get_action(bytes) {
+    pub fn process_tcp(&mut self, mut tcp_stream: TcpStream) -> Result<bool> {
+        let bytes: Vec<Byte> = (&tcp_stream).bytes().flatten().collect();
+        match SvAction::get_action(&bytes[..]) {
             Some(action) => match self.handle_sv_action(action) {
                 Ok(stop_loop) => Ok(stop_loop),
                 Err(err) => {
@@ -412,8 +413,16 @@ impl Node {
                         Ok(false)
                     }
                     ConnectionMode::Parsing => {
-                        println!("Deberia mandarse lo de abajo");
-                        // tcp_stream.write_all(&mut self.handle_request(&mut bytes));
+                        match self.handle_request(&bytes[..]) {
+                            Err(err) => {
+                                println!("Error manejando una query:\n\n{}", err);
+                            },
+                            Ok(response_bytes) => {
+                                let _ = tcp_stream.write_all(&response_bytes[..]);
+                                let _ = tcp_stream.flush();
+                            }
+                        }
+                        
                         Ok(false)
                     }
                 }
@@ -466,7 +475,7 @@ impl Node {
     }
 
     /// Maneja una request.
-    fn handle_request(&self, request: &mut [Byte]) -> Result<Vec<Byte>> {
+    fn handle_request(&self, request: &[Byte]) -> Result<Vec<Byte>> {
         if request.len() < 9 {
             return Err(Error::ProtocolError(
                 "No se cumple el protocolo del header".to_string(),
@@ -504,7 +513,7 @@ impl Node {
         Ok(response)
     }
 
-    fn handle_startup(&self, _request: &mut [Byte], _lenght: Length) -> Vec<Byte> {
+    fn handle_startup(&self, _request: &[Byte], _lenght: Length) -> Vec<Byte> {
         // El body es un [string map] con posibles opciones
         vec![0]
     }
@@ -516,7 +525,7 @@ impl Node {
         vec![0]
     }
 
-    fn handle_query(&self, request: &mut [Byte], lenght: Length) -> Vec<Byte> {
+    fn handle_query(&self, request: &[Byte], lenght: Length) -> Vec<Byte> {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
                 Ok(statement) => match statement {
