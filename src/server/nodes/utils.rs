@@ -15,7 +15,7 @@ use crate::server::nodes::{node::NodeId, port_type::PortType};
 pub fn guess_socket(id: NodeId, port_type: PortType) -> SocketAddr {
     SocketAddr::V4(SocketAddrV4::new(
         Ipv4Addr::new(127, 0, 0, id),
-        port_type.into(),
+        port_type.to_num(),
     ))
 }
 

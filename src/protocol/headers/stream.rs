@@ -1,18 +1,18 @@
 //! Módulo para un header de stream.
 
-use crate::protocol::aliases::types::{Byte, Short};
+use crate::protocol::aliases::types::Byte;
 use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 
 /// Cada frame tiene un stream id para hacer coincidir el IDs entre las requests y responses.
 pub struct Stream {
     /// El ID del stream.
-    id: Short,
+    id: i16,
 }
 
 impl Stream {
     /// Crea un nuevo header de Stream.
-    pub fn new(id: Short) -> Self {
+    pub fn new(id: i16) -> Self {
         Self { id }
     }
 }
@@ -34,14 +34,14 @@ impl TryFrom<Vec<Byte>> for Stream {
                 ))
             }
         };
-        let value = Short::from_be_bytes(bytes_array);
+        let value = i16::from_be_bytes(bytes_array);
         Ok(Stream::new(value))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::aliases::types::{Byte, Short};
+    use crate::protocol::aliases::types::Byte;
     use crate::protocol::errors::error::Error;
     use crate::protocol::headers::stream::Stream;
     use crate::protocol::traits::Byteable;
@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn test_1_serializar() {
         for i in 0..1000 {
-            let ind = i as Short; // por las dudas casteamos
+            let ind = i as i16; // por las dudas casteamos
 
             let stream = Stream::new(ind);
             let id_bytes = stream.as_bytes();
@@ -63,7 +63,7 @@ mod tests {
     #[test]
     fn test_2_deserializar() {
         for i in 0..1000 {
-            let ind = i as Short;
+            let ind = i as i16;
 
             let stream_res = Stream::try_from(ind.to_be_bytes().to_vec());
             assert!(stream_res.is_ok());

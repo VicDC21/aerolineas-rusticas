@@ -1,6 +1,6 @@
 //! Traits en común con objetos del protocolo de Cassandra.
 
-use std::ops::{BitAndAssign, BitOrAssign};
+use std::ops::{BitAnd, BitOrAssign};
 
 use crate::protocol::aliases::types::Byte;
 
@@ -11,18 +11,21 @@ pub trait Byteable {
 }
 
 /// Une muchas propiedades (pensadas como máscaras) en un sólo número.
-pub trait Maskable<T: BitOrAssign + BitAndAssign + Copy + PartialEq> {
+pub trait Maskable<T: BitOrAssign + BitAnd<Output = T> + Copy + PartialEq> {
     /// Devuelve un acumulador del tipo T para las máscaras.
     fn base_mask() -> T;
 
     /// Convierte una propiedad en un número binario.
     fn collapse(&self) -> T;
 
+    /// Comprueba si el elemento acumulado tiene los bits especificados.
+    fn has_bits(base: T, mask: T) -> bool {
+        base & mask == mask
+    }
+
     /// Verifica si en una colección de máscaras se encuentra una en particular.
-    fn tiene_mask(masks: &T, mask: &Self) -> bool {
-        let mut accumulator = mask.collapse();
-        accumulator &= *masks;
-        accumulator == mask.collapse()
+    fn has_mask(masks: &T, mask: &Self) -> bool {
+        Self::has_bits(masks.to_owned(), mask.collapse())
     }
 
     /// Une todas las máscaras.

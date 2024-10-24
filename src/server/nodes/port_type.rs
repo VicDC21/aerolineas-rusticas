@@ -1,6 +1,6 @@
 //! Módulo para decidir el tipo de puerto.
 
-use std::convert::Into;
+use std::convert::From;
 
 /// Los nodos pueden utilizar varios puertos en sus conexiones.
 pub enum PortType {
@@ -11,8 +11,9 @@ pub enum PortType {
     Priv,
 }
 
-impl Into<u16> for PortType {
-    fn into(self) -> u16 {
+impl PortType {
+    /// Transforma el tipo de puerto al número que es.
+    pub fn to_num(&self) -> u16 {
         match self {
             Self::Cli => 8080,
             Self::Priv => 6174,
@@ -20,11 +21,12 @@ impl Into<u16> for PortType {
     }
 }
 
-impl Into<u16> for &PortType {
-    fn into(self) -> u16 {
-        match self {
-            PortType::Cli => 8080,
-            PortType::Priv => 6174,
+impl From<u16> for PortType {
+    fn from(value: u16) -> Self {
+        match value {
+            8080 => Self::Cli,
+            6174 => Self::Priv,
+            _ => Self::Cli,
         }
     }
 }

@@ -404,29 +404,27 @@ impl Node {
                     Ok(false)
                 }
             },
-            None => {
-                match self.mode() {
-                    ConnectionMode::Echo => {
-                        if let Ok(query) = String::from_utf8(bytes.to_vec()) {
-                            println!("[{} - ECHO] {}", self.id, query)
-                        }
-                        Ok(false)
+            None => match self.mode() {
+                ConnectionMode::Echo => {
+                    if let Ok(query) = String::from_utf8(bytes.to_vec()) {
+                        println!("[{} - ECHO] {}", self.id, query)
                     }
-                    ConnectionMode::Parsing => {
-                        match self.handle_request(&bytes[..]) {
-                            Err(err) => {
-                                println!("Error manejando una query:\n\n{}", err);
-                            },
-                            Ok(response_bytes) => {
-                                let _ = tcp_stream.write_all(&response_bytes[..]);
-                                let _ = tcp_stream.flush();
-                            }
-                        }
-                        
-                        Ok(false)
-                    }
+                    Ok(false)
                 }
-            }
+                ConnectionMode::Parsing => {
+                    match self.handle_request(&bytes[..]) {
+                        Err(err) => {
+                            println!("Error manejando una query:\n\n{}", err);
+                        }
+                        Ok(response_bytes) => {
+                            let _ = tcp_stream.write_all(&response_bytes[..]);
+                            let _ = tcp_stream.flush();
+                        }
+                    }
+
+                    Ok(false)
+                }
+            },
         }
     }
 
