@@ -9,6 +9,16 @@ use std::{
     thread::Builder,
 };
 
+use crate::parser::{
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::ddl_statement_parser::DdlStatement,
+        dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+    },
+};
+use crate::protocol::headers::{
+    flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -33,18 +43,8 @@ use crate::server::{
     utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{
-    parser::{
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::ddl_statement_parser::DdlStatement,
-            dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
-        },
-    },
-    protocol::headers::{
-        flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
-    },
-};
+
+use super::{keyspace::Keyspace, table::Table};
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -68,6 +68,21 @@ pub struct Node {
 
     /// Dirección de almacenamiento en disco.
     storage_addr: String,
+
+    /// Nombre del keyspace por defecto.
+    default_keyspace_name: String,
+
+    /// Los keyspaces que tiene el nodo.
+    /// (nombre, keyspace)
+    keyspaces: HashMap<String, Keyspace>,
+
+    /// Las tablas que tiene el nodo.
+    /// (nombre, tabla)
+    tables: HashMap<String, Table>,
+
+    /// Todos los nodos compartirian estos datos para saber que nodo tiene que particion
+    partitions_range: HashMap<String, u32>,
+    partitions_to_node: HashMap<u32, NodeId>,
 }
 
 impl Node {
@@ -80,6 +95,51 @@ impl Node {
             neighbours_states: NodesMap::new(),
             endpoint_state: EndpointState::with_id_and_mode(id, mode),
             storage_addr,
+            default_keyspace_name: "".to_string(),
+            keyspaces: HashMap::new(),
+            tables: HashMap::new(),
+            partitions_range: HashMap::new(),
+            partitions_to_node: HashMap::new(),
+        }
+    }
+
+    fn add_table(&mut self, table: Table) {
+        self.tables.insert(table.get_name().to_string(), table);
+    }
+
+    fn get_table(&self, table_name: &str) -> Result<&Table> {
+        match self.tables.get(table_name) {
+            Some(table) => Ok(table),
+            None => Err(Error::ServerError(
+                "La tabla solicitada no existe".to_string(),
+            )),
+        }
+    }
+
+    fn add_keyspace(&mut self, keyspace: Keyspace) {
+        self.keyspaces
+            .insert(keyspace.get_name().to_string(), keyspace);
+    }
+
+    fn get_keyspace(&self, keyspace_name: &str) -> Result<&Keyspace> {
+        match self.keyspaces.get(keyspace_name) {
+            Some(keyspace) => Ok(keyspace),
+            None => Err(Error::ServerError(
+                "El keyspace solicitado no existe".to_string(),
+            )),
+        }
+    }
+
+    fn set_default_keyspace(&mut self, keyspace_name: String) {
+        self.default_keyspace_name = keyspace_name;
+    }
+
+    fn get_default_keyspace(&self) -> Result<&Keyspace> {
+        match self.keyspaces.get(&self.default_keyspace_name) {
+            Some(keyspace) => Ok(keyspace),
+            None => Err(Error::ServerError(
+                "El keyspace por defecto no existe".to_string(),
+            )),
         }
     }
 
@@ -473,7 +533,7 @@ impl Node {
     }
 
     /// Maneja una request.
-    fn handle_request(&self, request: &[Byte]) -> Result<Vec<Byte>> {
+    fn handle_request(&mut self, request: &[Byte]) -> Result<Vec<Byte>> {
         if request.len() < 9 {
             return Err(Error::ProtocolError(
                 "No se cumple el protocolo del header".to_string(),
@@ -523,20 +583,27 @@ impl Node {
         vec![0]
     }
 
-    fn handle_query(&self, request: &[Byte], lenght: Length) -> Vec<Byte> {
+    fn handle_query(&mut self, request: &[Byte], lenght: Length) -> Vec<Byte> {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
-                Ok(statement) => match statement {
-                    Statement::DdlStatement(ddl_statement) => {
-                        self.handle_ddl_statement(ddl_statement)
+                Ok(statement) => {
+                    let partition_in_node: Vec<String> = self.search_partitions(&statement);
+                    if true {
+                        vec![0x0]
+                    } else {
+                        match statement {
+                            Statement::DdlStatement(ddl_statement) => {
+                                self.handle_ddl_statement(ddl_statement)
+                            }
+                            Statement::DmlStatement(dml_statement) => {
+                                self.handle_dml_statement(dml_statement)
+                            }
+                            Statement::UdtStatement(_udt_statement) => {
+                                todo!();
+                            }
+                        }
                     }
-                    Statement::DmlStatement(dml_statement) => {
-                        self.handle_dml_statement(dml_statement)
-                    }
-                    Statement::UdtStatement(_udt_statement) => {
-                        todo!();
-                    }
-                },
+                }
                 Err(err) => {
                     return err.as_bytes();
                 }
@@ -570,13 +637,32 @@ impl Node {
     }
 
     /// Maneja una declaración DDL.
-    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) -> Vec<Byte> {
+    fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<Byte> {
         match ddl_statement {
-            DdlStatement::UseStatement(_keyspace_name) => {
-                todo!()
+            DdlStatement::UseStatement(keyspace_name) => {
+                let name = keyspace_name.get_name();
+                if self.keyspaces.contains_key(name) {
+                    self.set_default_keyspace(name.to_string());
+                    vec![0x0, 0x0, 0x0, 0x3]
+                } else {
+                    Error::ServerError("El keyspace solicitado no existe".to_string()).as_bytes()
+                }
             }
-            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {
-                todo!()
+            DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
+                // if no_tenemos_la_info{
+
+                // }else {
+
+                // }
+                match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
+                    Ok(Some(keyspace)) => self.add_keyspace(keyspace),
+                    Ok(None) => {
+                        return Error::ServerError("No se pudo crear el keyspace".to_string())
+                            .as_bytes()
+                    }
+                    Err(err) => return err.as_bytes(),
+                };
+                vec![0x0, 0x0, 0x0, 0x1]
             }
             DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
                 todo!()
@@ -584,8 +670,24 @@ impl Node {
             DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
                 todo!()
             }
-            DdlStatement::CreateTableStatement(_create_table) => {
-                todo!()
+            DdlStatement::CreateTableStatement(create_table) => {
+                let default_keyspace_name = match self.get_default_keyspace() {
+                    Ok(keyspace) => keyspace.get_name().to_string(),
+                    Err(err) => return err.as_bytes(),
+                };
+                match DiskHandler::create_table(
+                    create_table,
+                    &self.storage_addr,
+                    &default_keyspace_name,
+                ) {
+                    Ok(Some(keyspace)) => self.add_table(keyspace),
+                    Ok(None) => {
+                        return Error::ServerError("No se pudo crear la tabla".to_string())
+                            .as_bytes()
+                    }
+                    Err(err) => return err.as_bytes(),
+                };
+                vec![0x0, 0x0, 0x0, 0x1]
             }
             DdlStatement::AlterTableStatement(_alter_table) => {
                 todo!()
@@ -621,6 +723,45 @@ impl Node {
         match res {
             Ok(value) => value,
             Err(err) => err.as_bytes(),
+        }
+    }
+
+    fn search_partitions(&mut self, statement: &Statement) -> Vec<String> {
+        match statement {
+            Statement::DdlStatement(ddl_statement) => self.search_partitions_ddl(ddl_statement),
+            Statement::DmlStatement(dml_statement) => todo!(),
+            Statement::UdtStatement(udt_statement) => todo!(),
+        };
+
+        Vec::new()
+    }
+
+    fn search_partitions_ddl(&mut self, ddl_statement: &DdlStatement) -> Vec<String> {
+        match ddl_statement {
+            DdlStatement::UseStatement(keyspace_name) => {
+                todo!()
+            }
+            DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
+                todo!()
+            }
+            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
+                todo!()
+            }
+            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
+                todo!()
+            }
+            DdlStatement::CreateTableStatement(create_table) => {
+                todo!()
+            }
+            DdlStatement::AlterTableStatement(_alter_table) => {
+                todo!()
+            }
+            DdlStatement::DropTableStatement(_drop_table) => {
+                todo!()
+            }
+            DdlStatement::TruncateStatement(_truncate) => {
+                todo!()
+            }
         }
     }
 }

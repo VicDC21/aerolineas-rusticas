@@ -43,7 +43,7 @@ const SIMULTANEOUS_GOSSIPERS: u8 = 3;
 /// Un grafo es una colección de nodos.
 ///
 /// El mismo se encarga principalmente de gestionar los hilos en donde corren los nodos,
-/// y manteners sus _handlers_ para luego finalizarlos, así como contar cuántos son para crear
+/// y mantener sus _handlers_ para luego finalizarlos, así como contar cuántos son para crear
 /// nuevo, etc.
 ///
 /// Sin embargo, no tiene ningún endpoint propio:

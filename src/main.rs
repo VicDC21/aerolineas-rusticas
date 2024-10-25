@@ -20,7 +20,11 @@ fn main() {
 
     match argv[1].as_str() {
         "sv" => {
-            let mut graph = NodesGraph::echo_mode();
+            let mut graph = if argv.len() == 3 && argv[2] == "echo" {
+                NodesGraph::echo_mode()
+            } else {
+                NodesGraph::parsing_mode()
+            };
             print_err(graph.init());
         }
 
