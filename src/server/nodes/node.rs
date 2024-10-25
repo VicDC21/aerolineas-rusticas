@@ -3,7 +3,7 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    io::{Read, Write},
+    io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::mpsc::{Receiver, Sender},
     thread::Builder,
@@ -205,7 +205,7 @@ impl Node {
     /// sino es con mensajes al puerto de escucha.
     pub fn request_processor(
         mut self,
-        receiver: Receiver<TcpStream>,
+        receiver: Receiver<(TcpStream, Vec<Byte>)>,
         listeners: Vec<NodeHandle>,
     ) -> Result<NodeHandle> {
         let builder = Builder::new().name("processor".to_string());
@@ -216,7 +216,7 @@ impl Node {
                         println!("Error recibiendo request en hilo procesador:\n\n{}", err);
                         break;
                     }
-                    Ok(tcp_stream) => match self.process_tcp(tcp_stream) {
+                    Ok((tcp_stream, bytes)) => match self.process_tcp(tcp_stream, bytes) {
                         Ok(stop) => {
                             if stop {
                                 break;
@@ -328,12 +328,18 @@ impl Node {
     }
 
     /// Escucha por los eventos que recibe del cliente.
-    pub fn cli_listen(socket: SocketAddr, proc_sender: Sender<TcpStream>) -> Result<()> {
+    pub fn cli_listen(
+        socket: SocketAddr,
+        proc_sender: Sender<(TcpStream, Vec<Byte>)>,
+    ) -> Result<()> {
         Self::listen(socket, proc_sender, PortType::Cli)
     }
 
     /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-    pub fn priv_listen(socket: SocketAddr, proc_sender: Sender<TcpStream>) -> Result<()> {
+    pub fn priv_listen(
+        socket: SocketAddr,
+        proc_sender: Sender<(TcpStream, Vec<Byte>)>,
+    ) -> Result<()> {
         Self::listen(socket, proc_sender, PortType::Priv)
     }
 
@@ -342,7 +348,7 @@ impl Node {
     /// Las otras funciones son wrappers para no repetir código.
     fn listen(
         socket: SocketAddr,
-        proc_sender: Sender<TcpStream>,
+        proc_sender: Sender<(TcpStream, Vec<Byte>)>,
         port_type: PortType,
     ) -> Result<()> {
         let listener = match TcpListener::bind(socket) {
@@ -369,9 +375,30 @@ impl Node {
                     )));
                 }
                 Ok(tcp_stream) => {
-                    let bytes_vec: Vec<Byte> = (&tcp_stream).bytes().flatten().collect();
+                    let buffered_stream = match tcp_stream.try_clone() {
+                        Ok(cloned) => cloned,
+                        Err(err) => {
+                            return Err(Error::ServerError(format!(
+                                "No se pudo clonar el stream:\n\n{}",
+                                err
+                            )))
+                        }
+                    };
+                    let mut bufreader = BufReader::new(buffered_stream);
+                    let bytes_vec = match bufreader.fill_buf() {
+                        Ok(recv) => recv.to_vec(),
+                        Err(err) => {
+                            return Err(Error::ServerError(format!(
+                                "No se pudo escribir los bytes:\n\n{}",
+                                err
+                            )))
+                        }
+                    };
+                    // consumimos los bytes del stream para no mandarlos de vuelta en la response
+                    bufreader.consume(bytes_vec.len());
+
                     let can_exit = Self::is_exit(&bytes_vec[..]);
-                    if let Err(err) = proc_sender.send(tcp_stream) {
+                    if let Err(err) = proc_sender.send((tcp_stream, bytes_vec)) {
                         println!("Error mandando bytes al procesador:\n\n{}", err);
                     }
                     // El procesamiento del stream ocurre en otro hilo, así que necesitamos
@@ -391,8 +418,7 @@ impl Node {
     ///
     /// Esta función no debería ser llamada en los listeners, y está más pensada para el hilo
     /// procesador del nodo.
-    pub fn process_tcp(&mut self, mut tcp_stream: TcpStream) -> Result<bool> {
-        let bytes: Vec<Byte> = (&tcp_stream).bytes().flatten().collect();
+    pub fn process_tcp(&mut self, mut tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<bool> {
         match SvAction::get_action(&bytes[..]) {
             Some(action) => match self.handle_sv_action(action) {
                 Ok(stop_loop) => Ok(stop_loop),
@@ -406,8 +432,16 @@ impl Node {
             },
             None => match self.mode() {
                 ConnectionMode::Echo => {
-                    if let Ok(query) = String::from_utf8(bytes.to_vec()) {
-                        println!("[{} - ECHO] {}", self.id, query)
+                    let printable_bytes = bytes
+                        .iter()
+                        .map(|b| format!("{:#X}", b))
+                        .collect::<Vec<String>>();
+                    println!("[{} - ECHO] {}", self.id, printable_bytes.join(" "));
+                    if let Err(err) = tcp_stream.write_all(&bytes) {
+                        println!("Error al escribir en el TCPStream:\n\n{}", err);
+                    }
+                    if let Err(err) = tcp_stream.flush() {
+                        println!("Error haciendo flush desde el nodo:\n\n{}", err);
                     }
                     Ok(false)
                 }
@@ -418,7 +452,9 @@ impl Node {
                         }
                         Ok(response_bytes) => {
                             let _ = tcp_stream.write_all(&response_bytes[..]);
-                            let _ = tcp_stream.flush();
+                            if let Err(err) = tcp_stream.flush() {
+                                println!("Error haciendo flush desde el nodo:\n\n{}", err);
+                            }
                         }
                     }
 
