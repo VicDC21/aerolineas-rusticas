@@ -11,10 +11,12 @@ pub struct ColumnConfig {
 }
 
 impl ColumnConfig {
+    /// Crea una nueva configuración de columna.
     pub fn new(name: String, data_type: ColumnDataType) -> Self {
         ColumnConfig { name, data_type }
     }
 
+    /// Obtiene el nombre de la columna.
     pub fn get_name(&self) -> String {
         self.name.to_string()
     }
