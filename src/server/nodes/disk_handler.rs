@@ -129,7 +129,7 @@ impl DiskHandler {
                 }
                 _ => break,
             }
-            i += 1;
+            i += 2;
         }
         Ok(None)
     }

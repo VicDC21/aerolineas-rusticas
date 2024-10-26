@@ -3,6 +3,7 @@
 use std::convert::From;
 
 /// Los nodos pueden utilizar varios puertos en sus conexiones.
+#[derive(Clone)]
 pub enum PortType {
     /// EL puerto para escuchas _requests_ de clientes.
     Cli,

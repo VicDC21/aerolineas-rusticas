@@ -6,18 +6,13 @@ use rand::{
 };
 use std::{
     collections::HashSet,
-    hash::{DefaultHasher, Hash, Hasher},
     net::TcpStream,
     sync::mpsc::{channel, Sender},
     thread::{sleep, Builder, JoinHandle},
     time::Duration,
 };
 
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    traits::Byteable,
-};
+use crate::protocol::{aliases::results::Result, errors::error::Error, traits::Byteable};
 use crate::server::{
     actions::opcode::SvAction,
     modes::ConnectionMode,
@@ -308,22 +303,6 @@ impl NodesGraph {
                 "Error procesando los beats de los nodos.".to_string(),
             )),
         }
-    }
-
-    /// Selecciona un ID de nodo conforme al _hashing_ de un conjunto de [Byte]s.
-    pub fn select_node(&self, bytes: &Vec<Byte>) -> NodeId {
-        let mut hasher = DefaultHasher::new();
-        bytes.hash(&mut hasher);
-        let hash_val = hasher.finish();
-
-        let n = self.node_ids.len() as u64;
-        let magic_ind = (hash_val % n) as usize;
-        self.node_ids[magic_ind]
-    }
-
-    /// Manda un mensaje al nodo relevante mediante el _hashing_ del mensaje.
-    pub fn send_message(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
-        send_to_node(self.select_node(&bytes), bytes, port_type)
     }
 
     /// Espera a que terminen todos los handlers.
