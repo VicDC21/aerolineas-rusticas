@@ -33,6 +33,13 @@ impl ColumnDefinition {
         }
     }
 
+    pub fn get_column_name(&self) -> String {
+        self.column_name.get_name().to_string()
+    }
+
+    pub fn get_data_type(&self) -> &CQLType {
+        &self.data_type
+    }
     /// Analiza una lista de cadenas para crear una `ColumnDefinition`.
     ///
     /// # Argumentos

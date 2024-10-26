@@ -1,8 +1,8 @@
+use aerolineas::{
+    client::cli::Client, interface::run::run_app, protocol::aliases::results::Result,
+    server::nodes::graph::NodesGraph,
+};
 use std::env::args;
-
-use aerolineas::interface::run::run_app;
-use aerolineas::protocol::aliases::results::Result;
-use aerolineas::{client::cli::Client, server::nodes::graph::NodesGraph};
 
 /// Imprime por pantalla el error
 fn print_err(res: Result<()>) {
@@ -20,10 +20,13 @@ fn main() {
 
     match argv[1].as_str() {
         "sv" => {
-            let mut graph = NodesGraph::echo_mode();
+            let mut graph = if argv.len() == 3 && argv[2] == "echo" {
+                NodesGraph::echo_mode()
+            } else {
+                NodesGraph::parsing_mode()
+            };
             print_err(graph.init());
         }
-
         "cli" => {
             let mut client = Client::default();
             print_err(client.echo());

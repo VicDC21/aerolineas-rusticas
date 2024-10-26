@@ -2,20 +2,26 @@
 
 use std::{
     fs::{create_dir, File, OpenOptions},
-    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
+    io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::Path,
 };
 
-use crate::protocol::{aliases::results::Result, errors::error::Error};
-use crate::{
-    parser::statements::dml_statement::main_statements::{
-        insert::Insert,
-        select::{order_by::OrderBy, select_operation::Select},
-    },
-    protocol::aliases::types::Byte,
+use super::{
+    column_config::ColumnConfig, keyspace::Keyspace, replication_strategy::ReplicationStrategy,
+    table::Table,
 };
-
-use super::node::NodeId;
+use crate::parser::statements::{
+    ddl_statement::{create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options},
+    dml_statement::main_statements::{
+        insert::Insert,
+        select::{order_by::OrderBy, ordering::Ordering, select_operation::Select},
+    },
+};
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+};
+use crate::server::nodes::node::NodeId;
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
@@ -35,6 +41,189 @@ impl DiskHandler {
                 .expect("No se pudo crear la carpeta de almacenamiento del nodo");
         }
         storage_addr
+    }
+
+    /// Crea un nuevo keyspace en el caso que corresponda.
+    pub fn create_keyspace(
+        statement: CreateKeyspace,
+        storage_addr: &str,
+    ) -> Result<Option<Keyspace>> {
+        let keyspace_name = statement.keyspace_name.get_name();
+        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let path_folder = Path::new(&keyspace_addr);
+        if path_folder.exists() && path_folder.is_dir() {
+            if statement.if_not_exist {
+                return Ok(None);
+            } else {
+                return Err(Error::ServerError(format!(
+                    "El keyspace {} ya existe",
+                    keyspace_name
+                )));
+            }
+        } else {
+            create_dir(path_folder).map_err(|e| Error::ServerError(e.to_string()))?;
+        }
+
+        match Self::get_keyspace_replication(statement.options) {
+            Ok(Some(replication)) => {
+                Ok(Some(Keyspace::new(keyspace_name.to_string(), replication)))
+            }
+            Ok(None) => Err(Error::ServerError(
+                "La estrategia de replicación es obligatoria".to_string(),
+            )),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn get_keyspace_replication(options: Vec<Options>) -> Result<Option<ReplicationStrategy>> {
+        let mut i = 0;
+        while i < options.len() {
+            match &options[i] {
+                Options::Identifier(identifier) => {
+                    if identifier.get_name() == "replication" {
+                        if let Options::MapLiteral(map) = &options[i + 1] {
+                            if map.values.len() != 2 {
+                                return Err(Error::ServerError(
+                                    "La estrategia de replicación simple debe tener 2 valores"
+                                        .to_string(),
+                                ));
+                            }
+                            let (key1, value1) = &map.values[0];
+                            let class = key1.get_value_as_string();
+                            if class != "class" {
+                                return Err(Error::ServerError(
+                                    "La estrategia de replicación debe especificar 'class'"
+                                        .to_string(),
+                                ));
+                            }
+                            let strategy = value1.get_value_as_string();
+                            if strategy != "SimpleStrategy" || strategy != "NetworkTopologyStrategy"
+                            {
+                                return Err(Error::ServerError(
+                                    "La estrategia de replicación debe ser 'SimpleStrategy' o 'NetworkTopologyStrategy'".to_string(),
+                                ));
+                            }
+
+                            let (key2, value2) = &map.values[1];
+                            let strategy_option1 = key2.get_value_as_string();
+                            match strategy_option1.as_str() {
+                                "replication_factor" => {
+                                    let replicas = match value2.get_value_as_string().parse::<u32>()
+                                    {
+                                        Ok(replicas) => replicas,
+                                        Err(_) => {
+                                            return Err(Error::Invalid(
+                                                "El valor de 'replication_factor' debe ser un número".to_string(),
+                                            ));
+                                        }
+                                    };
+                                    return Ok(Some(ReplicationStrategy::SimpleStrategy(replicas)));
+                                }
+                                _ => {
+                                    // Aca estaria el caso de NetworkTopologyStrategy
+                                    todo!()
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => break,
+            }
+            i += 2;
+        }
+        Ok(None)
+    }
+
+    /// Crea una nueva tabla en el caso que corresponda.
+    pub fn create_table(
+        statement: CreateTable,
+        storage_addr: &str,
+        default_keyspace: &str,
+    ) -> Result<Option<Table>> {
+        let table_name = statement.get_name();
+        let keyspace_name = match statement.get_keyspace() {
+            Some(keyspace) => keyspace,
+            None => default_keyspace.to_string(),
+        };
+        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let path_folder = Path::new(&keyspace_addr);
+        if !path_folder.exists() && !path_folder.is_dir() {
+            return Err(Error::ServerError(format!(
+                "El keyspace {} no existe",
+                keyspace_name
+            )));
+        }
+
+        let columns: Vec<ColumnConfig> = statement.get_columns()?;
+        let columns_names = columns
+            .iter()
+            .map(|c| c.get_name())
+            .collect::<Vec<String>>();
+        let table_addr = format!("{}/{}/{}.csv", storage_addr, keyspace_name, table_name);
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let mut writer = BufWriter::new(&file);
+        writer
+            .write_all(columns_names.join(",").as_bytes())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let primary_key = match statement.primary_key {
+            Some(primary_key) => primary_key.columns,
+            None => {
+                return Err(Error::SyntaxError(
+                    "La clave primaria es obligatoria".to_string(),
+                ))
+            }
+        };
+        let partition_key = primary_key[0].to_string();
+        if primary_key.len() == 1 {
+            return Ok(Some(Table::new(
+                table_name,
+                keyspace_name,
+                columns,
+                partition_key,
+                None,
+            )));
+        }
+
+        let clustering_keys = primary_key[1..].to_vec();
+        let mut clustering_keys_and_order: Vec<(String, Ordering)> = Vec::new();
+        for key in clustering_keys {
+            clustering_keys_and_order.push((key, Ordering::Asc));
+        }
+
+        if let Some(clustering_order) = &statement.clustering_order {
+            for (key, order) in clustering_order {
+                if let Some(j) = clustering_keys_and_order.iter().position(|(k, _)| k == key) {
+                    let order = match Ordering::ordering_from_str(order) {
+                        Some(order) => order,
+                        None => {
+                            return Err(Error::Invalid(format!(
+                                "La dirección de ordenación {} no es válida",
+                                order
+                            )));
+                        }
+                    };
+                    clustering_keys_and_order[j] = (key.to_string(), order);
+                } else {
+                    return Err(Error::Invalid(format!(
+                        "La columna {} no es parte de la clave de clustering",
+                        key
+                    )));
+                }
+            }
+        }
+
+        Ok(Some(Table::new(
+            table_name,
+            keyspace_name,
+            columns,
+            partition_key,
+            Some(clustering_keys_and_order),
+        )))
     }
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
@@ -192,10 +381,14 @@ impl DiskHandler {
         };
         result.extend(result_rows);
 
-        Ok(Self::serialize_result(result, &query_cols, &table_cols))
+        Ok(Self::serialize_select_result(
+            result,
+            &query_cols,
+            &table_cols,
+        ))
     }
 
-    fn serialize_result(
+    fn serialize_select_result(
         result: Vec<Vec<String>>,
         query_cols: &[String],
         table_cols: &[String],

@@ -117,7 +117,6 @@ impl Client {
             if let Err(err) = tcp_stream.flush() {
                 println!("Error haciendo flush desde el cliente:\n\n{}", err);
             }
-
             let mut buf = Vec::<Byte>::new();
             match tcp_stream.read_to_end(&mut buf) {
                 Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),

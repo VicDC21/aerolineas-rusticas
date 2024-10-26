@@ -11,7 +11,7 @@ use super::super::term::Term;
 #[derive(Debug, PartialEq)]
 pub struct MapLiteral {
     /// TODO: Desc básica
-    values: Vec<(Term, Term)>,
+    pub values: Vec<(Term, Term)>,
 }
 
 impl MapLiteral {

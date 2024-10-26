@@ -3,12 +3,24 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
+    hash::{DefaultHasher, Hash, Hasher},
+    io::{Read, Write},
     io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::mpsc::{Receiver, Sender},
     thread::Builder,
 };
 
+use crate::parser::{
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::ddl_statement_parser::DdlStatement,
+        dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+    },
+};
+use crate::protocol::headers::{
+    flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -33,18 +45,8 @@ use crate::server::{
     utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{
-    parser::{
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::ddl_statement_parser::DdlStatement,
-            dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
-        },
-    },
-    protocol::headers::{
-        flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
-    },
-};
+
+use super::{keyspace::Keyspace, table::Table};
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -68,6 +70,23 @@ pub struct Node {
 
     /// Dirección de almacenamiento en disco.
     storage_addr: String,
+
+    /// Nombre del keyspace por defecto.
+    default_keyspace_name: String,
+
+    /// Los keyspaces que tiene el nodo.
+    /// (nombre, keyspace)
+    keyspaces: HashMap<String, Keyspace>,
+
+    /// Las tablas que tiene el nodo.
+    /// (nombre, tabla)
+    tables: HashMap<String, Table>,
+
+    /// Valor de la columna de _partition key_ y el valor del hashing que le corresponde
+    partitions_range: HashMap<String, u32>,
+
+    /// Valor del hashing y el nodo que le corresponde
+    partitions_to_node: HashMap<u32, NodeId>,
 }
 
 impl Node {
@@ -80,11 +99,56 @@ impl Node {
             neighbours_states: NodesMap::new(),
             endpoint_state: EndpointState::with_id_and_mode(id, mode),
             storage_addr,
+            default_keyspace_name: "".to_string(),
+            keyspaces: HashMap::new(),
+            tables: HashMap::new(),
+            partitions_range: HashMap::new(),
+            partitions_to_node: HashMap::new(),
+        }
+    }
+
+    fn add_table(&mut self, table: Table) {
+        self.tables.insert(table.get_name().to_string(), table);
+    }
+
+    fn get_table(&self, table_name: &str) -> Result<&Table> {
+        match self.tables.get(table_name) {
+            Some(table) => Ok(table),
+            None => Err(Error::ServerError(
+                "La tabla solicitada no existe".to_string(),
+            )),
+        }
+    }
+
+    fn add_keyspace(&mut self, keyspace: Keyspace) {
+        self.keyspaces
+            .insert(keyspace.get_name().to_string(), keyspace);
+    }
+
+    fn get_keyspace(&self, keyspace_name: &str) -> Result<&Keyspace> {
+        match self.keyspaces.get(keyspace_name) {
+            Some(keyspace) => Ok(keyspace),
+            None => Err(Error::ServerError(
+                "El keyspace solicitado no existe".to_string(),
+            )),
+        }
+    }
+
+    fn set_default_keyspace(&mut self, keyspace_name: String) {
+        self.default_keyspace_name = keyspace_name;
+    }
+
+    fn get_default_keyspace(&self) -> Result<&Keyspace> {
+        match self.keyspaces.get(&self.default_keyspace_name) {
+            Some(keyspace) => Ok(keyspace),
+            None => Err(Error::ServerError(
+                "El keyspace por defecto no existe".to_string(),
+            )),
         }
     }
 
     /// Consulta el ID del nodo.
-    pub fn get_id(&self) -> &NodeId {
+    fn get_id(&self) -> &NodeId {
         &self.id
     }
 
@@ -93,8 +157,41 @@ impl Node {
         &self.endpoint_state
     }
 
+    /// Consulta los IDs de los vecinos, incluyendo el propio.
+    fn get_neighbours_ids(&self) -> Vec<NodeId> {
+        self.neighbours_states.keys().copied().collect()
+    }
+
+    /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_.
+    fn select_node(&self, value: String) -> NodeId {
+        let neighbours_ids: Vec<NodeId> = self.get_neighbours_ids();
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        let hash_val = hasher.finish();
+
+        let n = neighbours_ids.len() as u64;
+        let hashed_index = (hash_val % n) as usize;
+        neighbours_ids[hashed_index]
+    }
+
+    /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
+    fn send_message(&self, bytes: Vec<Byte>, value: String, port_type: PortType) -> Result<()> {
+        send_to_node(self.select_node(value), bytes, port_type)
+    }
+
+    /// Manda un mensaje en bytes a todos los vecinos del nodo.
+    fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
+        for neighbour_id in self.get_neighbours_ids() {
+            if neighbour_id == self.id {
+                continue
+            }
+            send_to_node(neighbour_id, bytes.clone(), port_type.clone())?;
+        }
+        Ok(())
+    }
+
     /// Compara si el _heartbeat_ de un nodo es más nuevo que otro.
-    pub fn is_newer(&self, other: &Self) -> bool {
+    fn is_newer(&self, other: &Self) -> bool {
         self.endpoint_state.is_newer(&other.endpoint_state)
     }
 
@@ -126,7 +223,7 @@ impl Node {
     ///
     /// No compara los estados en profundidad, sólo verifica si se tiene un estado
     /// con la misma IP.
-    pub fn has_endpoint_state(&self, state: &EndpointState) -> bool {
+    fn has_endpoint_state(&self, state: &EndpointState) -> bool {
         self.neighbours_states
             .contains_key(&guess_id(state.get_addr()))
     }
@@ -150,7 +247,7 @@ impl Node {
     }
 
     /// Consigue la información de _gossip_ que contiene este nodo.
-    pub fn get_gossip_info(&self) -> GossipInfo {
+    fn get_gossip_info(&self) -> GossipInfo {
         let mut gossip_info = GossipInfo::new();
         for (node_id, endpoint_state) in &self.neighbours_states {
             gossip_info.insert(node_id.to_owned(), endpoint_state.clone_heartbeat());
@@ -160,12 +257,12 @@ impl Node {
     }
 
     /// Consulta el modo de conexión del nodo.
-    pub fn mode(&self) -> &ConnectionMode {
+    fn mode(&self) -> &ConnectionMode {
         self.endpoint_state.get_appstate().get_mode()
     }
 
     /// Consulta si el nodo todavía esta booteando.
-    pub fn is_bootstraping(&self) -> bool {
+    fn is_bootstraping(&self) -> bool {
         matches!(
             self.endpoint_state.get_appstate().get_status(),
             AppStatus::Bootstrap
@@ -173,17 +270,17 @@ impl Node {
     }
 
     /// Consulta el estado de _heartbeat_.
-    pub fn get_beat(&mut self) -> (GenType, VerType) {
+    fn get_beat(&mut self) -> (GenType, VerType) {
         self.endpoint_state.get_heartbeat().as_tuple()
     }
 
     /// Avanza el tiempo para el nodo.
-    pub fn beat(&mut self) -> VerType {
+    fn beat(&mut self) -> VerType {
         self.endpoint_state.beat()
     }
 
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
-    pub fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
+    fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
         for neighbour_id in neighbours {
             if let Err(err) = send_to_node(
                 neighbour_id,
@@ -216,6 +313,7 @@ impl Node {
                         println!("Error recibiendo request en hilo procesador:\n\n{}", err);
                         break;
                     }
+
                     Ok((tcp_stream, bytes)) => match self.process_tcp(tcp_stream, bytes) {
                         Ok(stop) => {
                             if stop {
@@ -247,7 +345,7 @@ impl Node {
     }
 
     /// Se recibe un mensaje [SYN](crate::server::actions::opcode::SvAction::Syn).
-    pub fn syn(&mut self, emissor_id: NodeId, gossip_info: GossipInfo) -> Result<()> {
+    fn syn(&mut self, emissor_id: NodeId, gossip_info: GossipInfo) -> Result<()> {
         let mut own_gossip = GossipInfo::new(); // quiero info de estos nodos
         let mut response_nodes = NodesMap::new(); // doy info de estos nodos
 
@@ -290,7 +388,7 @@ impl Node {
     }
 
     /// Se recibe un mensaje [ACK](crate::server::actions::opcode::SvAction::Ack).
-    pub fn ack(
+    fn ack(
         &mut self,
         receptor_id: NodeId,
         gossip_info: GossipInfo,
@@ -323,11 +421,12 @@ impl Node {
     }
 
     /// Se recibe un mensaje [ACK2](crate::server::actions::opcode::SvAction::Ack2).
-    pub fn ack2(&mut self, nodes_map: NodesMap) -> Result<()> {
+    fn ack2(&mut self, nodes_map: NodesMap) -> Result<()> {
         self.update_neighbours(nodes_map)
     }
 
     /// Escucha por los eventos que recibe del cliente.
+
     pub fn cli_listen(
         socket: SocketAddr,
         proc_sender: Sender<(TcpStream, Vec<Byte>)>,
@@ -336,6 +435,7 @@ impl Node {
     }
 
     /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
+
     pub fn priv_listen(
         socket: SocketAddr,
         proc_sender: Sender<(TcpStream, Vec<Byte>)>,
@@ -418,6 +518,7 @@ impl Node {
     ///
     /// Esta función no debería ser llamada en los listeners, y está más pensada para el hilo
     /// procesador del nodo.
+
     pub fn process_tcp(&mut self, mut tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<bool> {
         match SvAction::get_action(&bytes[..]) {
             Some(action) => match self.handle_sv_action(action) {
@@ -509,6 +610,7 @@ impl Node {
     }
 
     /// Maneja una request.
+
     fn handle_request(&self, request: &[Byte]) -> Result<Vec<Byte>> {
         if request.len() < 9 {
             return Err(Error::ProtocolError(
@@ -559,20 +661,25 @@ impl Node {
         vec![0]
     }
 
+
     fn handle_query(&self, request: &[Byte], lenght: Length) -> Vec<Byte> {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
-                Ok(statement) => match statement {
-                    Statement::DdlStatement(ddl_statement) => {
-                        self.handle_ddl_statement(ddl_statement)
+                Ok(statement) => {
+                    //let partition_in_node: Vec<String> = self.search_partitions(&statement);
+
+                    match statement {
+                        Statement::DdlStatement(ddl_statement) => {
+                            self.handle_ddl_statement(ddl_statement)
+                        }
+                        Statement::DmlStatement(dml_statement) => {
+                            self.handle_dml_statement(dml_statement)
+                        }
+                        Statement::UdtStatement(_udt_statement) => {
+                            todo!();
+                        }
                     }
-                    Statement::DmlStatement(dml_statement) => {
-                        self.handle_dml_statement(dml_statement)
-                    }
-                    Statement::UdtStatement(_udt_statement) => {
-                        todo!();
-                    }
-                },
+                }
                 Err(err) => {
                     return err.as_bytes();
                 }
@@ -606,13 +713,32 @@ impl Node {
     }
 
     /// Maneja una declaración DDL.
-    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) -> Vec<Byte> {
+    fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<Byte> {
         match ddl_statement {
-            DdlStatement::UseStatement(_keyspace_name) => {
-                todo!()
+            DdlStatement::UseStatement(keyspace_name) => {
+                let name = keyspace_name.get_name();
+                if self.keyspaces.contains_key(name) {
+                    self.set_default_keyspace(name.to_string());
+                    vec![0x0, 0x0, 0x0, 0x3]
+                } else {
+                    Error::ServerError("El keyspace solicitado no existe".to_string()).as_bytes()
+                }
             }
-            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {
-                todo!()
+            DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
+                // if no_tenemos_la_info {
+                //
+                // } else {
+                //
+                // }
+                match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
+                    Ok(Some(keyspace)) => self.add_keyspace(keyspace),
+                    Ok(None) => {
+                        return Error::ServerError("No se pudo crear el keyspace".to_string())
+                            .as_bytes()
+                    }
+                    Err(err) => return err.as_bytes(),
+                };
+                vec![0x0, 0x0, 0x0, 0x1]
             }
             DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
                 todo!()
@@ -620,8 +746,24 @@ impl Node {
             DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
                 todo!()
             }
-            DdlStatement::CreateTableStatement(_create_table) => {
-                todo!()
+            DdlStatement::CreateTableStatement(create_table) => {
+                let default_keyspace_name = match self.get_default_keyspace() {
+                    Ok(keyspace) => keyspace.get_name().to_string(),
+                    Err(err) => return err.as_bytes(),
+                };
+                match DiskHandler::create_table(
+                    create_table,
+                    &self.storage_addr,
+                    &default_keyspace_name,
+                ) {
+                    Ok(Some(keyspace)) => self.add_table(keyspace),
+                    Ok(None) => {
+                        return Error::ServerError("No se pudo crear la tabla".to_string())
+                            .as_bytes()
+                    }
+                    Err(err) => return err.as_bytes(),
+                };
+                vec![0x0, 0x0, 0x0, 0x1]
             }
             DdlStatement::AlterTableStatement(_alter_table) => {
                 todo!()
@@ -659,6 +801,45 @@ impl Node {
             Err(err) => err.as_bytes(),
         }
     }
+/*
+    fn search_partitions(&mut self, statement: &Statement) -> Vec<String> {
+        match statement {
+            Statement::DdlStatement(ddl_statement) => self.search_partitions_ddl(ddl_statement),
+            Statement::DmlStatement(dml_statement) => todo!(),
+            Statement::UdtStatement(udt_statement) => todo!(),
+        };
+
+        Vec::new()
+    }
+
+    fn search_partitions_ddl(&mut self, ddl_statement: &DdlStatement) -> Vec<String> {
+        match ddl_statement {
+            DdlStatement::UseStatement(keyspace_name) => {
+                todo!()
+            }
+            DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
+                todo!()
+            }
+            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
+                todo!()
+            }
+            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
+                todo!()
+            }
+            DdlStatement::CreateTableStatement(create_table) => {
+                todo!()
+            }
+            DdlStatement::AlterTableStatement(_alter_table) => {
+                todo!()
+            }
+            DdlStatement::DropTableStatement(_drop_table) => {
+                todo!()
+            }
+            DdlStatement::TruncateStatement(_truncate) => {
+                todo!()
+            }
+        }
+    }*/
 }
 
 impl PartialEq for Node {

@@ -13,11 +13,7 @@ use std::{
     time::Duration,
 };
 
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    traits::Byteable,
-};
+use crate::protocol::{aliases::results::Result, errors::error::Error, traits::Byteable};
 use crate::server::{
     actions::opcode::SvAction,
     modes::ConnectionMode,
@@ -43,7 +39,7 @@ const SIMULTANEOUS_GOSSIPERS: u8 = 3;
 /// Un grafo es una colección de nodos.
 ///
 /// El mismo se encarga principalmente de gestionar los hilos en donde corren los nodos,
-/// y manteners sus _handlers_ para luego finalizarlos, así como contar cuántos son para crear
+/// y mantener sus _handlers_ para luego finalizarlos, así como contar cuántos son para crear
 /// nuevo, etc.
 ///
 /// Sin embargo, no tiene ningún endpoint propio:
@@ -138,6 +134,7 @@ impl NodesGraph {
 
             let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
             let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
+
 
             let (proc_sender, proc_receiver) = channel::<(TcpStream, Vec<Byte>)>();
 
@@ -308,22 +305,6 @@ impl NodesGraph {
                 "Error procesando los beats de los nodos.".to_string(),
             )),
         }
-    }
-
-    /// Selecciona un ID de nodo conforme al _hashing_ de un conjunto de [Byte]s.
-    pub fn select_node(&self, bytes: &Vec<Byte>) -> NodeId {
-        let mut hasher = DefaultHasher::new();
-        bytes.hash(&mut hasher);
-        let hash_val = hasher.finish();
-
-        let n = self.node_ids.len() as u64;
-        let magic_ind = (hash_val % n) as usize;
-        self.node_ids[magic_ind]
-    }
-
-    /// Manda un mensaje al nodo relevante mediante el _hashing_ del mensaje.
-    pub fn send_message(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
-        send_to_node(self.select_node(&bytes), bytes, port_type)
     }
 
     /// Espera a que terminen todos los handlers.
