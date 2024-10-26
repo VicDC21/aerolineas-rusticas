@@ -1,5 +1,6 @@
 //! Módulo de nodos.
 
+use core::hash;
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
@@ -45,7 +46,7 @@ use crate::server::{
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 
-use super::{keyspace::Keyspace, table::Table};
+use super::{graph::N_NODES, keyspace::Keyspace, table::Table};
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -82,7 +83,7 @@ pub struct Node {
     tables: HashMap<String, Table>,
 
     /// Valor de la columna de _partition key_ y el valor del hashing que le corresponde
-    partitions_range: HashMap<String, u32>,
+    partitions_range: HashMap<String, Vec<u8>>,
 
     /// Valor del hashing y el nodo que le corresponde
     partitions_to_node: HashMap<u32, NodeId>,
@@ -799,23 +800,23 @@ impl Node {
             Err(err) => err.as_bytes(),
         }
     }
-    /*
-    fn search_partitions(&mut self, statement: &Statement) -> Vec<String> {
+    
+    fn search_partitions(&mut self, statement: &Statement, request: &[Byte]) -> Vec<Byte> {
         match statement {
-            Statement::DdlStatement(ddl_statement) => self.search_partitions_ddl(ddl_statement),
-            Statement::DmlStatement(dml_statement) => todo!(),
-            Statement::UdtStatement(udt_statement) => todo!(),
+            Statement::DdlStatement(_ddl_statement) => todo!(),
+            Statement::DmlStatement(dml_statement) => self.search_partitions_dml(dml_statement, request),
+            Statement::UdtStatement(_udt_statement) => todo!(),
         };
 
         Vec::new()
     }
 
-    fn search_partitions_ddl(&mut self, ddl_statement: &DdlStatement) -> Vec<String> {
+    fn search_partitions_ddl(&mut self, ddl_statement: &DdlStatement) -> Vec<Byte> {
         match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => {
+            DdlStatement::UseStatement(_keyspace_name) => {
                 todo!()
             }
-            DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
+            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {
                 todo!()
             }
             DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
@@ -824,7 +825,7 @@ impl Node {
             DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
                 todo!()
             }
-            DdlStatement::CreateTableStatement(create_table) => {
+            DdlStatement::CreateTableStatement(_create_table) => {
                 todo!()
             }
             DdlStatement::AlterTableStatement(_alter_table) => {
@@ -837,7 +838,55 @@ impl Node {
                 todo!()
             }
         }
-    }*/
+    }
+
+    fn search_partitions_dml(&mut self, dml_statement: &DmlStatement, request: &[Byte]) -> Vec<Byte> {
+        match dml_statement {
+            DmlStatement::SelectStatement(select) => {
+                match self.partitions_range.get(&select.from.get_name()){
+                    Some(partition_key_to_nodes) => {
+                        let mut consulted_nodes: Vec<u8> = Vec::new();
+                        for value in partition_key_to_nodes{
+                            let node_id = value % N_NODES;
+                            if node_id != self.id && !consulted_nodes.contains(value){
+                                consulted_nodes.push(*value);
+                                send_to_node(node_id, request.to_vec(), PortType::Priv);
+                            }
+                        }
+                    }
+                    None => return Error::ServerError("La tabla indicada no existe".to_string()).as_bytes()
+            
+                };
+                // let mut hasher = DefaultHasher::new();
+                // 5.hash(&mut hasher);
+                // hasher.finish();
+            }
+            DmlStatement::InsertStatement(insert) => {
+                match self.partitions_range.get(&insert.table.get_name()){
+                    Some(values) => {
+                        for value in values{
+                            let node_id = value % N_NODES;
+                            if node_id != self.id{
+                                send_to_node(node_id, request.to_vec(), PortType::Priv);
+                            }
+                        }
+                    }
+                    None => return Error::ServerError("La tabla indicada no existe".to_string()).as_bytes()
+            
+                };
+            }
+            DmlStatement::UpdateStatement(_update) => {
+                todo!()
+            }
+            DmlStatement::DeleteStatement(_delete) => {
+                todo!()
+            }
+            DmlStatement::BatchStatement(_batch) => {
+                todo!()
+            }
+        };
+        vec![]
+    }
 }
 
 impl PartialEq for Node {
