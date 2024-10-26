@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashSet,
-    io::{stdin, BufRead, BufReader, Write},
+    io::{stdin, BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
 };
 
@@ -17,13 +17,15 @@ use crate::{
     protocol::{
         aliases::{results::Result, types::Byte},
         errors::error::Error,
+        headers::{
+            flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
+            version::Version,
+        },
         traits::Byteable,
+        utils::encode_string_to_bytes,
     },
-    tokenizer::tokenizer::tokenize_query,
-};
-use crate::{
-    protocol::headers::{length::Length, opcode::Opcode},
     server::{actions::opcode::SvAction, utils::get_available_sockets},
+    tokenizer::tokenizer::tokenize_query,
 };
 
 /// Estructura principal de un cliente.
@@ -44,7 +46,12 @@ impl Client {
 
     /// Conecta con alguno de los _sockets_ guardados.
     pub fn connect(&self) -> Result<TcpStream> {
-        match TcpStream::connect(&self.addrs[..]) {
+        Self::connect_to(&self.addrs[..])
+    }
+
+    /// Conecta con alguno de los _sockets_ dados.
+    pub fn connect_to(sockets: &[SocketAddr]) -> Result<TcpStream> {
+        match TcpStream::connect(sockets) {
             Ok(tcp_stream) => Ok(tcp_stream),
             Err(_) => Err(Error::ServerError(
                 "No se pudo conectar con ningún socket.".to_string(),
@@ -63,57 +70,80 @@ impl Client {
         let mut tcp_stream = self.connect()?;
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
+        let mut sendable_lines = Vec::<String>::new();
 
-        println!("ECHO MODE:\n----------\nEscribe lo que necesites.\nCuando salgas de este modo, se mandará todo de una al servidor.\n----------\n'q' en una línea sola para salir\n'shutdown' para mandar un mensaje de apagado al servidor\n----------\n");
+        println!(
+            "ECHO MODE:\n \
+                  ----------\n \
+                  Escribe lo que necesites.\n \
+                  Cuando salgas de este modo, se mandará todo de una al servidor.\n \
+                  ----------\n \
+                  'q' o línea vacía para salir\n \
+                  'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
+                  ----------\n"
+        );
 
         for line in reader.lines().map_while(|e| e.ok()) {
-            if line.eq_ignore_ascii_case("q") {
+            if line.eq_ignore_ascii_case("q") || line.is_empty() {
                 break;
             }
             if line.eq_ignore_ascii_case("shutdown") {
                 if let Err(err) = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]) {
                     println!("Error mandando el mensaje de shutdown:\n\n{}", err);
                 }
-                break;
+                return Ok(());
+            }
+            sendable_lines.push(line);
+        }
+        if sendable_lines.is_empty() {
+            return Ok(());
+        }
+
+        let query = sendable_lines.join(" ");
+        let mut stream_id: i16 = 0;
+        while self.requests_stream.contains(&stream_id) {
+            stream_id += 1;
+        }
+        self.requests_stream.insert(stream_id);
+        let mut header = Vec::<Byte>::new();
+        // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
+        // Numero de stream, tiene que ser positivo en cliente
+        if self.parse_request(&query, &mut header, stream_id) {
+            if let Err(err) = tcp_stream.write(&header) {
+                println!("Error al escribir en el TCPStream:\n\n{}", err);
             }
 
-            let mut stream_id: i16 = 0;
-            while self.requests_stream.contains(&stream_id) {
-                stream_id += 1;
+            // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
+            if let Err(err) = tcp_stream.flush() {
+                println!("Error haciendo flush desde el cliente:\n\n{}", err);
             }
-            self.requests_stream.insert(stream_id);
-            let mut header: Vec<u8> = vec![0x05, 0x00, stream_id as u8];
-            // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
-            // Numero de stream, tiene que ser positivo en cliente
-            // self.parse_request(&line, &mut header);
-            if self.parse_request(&line, &mut header) {
-                let _ = tcp_stream.write_all(&header);
-                let _ = tcp_stream.write_all(line.as_bytes());
+
+            let mut buf = Vec::<Byte>::new();
+            match tcp_stream.read_to_end(&mut buf) {
+                Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
+                Ok(i) => {
+                    println!("{} bytes - {:?}", i, buf);
+                }
             }
         }
+
         Ok(())
     }
 
-    fn parse_request(&mut self, line: &str, header: &mut Vec<u8>) -> bool {
+    fn parse_request(&mut self, line: &str, header: &mut Vec<Byte>, stream_id: i16) -> bool {
         match make_parse(&mut tokenize_query(line)) {
             Ok(statement) => {
                 match statement {
                     Statement::DdlStatement(ddl_statement) => {
-                        header.push(Opcode::Query.as_bytes()[0]);
-                        let lenght = Length::new(line.len() as u32);
-                        header.append(&mut lenght.as_bytes());
+                        Self::fill_headers(line, header, stream_id);
                         self.handle_ddl_statement(ddl_statement);
                     }
                     Statement::DmlStatement(dml_statement) => {
-                        header.push(Opcode::Query.as_bytes()[0]);
-                        let lenght = Length::new(line.len() as u32);
-                        header.append(&mut lenght.as_bytes());
+                        Self::fill_headers(line, header, stream_id);
                         self.handle_dml_statement(dml_statement);
                     }
                     Statement::UdtStatement(_udt_statement) => {
-                        header.push(Opcode::Query.as_bytes()[0]);
-                        let lenght = Length::new(line.len() as u32);
-                        header.append(&mut lenght.as_bytes());
+                        Self::fill_headers(line, header, stream_id);
                         todo!();
                     }
                 };
@@ -126,10 +156,26 @@ impl Client {
         }
     }
 
+    /// Llena el resto de headers.
+    fn fill_headers(line: &str, header: &mut Vec<Byte>, stream_id: i16) {
+        let version = Version::RequestV5;
+        let flags = Flag::Default;
+        let stream = Stream::new(stream_id);
+        let opcode = Opcode::Query;
+        // Esto está mal, el body de una query tiene un montón de metadatos,
+        // y el len se le hace al vector de bytes serializados.
+        let line_bytes = encode_string_to_bytes(line);
+        let length = Length::new(line_bytes.len() as u32);
+
+        header.extend(Headers::new(version, vec![flags], stream, opcode, length).as_bytes());
+    }
+
     /// Maneja una declaración DDL.
     fn handle_ddl_statement(&self, ddl_statement: DdlStatement) {
         match ddl_statement {
-            DdlStatement::UseStatement(_keyspace_name) => {}
+            DdlStatement::UseStatement(_keyspace_name) => {
+                println!("Handle USE!")
+            }
             DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {}
             DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {}
             DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {}
@@ -149,18 +195,6 @@ impl Client {
             DmlStatement::DeleteStatement(_delete) => {}
             DmlStatement::BatchStatement(_batch) => {}
         }
-    }
-
-    /// Intenta un objeto al _socket_ guardado.
-    pub fn send_bytes(&self, bytes: &[Byte]) -> Result<()> {
-        let mut tcp_stream = self.connect()?;
-
-        if tcp_stream.write_all(bytes).is_err() {
-            return Err(Error::ServerError(
-                "No se pudo escribir mandar el contenido".to_string(),
-            ));
-        }
-        Ok(())
     }
 }
 

@@ -15,7 +15,7 @@ pub fn get_available_sockets() -> Vec<SocketAddr> {
     for i in 0..N_NODES {
         sockets.push(SocketAddr::V4(SocketAddrV4::new(
             Ipv4Addr::new(127, 0, 0, START_ID + i),
-            PortType::Cli.into(),
+            PortType::Cli.to_num(),
         )));
     }
     sockets
