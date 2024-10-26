@@ -13,7 +13,11 @@ use std::{
     time::Duration,
 };
 
-use crate::protocol::{aliases::results::Result, errors::error::Error, traits::Byteable};
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    traits::Byteable,
+};
 use crate::server::{
     actions::opcode::SvAction,
     modes::ConnectionMode,
@@ -134,7 +138,6 @@ impl NodesGraph {
 
             let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
             let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
-
 
             let (proc_sender, proc_receiver) = channel::<(TcpStream, Vec<Byte>)>();
 

@@ -4,7 +4,6 @@ use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash, Hasher},
-    io::{Read, Write},
     io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::mpsc::{Receiver, Sender},
@@ -183,7 +182,7 @@ impl Node {
     fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
         for neighbour_id in self.get_neighbours_ids() {
             if neighbour_id == self.id {
-                continue
+                continue;
             }
             send_to_node(neighbour_id, bytes.clone(), port_type.clone())?;
         }
@@ -611,7 +610,7 @@ impl Node {
 
     /// Maneja una request.
 
-    fn handle_request(&self, request: &[Byte]) -> Result<Vec<Byte>> {
+    fn handle_request(&mut self, request: &[Byte]) -> Result<Vec<Byte>> {
         if request.len() < 9 {
             return Err(Error::ProtocolError(
                 "No se cumple el protocolo del header".to_string(),
@@ -661,8 +660,7 @@ impl Node {
         vec![0]
     }
 
-
-    fn handle_query(&self, request: &[Byte], lenght: Length) -> Vec<Byte> {
+    fn handle_query(&mut self, request: &[Byte], lenght: Length) -> Vec<Byte> {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
                 Ok(statement) => {
@@ -801,7 +799,7 @@ impl Node {
             Err(err) => err.as_bytes(),
         }
     }
-/*
+    /*
     fn search_partitions(&mut self, statement: &Statement) -> Vec<String> {
         match statement {
             Statement::DdlStatement(ddl_statement) => self.search_partitions_ddl(ddl_statement),
