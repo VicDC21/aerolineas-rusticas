@@ -1,6 +1,5 @@
 //! Módulo de nodos.
 
-use core::hash;
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
@@ -82,7 +81,7 @@ pub struct Node {
     /// (nombre, tabla)
     tables: HashMap<String, Table>,
 
-    /// Valor de la columna de _partition key_ y el valor del hashing que le corresponde
+    /// Nombre de la tabla y las partitions keys que contiene
     partitions_range: HashMap<String, Vec<u8>>,
 
     /// Valor del hashing y el nodo que le corresponde
@@ -665,7 +664,9 @@ impl Node {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
                 Ok(statement) => {
-                    //let partition_in_node: Vec<String> = self.search_partitions(&statement);
+                    if let Err(err) = self.search_partitions(&statement, request) {
+                        return err.as_bytes();
+                    }
 
                     match statement {
                         Statement::DdlStatement(ddl_statement) => {
@@ -800,18 +801,22 @@ impl Node {
             Err(err) => err.as_bytes(),
         }
     }
-    
-    fn search_partitions(&mut self, statement: &Statement, request: &[Byte]) -> Vec<Byte> {
+
+    fn search_partitions(&mut self, statement: &Statement, request: &[Byte]) -> Result<()> {
         match statement {
-            Statement::DdlStatement(_ddl_statement) => todo!(),
-            Statement::DmlStatement(dml_statement) => self.search_partitions_dml(dml_statement, request),
+            Statement::DdlStatement(ddl_statement) => {
+                self.search_partitions_ddl(ddl_statement)?;
+            }
+            Statement::DmlStatement(dml_statement) => {
+                self.search_partitions_dml(dml_statement, request)?;
+            }
             Statement::UdtStatement(_udt_statement) => todo!(),
         };
 
-        Vec::new()
+        Ok(())
     }
 
-    fn search_partitions_ddl(&mut self, ddl_statement: &DdlStatement) -> Vec<Byte> {
+    fn search_partitions_ddl(&mut self, ddl_statement: &DdlStatement) -> Result<()> {
         match ddl_statement {
             DdlStatement::UseStatement(_keyspace_name) => {
                 todo!()
@@ -840,39 +845,59 @@ impl Node {
         }
     }
 
-    fn search_partitions_dml(&mut self, dml_statement: &DmlStatement, request: &[Byte]) -> Vec<Byte> {
+    fn search_partitions_dml(
+        &mut self,
+        dml_statement: &DmlStatement,
+        request: &[Byte],
+    ) -> Result<()> {
         match dml_statement {
             DmlStatement::SelectStatement(select) => {
-                match self.partitions_range.get(&select.from.get_name()){
-                    Some(partition_key_to_nodes) => {
+                match self.partitions_range.get(&select.from.get_name()) {
+                    Some(partitions_keys_to_nodes) => {
                         let mut consulted_nodes: Vec<u8> = Vec::new();
-                        for value in partition_key_to_nodes{
-                            let node_id = value % N_NODES;
-                            if node_id != self.id && !consulted_nodes.contains(value){
-                                consulted_nodes.push(*value);
-                                send_to_node(node_id, request.to_vec(), PortType::Priv);
+                        for partition_key in partitions_keys_to_nodes {
+                            let node_id = partition_key % N_NODES;
+                            if node_id != self.id && !consulted_nodes.contains(partition_key) {
+                                consulted_nodes.push(*partition_key);
+                                match send_to_node(node_id, request.to_vec(), PortType::Priv) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        return Err(err);
+                                    }
+                                }
                             }
                         }
                     }
-                    None => return Error::ServerError("La tabla indicada no existe".to_string()).as_bytes()
-            
+                    None => {
+                        return Err(Error::ServerError(
+                            "La tabla indicada no existe".to_string(),
+                        ))
+                    }
                 };
                 // let mut hasher = DefaultHasher::new();
                 // 5.hash(&mut hasher);
                 // hasher.finish();
             }
             DmlStatement::InsertStatement(insert) => {
-                match self.partitions_range.get(&insert.table.get_name()){
-                    Some(values) => {
-                        for value in values{
-                            let node_id = value % N_NODES;
-                            if node_id != self.id{
-                                send_to_node(node_id, request.to_vec(), PortType::Priv);
+                match self.partitions_range.get(&insert.table.get_name()) {
+                    Some(partitions_keys_to_nodes) => {
+                        for partition_key in partitions_keys_to_nodes {
+                            let node_id = partition_key % N_NODES;
+                            if node_id != self.id {
+                                match send_to_node(node_id, request.to_vec(), PortType::Priv) {
+                                    Ok(_) => {}
+                                    Err(err) => {
+                                        return Err(err);
+                                    }
+                                }
                             }
                         }
                     }
-                    None => return Error::ServerError("La tabla indicada no existe".to_string()).as_bytes()
-            
+                    None => {
+                        return Err(Error::ServerError(
+                            "La tabla indicada no existe".to_string(),
+                        ))
+                    }
                 };
             }
             DmlStatement::UpdateStatement(_update) => {
@@ -885,7 +910,7 @@ impl Node {
                 todo!()
             }
         };
-        vec![]
+        Ok(())
     }
 }
 
