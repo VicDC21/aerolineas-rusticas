@@ -1,7 +1,7 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
 use std::{
-    io::Write,
+    io::{Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
 };
 
@@ -38,6 +38,38 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
         )));
     }
     Ok(())
+}
+
+/// Manda un mensaje a un nodo específico y espera por la respuesta de este.
+pub fn send_to_node_and_wait_response(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<Vec<u8>> {
+    let addr = guess_socket(id, port_type);
+    let mut stream = match TcpStream::connect(addr) {
+        Ok(tcpstream) => tcpstream,
+        Err(_) => {
+            return Err(Error::ServerError(format!(
+                "No se pudo conectar al nodo con ID {}",
+                id
+            )))
+        }
+    };
+    if stream.write_all(&bytes[..]).is_err() {
+        return Err(Error::ServerError(format!(
+            "No se pudo escribir el contenido en {}",
+            addr
+        )));
+    }
+    // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
+    if let Err(err) = stream.flush() {
+        println!("Error haciendo flush desde el servidor:\n\n{}", err);
+    }
+    let mut buf = Vec::<Byte>::new();
+    match stream.read_to_end(&mut buf) {
+        Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
+        Ok(i) => {
+            println!("{} bytes - {:?}", i, buf);
+        }
+    }
+    Ok(buf)
 }
 
 /// Adivina el ID del nodo a partir de una IP.

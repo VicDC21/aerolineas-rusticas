@@ -45,7 +45,7 @@ use crate::server::{
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 
-use super::{graph::N_NODES, keyspace::Keyspace, table::Table};
+use super::{graph::N_NODES, keyspace::Keyspace, table::Table, utils::send_to_node_and_wait_response};
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -802,7 +802,12 @@ impl Node {
         }
     }
 
-    fn search_partitions(&mut self, statement: &Statement, request: &[Byte]) -> Result<()> {
+    fn send_message_and_wait_response(&self, bytes: Vec<Byte>, node_id: u8, port_type: PortType) -> Result<Vec<u8>> {
+        send_to_node_and_wait_response(node_id, bytes, port_type)
+    }
+
+
+    fn search_partitions(&mut self, statement: &Statement, request: &[Byte]) -> Result<Option<()>> {
         match statement {
             Statement::DdlStatement(ddl_statement) => {
                 self.search_partitions_ddl(ddl_statement)?;
@@ -813,7 +818,7 @@ impl Node {
             Statement::UdtStatement(_udt_statement) => todo!(),
         };
 
-        Ok(())
+        Ok(None)
     }
 
     fn search_partitions_ddl(&mut self, ddl_statement: &DdlStatement) -> Result<()> {
@@ -850,6 +855,7 @@ impl Node {
         dml_statement: &DmlStatement,
         request: &[Byte],
     ) -> Result<()> {
+        let mut results_from_another_nodes: Vec<u8> = Vec::new();
         match dml_statement {
             DmlStatement::SelectStatement(select) => {
                 match self.partitions_range.get(&select.from.get_name()) {
@@ -858,16 +864,17 @@ impl Node {
                         for partition_key in partitions_keys_to_nodes {
                             let node_id = partition_key % N_NODES;
                             if node_id != self.id && !consulted_nodes.contains(partition_key) {
+                                let res = self.send_message_and_wait_response(request.to_vec(), node_id, PortType::Priv)?;
+                                match Opcode::try_from(res[4])?{
+                                    Opcode::RequestError => return Err(Error::try_from(res[10..].to_vec())?),
+                                    Opcode::Result => self.handle_result_from_node(&mut results_from_another_nodes, res)?,
+                                    _ => return Err(Error::ServerError("Nodo manda opcode inesperado".to_string()))
+                                };
                                 consulted_nodes.push(*partition_key);
-                                match send_to_node(node_id, request.to_vec(), PortType::Priv) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        return Err(err);
-                                    }
-                                }
                             }
                         }
                     }
+
                     None => {
                         return Err(Error::ServerError(
                             "La tabla indicada no existe".to_string(),
@@ -912,6 +919,20 @@ impl Node {
         };
         Ok(())
     }
+
+    fn handle_result_from_node(&self, results_from_another_nodes: &mut Vec<u8>, mut result_from_actual_node: Vec<u8>) -> Result<()>{
+        if results_from_another_nodes.is_empty(){
+            results_from_another_nodes.append(&mut result_from_actual_node);
+        } else{
+            let size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
+            // le agrego el body de las filas a las que ya tenia
+            let mut new_res = results_from_another_nodes[12..size.len as usize].to_vec();
+            results_from_another_nodes.append(&mut new_res);
+        }
+        Ok(())
+    }
+
+
 }
 
 impl PartialEq for Node {
