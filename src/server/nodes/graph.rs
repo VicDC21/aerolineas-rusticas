@@ -6,6 +6,7 @@ use rand::{
 };
 use std::{
     collections::HashSet,
+    hash::{DefaultHasher, Hash, Hasher},
     net::TcpStream,
     sync::mpsc::{channel, Sender},
     thread::{sleep, Builder, JoinHandle},
@@ -134,7 +135,8 @@ impl NodesGraph {
             let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
             let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-            let (proc_sender, proc_receiver) = channel::<TcpStream>();
+
+            let (proc_sender, proc_receiver) = channel::<(TcpStream, Vec<Byte>)>();
 
             // Sino aparentemente el hilo toma ownership antes de poder clonarlo.
             let cli_sender = proc_sender.clone();

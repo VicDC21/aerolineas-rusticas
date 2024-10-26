@@ -46,7 +46,12 @@ impl Client {
 
     /// Conecta con alguno de los _sockets_ guardados.
     pub fn connect(&self) -> Result<TcpStream> {
-        match TcpStream::connect(&self.addrs[..]) {
+        Self::connect_to(&self.addrs[..])
+    }
+
+    /// Conecta con alguno de los _sockets_ dados.
+    pub fn connect_to(sockets: &[SocketAddr]) -> Result<TcpStream> {
+        match TcpStream::connect(sockets) {
             Ok(tcp_stream) => Ok(tcp_stream),
             Err(_) => Err(Error::ServerError(
                 "No se pudo conectar con ningún socket.".to_string(),
@@ -65,46 +70,62 @@ impl Client {
         let mut tcp_stream = self.connect()?;
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
+        let mut sendable_lines = Vec::<String>::new();
 
-        println!("ECHO MODE:\n----------\nEscribe lo que necesites.\nCuando salgas de este modo, se mandará todo de una al servidor.\n----------\n'q' en una línea sola para salir\n'shutdown' para mandar un mensaje de apagado al servidor\n----------\n");
+        println!(
+            "ECHO MODE:\n \
+                  ----------\n \
+                  Escribe lo que necesites.\n \
+                  Cuando salgas de este modo, se mandará todo de una al servidor.\n \
+                  ----------\n \
+                  'q' o línea vacía para salir\n \
+                  'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
+                  ----------\n"
+        );
 
         for line in reader.lines().map_while(|e| e.ok()) {
-            if line.eq_ignore_ascii_case("q") {
+            if line.eq_ignore_ascii_case("q") || line.is_empty() {
                 break;
             }
             if line.eq_ignore_ascii_case("shutdown") {
                 if let Err(err) = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]) {
                     println!("Error mandando el mensaje de shutdown:\n\n{}", err);
                 }
-                break;
+                return Ok(());
+            }
+            sendable_lines.push(line);
+        }
+        if sendable_lines.is_empty() {
+            return Ok(());
+        }
+
+        let query = sendable_lines.join(" ");
+        let mut stream_id: i16 = 0;
+        while self.requests_stream.contains(&stream_id) {
+            stream_id += 1;
+        }
+        self.requests_stream.insert(stream_id);
+        let mut header = Vec::<Byte>::new();
+        // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
+        // Numero de stream, tiene que ser positivo en cliente
+        if self.parse_request(&query, &mut header, stream_id) {
+            if let Err(err) = tcp_stream.write(&header) {
+                println!("Error al escribir en el TCPStream:\n\n{}", err);
             }
 
-            let mut stream_id: i16 = 0;
-            while self.requests_stream.contains(&stream_id) {
-                stream_id += 1;
+            // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
+            if let Err(err) = tcp_stream.flush() {
+                println!("Error haciendo flush desde el cliente:\n\n{}", err);
             }
-            self.requests_stream.insert(stream_id);
-            let mut header = Vec::<Byte>::new();
-            // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
-            // Numero de stream, tiene que ser positivo en cliente
-            if self.parse_request(&line, &mut header, stream_id) {
-                let _ = tcp_stream.write_all(&header);
-                let _ = tcp_stream.write_all(line.as_bytes());
-
-                // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
-                if let Err(err) = tcp_stream.flush() {
-                    println!("Error haciendo flush desde el cliente:\n\n{}", err);
-                }
-
-                let mut buf = Vec::<Byte>::new();
-                match tcp_stream.read_to_end(&mut buf) {
-                    Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
-                    Ok(_) => {
-                        todo!("deserializar headers y body de response")
-                    }
+            let mut buf = Vec::<Byte>::new();
+            match tcp_stream.read_to_end(&mut buf) {
+                Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
+                Ok(i) => {
+                    println!("{} bytes - {:?}", i, buf);
                 }
             }
         }
+
         Ok(())
     }
 
@@ -151,7 +172,9 @@ impl Client {
     /// Maneja una declaración DDL.
     fn handle_ddl_statement(&self, ddl_statement: DdlStatement) {
         match ddl_statement {
-            DdlStatement::UseStatement(_keyspace_name) => {}
+            DdlStatement::UseStatement(_keyspace_name) => {
+                println!("Handle USE!")
+            }
             DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {}
             DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {}
             DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {}
