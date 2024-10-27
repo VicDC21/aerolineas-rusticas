@@ -44,9 +44,14 @@ impl Provider {
         }
     }
 
+    /// Devuelve un [_hashmap_](ProvidersMap) de proveedores sin contenido.
+    pub fn empty() -> ProvidersMap {
+        ProvidersMap::new()
+    }
+
     /// Devuelve un [_hashmap_](ProvidersMap) de proveedores tal que quede listo para usar.
     pub fn providers(egui_ctx: Context) -> ProvidersMap {
-        let mut providers = ProvidersMap::new();
+        let mut providers = Self::empty();
 
         providers.insert(
             Provider::OpenStreetMap,

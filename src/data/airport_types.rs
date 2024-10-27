@@ -8,6 +8,7 @@ use crate::protocol::errors::error::Error;
 /// El tipo de un aeropuerto.
 ///
 /// Las definiciones se inspiran en las de [OurAirports](https://ourairports.com/help/#airports).
+#[derive(Eq, Hash, PartialEq)]
 pub enum AirportType {
     /// Un gran aeropuerto con un tráfico anual en millones de personas, o una base militar importante.
     LargeAirport,

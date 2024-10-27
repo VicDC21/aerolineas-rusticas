@@ -1,5 +1,7 @@
 //! Módulo para la estructura de la aplicación en sí.
 
+use std::sync::Arc;
+
 use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
 use egui_extras::install_image_loaders;
@@ -45,7 +47,7 @@ impl AerolineasApp {
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
             airports_loader: AirportsLoader::default(),
-            airports_drawer: AirportsDrawer::default(),
+            airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
         }
     }
 }
@@ -67,9 +69,9 @@ impl App for AerolineasApp {
             );
 
             // Añadimos los plugins.
-            let cur_airports = self.airports_loader.take_airports();
+            let cur_airports = Arc::new(self.airports_loader.take_airports());
             self.airports_drawer
-                .sync_airports(cur_airports)
+                .sync_airports(Arc::clone(&cur_airports))
                 .sync_zoom(zoom_lvl);
 
             let map = map
@@ -84,7 +86,6 @@ impl App for AerolineasApp {
                 ui,
                 &mut self.selected_provider,
                 &mut self.map_providers.keys(),
-                // &mut self.images_plugin_data,
             );
         });
     }
