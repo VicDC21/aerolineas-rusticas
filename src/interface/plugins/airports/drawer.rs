@@ -161,13 +161,13 @@ impl AirportsDrawer {
     /// Redimensiona una imagen para que se muestre bien entre los límites de la pantalla actual.
     pub fn scale_img_by_type(img: &mut Image, airport_type: &AirportType) {
         let extra = match airport_type {
-            AirportType::LargeAirport => 0.0,
-            AirportType::MediumAirport => 0.0,
-            AirportType::SmallAirport => 0.0,
-            AirportType::Heliport => 0.0,
-            AirportType::SeaplaneBase => 0.0,
-            AirportType::BalloonBase => 0.0,
-            AirportType::Closed => 0.0,
+            AirportType::LargeAirport => 0.01,
+            AirportType::MediumAirport => 0.007,
+            AirportType::SmallAirport => 0.005,
+            AirportType::Heliport => 0.005,
+            AirportType::SeaplaneBase => 0.005,
+            AirportType::BalloonBase => 0.005,
+            AirportType::Closed => 0.007,
         };
         img.scale(BASE_DIM_RED + extra, BASE_DIM_RED + extra);
     }

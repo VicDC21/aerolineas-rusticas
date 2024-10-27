@@ -21,6 +21,7 @@ const MIN_AIRPORTS_ELEMS: usize = 17;
 /// Estructura que representa un aeropuerto.
 ///
 /// Este modelo está inspirado en las definiciones de [OurAirports](https://ourairports.com/help/data-dictionary.html#airports).
+#[derive(Clone)]
 pub struct Airport {
     /// El ID del aeropuerto. Éste es constante aún si el código de aeropuerto cambia.
     pub id: usize,

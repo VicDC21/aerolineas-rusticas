@@ -2,11 +2,12 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{CentralPanel, Context};
+use eframe::egui::{CentralPanel, Context, SidePanel};
 use eframe::{App, Frame};
 use egui_extras::install_image_loaders;
 use walkers::{Map, MapMemory, Position};
 
+use crate::data::airports::Airport;
 use crate::interface::map::providers::{Provider, ProvidersMap};
 use crate::interface::map::windows::{controls, go_to_my_position, zoom};
 use crate::interface::plugins::airports::{drawer::AirportsDrawer, loader::AirportsLoader};
@@ -32,6 +33,9 @@ pub struct AerolineasApp {
 
     /// El renderizador de aeropuertos.
     airports_drawer: AirportsDrawer,
+
+    /// El puerto seleccionado actualmente.
+    selected_airport: Option<Airport>,
 }
 
 impl AerolineasApp {
@@ -48,6 +52,7 @@ impl AerolineasApp {
             selected_provider: Provider::OpenStreetMap,
             airports_loader: AirportsLoader::default(),
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
+            selected_airport: None,
         }
     }
 }
@@ -87,6 +92,10 @@ impl App for AerolineasApp {
                 &mut self.selected_provider,
                 &mut self.map_providers.keys(),
             );
+        });
+
+        SidePanel::left("airport_info").show_animated(ctx, self.selected_airport.is_some(), |ui| {
+            ui.label("Lorem Ipsum");
         });
     }
 }
