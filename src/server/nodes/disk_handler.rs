@@ -227,8 +227,7 @@ impl DiskHandler {
     }
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
-    pub fn do_insert(statement: Insert, storage_addr: &str) -> Result<Vec<Byte>> {
-        let res: Vec<Byte> = vec![0x0, 0x0, 0x0, 0x2];
+    pub fn do_insert(statement: &Insert, storage_addr: &str) -> Result<Vec<String>> {
         let keyspace = statement.table.get_keyspace();
         let name = statement.table.get_name();
         let table_addr = match keyspace {
@@ -280,7 +279,7 @@ impl DiskHandler {
         }
         // Si el ID existe y no se debe sobreescribir la línea, no hago nada
         if id_exists && statement.if_not_exists {
-            return Ok(res);
+            return Ok(Vec::new());
         }
 
         // Abro el archivo nuevamente para escribir
@@ -307,7 +306,7 @@ impl DiskHandler {
                 .write_all(new_row.as_bytes())
                 .map_err(|e| Error::ServerError(e.to_string()))?;
         }
-        Ok(res)
+        Ok(new_row.trim().split(",").map(|s| s.to_string()).collect())
     }
 
     fn generate_row_to_insert(

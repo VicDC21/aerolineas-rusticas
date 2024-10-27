@@ -41,7 +41,11 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
 }
 
 /// Manda un mensaje a un nodo específico y espera por la respuesta de este.
-pub fn send_to_node_and_wait_response(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<Vec<u8>> {
+pub fn send_to_node_and_wait_response(
+    id: NodeId,
+    bytes: Vec<Byte>,
+    port_type: PortType,
+) -> Result<Vec<u8>> {
     let addr = guess_socket(id, port_type);
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
@@ -84,4 +88,19 @@ pub fn guess_id(ipaddr: &IpAddr) -> NodeId {
             id
         }
     }
+}
+
+/// Divide un rango en `n` partes iguales.
+pub fn divide_range(start: u64, end: u64, n: usize) -> Vec<(u64, u64)> {
+    let range_length = end - start;
+    let part_length = range_length / n as u64;
+    let remainder = range_length % n as u64;
+
+    (0..n)
+        .map(|i| {
+            let part_start = start + i as u64 * part_length + remainder.min(i as u64);
+            let part_end = part_start + part_length + if i < remainder as usize { 1 } else { 0 };
+            (part_start, part_end)
+        })
+        .collect()
 }

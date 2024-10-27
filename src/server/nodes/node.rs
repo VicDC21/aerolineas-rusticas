@@ -45,7 +45,12 @@ use crate::server::{
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 
-use super::{graph::N_NODES, keyspace::Keyspace, table::Table, utils::send_to_node_and_wait_response};
+use super::{
+    graph::{N_NODES, START_ID},
+    keyspace::Keyspace,
+    table::Table,
+    utils::{divide_range, send_to_node_and_wait_response},
+};
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -81,18 +86,18 @@ pub struct Node {
     /// (nombre, tabla)
     tables: HashMap<String, Table>,
 
-    /// Nombre de la tabla y las partitions keys que contiene
-    partitions_range: HashMap<String, Vec<u8>>,
+    /// Rangos asignados a cada nodo para determinar la partición de los datos.
+    nodes_ranges: Vec<(u64, u64)>,
 
-    /// Valor del hashing y el nodo que le corresponde
-    partitions_to_node: HashMap<u32, NodeId>,
+    /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
+    tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Self {
         let storage_addr = DiskHandler::new_node_storage(id);
-
+        let nodes_ranges = divide_range(0, 18446744073709551615, N_NODES as usize);
         Self {
             id,
             neighbours_states: NodesMap::new(),
@@ -101,8 +106,8 @@ impl Node {
             default_keyspace_name: "".to_string(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
-            partitions_range: HashMap::new(),
-            partitions_to_node: HashMap::new(),
+            nodes_ranges,
+            tables_and_partitions_keys_values: HashMap::new(),
         }
     }
 
@@ -161,21 +166,43 @@ impl Node {
         self.neighbours_states.keys().copied().collect()
     }
 
-    /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_.
-    fn select_node(&self, value: String) -> NodeId {
-        let neighbours_ids: Vec<NodeId> = self.get_neighbours_ids();
+    /// Inserta un valor en el mapa de tablas y _partition keys values_ segun el nombre de la tabla.
+    fn insert_in_table_partition_key_value(&mut self, value: String, table_name: String) {
+        if let Some(partition_keys_values) =
+            self.tables_and_partitions_keys_values.get_mut(&table_name)
+        {
+            partition_keys_values.push(value);
+        } else {
+            self.tables_and_partitions_keys_values
+                .insert(table_name, vec![value]);
+        }
+    }
+
+    /// Hashea el valor recibido.
+    fn hash_value(value: &str) -> u64 {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
-        let hash_val = hasher.finish();
+        hasher.finish()
+    }
 
-        let n = neighbours_ids.len() as u64;
-        let hashed_index = (hash_val % n) as usize;
-        neighbours_ids[hashed_index]
+    /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
+    fn select_node(&self, value: &String) -> NodeId {
+        let hash_val = Self::hash_value(value);
+
+        let mut i = 0;
+        for (a, b) in &self.nodes_ranges {
+            if *a <= hash_val && hash_val < *b {
+                return START_ID + i as NodeId;
+            }
+            i += 1;
+        }
+
+        START_ID + i as NodeId
     }
 
     /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
     fn send_message(&self, bytes: Vec<Byte>, value: String, port_type: PortType) -> Result<()> {
-        send_to_node(self.select_node(value), bytes, port_type)
+        send_to_node(self.select_node(&value), bytes, port_type)
     }
 
     /// Manda un mensaje en bytes a todos los vecinos del nodo.
@@ -778,13 +805,43 @@ impl Node {
     }
 
     /// Maneja una declaración DML.
-    fn handle_dml_statement(&self, dml_statement: DmlStatement) -> Vec<Byte> {
+    fn handle_dml_statement(&mut self, dml_statement: DmlStatement) -> Vec<Byte> {
         let res: Result<Vec<Byte>> = match dml_statement {
             DmlStatement::SelectStatement(select) => {
                 DiskHandler::do_select(select, &self.storage_addr)
             }
             DmlStatement::InsertStatement(insert) => {
-                DiskHandler::do_insert(insert, &self.storage_addr)
+                match DiskHandler::do_insert(&insert, &self.storage_addr) {
+                    Ok(new_row) => {
+                        if !new_row.is_empty() {
+                            let table_name = insert.table.get_name();
+                            let table = match self.get_table(&table_name) {
+                                Ok(table) => table,
+                                Err(err) => return err.as_bytes(),
+                            };
+                            let index = match table
+                                .get_columns_names()
+                                .iter()
+                                .position(|c| c == &table.get_partition_key())
+                            {
+                                Some(index) => index,
+                                None => {
+                                    return Error::ServerError(
+                                        "No se pudo encontrar la columna de la partition key"
+                                            .to_string(),
+                                    )
+                                    .as_bytes()
+                                }
+                            };
+                            self.insert_in_table_partition_key_value(
+                                new_row[index].to_string(),
+                                table_name.to_string(),
+                            );
+                        }
+                    }
+                    Err(err) => return err.as_bytes(),
+                }
+                Ok(vec![0x0, 0x0, 0x0, 0x2])
             }
             DmlStatement::UpdateStatement(_update) => {
                 todo!()
@@ -802,10 +859,14 @@ impl Node {
         }
     }
 
-    fn send_message_and_wait_response(&self, bytes: Vec<Byte>, node_id: u8, port_type: PortType) -> Result<Vec<u8>> {
+    fn send_message_and_wait_response(
+        &self,
+        bytes: Vec<Byte>,
+        node_id: u8,
+        port_type: PortType,
+    ) -> Result<Vec<u8>> {
         send_to_node_and_wait_response(node_id, bytes, port_type)
     }
-
 
     fn search_partitions(&mut self, statement: &Statement, request: &[Byte]) -> Result<Option<()>> {
         match statement {
@@ -856,21 +917,39 @@ impl Node {
         request: &[Byte],
     ) -> Result<()> {
         let mut results_from_another_nodes: Vec<u8> = Vec::new();
+
         match dml_statement {
             DmlStatement::SelectStatement(select) => {
-                match self.partitions_range.get(&select.from.get_name()) {
+                match self
+                    .tables_and_partitions_keys_values
+                    .get(&select.from.get_name())
+                {
                     Some(partitions_keys_to_nodes) => {
-                        let mut consulted_nodes: Vec<u8> = Vec::new();
-                        for partition_key in partitions_keys_to_nodes {
-                            let node_id = partition_key % N_NODES;
-                            if node_id != self.id && !consulted_nodes.contains(partition_key) {
-                                let res = self.send_message_and_wait_response(request.to_vec(), node_id, PortType::Priv)?;
-                                match Opcode::try_from(res[4])?{
-                                    Opcode::RequestError => return Err(Error::try_from(res[10..].to_vec())?),
-                                    Opcode::Result => self.handle_result_from_node(&mut results_from_another_nodes, res)?,
-                                    _ => return Err(Error::ServerError("Nodo manda opcode inesperado".to_string()))
+                        let mut consulted_nodes: Vec<String> = Vec::new();
+                        for partition_key_value in partitions_keys_to_nodes {
+                            let node_id = self.select_node(partition_key_value);
+                            if node_id != self.id && !consulted_nodes.contains(partition_key_value)
+                            {
+                                let res = self.send_message_and_wait_response(
+                                    request.to_vec(),
+                                    node_id,
+                                    PortType::Priv,
+                                )?;
+                                match Opcode::try_from(res[4])? {
+                                    Opcode::RequestError => {
+                                        return Err(Error::try_from(res[10..].to_vec())?)
+                                    }
+                                    Opcode::Result => self.handle_result_from_node(
+                                        &mut results_from_another_nodes,
+                                        res,
+                                    )?,
+                                    _ => {
+                                        return Err(Error::ServerError(
+                                            "Nodo manda opcode inesperado".to_string(),
+                                        ))
+                                    }
                                 };
-                                consulted_nodes.push(*partition_key);
+                                consulted_nodes.push(partition_key_value.to_string());
                             }
                         }
                     }
@@ -886,10 +965,13 @@ impl Node {
                 // hasher.finish();
             }
             DmlStatement::InsertStatement(insert) => {
-                match self.partitions_range.get(&insert.table.get_name()) {
+                match self
+                    .tables_and_partitions_keys_values
+                    .get(&insert.table.get_name())
+                {
                     Some(partitions_keys_to_nodes) => {
                         for partition_key in partitions_keys_to_nodes {
-                            let node_id = partition_key % N_NODES;
+                            let node_id = self.select_node(partition_key);
                             if node_id != self.id {
                                 match send_to_node(node_id, request.to_vec(), PortType::Priv) {
                                     Ok(_) => {}
@@ -920,10 +1002,14 @@ impl Node {
         Ok(())
     }
 
-    fn handle_result_from_node(&self, results_from_another_nodes: &mut Vec<u8>, mut result_from_actual_node: Vec<u8>) -> Result<()>{
-        if results_from_another_nodes.is_empty(){
+    fn handle_result_from_node(
+        &self,
+        results_from_another_nodes: &mut Vec<u8>,
+        mut result_from_actual_node: Vec<u8>,
+    ) -> Result<()> {
+        if results_from_another_nodes.is_empty() {
             results_from_another_nodes.append(&mut result_from_actual_node);
-        } else{
+        } else {
             let size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
             // le agrego el body de las filas a las que ya tenia
             let mut new_res = results_from_another_nodes[12..size.len as usize].to_vec();
@@ -931,8 +1017,6 @@ impl Node {
         }
         Ok(())
     }
-
-
 }
 
 impl PartialEq for Node {

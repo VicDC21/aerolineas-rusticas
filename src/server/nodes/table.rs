@@ -39,4 +39,17 @@ impl Table {
     pub fn get_name(&self) -> &str {
         &self.name
     }
+
+    /// Obtiene la partition key de la tabla.
+    pub fn get_partition_key(&self) -> String {
+        self.partition_key.to_string()
+    }
+
+    /// Obtiene los nombres de las columnas de la tabla.
+    pub fn get_columns_names(&self) -> Vec<String> {
+        self.columns
+            .iter()
+            .map(|column| column.get_name())
+            .collect()
+    }
 }
