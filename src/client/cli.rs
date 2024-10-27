@@ -247,15 +247,19 @@ impl Client {
 
                 match statement {
                     Statement::DdlStatement(ddl_statement) => {
-                        Self::fill_headers(header, stream_id, &body_bytes);
+                        Self::fill_headers(header, stream_id, &body_bytes, false);
                         self.handle_ddl_statement(ddl_statement);
                     }
                     Statement::DmlStatement(dml_statement) => {
-                        Self::fill_headers(header, stream_id, &body_bytes);
-                        self.handle_dml_statement(dml_statement);
+                        let get_statement = self.handle_dml_statement(dml_statement);
+                        if get_statement {
+                            Self::fill_headers(header, stream_id, &body_bytes, true);
+                        } else {
+                            Self::fill_headers(header, stream_id, &body_bytes, false);
+                        }
                     }
                     Statement::UdtStatement(_udt_statement) => {
-                        Self::fill_headers(header, stream_id, &body_bytes);
+                        Self::fill_headers(header, stream_id, &body_bytes, false);
                         todo!();
                     }
                 };
@@ -270,11 +274,16 @@ impl Client {
     }
 
     /// Llena el resto de headers.
-    fn fill_headers(header: &mut Vec<Byte>, stream_id: i16, body: &[u8]) {
+    fn fill_headers(header: &mut Vec<Byte>, stream_id: i16, body: &[u8], is_batch: bool) {
         let version = Version::RequestV5;
         let flags = Flag::Default;
         let stream = Stream::new(stream_id);
-        let opcode = Opcode::Query;
+        let opcode = if is_batch {
+            Opcode::Batch
+        } else {
+            Opcode::Query
+        };
+
         let length = Length::new(body.len() as u32);
 
         header.extend(Headers::new(version, vec![flags], stream, opcode, length).as_bytes());
@@ -297,13 +306,13 @@ impl Client {
     }
 
     /// Maneja una declaración DML.
-    fn handle_dml_statement(&self, dml_statement: DmlStatement) {
+    fn handle_dml_statement(&self, dml_statement: DmlStatement) -> bool {
         match dml_statement {
-            DmlStatement::SelectStatement(_select) => {}
-            DmlStatement::InsertStatement(_insert) => {}
-            DmlStatement::UpdateStatement(_update) => {}
-            DmlStatement::DeleteStatement(_delete) => {}
-            DmlStatement::BatchStatement(_batch) => {}
+            DmlStatement::SelectStatement(_select) => false,
+            DmlStatement::InsertStatement(_insert) => false,
+            DmlStatement::UpdateStatement(_update) => false,
+            DmlStatement::DeleteStatement(_delete) => false,
+            DmlStatement::BatchStatement(_batch) => true,
         }
     }
 }
