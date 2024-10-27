@@ -16,6 +16,15 @@ pub enum Identifier {
 
 impl Identifier {
     /// TODO: Desc básica
+    pub fn new(string: String) -> Self {
+        if UnquotedIdentifier::check_unquoted_identifier(&string) {
+            Identifier::UnquotedIdentifier(UnquotedIdentifier::new(string))
+        } else {
+            Identifier::QuotedIdentifier(QuotedIdentifier::new(string))
+        }
+    }
+
+    /// TODO: Desc básica
     pub fn get_name(&self) -> &str {
         match self {
             Identifier::QuotedIdentifier(id) => id.get_name(),

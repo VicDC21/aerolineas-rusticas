@@ -28,7 +28,7 @@ use crate::{
     protocol::errors::error::Error,
 };
 
-use super::{main_statements::select::order_by::ProtocolOrdering, r#where::operator::Operator};
+use super::{main_statements::select::ordering::ProtocolOrdering, r#where::operator::Operator};
 
 /// dml_statement::= select_statement
 /// | insert_statement
@@ -522,7 +522,7 @@ mod tests {
                 unquoted_name::UnquotedName,
             },
             statements::dml_statement::{
-                main_statements::select::order_by::ProtocolOrdering,
+                main_statements::select::ordering::ProtocolOrdering,
                 r#where::expression::Expression,
             },
         },

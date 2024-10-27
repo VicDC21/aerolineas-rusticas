@@ -14,7 +14,7 @@ use crate::parser::statements::{
     ddl_statement::{create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options},
     dml_statement::main_statements::{
         insert::Insert,
-        select::{order_by::OrderBy, ordering::Ordering, select_operation::Select},
+        select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
     },
 };
 use crate::protocol::{
@@ -75,6 +75,7 @@ impl DiskHandler {
         }
     }
 
+    /// Obtiene la estrategia de replicación de un keyspace.
     fn get_keyspace_replication(options: Vec<Options>) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;
         while i < options.len() {
@@ -190,15 +191,15 @@ impl DiskHandler {
         }
 
         let clustering_keys = primary_key[1..].to_vec();
-        let mut clustering_keys_and_order: Vec<(String, Ordering)> = Vec::new();
+        let mut clustering_keys_and_order: Vec<(String, ProtocolOrdering)> = Vec::new();
         for key in clustering_keys {
-            clustering_keys_and_order.push((key, Ordering::Asc));
+            clustering_keys_and_order.push((key, ProtocolOrdering::Asc));
         }
 
         if let Some(clustering_order) = &statement.clustering_order {
             for (key, order) in clustering_order {
                 if let Some(j) = clustering_keys_and_order.iter().position(|(k, _)| k == key) {
-                    let order = match Ordering::ordering_from_str(order) {
+                    let order = match ProtocolOrdering::ordering_from_str(order) {
                         Some(order) => order,
                         None => {
                             return Err(Error::Invalid(format!(
@@ -227,7 +228,7 @@ impl DiskHandler {
     }
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
-    pub fn do_insert(statement: &Insert, storage_addr: &str) -> Result<Vec<String>> {
+    pub fn do_insert(statement: &Insert, storage_addr: &str, table: &Table) -> Result<Vec<String>> {
         let keyspace = statement.table.get_keyspace();
         let name = statement.table.get_name();
         let table_addr = match keyspace {
@@ -306,9 +307,19 @@ impl DiskHandler {
                 .write_all(new_row.as_bytes())
                 .map_err(|e| Error::ServerError(e.to_string()))?;
         }
+
+        if let Some(order_by) = &table.clustering_key_and_order {
+            Self::order_table_data(
+                &table_addr,
+                &query_cols,
+                &OrderBy::new_from_vec(order_by.to_vec()),
+            )?;
+        }
+
         Ok(new_row.trim().split(",").map(|s| s.to_string()).collect())
     }
 
+    /// Genera una fila para insertar en una tabla, en base a las columnas dadas en la query y de la tabla.
     fn generate_row_to_insert(
         values: &[String],
         query_cols: &[String],
@@ -323,6 +334,59 @@ impl DiskHandler {
         }
 
         values_to_insert.join(",") + "\n"
+    }
+
+    /// Ordena una tabla según el criterio de ordenación dado.
+    fn order_table_data(table_addr: &str, table_cols: &[String], order_by: &OrderBy) -> Result<()> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let mut reader = BufReader::new(&file);
+
+        let mut line = String::new();
+        let read_bytes = reader
+            .read_line(&mut line)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        if read_bytes == 0 {
+            return Err(Error::ServerError(format!(
+                "No se pudo leer la tabla con ruta {}",
+                &table_addr
+            )));
+        }
+
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        for line in reader.lines() {
+            let table_line = line.map_err(|e| Error::ServerError(e.to_string()))?;
+            let table_row: Vec<String> = table_line
+                .trim()
+                .split(",")
+                .map(|s| s.to_string())
+                .collect();
+            rows.push(table_row);
+        }
+
+        order_by.order(&mut rows, table_cols);
+
+        let mut ordered_table_data = Vec::new();
+        ordered_table_data.push(table_cols.join(","));
+        for row in rows {
+            ordered_table_data.push(row.join(","));
+        }
+        let final_table_data = ordered_table_data.join("\n");
+
+        let ordered_table = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let mut writer = BufWriter::new(&ordered_table);
+
+        writer
+            .write_all(final_table_data.as_bytes())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        Ok(())
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
@@ -387,6 +451,7 @@ impl DiskHandler {
         ))
     }
 
+    /// Serializa en bytes el resultado de una consulta SELECT.
     fn serialize_select_result(
         result: Vec<Vec<String>>,
         query_cols: &[String],
@@ -422,6 +487,7 @@ impl DiskHandler {
         res
     }
 
+    /// Realiza una consulta SELECT y ordena las filas según el criterio de ordenación dado.
     fn do_select_and_order(
         statement: &Select,
         reader: &mut BufReader<&File>,
@@ -458,6 +524,7 @@ impl DiskHandler {
         Ok(result_rows)
     }
 
+    /// Realiza una consulta SELECT sin ordenar las filas.
     fn do_select_and_not_order(
         statement: &Select,
         reader: &mut BufReader<&File>,
@@ -501,6 +568,7 @@ impl DiskHandler {
         Ok(result_rows)
     }
 
+    /// Genera una fila para seleccionar en una tabla, en base a las columnas dadas en la query y de la tabla.
     fn generate_row_to_select(
         table_row: &[String],
         table_cols: &[String],

@@ -815,14 +815,14 @@ impl Node {
                 DiskHandler::do_select(select, &self.storage_addr)
             }
             DmlStatement::InsertStatement(insert) => {
-                match DiskHandler::do_insert(&insert, &self.storage_addr) {
+                let table_name = insert.table.get_name();
+                let table = match self.get_table(&table_name) {
+                    Ok(table) => table,
+                    Err(err) => return err.as_bytes(),
+                };
+                match DiskHandler::do_insert(&insert, &self.storage_addr, table) {
                     Ok(new_row) => {
                         if !new_row.is_empty() {
-                            let table_name = insert.table.get_name();
-                            let table = match self.get_table(&table_name) {
-                                Ok(table) => table,
-                                Err(err) => return err.as_bytes(),
-                            };
                             let index = match table
                                 .get_columns_names()
                                 .iter()
@@ -978,9 +978,11 @@ impl Node {
                     )?;
                     match Opcode::try_from(res[4])? {
                         Opcode::RequestError => return Err(Error::try_from(res[10..].to_vec())?),
-                        Opcode::Result => {
-                            self.handle_result_from_node(&mut results_from_another_nodes, res)?
-                        }
+                        Opcode::Result => self.handle_result_from_node(
+                            &mut results_from_another_nodes,
+                            res,
+                            select,
+                        )?,
                         _ => {
                             return Err(Error::ServerError(
                                 "Nodo manda opcode inesperado".to_string(),
@@ -1015,6 +1017,7 @@ impl Node {
         &self,
         results_from_another_nodes: &mut Vec<u8>,
         mut result_from_actual_node: Vec<u8>,
+        select: &Select,
     ) -> Result<()> {
         if results_from_another_nodes.is_empty() {
             results_from_another_nodes.append(&mut result_from_actual_node);
@@ -1024,6 +1027,34 @@ impl Node {
             let mut new_res = results_from_another_nodes[12..size.len as usize].to_vec();
             results_from_another_nodes.append(&mut new_res);
         }
+
+        let table_name = select.from.get_name();
+        let table = match self.get_table(&table_name) {
+            Ok(table) => table,
+            Err(err) => return Err(err),
+        };
+        let result_string = String::from_utf8(results_from_another_nodes[12..].to_vec())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let rows: Vec<&str> = result_string.split("\n").collect();
+        let mut splitted_rows: Vec<Vec<String>> = rows
+            .iter()
+            .map(|r| r.split(",").map(|s| s.to_string()).collect())
+            .collect();
+        if let Some(order_by) = &select.options.order_by {
+            order_by.order(&mut splitted_rows, &table.get_columns_names());
+        }
+
+        let new_res = splitted_rows
+            .iter()
+            .map(|r| r.join(","))
+            .collect::<Vec<String>>()
+            .join("\n");
+        let mut new_res_bytes = new_res.as_bytes().to_vec();
+
+        results_from_another_nodes.truncate(12);
+        results_from_another_nodes.append(&mut new_res_bytes);
+
         Ok(())
     }
 }

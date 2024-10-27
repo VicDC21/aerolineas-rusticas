@@ -21,4 +21,8 @@ impl Select {
             options,
         }
     }
+
+    pub fn get_columns_names(&self) -> Vec<String> {
+        self.columns.get_columns()
+    }
 }

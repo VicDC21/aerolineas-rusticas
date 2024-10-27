@@ -1,7 +1,7 @@
 //! Módulo que detalla una tabla.
 
-use super::{column_config::ColumnConfig, keyspace::Keyspace};
-use crate::parser::statements::dml_statement::main_statements::select::ordering::Ordering;
+use super::column_config::ColumnConfig;
+use crate::parser::statements::dml_statement::main_statements::select::ordering::ProtocolOrdering;
 
 /// Representa una tabla en CQL.
 pub struct Table {
@@ -14,7 +14,7 @@ pub struct Table {
     /// Clave primaria de la tabla.
     pub partition_key: String,
     /// Clave de clustering de la tabla y orden de agrupamiento de las columnas.
-    pub clustering_key_and_order: Option<Vec<(String, Ordering)>>,
+    pub clustering_key_and_order: Option<Vec<(String, ProtocolOrdering)>>,
 }
 
 impl Table {
@@ -24,7 +24,7 @@ impl Table {
         keyspace: String,
         columns: Vec<ColumnConfig>,
         partition_key: String,
-        clustering_key_and_order: Option<Vec<(String, Ordering)>>,
+        clustering_key_and_order: Option<Vec<(String, ProtocolOrdering)>>,
     ) -> Self {
         Table {
             name,
