@@ -1,6 +1,6 @@
 //! Módulo que detalla una tabla.
 
-use super::column_config::ColumnConfig;
+use super::{column_config::ColumnConfig, keyspace::Keyspace};
 use crate::parser::statements::dml_statement::main_statements::select::ordering::Ordering;
 
 /// Representa una tabla en CQL.

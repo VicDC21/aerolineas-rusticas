@@ -2,7 +2,7 @@
 
 use std::{
     cmp::PartialEq,
-    collections::{HashMap, HashSet},
+    collections::{btree_map::Range, HashMap, HashSet},
     hash::{DefaultHasher, Hash, Hasher},
     io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -14,7 +14,11 @@ use crate::parser::{
     main_parser::make_parse,
     statements::{
         ddl_statement::ddl_statement_parser::DdlStatement,
-        dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+        dml_statement::{
+            dml_statement_parser::DmlStatement,
+            main_statements::{insert::Insert, select::select_operation::Select},
+        },
+        statement::Statement,
     },
 };
 use crate::protocol::headers::{
@@ -916,78 +920,12 @@ impl Node {
         dml_statement: &DmlStatement,
         request: &[Byte],
     ) -> Result<()> {
-        let mut results_from_another_nodes: Vec<u8> = Vec::new();
-
         match dml_statement {
             DmlStatement::SelectStatement(select) => {
-                match self
-                    .tables_and_partitions_keys_values
-                    .get(&select.from.get_name())
-                {
-                    Some(partitions_keys_to_nodes) => {
-                        let mut consulted_nodes: Vec<String> = Vec::new();
-                        for partition_key_value in partitions_keys_to_nodes {
-                            let node_id = self.select_node(partition_key_value);
-                            if node_id != self.id && !consulted_nodes.contains(partition_key_value)
-                            {
-                                let res = self.send_message_and_wait_response(
-                                    request.to_vec(),
-                                    node_id,
-                                    PortType::Priv,
-                                )?;
-                                match Opcode::try_from(res[4])? {
-                                    Opcode::RequestError => {
-                                        return Err(Error::try_from(res[10..].to_vec())?)
-                                    }
-                                    Opcode::Result => self.handle_result_from_node(
-                                        &mut results_from_another_nodes,
-                                        res,
-                                    )?,
-                                    _ => {
-                                        return Err(Error::ServerError(
-                                            "Nodo manda opcode inesperado".to_string(),
-                                        ))
-                                    }
-                                };
-                                consulted_nodes.push(partition_key_value.to_string());
-                            }
-                        }
-                    }
-
-                    None => {
-                        return Err(Error::ServerError(
-                            "La tabla indicada no existe".to_string(),
-                        ))
-                    }
-                };
-                // let mut hasher = DefaultHasher::new();
-                // 5.hash(&mut hasher);
-                // hasher.finish();
+                self.select_with_other_nodes(select, request)?;
             }
             DmlStatement::InsertStatement(insert) => {
-                match self
-                    .tables_and_partitions_keys_values
-                    .get(&insert.table.get_name())
-                {
-                    Some(partitions_keys_to_nodes) => {
-                        for partition_key in partitions_keys_to_nodes {
-                            let node_id = self.select_node(partition_key);
-                            if node_id != self.id {
-                                match send_to_node(node_id, request.to_vec(), PortType::Priv) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        return Err(err);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    None => {
-                        return Err(Error::ServerError(
-                            "La tabla indicada no existe".to_string(),
-                        ))
-                    }
-                };
+                self.insert_with_other_nodes(insert, request)?;
             }
             DmlStatement::UpdateStatement(_update) => {
                 todo!()
@@ -1000,6 +938,77 @@ impl Node {
             }
         };
         Ok(())
+    }
+
+    fn insert_with_other_nodes(&mut self, insert: &Insert, request: &[u8]) -> Result<()> {
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&insert.table.get_name())?;
+        for partition_key_value in partitions_keys_to_nodes {
+            let node_id = self.select_node(partition_key_value);
+            let replication_factor = self.get_replicas_from_table_name(&insert.table.get_name())?;
+            for i in 0..replication_factor {
+                if node_id != self.id {
+                    match send_to_node(node_id + (i as u8), request.to_vec(), PortType::Priv) {
+                        Ok(_) => {}
+                        Err(err) => {
+                            return Err(err);
+                        }
+                    }
+                } else {
+                    // Deberia hacer el statement normal
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn select_with_other_nodes(&mut self, select: &Select, request: &[u8]) -> Result<Vec<u8>> {
+        let mut results_from_another_nodes: Vec<u8> = Vec::new();
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&select.from.get_name())?;
+        let mut consulted_nodes: Vec<String> = Vec::new();
+        for partition_key_value in partitions_keys_to_nodes {
+            let node_id = self.select_node(partition_key_value);
+            if !consulted_nodes.contains(partition_key_value) {
+                if node_id == self.id {
+                    // // Deberia hacer el statement normal
+                } else {
+                    let res = self.send_message_and_wait_response(
+                        request.to_vec(),
+                        node_id,
+                        PortType::Priv,
+                    )?;
+                    match Opcode::try_from(res[4])? {
+                        Opcode::RequestError => return Err(Error::try_from(res[10..].to_vec())?),
+                        Opcode::Result => {
+                            self.handle_result_from_node(&mut results_from_another_nodes, res)?
+                        }
+                        _ => {
+                            return Err(Error::ServerError(
+                                "Nodo manda opcode inesperado".to_string(),
+                            ))
+                        }
+                    };
+                    consulted_nodes.push(partition_key_value.to_string());
+                }
+            }
+        }
+        Ok(results_from_another_nodes)
+    }
+
+    fn get_partition_keys_values(&self, table_name: &String) -> Result<&Vec<String>> {
+        match self.tables_and_partitions_keys_values.get(table_name) {
+            Some(partitions_keys_to_nodes) => Ok(partitions_keys_to_nodes),
+            None => Err(Error::ServerError(
+                "La tabla indicada no existe".to_string(),
+            )),
+        }
+    }
+
+    fn get_replicas_from_table_name(&self, table_name: &str) -> Result<u32> {
+        let keyspace = self.get_keyspace(table_name)?;
+        match keyspace.simple_replicas() {
+            Some(replication_factor) => Ok(replication_factor),
+            None => Err(Error::ServerError("No es una simple strategy".to_string())),
+        }
     }
 
     fn handle_result_from_node(
