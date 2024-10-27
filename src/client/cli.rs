@@ -21,12 +21,122 @@ use crate::{
             flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
             version::Version,
         },
+        notations::consistency::Consistency,
         traits::Byteable,
         utils::encode_string_to_bytes,
     },
     server::{actions::opcode::SvAction, utils::get_available_sockets},
     tokenizer::tokenizer::tokenize_query,
 };
+
+/// Flags específicas para queries CQL
+#[derive(Clone, Copy, PartialEq)]
+pub enum QueryFlags {
+    /// Para vincular valores a la query
+    Values = 0x01,
+    /// Si se quiere saltar los metadatos en la respuesta
+    SkipMetadata = 0x02,
+    /// Tamaño deseado de la página si se setea
+    PageSize = 0x04,
+    /// Estado de paginación
+    WithPagingState = 0x08,
+    /// Consistencia serial para actualizaciones de datos condicionales
+    WithSerialConsistency = 0x10,
+    /// Timestamp por defecto (en microsegundos)
+    WithDefaultTimestamp = 0x20,
+    /// Solo tiene sentido si se usa `Values`, para tener nombres de columnas en los valores
+    WithNamesForValues = 0x40,
+    /// Keyspace donde debe ejecutarse la query
+    WithKeyspace = 0x80,
+    /// Tiempo actual en segundos
+    WithNowInSeconds = 0x100,
+}
+
+/// Estructura para el cuerpo de una query CQL
+pub struct QueryBody {
+    // [long string] - La query en sí
+    query: String,
+    // [consistency] - Nivel de consistencia
+    consistency: Consistency,
+    // [byte] - Flags
+    flags: Vec<QueryFlags>,
+    // Valores opcionales según las flags:
+    // [n] - Número de valores si Values flag
+    values: Option<Vec<Vec<u8>>>,
+    // [i32] - Page size si PageSize flag
+    page_size: Option<i32>,
+    // [bytes] - Estado de paginación si WithPagingState flag
+    paging_state: Option<Vec<u8>>,
+    // [consistency] - Consistencia serial si WithSerialConsistency flag
+    serial_consistency: Option<Consistency>,
+    // [long] - Timestamp si WithDefaultTimestamp flag
+    timestamp: Option<i64>,
+}
+
+impl QueryBody {
+    /// Crea una nueva instancia de `QueryBody`. Por defecto, la consistencia es `ONE`.
+    pub fn new(query: String) -> Self {
+        Self {
+            query,
+            consistency: Consistency::One,
+            flags: Vec::new(),
+            values: None,
+            page_size: None,
+            paging_state: None,
+            serial_consistency: None,
+            timestamp: None,
+        }
+    }
+
+    fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        let query_bytes = encode_string_to_bytes(&self.query);
+        bytes.extend((query_bytes.len() as i32).to_be_bytes());
+        bytes.extend(query_bytes);
+        bytes.extend((self.consistency as u16).to_be_bytes());
+
+        let flags_byte = self.flags.iter().fold(0u8, |acc, flag| acc | *flag as u8);
+        bytes.push(flags_byte);
+
+        for flag in &self.flags {
+            match flag {
+                QueryFlags::Values => {
+                    if let Some(values) = &self.values {
+                        bytes.extend((values.len() as i16).to_be_bytes());
+                        for value in values {
+                            bytes.extend((value.len() as i32).to_be_bytes());
+                            bytes.extend(value);
+                        }
+                    }
+                }
+                QueryFlags::PageSize => {
+                    if let Some(size) = self.page_size {
+                        bytes.extend(size.to_be_bytes());
+                    }
+                }
+                QueryFlags::WithPagingState => {
+                    if let Some(state) = &self.paging_state {
+                        bytes.extend((state.len() as i32).to_be_bytes());
+                        bytes.extend(state);
+                    }
+                }
+                QueryFlags::WithSerialConsistency => {
+                    if let Some(consistency) = &self.serial_consistency {
+                        bytes.extend((*consistency as u16).to_be_bytes());
+                    }
+                }
+                QueryFlags::WithDefaultTimestamp => {
+                    if let Some(ts) = self.timestamp {
+                        bytes.extend(ts.to_be_bytes());
+                    }
+                }
+                _ => {}
+            }
+        }
+        bytes
+    }
+}
 
 /// Estructura principal de un cliente.
 pub struct Client {
@@ -132,20 +242,24 @@ impl Client {
     fn parse_request(&mut self, line: &str, header: &mut Vec<Byte>, stream_id: i16) -> bool {
         match make_parse(&mut tokenize_query(line)) {
             Ok(statement) => {
+                let query_body = QueryBody::new(line.to_string());
+                let body_bytes = query_body.as_bytes();
+
                 match statement {
                     Statement::DdlStatement(ddl_statement) => {
-                        Self::fill_headers(line, header, stream_id);
+                        Self::fill_headers(header, stream_id, &body_bytes);
                         self.handle_ddl_statement(ddl_statement);
                     }
                     Statement::DmlStatement(dml_statement) => {
-                        Self::fill_headers(line, header, stream_id);
+                        Self::fill_headers(header, stream_id, &body_bytes);
                         self.handle_dml_statement(dml_statement);
                     }
                     Statement::UdtStatement(_udt_statement) => {
-                        Self::fill_headers(line, header, stream_id);
+                        Self::fill_headers(header, stream_id, &body_bytes);
                         todo!();
                     }
                 };
+                header.extend(body_bytes);
                 true
             }
             Err(err) => {
@@ -156,15 +270,12 @@ impl Client {
     }
 
     /// Llena el resto de headers.
-    fn fill_headers(line: &str, header: &mut Vec<Byte>, stream_id: i16) {
+    fn fill_headers(header: &mut Vec<Byte>, stream_id: i16, body: &[u8]) {
         let version = Version::RequestV5;
         let flags = Flag::Default;
         let stream = Stream::new(stream_id);
         let opcode = Opcode::Query;
-        // Esto está mal, el body de una query tiene un montón de metadatos,
-        // y el len se le hace al vector de bytes serializados.
-        let line_bytes = encode_string_to_bytes(line);
-        let length = Length::new(line_bytes.len() as u32);
+        let length = Length::new(body.len() as u32);
 
         header.extend(Headers::new(version, vec![flags], stream, opcode, length).as_bytes());
     }
