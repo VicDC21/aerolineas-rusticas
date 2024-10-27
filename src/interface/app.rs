@@ -2,16 +2,18 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{
-    CentralPanel, Color32, Context, Frame as EguiFrame, Margin, RichText, SidePanel,
-};
+use chrono::{NaiveDate, Utc};
+use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
 use egui_extras::install_image_loaders;
 use walkers::{Map, MapMemory, Position};
 
 use crate::data::airports::Airport;
-use crate::interface::map::providers::{Provider, ProvidersMap};
-use crate::interface::map::windows::{controls, go_to_my_position, zoom};
+use crate::interface::map::{
+    panels::airport_info,
+    providers::{Provider, ProvidersMap},
+    windows::{controls, date_selector, go_to_my_position, zoom},
+};
 use crate::interface::plugins::airports::{
     clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader,
 };
@@ -43,6 +45,9 @@ pub struct AerolineasApp {
 
     /// El puerto seleccionado actualmente.
     selected_airport: Option<Airport>,
+
+    /// La fecha actual.
+    date: NaiveDate,
 }
 
 impl AerolineasApp {
@@ -61,6 +66,7 @@ impl AerolineasApp {
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
             selected_airport: None,
+            date: Utc::now().date_naive(),
         }
     }
 }
@@ -111,59 +117,8 @@ impl App for AerolineasApp {
             );
         });
 
-        let panel_frame = EguiFrame {
-            fill: Color32::from_rgba_unmultiplied(66, 66, 66, 200),
-            inner_margin: Margin::ZERO,
-            ..Default::default()
-        };
-        let info_panel = SidePanel::left("airport_info")
-            .resizable(false)
-            .exact_width(ctx.screen_rect().width() / 3.0)
-            .frame(panel_frame);
-        info_panel.show_animated(ctx, self.selected_airport.is_some(), |ui| {
-            if let Some(airport) = &self.selected_airport {
-                let text_color = Color32::from_rgba_unmultiplied(200, 200, 200, 255);
-                ui.label(
-                    RichText::new(format!("\t{}", &airport.name))
-                        .color(text_color)
-                        .heading(),
-                );
-                ui.separator();
-
-                ui.label(
-                    RichText::new(format!("\n\n\tIdent:\t{}", &airport.ident)).color(text_color),
-                );
-                ui.label(
-                    RichText::new(format!("\tType:\t{}", &airport.airport_type)).color(text_color),
-                );
-
-                ui.label(
-                    RichText::new(format!(
-                        "\n\tPosition:\t({}, {})",
-                        &airport.position.lat(),
-                        &airport.position.lon()
-                    ))
-                    .color(text_color),
-                );
-                ui.label(
-                    RichText::new(format!(
-                        "\tElevation (ft):\t{}",
-                        &airport.elevation_ft.unwrap_or(-999)
-                    ))
-                    .color(text_color),
-                );
-
-                ui.label(
-                    RichText::new(format!("\tContinent:\t{}", &airport.continent))
-                        .color(text_color),
-                );
-
-                ui.label(
-                    RichText::new(format!("\tCountry (ISO):\t{}", &airport.iso_country))
-                        .color(text_color),
-                );
-            }
-        });
+        date_selector(ctx, &mut self.date);
+        airport_info(ctx, &self.selected_airport);
     }
 }
 
