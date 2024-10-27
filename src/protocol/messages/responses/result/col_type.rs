@@ -5,6 +5,7 @@ use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 use crate::protocol::user::udt_type::UdtType;
 use crate::protocol::utils::parse_bytes_to_string;
+use crate::server::nodes::column_data_type::ColumnDataType;
 
 /// Tipo nativo de columna, a ser incluido en la _spec_ del cuerpo de la _response_.
 pub enum ColType {
@@ -319,6 +320,17 @@ impl ColType {
             types.push(Box::new(col_type));
         }
         Ok(ColType::Tuple(types))
+    }
+}
+
+impl From<ColumnDataType> for ColType {
+    fn from(col: ColumnDataType) -> Self {
+        match col {
+            ColumnDataType::String => ColType::Varchar,
+            ColumnDataType::Timestamp => ColType::Timestamp,
+            ColumnDataType::Double => ColType::Double,
+            ColumnDataType::Int => ColType::Int,
+        }
     }
 }
 
