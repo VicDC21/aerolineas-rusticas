@@ -186,7 +186,7 @@ impl Node {
     }
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
-    fn select_node(&self, value: &String) -> NodeId {
+    fn select_node(&self, value: &str) -> NodeId {
         let hash_val = Self::hash_value(value);
 
         let mut i = 0;
