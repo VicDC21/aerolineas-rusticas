@@ -23,7 +23,7 @@ use crate::{
 type ChildHandle = JoinHandle<Result<()>>;
 
 /// El tipo de hilo hijo según fecha.
-type DateChild = (Option<ChildHandle>, Sender<Long>);
+type DateChild = (Option<ChildHandle>, Sender<(Arc<Client>, Long)>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
 const FLIGHTS_INTERVAL_SECS: u64 = 5;
@@ -72,18 +72,28 @@ impl FlightsLoader {
 
     /// Genera el hilo hijo.
     fn gen_date_child(to_parent: Sender<Vec<Flight>>) -> DateChild {
-        let (date_sender, date_receiver) = channel::<Long>();
+        let (date_sender, date_receiver) = channel::<(Arc<Client>, Long)>();
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
 
             loop {
                 match date_receiver.recv() {
-                    Ok(timestamp) => {
+                    Ok((client, timestamp)) => {
                         if timestamp == stop_value {
                             break;
                         }
 
-                        // Usar el client para la query
+                        let flights = match Self::load_flights(client) {
+                            Ok(loaded) => loaded,
+                            Err(err) => {
+                                println!("Error cargando los vuelos:\n\n{}", err);
+                                Vec::new()
+                            }
+                        };
+
+                        if let Err(err) = to_parent.send(flights) {
+                            println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);
+                        }
                     }
                     Err(err) => println!(
                         "Ocurrió un error esperando mensajes del hilo principal:\n\n{}",
@@ -128,6 +138,12 @@ impl FlightsLoader {
     pub fn elapsed_at_least(&self, duration: &Duration) -> bool {
         &self.last_checked.elapsed() >= duration
     }
+
+    /// Carga los vuelos con una _query_.
+    fn load_flights(client: Arc<Client>) -> Result<Vec<Flight>> {
+        /// TODO: Usar el cliente aquí
+        Ok(Vec::new())
+    }
 }
 
 impl Default for FlightsLoader {
@@ -154,7 +170,9 @@ impl Plugin for &mut FlightsLoader {
                 let cur_datetime = NaiveDateTime::new(self.date, naive_date);
 
                 let (_, date_sender) = &mut self.date_child;
-                if let Err(err) = date_sender.send(cur_datetime.and_utc().timestamp()) {
+                if let Err(err) =
+                    date_sender.send((Arc::clone(&self.client), cur_datetime.and_utc().timestamp()))
+                {
                     println!("Error al enviar timestamp al cargador:\n\n{}", err);
                 }
             }
