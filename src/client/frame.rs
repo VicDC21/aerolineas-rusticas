@@ -27,7 +27,6 @@ impl Frame {
 
     /// Crea un frame para una query
     pub fn query(stream_id: i16, query: String) -> Self {
-        
         let body = query.as_bytes().to_vec();
         let headers = Headers::new(
             Version::RequestV5,

@@ -55,6 +55,7 @@ pub enum QueryFlags {
 }
 
 /// Estructura principal de un cliente.
+#[derive(Clone)]
 pub struct Client {
     /// La dirección del _socket_ al que conectarse al mandar cosas.
     addrs: Vec<SocketAddr>,
@@ -228,7 +229,6 @@ impl Client {
                         }
                     }
                 }
-
                 // Procesar la respuesta
                 if !response.is_empty() {
                     return self.handle_response(&response);

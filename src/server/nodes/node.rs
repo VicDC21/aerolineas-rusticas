@@ -10,21 +10,6 @@ use std::{
     thread::Builder,
 };
 
-use crate::{parser::{
-    data_types::keyspace_name::KeyspaceName,
-    main_parser::make_parse,
-    statements::{
-        ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable,
-            ddl_statement_parser::DdlStatement,
-        },
-        dml_statement::{
-            dml_statement_parser::DmlStatement,
-            main_statements::{insert::Insert, select::select_operation::Select},
-        },
-        statement::Statement,
-    },
-}, protocol::messages::responses::result_kinds::ResultKind};
 use crate::protocol::headers::{
     flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
 };
@@ -52,6 +37,24 @@ use crate::server::{
     utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
+use crate::{
+    parser::{
+        data_types::keyspace_name::KeyspaceName,
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::{
+                create_keyspace::CreateKeyspace, create_table::CreateTable,
+                ddl_statement_parser::DdlStatement,
+            },
+            dml_statement::{
+                dml_statement_parser::DmlStatement,
+                main_statements::{insert::Insert, select::select_operation::Select},
+            },
+            statement::Statement,
+        },
+    },
+    protocol::messages::responses::result_kinds::ResultKind,
+};
 
 use super::{
     graph::{N_NODES, START_ID},
@@ -827,7 +830,7 @@ impl Node {
         };
         self.create_result_void()
     }
-    fn create_result_void(&mut self) -> Vec<Byte>{
+    fn create_result_void(&mut self) -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
