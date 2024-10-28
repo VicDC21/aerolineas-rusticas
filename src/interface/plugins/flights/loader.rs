@@ -1,10 +1,7 @@
 //! Módulo para un cargador de vuelos.
 
 use std::{
-    sync::{
-        mpsc::{channel, Receiver, Sender},
-        Arc,
-    },
+    sync::mpsc::{channel, Receiver, Sender},
     thread::{spawn, JoinHandle},
     time::{Duration, Instant},
 };
@@ -14,7 +11,7 @@ use eframe::egui::{Painter, Response};
 use walkers::{Plugin, Projector};
 
 use crate::{
-    client::cli::Client,
+    client::{cli::Client, col_data::ColData, protocol_result::ProtocolResult},
     data::flights::Flight,
     protocol::aliases::{results::Result, types::Long},
 };
@@ -23,15 +20,18 @@ use crate::{
 type ChildHandle = JoinHandle<Result<()>>;
 
 /// El tipo de hilo hijo según fecha.
-type DateChild = (Option<ChildHandle>, Sender<(Arc<Client>, Long)>);
+type DateChild = (Option<ChildHandle>, Sender<(Client, Long)>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
 const FLIGHTS_INTERVAL_SECS: u64 = 5;
 
+/// Un día en segundos.
+const DAY_IN_SECONDS: i64 = 86400;
+
 /// Cargador de vuelos.
 pub struct FlightsLoader {
     /// El cliente para pedir las queries.
-    client: Arc<Client>,
+    client: Client,
 
     /// Los vuelos actualmente ne memoria.
     flights: Option<Vec<Flight>>,
@@ -53,7 +53,7 @@ pub struct FlightsLoader {
 impl FlightsLoader {
     /// Crea una nueva instancia de cargador de vuelos.
     pub fn new(
-        client: Arc<Client>,
+        client: Client,
         flights: Option<Vec<Flight>>,
         last_checked: Instant,
         date: NaiveDate,
@@ -72,7 +72,7 @@ impl FlightsLoader {
 
     /// Genera el hilo hijo.
     fn gen_date_child(to_parent: Sender<Vec<Flight>>) -> DateChild {
-        let (date_sender, date_receiver) = channel::<(Arc<Client>, Long)>();
+        let (date_sender, date_receiver) = channel::<(Client, Long)>();
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
 
@@ -83,7 +83,7 @@ impl FlightsLoader {
                             break;
                         }
 
-                        let flights = match Self::load_flights(client, timestamp) {
+                        let flights = match Self::load_flights(client.clone(), timestamp) {
                             Ok(loaded) => loaded,
                             Err(err) => {
                                 println!("Error cargando los vuelos:\n\n{}", err);
@@ -123,7 +123,7 @@ impl FlightsLoader {
     }
 
     /// Sincroniza el cliente.
-    pub fn sync_client(&mut self, new_client: Arc<Client>) -> &mut Self {
+    pub fn sync_client(&mut self, new_client: Client) -> &mut Self {
         self.client = new_client;
         self
     }
@@ -140,16 +140,54 @@ impl FlightsLoader {
     }
 
     /// Carga los vuelos con una _query_.
-    fn load_flights(client: Arc<Client>, timestamp: Long) -> Result<Vec<Flight>> {
-        /// TODO: Usar el cliente aquí
-        Ok(Vec::new())
+    fn load_flights(mut client: Client, timestamp: Long) -> Result<Vec<Flight>> {
+        let mut flights = Vec::<Flight>::new();
+        let mut tcp_stream = client.connect()?;
+        let protocol_result = client.send_query(
+            format!(
+                "SELECT * FROM flights WHERE timestamp < {} AND timestamp > {}",
+                timestamp + DAY_IN_SECONDS,
+                timestamp,
+            )
+            .as_str(),
+            &mut tcp_stream,
+        )?;
+
+        if let ProtocolResult::Rows(rows) = protocol_result {
+            for row in rows {
+                if row.len() != 4 {
+                    continue;
+                }
+
+                // 1. El ID.
+                if let ColData::Int(id) = &row[0] {
+                    // 2. Origen.
+                    if let ColData::String(orig) = &row[1] {
+                        // 3. Destino.
+                        if let ColData::String(dest) = &row[2] {
+                            // 4. Fecha.
+                            if let ColData::Timestamp(timestamp) = &row[3] {
+                                flights.push(Flight::new(
+                                    *id,
+                                    orig.to_string(),
+                                    dest.to_string(),
+                                    *timestamp,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(flights)
     }
 
     /// Apaga y espera a todos los hilos hijos.
     pub fn wait_children(&mut self) {
         let (date_child, date_sender) = &mut self.date_child;
         if let Some(hanging) = date_child.take() {
-            if date_sender.send((Arc::clone(&self.client), 0)).is_err() {
+            if date_sender.send((self.client.clone(), 0)).is_err() {
                 println!("Error mandando un mensaje para parar hilo de área.")
             }
             if hanging.join().is_err() {
@@ -164,7 +202,7 @@ impl Default for FlightsLoader {
         let (main_sender, main_receiver) = channel::<Vec<Flight>>();
 
         Self::new(
-            Arc::new(Client::default()),
+            Client::default(),
             Some(Vec::new()),
             Instant::now(),
             Utc::now().date_naive(),
@@ -184,7 +222,7 @@ impl Plugin for &mut FlightsLoader {
 
                 let (_, date_sender) = &mut self.date_child;
                 if let Err(err) =
-                    date_sender.send((Arc::clone(&self.client), cur_datetime.and_utc().timestamp()))
+                    date_sender.send((self.client.clone(), cur_datetime.and_utc().timestamp()))
                 {
                     println!("Error al enviar timestamp al cargador:\n\n{}", err);
                 }
