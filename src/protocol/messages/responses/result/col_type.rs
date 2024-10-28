@@ -8,6 +8,7 @@ use crate::protocol::utils::parse_bytes_to_string;
 use crate::server::nodes::column_data_type::ColumnDataType;
 
 /// Tipo nativo de columna, a ser incluido en la _spec_ del cuerpo de la _response_.
+#[derive(Clone)]
 pub enum ColType {
     /// Un tipo personalizado. El nombre de dicho tipo es el valor.
     Custom(String),

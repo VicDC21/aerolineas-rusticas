@@ -8,10 +8,7 @@ use std::{
 };
 
 use crate::{
-    parser::{
-        main_parser::make_parse,
-        statements::statement::Statement,
-    },
+    parser::{main_parser::make_parse, statements::statement::Statement},
     protocol::{
         aliases::{results::Result, types::Byte},
         errors::error::Error,
@@ -23,11 +20,16 @@ use crate::{
         traits::Byteable,
         utils::parse_bytes_to_string,
     },
-    server::{actions::opcode::SvAction, utils::get_available_sockets},
+    server::{
+        actions::opcode::SvAction, nodes::column_data_type::ColumnDataType,
+        utils::get_available_sockets,
+    },
     tokenizer::tokenizer::tokenize_query,
 };
 
 use crate::client::frame::Frame;
+
+use super::{col_data::ColData, protocol_result::ProtocolResult};
 
 /// Flags específicas para queries CQL
 #[derive(Clone, Copy)]
@@ -158,7 +160,12 @@ impl Client {
         Ok(())
     }
 
-    fn send_query(&mut self, query: &str, tcp_stream: &mut TcpStream) -> Result<()> {
+    /// Envía una query al servidor y devuelve la respuesta del mismo.
+    pub fn send_query(
+        &mut self,
+        query: &str,
+        tcp_stream: &mut TcpStream,
+    ) -> Result<ProtocolResult> {
         let mut stream_id: i16 = 0;
         while self.requests_stream.contains(&stream_id) {
             stream_id += 1;
@@ -224,11 +231,11 @@ impl Client {
 
                 // Procesar la respuesta
                 if !response.is_empty() {
-                    self.handle_response(&response)?;
+                    return self.handle_response(&response);
                 }
 
                 self.requests_stream.remove(&stream_id);
-                Ok(())
+                Ok(ProtocolResult::Void)
             }
             Err(err) => {
                 self.requests_stream.remove(&stream_id);
@@ -247,7 +254,7 @@ impl Client {
         response.len() >= 9 + body_length
     }
 
-    fn handle_response(&mut self, request: &[Byte]) -> Result<()> {
+    fn handle_response(&mut self, request: &[Byte]) -> Result<ProtocolResult> {
         if request.len() < 9 {
             return Err(Error::ProtocolError(
                 "No se cumple el protocolo del header".to_string(),
@@ -259,7 +266,7 @@ impl Client {
         let opcode = Opcode::try_from(request[4])?;
         let lenght = Length::try_from(request[5..9].to_vec())?;
 
-        let _res = match opcode {
+        let result: Result<ProtocolResult> = match opcode {
             Opcode::RequestError => self.handle_request_error(lenght, request),
             Opcode::Ready => self.handle_ready(),
             Opcode::Authenticate => self.handle_authenticate(),
@@ -274,30 +281,31 @@ impl Client {
                 ))
             }
         };
-        Ok(())
+        result
     }
 
-    fn handle_request_error(&self, _lenght: Length, request: &[Byte]) -> Result<()> {
-        let _err = Error::try_from(request[9..].to_vec())?;
+    fn handle_request_error(&self, _lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
+        match Error::try_from(request[9..].to_vec()) {
+            Ok(error) => Ok(ProtocolResult::QueryError(error)),
+            Err(err) => Err(err),
+        }
+    }
 
+    fn handle_ready(&self) -> Result<ProtocolResult> {
         todo!()
     }
 
-    fn handle_ready(&self) -> Result<()> {
+    fn handle_authenticate(&self) -> Result<ProtocolResult> {
         todo!()
     }
 
-    fn handle_authenticate(&self) -> Result<()> {
+    fn handle_supported(&self) -> Result<ProtocolResult> {
         todo!()
     }
 
-    fn handle_supported(&self) -> Result<()> {
-        todo!()
-    }
-
-    fn handle_result(&self, lenght: Length, request: &[Byte]) -> Result<()> {
+    fn handle_result(&self, lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
         match ResultKind::try_from(request.to_vec())? {
-            ResultKind::Void => Ok(()),
+            ResultKind::Void => Ok(ProtocolResult::Void),
             ResultKind::Rows => self.deserialize_rows(lenght, &request[13..]),
             ResultKind::SetKeyspace => self.set_keyspace(lenght, &request[13..]),
             ResultKind::Prepared => todo!(),
@@ -305,19 +313,19 @@ impl Client {
         }
     }
 
-    fn handle_event(&self) -> Result<()> {
+    fn handle_event(&self) -> Result<ProtocolResult> {
         todo!()
     }
 
-    fn handle_auth_challenge(&self) -> Result<()> {
+    fn handle_auth_challenge(&self) -> Result<ProtocolResult> {
         todo!()
     }
 
-    fn handle_auth_success(&self) -> Result<()> {
+    fn handle_auth_success(&self) -> Result<ProtocolResult> {
         todo!()
     }
 
-    fn deserialize_rows(&self, _lenght: Length, request: &[Byte]) -> Result<()> {
+    fn deserialize_rows(&self, _lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
         let _flags = RowsFlag::try_from(request[..4].to_vec())?;
         let columns_count = u32::from_be_bytes([request[4], request[5], request[6], request[7]]);
         let mut actual_position: usize = 8;
@@ -338,38 +346,119 @@ impl Client {
             request[actual_position + 3],
         ]);
         actual_position += 4;
-        let mut rows: Vec<Vec<String>> = Vec::new(); // usar las filas ya parseadas
+        let mut rows: Vec<Vec<ColData>> = Vec::new(); // usar las filas ya parseadas
         for _ in 0..rows_count {
-            let mut columns: Vec<String> = Vec::new();
-            for _ in 0..columns_count {
-                let value_len = i32::from_be_bytes([
-                    request[actual_position],
-                    request[actual_position + 1],
-                    request[actual_position + 2],
-                    request[actual_position + 3],
-                ]);
-                actual_position += 4;
-
-                let value_string = match String::from_utf8(
-                    request[actual_position..(actual_position + value_len as usize)].to_vec(),
-                ) {
-                    Ok(value) => value,
-                    Err(_err) => {
-                        return Err(Error::TruncateError(
-                            "Error al transformar bytes a utf8".to_string(),
-                        ))
+            let mut columns: Vec<ColData> = Vec::new();
+            for i in 0..columns_count {
+                let col_data = match ColumnDataType::from(col_types[i as usize].clone()) {
+                    ColumnDataType::String => {
+                        let string_len = self.get_lenght(request, actual_position);
+                        actual_position += 4;
+                        let right_position = actual_position + string_len as usize;
+                        let value_string = match String::from_utf8(
+                            request[actual_position..right_position].to_vec(),
+                        ) {
+                            Ok(value) => value,
+                            Err(_err) => {
+                                return Err(Error::TruncateError(
+                                    "Error al transformar bytes a utf8".to_string(),
+                                ))
+                            }
+                        };
+                        ColData::String(value_string)
+                    }
+                    ColumnDataType::Timestamp => {
+                        let timestamp_len = self.get_lenght(request, actual_position);
+                        actual_position += 4;
+                        let right_position = actual_position + timestamp_len as usize;
+                        let value_timestamp =
+                            match std::str::from_utf8(&request[actual_position..right_position]) {
+                                Ok(value) => match value.parse::<i64>() {
+                                    Ok(parsed_value) => parsed_value,
+                                    Err(_err) => {
+                                        return Err(Error::TruncateError(
+                                            "Error al parsear string a i64".to_string(),
+                                        ))
+                                    }
+                                },
+                                Err(_err) => {
+                                    return Err(Error::TruncateError(
+                                        "Error al transformar bytes a utf8".to_string(),
+                                    ))
+                                }
+                            };
+                        ColData::Timestamp(value_timestamp)
+                    }
+                    ColumnDataType::Double => {
+                        let double_len = self.get_lenght(request, actual_position);
+                        actual_position += 4;
+                        let right_position = actual_position + double_len as usize;
+                        let value_double =
+                            match std::str::from_utf8(&request[actual_position..right_position]) {
+                                Ok(value) => match value.parse::<f64>() {
+                                    Ok(parsed_value) => parsed_value,
+                                    Err(_err) => {
+                                        return Err(Error::TruncateError(
+                                            "Error al parsear string a f64".to_string(),
+                                        ))
+                                    }
+                                },
+                                Err(_err) => {
+                                    return Err(Error::TruncateError(
+                                        "Error al transformar bytes a utf8".to_string(),
+                                    ))
+                                }
+                            };
+                        ColData::Double(value_double)
+                    }
+                    ColumnDataType::Int => {
+                        let int_len = self.get_lenght(request, actual_position);
+                        actual_position += 4;
+                        let right_position = actual_position + int_len as usize;
+                        let value_int =
+                            match std::str::from_utf8(&request[actual_position..right_position]) {
+                                Ok(value) => match value.parse::<i32>() {
+                                    Ok(parsed_value) => parsed_value,
+                                    Err(_err) => {
+                                        return Err(Error::TruncateError(
+                                            "Error al parsear string a i32".to_string(),
+                                        ))
+                                    }
+                                },
+                                Err(_err) => {
+                                    return Err(Error::TruncateError(
+                                        "Error al transformar bytes a utf8".to_string(),
+                                    ))
+                                }
+                            };
+                        ColData::Int(value_int)
                     }
                 };
-                columns.push(value_string);
+
+                columns.push(col_data);
             }
             rows.push(columns);
         }
 
-        Ok(())
+        Ok(ProtocolResult::Rows(rows))
     }
 
-    fn set_keyspace(&self, _lenght: Length, _request: &[Byte]) -> Result<()> {
-        Ok(())
+    fn set_keyspace(&self, lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
+        match String::from_utf8(request[0..lenght.len as usize].to_vec()) {
+            Ok(value) => Ok(ProtocolResult::SetKeyspace(value)),
+            Err(_err) => Err(Error::TruncateError(
+                "Error al transformar bytes a utf8".to_string(),
+            )),
+        }
+    }
+
+    fn get_lenght(&self, request: &[Byte], actual_position: usize) -> i32 {
+        i32::from_be_bytes([
+            request[actual_position],
+            request[actual_position + 1],
+            request[actual_position + 2],
+            request[actual_position + 3],
+        ])
     }
 }
 

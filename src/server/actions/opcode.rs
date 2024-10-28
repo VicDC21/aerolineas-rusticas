@@ -206,7 +206,7 @@ impl Byteable for SvAction {
                 let mut bytes = vec![0xF6];
                 bytes.extend(state.as_bytes());
                 bytes
-            },
+            }
             Self::SendEndpointState(id) => vec![0xF7, *id],
             Self::InternalQuery(query_bytes) => {
                 let mut bytes = vec![0xF8];
