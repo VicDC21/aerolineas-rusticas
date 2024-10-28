@@ -12,19 +12,19 @@ use crate::protocol::traits::{Byteable, Maskable};
 /// Estructura que engloba a todos los encabezados de cualquier mensaje en el protocolo.
 pub struct Headers {
     /// La [versión](Version) del mensaje.
-    version: Version,
+    pub version: Version,
 
     /// Las diferentes flags del mensaje.
-    flags: Vec<Flag>,
+    pub flags: Vec<Flag>,
 
     /// El ID único de este mensaje _(o `-1` si es un evento de servidor)_.
-    stream: Stream,
+    pub stream: Stream,
 
     /// El tipo de operación del mensaje. Influye en la estructura del contenido.
-    opcode: Opcode,
+    pub opcode: Opcode,
 
     /// La longitud del **contenido** del mensaje en su totalidad.
-    length: Length,
+    pub length: Length,
 }
 
 impl Headers {
@@ -70,7 +70,7 @@ impl TryFrom<&[Byte]> for Headers {
     fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
         if bytes.len() < 9 {
             return Err(Error::Invalid(
-                "Se necesitan al menos 9 bytes para forma los encabezados.".to_string(),
+                "Se necesitan al menos 9 bytes para formar los encabezados.".to_string(),
             ));
         }
 
@@ -78,8 +78,7 @@ impl TryFrom<&[Byte]> for Headers {
         let flags = Flag::decompose(&bytes[1]);
         let stream = Stream::try_from(bytes[2..=3].to_vec())?;
         let opcode = Opcode::try_from(bytes[4])?;
-        let length = Length::try_from(bytes[5..=9].to_vec())?;
-
+        let length = Length::try_from(bytes[5..=8].to_vec())?;
         Ok(Self::new(version, flags, stream, opcode, length))
     }
 }

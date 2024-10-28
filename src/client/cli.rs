@@ -260,6 +260,7 @@ impl Client {
                 "No se cumple el protocolo del header".to_string(),
             ));
         };
+        println!("la response es: {:?}", request);
         let _version = Version::try_from(request[0])?;
         let _flags = Flag::try_from(request[1])?;
         let _stream = Stream::try_from(request[2..4].to_vec())?;
@@ -304,7 +305,7 @@ impl Client {
     }
 
     fn handle_result(&self, lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
-        match ResultKind::try_from(request.to_vec())? {
+        match ResultKind::try_from(request[9..13].to_vec())? {
             ResultKind::Void => Ok(ProtocolResult::Void),
             ResultKind::Rows => self.deserialize_rows(lenght, &request[13..]),
             ResultKind::SetKeyspace => self.set_keyspace(lenght, &request[13..]),
