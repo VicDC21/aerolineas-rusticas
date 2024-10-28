@@ -14,6 +14,9 @@ use crate::protocol::traits::{Byteable, Maskable};
 /// assert_eq!(RowsFlag::accumulate(&b_flags[..]), expected);
 /// ```
 pub enum RowsFlag {
+    /// Flag por default
+    Default,
+
     /// Sólo un table spec es provisto.
     GlobalTablesSpec,
 
@@ -27,6 +30,7 @@ pub enum RowsFlag {
 impl Byteable for RowsFlag {
     fn as_bytes(&self) -> Vec<Byte> {
         match self {
+            Self::Default => vec![0x0, 0x0, 0x0, 0x0],
             Self::GlobalTablesSpec => vec![0x0, 0x0, 0x0, 0x1],
             Self::HasMorePages => vec![0x0, 0x0, 0x0, 0x2],
             Self::NoMetadata => vec![0x0, 0x0, 0x0, 0x4],
@@ -48,6 +52,7 @@ impl TryFrom<Vec<Byte>> for RowsFlag {
 
         let value = Int::from_be_bytes(bytes_array);
         match value {
+            0x0000 => Ok(RowsFlag::Default),
             0x0001 => Ok(RowsFlag::GlobalTablesSpec),
             0x0002 => Ok(RowsFlag::HasMorePages),
             0x0004 => Ok(RowsFlag::NoMetadata),

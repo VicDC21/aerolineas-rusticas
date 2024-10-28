@@ -10,7 +10,6 @@ use std::{
     thread::Builder,
 };
 
-use eframe::glow::Query;
 
 use crate::parser::{
     data_types::keyspace_name::KeyspaceName,
@@ -1098,7 +1097,7 @@ impl Node {
     fn get_columns_metadata_length(&self, results_from_another_nodes: &mut [u8]) -> usize {
         let mut total_length_from_metadata: usize = 12;
         let column_quantity = &results_from_another_nodes[13..17];
-        let column_quantity = u32::from_be_bytes([
+        let column_quantity = i32::from_be_bytes([
             column_quantity[0],
             column_quantity[1],
             column_quantity[2],

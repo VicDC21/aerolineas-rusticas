@@ -8,8 +8,8 @@ use std::{
 };
 
 use crate::{
-    parser::{main_parser::make_parse, statements::statement::Statement},
-    protocol::{aliases::results::Result, errors::error::Error, traits::Byteable},
+    parser::{main_parser::make_parse, statements::{dml_statement::main_statements::select::kind_of_columns::KindOfColumns, statement::Statement}},
+    protocol::{aliases::{results::Result, types::Byte}, errors::error::Error, headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version}, messages::responses::{result::{col_type::ColType, rows_flags::RowsFlag}, result_kinds::ResultKind}, traits::Byteable, utils::parse_bytes_to_string},
     server::{actions::opcode::SvAction, utils::get_available_sockets},
     tokenizer::tokenizer::tokenize_query,
 };
@@ -160,13 +160,13 @@ impl Client {
 
                 // Buffer para leer la respuesta
                 let mut response = Vec::new();
-                let mut buffer = [0; 1024];
+                // let mut buffer = [0; 1024];
                 let mut timeout_count = 0;
                 const MAX_TIMEOUT: u32 = 50;
 
                 // Leemos la respuesta con timeout
                 loop {
-                    match tcp_stream.read(&mut buffer) {
+                    match tcp_stream.read(&mut response) {
                         Ok(0) => {
                             // Conexión cerrada por el servidor
                             if response.is_empty() {
@@ -180,7 +180,7 @@ impl Client {
                             break;
                         }
                         Ok(n) => {
-                            response.extend_from_slice(&buffer[..n]);
+                            // response.extend_from_slice(&buffer[..n]);
                             if Self::is_response_complete(&response) {
                                 break;
                             }
@@ -226,12 +226,148 @@ impl Client {
         if response.len() < 9 {
             return false;
         }
-
         let body_length =
             u32::from_be_bytes([response[5], response[6], response[7], response[8]]) as usize;
 
         response.len() >= 9 + body_length
     }
+
+    fn handle_response(&mut self, request: &[Byte]) -> Result<()>{
+        if request.len() < 9 {
+            return Err(Error::ProtocolError(
+                "No se cumple el protocolo del header".to_string(),
+            ))
+        };
+        let _version = Version::try_from(request[0])?;
+        let _flags = Flag::try_from(request[1])?;
+        let _stream = Stream::try_from(request[2..4].to_vec())?;
+        let opcode = Opcode::try_from(request[4])?;
+        let lenght = Length::try_from(request[5..9].to_vec())?;
+
+        let res = match opcode {
+            Opcode::RequestError => self.handle_request_error(lenght, request),
+            Opcode::Ready => self.handle_ready(),
+            Opcode::Authenticate => self.handle_authenticate(),
+            Opcode::Supported => self.handle_supported(),
+            Opcode::Result => self.handle_result(lenght, request),
+            Opcode::Event => self.handle_event(),
+            Opcode::AuthChallenge => self.handle_auth_challenge(),
+            Opcode::AuthSuccess => self.handle_auth_success(),
+            _ => {
+                return Err(Error::ProtocolError(
+                    "El opcode recibido no es una response".to_string(),
+                ))
+            }
+        };
+        Ok(())
+    }
+
+    fn handle_request_error(&self, lenght: Length, request: &[Byte])-> Result<()>{
+        let a = Error::try_from(request[9..].to_vec())?;
+
+        todo!()
+    }
+
+    fn handle_ready(&self)-> Result<()>{
+        todo!()
+    }
+
+    fn handle_authenticate(&self)-> Result<()>{
+        todo!()
+    }
+
+    fn handle_supported(&self)-> Result<()>{
+        todo!()
+    }
+
+    fn handle_result(&self, lenght: Length, request: &[Byte])-> Result<()>{
+        match ResultKind::try_from(request.to_vec())?{
+            ResultKind::Void => Ok(()),
+            ResultKind::Rows => self.deserialize_rows(lenght, &request[13..]),
+            ResultKind::SetKeyspace => self.set_keyspace(lenght, &request[13..]),
+            ResultKind::Prepared => todo!(),
+            ResultKind::SchemaChange => todo!(),
+        }
+    }
+
+    fn handle_event(&self)-> Result<()>{
+        todo!()
+    }
+
+    fn handle_auth_challenge(&self)-> Result<()>{
+        todo!()
+    }
+
+    fn handle_auth_success(&self)-> Result<()>{
+        todo!()
+    }
+    
+    fn deserialize_rows(&self, lenght: Length, request: &[Byte]) -> Result<()>{
+        let _flags = RowsFlag::try_from(request[..4].to_vec())?;
+        let columns_count = u32::from_be_bytes([
+            request[4],
+            request[5],
+            request[6],
+            request[7],
+            ]
+        );
+        let mut actual_position: usize = 8;
+        let mut col_names: Vec<String> = Vec::new(); // usar col_names
+        let mut col_types: Vec<ColType> = Vec::new(); // usar col_types que deberia ser ademas ColumnDataType
+        for _ in 0..columns_count{
+            let mut displacement: usize = 0;
+            let col_name = parse_bytes_to_string(&request[actual_position..], &mut displacement)?;
+            col_names.push(col_name);
+            col_types.push(ColType::try_from(&request[actual_position..])?);
+            actual_position += displacement + 2;
+        }
+        // <rows_count><rows_content>
+        let rows_count = i32::from_be_bytes([
+            request[actual_position],
+            request[actual_position + 1],
+            request[actual_position + 2],
+            request[actual_position + 3],
+            ]
+        );
+        actual_position += 4;
+        let mut rows: Vec<Vec<String>> = Vec::new(); // usar las filas ya parseadas
+        for _ in 0..rows_count{
+            let mut columns: Vec<String> = Vec::new();
+            for _ in 0..columns_count{
+                let value_len = i32::from_be_bytes(
+                    [
+                    request[actual_position],
+                    request[actual_position + 1],
+                    request[actual_position + 2],
+                    request[actual_position + 3],
+                    ]
+                );
+                actual_position += 4;
+                
+                let value_string = match String::from_utf8(request[actual_position..(actual_position + value_len as usize)].to_vec()){
+                    Ok(value) => value,
+                    Err(_err) => return Err(Error::TruncateError("Error al transformar bytes a utf8".to_string()))
+                };
+                columns.push(value_string);
+            }
+            rows.push(columns);
+        }
+
+        Ok(())
+    }
+
+    fn set_keyspace(&self, lenght: Length, request: &[Byte]) -> Result<()>{
+
+
+        Ok(())
+    }
+
+
+
+
+
+
+
 }
 
 impl Default for Client {
