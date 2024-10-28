@@ -390,7 +390,7 @@ impl DiskHandler {
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
-    pub fn do_select(statement: Select, storage_addr: &str) -> Result<Vec<Byte>> {
+    pub fn do_select(statement: &Select, storage_addr: &str) -> Result<Vec<Byte>> {
         let keyspace = statement.from.get_keyspace();
         let name = statement.from.get_name();
         let table_addr = match keyspace {
@@ -438,9 +438,9 @@ impl DiskHandler {
         }
 
         let result_rows = if let Some(order) = &statement.options.order_by {
-            Self::do_select_and_order(&statement, &mut reader, &table_cols, order)?
+            Self::do_select_and_order(statement, &mut reader, &table_cols, order)?
         } else {
-            Self::do_select_and_not_order(&statement, &mut reader, &table_cols)?
+            Self::do_select_and_not_order(statement, &mut reader, &table_cols)?
         };
         result.extend(result_rows);
 
