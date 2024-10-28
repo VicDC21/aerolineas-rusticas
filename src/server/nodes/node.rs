@@ -53,7 +53,7 @@ use crate::{
             statement::Statement,
         },
     },
-    protocol::messages::responses::result_kinds::ResultKind,
+    protocol::{headers::msg_headers::Headers, messages::responses::result_kinds::ResultKind},
 };
 
 use super::{
@@ -138,7 +138,6 @@ impl Node {
     fn add_keyspace(&mut self, keyspace: Keyspace) {
         self.keyspaces
             .insert(keyspace.get_name().to_string(), keyspace);
-        println!("crea correctamente la keyspace");
     }
 
     fn get_keyspace(&self, keyspace_name: &str) -> Result<&Keyspace> {
@@ -593,16 +592,10 @@ impl Node {
                     Ok(false)
                 }
                 ConnectionMode::Parsing => {
-                    match self.handle_request(&bytes[..], false) {
-                        Err(err) => {
-                            println!("Error manejando una query:\n\n{}", err);
-                        }
-                        Ok(response_bytes) => {
-                            let _ = tcp_stream.write_all(&response_bytes[..]);
-                            if let Err(err) = tcp_stream.flush() {
-                                println!("Error haciendo flush desde el nodo:\n\n{}", err);
-                            }
-                        }
+                    let res = self.handle_request(&bytes[..], false);
+                    let _ = tcp_stream.write_all(&res[..]);
+                    if let Err(err) = tcp_stream.flush() {
+                        println!("Error haciendo flush desde el nodo:\n\n{}", err);
                     }
                     Ok(false)
                 }
@@ -651,75 +644,70 @@ impl Node {
                 // no interrumpe el nodo porque es el trabajo de EXIT
                 Ok(false)
             }
-            SvAction::InternalQuery(bytes) => match self.handle_request(&bytes, true) {
-                Err(err) => {
-                    let _ = tcp_stream.write_all(&err.as_bytes());
-                    if let Err(err) = tcp_stream.flush() {
-                        Err(Error::ServerError(err.to_string()))
-                    } else {
-                        Ok(false)
-                    }
+            SvAction::InternalQuery(bytes) => {
+                let response = self.handle_request(&bytes, true);
+                let _ = tcp_stream.write_all(&response[..]);
+                if let Err(err) = tcp_stream.flush() {
+                    Err(Error::ServerError(err.to_string()))
+                } else {
+                    Ok(false)
                 }
-                Ok(response_bytes) => {
-                    let _ = tcp_stream.write_all(&response_bytes[..]);
-                    if let Err(err) = tcp_stream.flush() {
-                        Err(Error::ServerError(err.to_string()))
-                    } else {
-                        Ok(false)
-                    }
-                }
-            },
+            }
         }
     }
 
     /// Maneja una request.
-    fn handle_request(&mut self, request: &[Byte], internal_request: bool) -> Result<Vec<Byte>> {
-        if request.len() < 9 {
-            return Err(Error::ProtocolError(
-                "No se cumple el protocolo del header".to_string(),
-            ));
-        }
-        let _version = Version::try_from(request[0])?;
-        let _flags = Flag::try_from(request[1])?;
-        let _stream = Stream::try_from(request[2..4].to_vec())?;
-        let opcode = Opcode::try_from(request[4])?;
-        let lenght = Length::try_from(request[5..9].to_vec())?;
-        let mut response: Vec<Byte> = Vec::new();
-        response.append(&mut request[..4].to_vec());
-        // VER QUE HACER CON LAS FLAGS
-        // Cada handler deberia devolver un Vec<Byte> que contenga: que opcode de respuesta mandar,
-        // con que lenght y el body si es que tiene
-        let mut _left_response = match opcode {
-            Opcode::Startup => self.handle_startup(request, lenght),
+    fn handle_request(&mut self, request: &[Byte], internal_request: bool) -> Vec<Byte> {
+        let header = match Headers::try_from(&request[..9]) {
+            Ok(header) => header,
+            Err(err) => return self.make_error_response(err),
+        };
+
+        let left_response = match header.opcode {
+            Opcode::Startup => self.handle_startup(request, header.length),
             Opcode::Options => self.handle_options(),
-            Opcode::Query => self.handle_query(request, lenght, internal_request),
+            Opcode::Query => self.handle_query(request, header.length, internal_request),
             Opcode::Prepare => self.handle_prepare(),
             Opcode::Execute => self.handle_execute(),
             Opcode::Register => self.handle_register(),
             Opcode::Batch => self.handle_batch(),
             Opcode::AuthResponse => self.handle_auth_response(),
-            _ => {
-                return Err(Error::ProtocolError(
-                    "El opcode recibido no es una request".to_string(),
-                ))
-            }
+            _ => Err(Error::ProtocolError(
+                "El opcode recibido no es una request".to_string(),
+            )),
         };
-        // response.append(&mut _left_response);
+        match left_response {
+            Ok(value) => value,
+            Err(err) => self.make_error_response(err),
+        }
+        // response.append(&mut left_response);
         // aca deberiamos mandar la response de alguna manera
-        response.append(&mut _left_response);
-        Ok(response)
+        // response.append(&mut left_response);
+        // Ok(left_response)
     }
 
-    fn handle_startup(&self, _request: &[Byte], _length: Length) -> Vec<Byte> {
+    fn make_error_response(&mut self, err: Error) -> Vec<Byte> {
+        let mut response: Vec<Byte> = Vec::new();
+        let mut bytes_err = err.as_bytes();
+        response.append(&mut Version::ResponseV5.as_bytes());
+        response.append(&mut Flag::Default.as_bytes());
+        response.append(&mut Stream::new(0).as_bytes());
+        response.append(&mut Opcode::RequestError.as_bytes());
+        response.append(&mut Length::new(bytes_err.len() as u32).as_bytes());
+        response.append(&mut bytes_err);
+        response
+    }
+
+    fn handle_startup(&self, _request: &[Byte], _length: Length) -> Result<Vec<Byte>> {
         // El body es un [string map] con posibles opciones
-        vec![0]
+        Ok(vec![0])
     }
 
-    fn handle_options(&self) -> Vec<Byte> {
+    fn handle_options(&self) -> Result<Vec<Byte>> {
         // No tiene body
         // Responder con supported
         Opcode::Supported.as_bytes();
-        vec![0]
+        Ok(vec![0])
     }
 
     fn handle_query(
@@ -727,7 +715,7 @@ impl Node {
         request: &[Byte],
         lenght: Length,
         internal_request: bool,
-    ) -> Vec<Byte> {
+    ) -> Result<Vec<Byte>> {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
                 Ok(statement) => {
@@ -738,39 +726,41 @@ impl Node {
                     }
                 }
                 Err(err) => {
-                    return err.as_bytes();
+                    return Err(err);
                 }
             };
             return res;
             // aca usariamos la query como corresponda
         }
-        Error::ServerError("No se pudieron transformar los bytes a string".to_string()).as_bytes()
+        Err(Error::ServerError(
+            "No se pudieron transformar los bytes a string".to_string(),
+        ))
     }
 
-    fn handle_prepare(&self) -> Vec<Byte> {
+    fn handle_prepare(&self) -> Result<Vec<Byte>> {
         // El body es <query><flags>[<keyspace>]
-        vec![0]
+        Ok(vec![0])
     }
 
-    fn handle_execute(&self) -> Vec<Byte> {
+    fn handle_execute(&self) -> Result<Vec<Byte>> {
         // El body es <id><result_metadata_id><query_parameters>
-        vec![0]
+        Ok(vec![0])
     }
 
-    fn handle_register(&self) -> Vec<Byte> {
-        vec![0]
+    fn handle_register(&self) -> Result<Vec<Byte>> {
+        Ok(vec![0])
     }
 
-    fn handle_batch(&self) -> Vec<Byte> {
-        vec![0]
+    fn handle_batch(&self) -> Result<Vec<Byte>> {
+        Ok(vec![0])
     }
 
-    fn handle_auth_response(&self) -> Vec<Byte> {
-        vec![0]
+    fn handle_auth_response(&self) -> Result<Vec<Byte>> {
+        Ok(vec![0])
     }
 
     /// Maneja una declaración interna.
-    fn handle_internal_statement(&mut self, statement: Statement) -> Vec<Byte> {
+    fn handle_internal_statement(&mut self, statement: Statement) -> Result<Vec<Byte>> {
         match statement {
             Statement::DdlStatement(ddl_statement) => {
                 self.handle_internal_ddl_statement(ddl_statement)
@@ -785,7 +775,7 @@ impl Node {
     }
 
     /// Maneja una declaración DDL.
-    fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<Byte> {
+    fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Result<Vec<Byte>> {
         match ddl_statement {
             DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name),
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
@@ -812,23 +802,28 @@ impl Node {
         }
     }
 
-    fn process_use_statement(&mut self, keyspace_name: KeyspaceName) -> Vec<u8> {
+    fn process_use_statement(&mut self, keyspace_name: KeyspaceName) -> Result<Vec<u8>> {
         let name = keyspace_name.get_name();
         if self.keyspaces.contains_key(name) {
             self.set_default_keyspace(name.to_string());
-            self.create_result_void()
+            Ok(self.create_result_void())
         } else {
-            Error::ServerError("El keyspace solicitado no existe".to_string()).as_bytes()
+            Err(Error::ServerError(
+                "El keyspace solicitado no existe".to_string(),
+            ))
         }
     }
 
-    fn process_create_keyspace_statement(&mut self, create_keyspace: CreateKeyspace) -> Vec<u8> {
+    fn process_create_keyspace_statement(
+        &mut self,
+        create_keyspace: CreateKeyspace,
+    ) -> Result<Vec<u8>> {
         match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
             Ok(Some(keyspace)) => self.add_keyspace(keyspace),
-            Ok(None) => return self.create_result_void(),
-            Err(err) => return err.as_bytes(),
+            Ok(None) => return Ok(self.create_result_void()),
+            Err(err) => return Err(err),
         };
-        self.create_result_void()
+        Ok(self.create_result_void())
     }
     fn create_result_void(&mut self) -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
@@ -837,29 +832,26 @@ impl Node {
         response.append(&mut Stream::new(0).as_bytes());
         response.append(&mut Opcode::Result.as_bytes());
         response.append(&mut Length::new(4).as_bytes());
-
         response.append(&mut ResultKind::Void.as_bytes());
         response
     }
 
-    fn process_create_table_statement(&mut self, create_table: CreateTable) -> Vec<u8> {
+    fn process_create_table_statement(&mut self, create_table: CreateTable) -> Result<Vec<u8>> {
         let default_keyspace_name = match self.get_default_keyspace() {
             Ok(keyspace) => keyspace.get_name().to_string(),
-            Err(err) => return err.as_bytes(),
+            Err(err) => return Err(err),
         };
         match DiskHandler::create_table(create_table, &self.storage_addr, &default_keyspace_name) {
             Ok(Some(keyspace)) => self.add_table(keyspace),
-            Ok(None) => {
-                return Error::ServerError("No se pudo crear la tabla".to_string()).as_bytes()
-            }
-            Err(err) => return err.as_bytes(),
+            Ok(None) => return Err(Error::ServerError("No se pudo crear la tabla".to_string())),
+            Err(err) => return Err(err),
         };
-        self.create_result_void()
+        Ok(self.create_result_void())
     }
 
     /// Maneja una declaración DML.
-    fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement) -> Vec<Byte> {
-        let res: Result<Vec<Byte>> = match dml_statement {
+    fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement) -> Result<Vec<Byte>> {
+        match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select),
             DmlStatement::InsertStatement(insert) => self.process_insert(&insert),
             DmlStatement::UpdateStatement(_update) => {
@@ -871,10 +863,6 @@ impl Node {
             DmlStatement::BatchStatement(_batch) => {
                 todo!()
             }
-        };
-        match res {
-            Ok(value) => value,
-            Err(err) => err.as_bytes(),
         }
     }
 
@@ -920,7 +908,7 @@ impl Node {
         Ok(self.create_result_void())
     }
 
-    fn handle_statement(&mut self, statement: Statement, request: &[Byte]) -> Vec<Byte> {
+    fn handle_statement(&mut self, statement: Statement, request: &[Byte]) -> Result<Vec<Byte>> {
         match statement {
             Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
             Statement::DmlStatement(dml_statement) => {
@@ -930,7 +918,7 @@ impl Node {
         }
     }
 
-    fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<u8> {
+    fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Result<Vec<u8>> {
         match ddl_statement {
             DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name),
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
@@ -957,8 +945,12 @@ impl Node {
         }
     }
 
-    fn handle_dml_statement(&mut self, dml_statement: DmlStatement, request: &[Byte]) -> Vec<u8> {
-        let res = match dml_statement {
+    fn handle_dml_statement(
+        &mut self,
+        dml_statement: DmlStatement,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
+        match dml_statement {
             DmlStatement::SelectStatement(select) => self.select_with_other_nodes(select, request),
             DmlStatement::InsertStatement(insert) => self.insert_with_other_nodes(insert, request),
             DmlStatement::UpdateStatement(_update) => {
@@ -970,10 +962,6 @@ impl Node {
             DmlStatement::BatchStatement(_batch) => {
                 todo!()
             }
-        };
-        match res {
-            Ok(value) => value,
-            Err(err) => err.as_bytes(),
         }
     }
 
@@ -1036,7 +1024,7 @@ impl Node {
                         PortType::Priv,
                     )?;
                     match Opcode::try_from(res[4])? {
-                        Opcode::RequestError => return Err(Error::try_from(res[10..].to_vec())?),
+                        Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
                         Opcode::Result => self.handle_result_from_node(
                             &mut results_from_another_nodes,
                             res,

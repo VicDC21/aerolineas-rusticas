@@ -163,7 +163,6 @@ impl DiskHandler {
         writer
             .write_all(columns_names.join(",").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
-
         let primary_key = match statement.primary_key {
             Some(primary_key) => primary_key.columns,
             None => {
