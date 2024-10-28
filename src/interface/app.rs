@@ -9,14 +9,15 @@ use egui_extras::install_image_loaders;
 use walkers::{Map, MapMemory, Position};
 
 use crate::client::cli::Client;
-use crate::data::airports::Airport;
+use crate::data::{airports::Airport, flights::Flight};
 use crate::interface::map::{
     panels::{cur_airport_info, extra_airport_info},
     providers::{Provider, ProvidersMap},
     windows::{controls, date_selector, go_to_my_position, zoom},
 };
-use crate::interface::plugins::airports::{
-    clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader,
+use crate::interface::plugins::{
+    airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
+    flights::loader::FlightsLoader,
 };
 
 /// Latitud de la coordenada de origen de nuestro mapa.
@@ -27,7 +28,7 @@ pub const ORIG_LONG: f64 = -58.36909719124974;
 /// La app de aerolíneas misma.
 pub struct AerolineasApp {
     /// El cliente interno de la aplicación.
-    client: Client,
+    client: Arc<Client>,
 
     /// Guarda el estado del widget del mapa.
     map_memory: MapMemory,
@@ -47,6 +48,9 @@ pub struct AerolineasApp {
     /// El mirador de clicks.
     screen_clicker: ScreenClicker,
 
+    /// El cargador de vuelos.
+    flights_loader: FlightsLoader,
+
     /// El puerto seleccionado actualmente.
     selected_airport: Option<Airport>,
 
@@ -55,6 +59,9 @@ pub struct AerolineasApp {
 
     /// La fecha actual.
     date: NaiveDate,
+
+    /// Los vuelos actualmente en memoria.
+    current_flights: Arc<Vec<Flight>>,
 }
 
 impl AerolineasApp {
@@ -66,16 +73,18 @@ impl AerolineasApp {
         let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
 
         Self {
-            client: Client::default(),
+            client: Arc::new(Client::default()),
             map_memory: mem,
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
             airports_loader: AirportsLoader::default(),
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
+            flights_loader: FlightsLoader::default(),
             selected_airport: None,
             extra_airport: None,
             date: Utc::now().date_naive(),
+            current_flights: Arc::new(Vec::new()),
         }
     }
 }
@@ -98,12 +107,20 @@ impl App for AerolineasApp {
 
             // Añadimos los plugins.
             let cur_airports = Arc::new(self.airports_loader.take_airports());
+            let cur_flights = self.flights_loader.take_flights();
+            if !cur_flights.is_empty() {
+                self.current_flights = Arc::new(cur_flights);
+            }
+
             self.airports_drawer
                 .sync_airports(Arc::clone(&cur_airports))
                 .sync_zoom(zoom_lvl);
             self.screen_clicker
                 .sync_airports(Arc::clone(&cur_airports))
                 .sync_zoom(zoom_lvl);
+            self.flights_loader
+                .sync_date(self.date)
+                .sync_client(Arc::clone(&self.client));
 
             // necesariamente antes de agregar al mapa
             if let Some(cur_airport) = self.screen_clicker.take_cur_airport() {
@@ -131,7 +148,8 @@ impl App for AerolineasApp {
             let map = map
                 .with_plugin(&mut self.airports_loader)
                 .with_plugin(&mut self.airports_drawer)
-                .with_plugin(&mut self.screen_clicker);
+                .with_plugin(&mut self.screen_clicker)
+                .with_plugin(&mut self.flights_loader);
 
             ui.add(map);
 
@@ -145,7 +163,11 @@ impl App for AerolineasApp {
         });
 
         date_selector(ctx, &mut self.date);
-        cur_airport_info(ctx, &self.selected_airport, Arc::new(Vec::new()));
+        cur_airport_info(
+            ctx,
+            &self.selected_airport,
+            Arc::clone(&self.current_flights),
+        );
         extra_airport_info(ctx, &self.selected_airport, &self.extra_airport);
     }
 }

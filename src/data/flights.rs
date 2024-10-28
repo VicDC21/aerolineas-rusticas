@@ -22,7 +22,12 @@ pub struct Flight {
 impl Flight {
     /// Crea una nueva instancia de vuelo.
     pub fn new(id: Int, orig: String, dest: String, timestamp: Long) -> Self {
-        Self { id, orig, dest, timestamp }
+        Self {
+            id,
+            orig,
+            dest,
+            timestamp,
+        }
     }
 
     /// Transforma el timestamp en una fecha.

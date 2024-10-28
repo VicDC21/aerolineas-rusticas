@@ -12,7 +12,7 @@ use crate::protocol::aliases::results::Result;
 
 /// Un hilo destinado a procesos paralelos, tal que no bloquee el flujo sincrónico
 /// del hilo principal.
-pub type ChildHandle = JoinHandle<Result<()>>;
+type ChildHandle = JoinHandle<Result<()>>;
 
 /// El tipo de hilo hijo de área.
 pub type AreaChild = (Option<ChildHandle>, Sender<PosRect>);
