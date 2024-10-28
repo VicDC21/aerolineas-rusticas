@@ -105,20 +105,26 @@ impl Client {
                         return Ok(());
                     }
 
-                    match self.send_query(input, &mut tcp_stream) {
+                    match self.send_query(&input, &mut tcp_stream) {
                         Ok(_) => (),
                         Err(e) => {
                             eprintln!("Error al enviar la query: {}", e);
-                            tcp_stream = match self.connect() {
-                                Ok(stream) => {
-                                    let _ = stream.set_nonblocking(true);
-                                    stream
+                            // Intentamos reconectar
+                            match self.connect() {
+                                Ok(new_stream) => {
+                                    let _ = new_stream.set_nonblocking(true);
+                                    tcp_stream = new_stream;
+                                    // Reintentamos enviar la query con la nueva conexión
+                                    if let Err(retry_err) = self.send_query(&input, &mut tcp_stream)
+                                    {
+                                        eprintln!("Error al reintentar la query: {}", retry_err);
+                                    }
                                 }
                                 Err(e) => {
                                     eprintln!("No se pudo reconectar: {}", e);
                                     break;
                                 }
-                            };
+                            }
                         }
                     }
                 }
@@ -132,18 +138,20 @@ impl Client {
         Ok(())
     }
 
-    fn send_query(&mut self, query: String, tcp_stream: &mut TcpStream) -> Result<()> {
+    fn send_query(&mut self, query: &str, tcp_stream: &mut TcpStream) -> Result<()> {
         let mut stream_id: i16 = 0;
         while self.requests_stream.contains(&stream_id) {
             stream_id += 1;
         }
         self.requests_stream.insert(stream_id);
 
-        match make_parse(&mut tokenize_query(&query)) {
+        match make_parse(&mut tokenize_query(query)) {
             Ok(statement) => {
                 let frame = match statement {
-                    Statement::DmlStatement(_statement) => Frame::query(stream_id, query),
-                    Statement::DdlStatement(_statement) => Frame::ddl(stream_id, query),
+                    Statement::DmlStatement(_statement) => {
+                        Frame::query(stream_id, query.to_string())
+                    }
+                    Statement::DdlStatement(_statement) => Frame::ddl(stream_id, query.to_string()),
                     Statement::UdtStatement(_statement) => todo!(),
                 };
 
@@ -154,7 +162,7 @@ impl Client {
                 let mut response = Vec::new();
                 let mut buffer = [0; 1024];
                 let mut timeout_count = 0;
-                const MAX_TIMEOUT: u32 = 50; // 5 segundos máximo de espera (50 * 100ms)
+                const MAX_TIMEOUT: u32 = 50;
 
                 // Leemos la respuesta con timeout
                 loop {
@@ -162,10 +170,13 @@ impl Client {
                         Ok(0) => {
                             // Conexión cerrada por el servidor
                             if response.is_empty() {
+                                // Solo es un error si no hemos recibido nada
+                                self.requests_stream.remove(&stream_id);
                                 return Err(Error::ServerError(
-                                    "Conexión cerrada por el servidor".into(),
+                                    "Conexión cerrada por el servidor sin recibir datos".into(),
                                 ));
                             }
+                            // Si ya teníamos datos, es normal que se cierre
                             break;
                         }
                         Ok(n) => {
@@ -175,43 +186,50 @@ impl Client {
                             }
                         }
                         Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            // No hay datos disponibles en este momento
                             std::thread::sleep(Duration::from_millis(100));
                             timeout_count += 1;
                             if timeout_count >= MAX_TIMEOUT {
+                                self.requests_stream.remove(&stream_id);
                                 return Err(Error::ServerError(
                                     "Timeout esperando respuesta".into(),
                                 ));
                             }
                             continue;
                         }
-                        Err(e) => return Err(Error::ServerError(e.to_string())),
+                        Err(e) => {
+                            self.requests_stream.remove(&stream_id);
+                            return Err(Error::ServerError(e.to_string()));
+                        }
                     }
                 }
 
                 self.requests_stream.remove(&stream_id);
                 println!("Received {} bytes: {:?}", response.len(), response);
+
+                // Reconectamos automáticamente para la siguiente query
+                if let Ok(new_stream) = self.connect() {
+                    let _ = new_stream.set_nonblocking(true);
+                    *tcp_stream = new_stream;
+                }
+
                 Ok(())
             }
             Err(err) => {
                 println!("Error parsing query: {}", err);
+                self.requests_stream.remove(&stream_id);
                 Err(Error::ServerError(err.to_string()))
             }
         }
     }
 
-    /// Verifica si la respuesta está completa basándose en el protocolo CQL
     fn is_response_complete(response: &[u8]) -> bool {
         if response.len() < 9 {
             return false;
         }
 
-        // Los primeros 9 bytes contienen el header
-        // Los bytes 5-8 contienen la longitud del cuerpo
         let body_length =
             u32::from_be_bytes([response[5], response[6], response[7], response[8]]) as usize;
 
-        // Verificamos si tenemos el header completo + el cuerpo
         response.len() >= 9 + body_length
     }
 }
