@@ -10,11 +10,14 @@ use super::{
     column_config::ColumnConfig, keyspace::Keyspace, replication_strategy::ReplicationStrategy,
     table::Table,
 };
-use crate::{parser::data_types::term::Term, protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-}};
 use crate::server::nodes::node::NodeId;
+use crate::{
+    parser::data_types::term::Term,
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+    },
+};
 use crate::{
     parser::statements::{
         ddl_statement::{
@@ -78,8 +81,9 @@ impl DiskHandler {
             Ok(None) => {
                 println!("rompe aca");
                 Err(Error::ServerError(
-                "La estrategia de replicación es obligatoria".to_string(),
-            ))},
+                    "La estrategia de replicación es obligatoria".to_string(),
+                ))
+            }
             Err(e) => Err(e),
         }
     }
@@ -92,23 +96,27 @@ impl DiskHandler {
                 Options::MapLiteral(map_literal) => {
                     let values = map_literal.get_values();
                     let (term1, term2) = &values[0];
-                    if term1.get_value() == "class" && term2.get_value() == "SimpleStrategy"{
+                    if term1.get_value() == "class" && term2.get_value() == "SimpleStrategy" {
                         let (term3, term4) = &values[1];
-                        if term3.get_value() == "replication_factor"{
-                            let replicas = match term4.get_value().parse::<u32>()
-                            {
+                        if term3.get_value() == "replication_factor" {
+                            let replicas = match term4.get_value().parse::<u32>() {
                                 Ok(replicas) => replicas,
                                 Err(_) => {
                                     return Err(Error::Invalid(
-                                        "El valor de 'replication_factor' debe ser un número".to_string(),
+                                        "El valor de 'replication_factor' debe ser un número"
+                                            .to_string(),
                                     ));
                                 }
                             };
                             return Ok(Some(ReplicationStrategy::SimpleStrategy(replicas)));
                         } else {
-                            return Err(Error::Invalid("Falto el campo replication_factor".to_string()));
+                            return Err(Error::Invalid(
+                                "Falto el campo replication_factor".to_string(),
+                            ));
                         }
-                    } else if term1.get_value() == "class" && term2.get_value() == "NetworkTopologyStrategy" {
+                    } else if term1.get_value() == "class"
+                        && term2.get_value() == "NetworkTopologyStrategy"
+                    {
                         // Aca estaria el caso de NetworkTopologyStrategy
                         todo!()
                     }

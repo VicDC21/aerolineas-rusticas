@@ -286,10 +286,11 @@ impl Client {
     }
 
     fn handle_request_error(&self, _lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
-        
         match Error::try_from(request[9..].to_vec()) {
-            Ok(error) => {println!("{}", error);
-                Ok(ProtocolResult::QueryError(error))},
+            Ok(error) => {
+                println!("{}", error);
+                Ok(ProtocolResult::QueryError(error))
+            }
             Err(err) => Err(err),
         }
     }

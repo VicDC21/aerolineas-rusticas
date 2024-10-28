@@ -10,21 +10,6 @@ use std::{
     thread::Builder,
 };
 
-use crate::{parser::{
-    data_types::keyspace_name::KeyspaceName,
-    main_parser::make_parse,
-    statements::{
-        ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable,
-            ddl_statement_parser::DdlStatement,
-        },
-        dml_statement::{
-            dml_statement_parser::DmlStatement,
-            main_statements::{insert::Insert, select::select_operation::Select},
-        },
-        statement::Statement,
-    },
-}, protocol::{headers::msg_headers::Headers, messages::responses::result_kinds::ResultKind}};
 use crate::protocol::headers::{
     flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
 };
@@ -52,6 +37,24 @@ use crate::server::{
     utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
+use crate::{
+    parser::{
+        data_types::keyspace_name::KeyspaceName,
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::{
+                create_keyspace::CreateKeyspace, create_table::CreateTable,
+                ddl_statement_parser::DdlStatement,
+            },
+            dml_statement::{
+                dml_statement_parser::DmlStatement,
+                main_statements::{insert::Insert, select::select_operation::Select},
+            },
+            statement::Statement,
+        },
+    },
+    protocol::{headers::msg_headers::Headers, messages::responses::result_kinds::ResultKind},
+};
 
 use super::{
     graph::{N_NODES, START_ID},
@@ -589,7 +592,6 @@ impl Node {
                     Ok(false)
                 }
                 ConnectionMode::Parsing => {
-                    
                     let res = self.handle_request(&bytes[..], false);
                     let _ = tcp_stream.write_all(&res[..]);
                     if let Err(err) = tcp_stream.flush() {
@@ -642,22 +644,23 @@ impl Node {
                 // no interrumpe el nodo porque es el trabajo de EXIT
                 Ok(false)
             }
-            SvAction::InternalQuery(bytes) =>{let response = self.handle_request(&bytes, true);
+            SvAction::InternalQuery(bytes) => {
+                let response = self.handle_request(&bytes, true);
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
                     Err(Error::ServerError(err.to_string()))
                 } else {
                     Ok(false)
                 }
-            },
+            }
         }
     }
 
     /// Maneja una request.
     fn handle_request(&mut self, request: &[Byte], internal_request: bool) -> Vec<Byte> {
-        let header = match Headers::try_from(&request[..9]){
+        let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
-            Err(err) => return self.make_error_response(err)
+            Err(err) => return self.make_error_response(err),
         };
 
         let left_response = match header.opcode {
@@ -669,15 +672,13 @@ impl Node {
             Opcode::Register => self.handle_register(),
             Opcode::Batch => self.handle_batch(),
             Opcode::AuthResponse => self.handle_auth_response(),
-            _ => {
-                Err(Error::ProtocolError(
-                    "El opcode recibido no es una request".to_string(),
-                ))
-            }
+            _ => Err(Error::ProtocolError(
+                "El opcode recibido no es una request".to_string(),
+            )),
         };
-        match left_response{
+        match left_response {
             Ok(value) => value,
-            Err(err) => self.make_error_response(err)
+            Err(err) => self.make_error_response(err),
         }
         // response.append(&mut left_response);
         // aca deberiamos mandar la response de alguna manera
@@ -685,7 +686,7 @@ impl Node {
         // Ok(left_response)
     }
 
-    fn make_error_response(&mut self, err: Error) -> Vec<Byte>{
+    fn make_error_response(&mut self, err: Error) -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         let mut bytes_err = err.as_bytes();
         response.append(&mut Version::ResponseV5.as_bytes());
@@ -731,7 +732,9 @@ impl Node {
             return res;
             // aca usariamos la query como corresponda
         }
-        Err(Error::ServerError("No se pudieron transformar los bytes a string".to_string()))
+        Err(Error::ServerError(
+            "No se pudieron transformar los bytes a string".to_string(),
+        ))
     }
 
     fn handle_prepare(&self) -> Result<Vec<Byte>> {
@@ -805,11 +808,16 @@ impl Node {
             self.set_default_keyspace(name.to_string());
             Ok(self.create_result_void())
         } else {
-            Err(Error::ServerError("El keyspace solicitado no existe".to_string()))
+            Err(Error::ServerError(
+                "El keyspace solicitado no existe".to_string(),
+            ))
         }
     }
 
-    fn process_create_keyspace_statement(&mut self, create_keyspace: CreateKeyspace) -> Result<Vec<u8>> {
+    fn process_create_keyspace_statement(
+        &mut self,
+        create_keyspace: CreateKeyspace,
+    ) -> Result<Vec<u8>> {
         match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
             Ok(Some(keyspace)) => self.add_keyspace(keyspace),
             Ok(None) => return Ok(self.create_result_void()),
@@ -817,7 +825,7 @@ impl Node {
         };
         Ok(self.create_result_void())
     }
-    fn create_result_void(&mut self) -> Vec<Byte>{
+    fn create_result_void(&mut self) -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
@@ -835,10 +843,8 @@ impl Node {
         };
         match DiskHandler::create_table(create_table, &self.storage_addr, &default_keyspace_name) {
             Ok(Some(keyspace)) => self.add_table(keyspace),
-            Ok(None) => {
-                return Err(Error::ServerError("No se pudo crear la tabla".to_string()))
-            }
-            Err(err) => {return Err(err)},
+            Ok(None) => return Err(Error::ServerError("No se pudo crear la tabla".to_string())),
+            Err(err) => return Err(err),
         };
         Ok(self.create_result_void())
     }
@@ -939,7 +945,11 @@ impl Node {
         }
     }
 
-    fn handle_dml_statement(&mut self, dml_statement: DmlStatement, request: &[Byte]) -> Result<Vec<u8>> {
+    fn handle_dml_statement(
+        &mut self,
+        dml_statement: DmlStatement,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.select_with_other_nodes(select, request),
             DmlStatement::InsertStatement(insert) => self.insert_with_other_nodes(insert, request),
