@@ -4,7 +4,7 @@ use std::io::{BufRead, Result as IOResult};
 use walkers::Position;
 
 use crate::data::utils::{
-    distances::{distance_euclidean, inside_area},
+    distances::{distance_euclidean_wpos, inside_area},
     paths::{get_tokens, reader_from},
     strings::{breakdown, to_option},
 };
@@ -21,6 +21,7 @@ const MIN_AIRPORTS_ELEMS: usize = 17;
 /// Estructura que representa un aeropuerto.
 ///
 /// Este modelo está inspirado en las definiciones de [OurAirports](https://ourairports.com/help/data-dictionary.html#airports).
+#[derive(Clone, PartialEq)]
 pub struct Airport {
     /// El ID del aeropuerto. Éste es constante aún si el código de aeropuerto cambia.
     pub id: usize,
@@ -202,7 +203,8 @@ impl Airport {
             let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
 
             let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
-            if &distance_euclidean(&Position::from_lat_lon(cur_lat, cur_lon), pos) <= tolerance {
+            if &distance_euclidean_wpos(&Position::from_lat_lon(cur_lat, cur_lon), pos) <= tolerance
+            {
                 airports.push(Self::from_tokens(tokens)?);
             }
         }

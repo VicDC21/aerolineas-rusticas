@@ -1,13 +1,22 @@
 //! Módulo para la estructura de la aplicación en sí.
 
+use std::sync::Arc;
+
+use chrono::{NaiveDate, Utc};
 use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
 use egui_extras::install_image_loaders;
 use walkers::{Map, MapMemory, Position};
 
-use crate::interface::map::providers::{Provider, ProvidersMap};
-use crate::interface::map::windows::{controls, go_to_my_position, zoom};
-use crate::interface::plugins::airports::{drawer::AirportsDrawer, loader::AirportsLoader};
+use crate::data::airports::Airport;
+use crate::interface::map::{
+    panels::{cur_airport_info, extra_airport_info},
+    providers::{Provider, ProvidersMap},
+    windows::{controls, date_selector, go_to_my_position, zoom},
+};
+use crate::interface::plugins::airports::{
+    clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader,
+};
 
 /// Latitud de la coordenada de origen de nuestro mapa.
 pub const ORIG_LAT: f64 = -34.61760464833609;
@@ -30,6 +39,18 @@ pub struct AerolineasApp {
 
     /// El renderizador de aeropuertos.
     airports_drawer: AirportsDrawer,
+
+    /// El mirador de clicks.
+    screen_clicker: ScreenClicker,
+
+    /// El puerto seleccionado actualmente.
+    selected_airport: Option<Airport>,
+
+    /// Un aeropuerto extra, para acciones especiales.
+    extra_airport: Option<Airport>,
+
+    /// La fecha actual.
+    date: NaiveDate,
 }
 
 impl AerolineasApp {
@@ -45,7 +66,11 @@ impl AerolineasApp {
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
             airports_loader: AirportsLoader::default(),
-            airports_drawer: AirportsDrawer::default(),
+            airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
+            screen_clicker: ScreenClicker::default(),
+            selected_airport: None,
+            extra_airport: None,
+            date: Utc::now().date_naive(),
         }
     }
 }
@@ -67,14 +92,41 @@ impl App for AerolineasApp {
             );
 
             // Añadimos los plugins.
-            let cur_airports = self.airports_loader.take_airports();
+            let cur_airports = Arc::new(self.airports_loader.take_airports());
             self.airports_drawer
-                .sync_airports(cur_airports)
+                .sync_airports(Arc::clone(&cur_airports))
                 .sync_zoom(zoom_lvl);
+            self.screen_clicker
+                .sync_airports(Arc::clone(&cur_airports))
+                .sync_zoom(zoom_lvl);
+
+            // necesariamente antes de agregar al mapa
+            if let Some(cur_airport) = self.screen_clicker.take_cur_airport() {
+                self.selected_airport = cur_airport;
+            }
+            if let Some(ex_airport) = self.screen_clicker.take_extra_airport() {
+                self.extra_airport = ex_airport;
+            }
+
+            match &self.selected_airport {
+                Some(cur_airport) => {
+                    if let Some(ex_airport) = &self.extra_airport {
+                        if cur_airport == ex_airport {
+                            // Si los aeropuertos son iguales, anular la selección.
+                            self.extra_airport = None;
+                        }
+                    }
+                }
+                None => {
+                    // Y si no hay aeropuerto seleccionado también
+                    self.extra_airport = None;
+                }
+            }
 
             let map = map
                 .with_plugin(&mut self.airports_loader)
-                .with_plugin(&mut self.airports_drawer);
+                .with_plugin(&mut self.airports_drawer)
+                .with_plugin(&mut self.screen_clicker);
 
             ui.add(map);
 
@@ -84,9 +136,12 @@ impl App for AerolineasApp {
                 ui,
                 &mut self.selected_provider,
                 &mut self.map_providers.keys(),
-                // &mut self.images_plugin_data,
             );
         });
+
+        date_selector(ctx, &mut self.date);
+        cur_airport_info(ctx, &self.selected_airport);
+        extra_airport_info(ctx, &self.selected_airport, &self.extra_airport);
     }
 }
 
