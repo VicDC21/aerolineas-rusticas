@@ -1,11 +1,13 @@
 //! Módulo para paneles de la interfaz.
 
+use std::sync::Arc;
+
 use eframe::egui::{Button, Color32, Context, Frame, Margin, RichText, ScrollArea, SidePanel, Ui};
 
-use crate::data::airports::Airport;
+use crate::data::{airports::Airport, flights::Flight};
 
 /// Muestra por un panel lateral los detalles del aeropuerto actualmente seleccionado.
-pub fn cur_airport_info(ctx: &Context, cur_airport: &Option<Airport>) {
+pub fn cur_airport_info(ctx: &Context, cur_airport: &Option<Airport>, flights: Arc<Vec<Flight>>) {
     let panel_frame = Frame {
         fill: Color32::from_rgba_unmultiplied(66, 66, 66, 200),
         inner_margin: Margin::ZERO,
@@ -23,12 +25,19 @@ pub fn cur_airport_info(ctx: &Context, cur_airport: &Option<Airport>) {
         let button = Button::new(RichText::new("Mostrar Vuelos").heading());
         if ui.add(button).clicked() {
             println!("Mostrando vuelos...");
-            let ejemplos = ["Lorem Ipsum"; 100]; // TODO: reemplazar una lista de vuelos
             ScrollArea::vertical()
                 .max_height(50.0)
                 .show(ui, |scroll_ui| {
-                    for (i, item) in ejemplos.iter().enumerate() {
-                        scroll_ui.label(RichText::new(format!("{}. {}", i, item)).italics());
+                    for flight in flights.iter() {
+                        let potential_date = match flight.get_date() {
+                            None => "".to_string(),
+                            Some(date) => date.to_string(),
+                        };
+                        let info = format!(
+                            "Id: {}\nOrigen: {}\nDestino: {}\nFecha: {}\n\n",
+                            flight.id, flight.orig, flight.dest, potential_date,
+                        );
+                        scroll_ui.label(RichText::new(info).italics());
                     }
                 });
         }

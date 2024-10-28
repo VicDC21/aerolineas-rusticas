@@ -8,6 +8,7 @@ use eframe::{App, Frame};
 use egui_extras::install_image_loaders;
 use walkers::{Map, MapMemory, Position};
 
+use crate::client::cli::Client;
 use crate::data::airports::Airport;
 use crate::interface::map::{
     panels::{cur_airport_info, extra_airport_info},
@@ -25,6 +26,9 @@ pub const ORIG_LONG: f64 = -58.36909719124974;
 
 /// La app de aerolíneas misma.
 pub struct AerolineasApp {
+    /// El cliente interno de la aplicación.
+    client: Client,
+
     /// Guarda el estado del widget del mapa.
     map_memory: MapMemory,
 
@@ -62,6 +66,7 @@ impl AerolineasApp {
         let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
 
         Self {
+            client: Client::default(),
             map_memory: mem,
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
@@ -140,7 +145,7 @@ impl App for AerolineasApp {
         });
 
         date_selector(ctx, &mut self.date);
-        cur_airport_info(ctx, &self.selected_airport);
+        cur_airport_info(ctx, &self.selected_airport, Arc::new(Vec::new()));
         extra_airport_info(ctx, &self.selected_airport, &self.extra_airport);
     }
 }
