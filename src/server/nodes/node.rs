@@ -135,7 +135,6 @@ impl Node {
     fn add_keyspace(&mut self, keyspace: Keyspace) {
         self.keyspaces
             .insert(keyspace.get_name().to_string(), keyspace);
-        println!("crea correctamente la keyspace");
     }
 
     fn get_keyspace(&self, keyspace_name: &str) -> Result<&Keyspace> {
@@ -688,12 +687,13 @@ impl Node {
 
     fn make_error_response(&mut self, err: Error) -> Vec<Byte>{
         let mut response: Vec<Byte> = Vec::new();
+        let mut bytes_err = err.as_bytes();
         response.append(&mut Version::ResponseV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
         response.append(&mut Stream::new(0).as_bytes());
         response.append(&mut Opcode::RequestError.as_bytes());
-        response.append(&mut Length::new(4).as_bytes());
-        response.append(&mut err.as_bytes());
+        response.append(&mut Length::new(bytes_err.len() as u32).as_bytes());
+        response.append(&mut bytes_err);
         response
     }
 
@@ -829,7 +829,6 @@ impl Node {
     }
 
     fn process_create_table_statement(&mut self, create_table: CreateTable) -> Result<Vec<u8>> {
-        println!("llego a crear tabla");
         let default_keyspace_name = match self.get_default_keyspace() {
             Ok(keyspace) => keyspace.get_name().to_string(),
             Err(err) => return Err(err),
@@ -839,7 +838,7 @@ impl Node {
             Ok(None) => {
                 return Err(Error::ServerError("No se pudo crear la tabla".to_string()))
             }
-            Err(err) => return Err(err),
+            Err(err) => {return Err(err)},
         };
         Ok(self.create_result_void())
     }
