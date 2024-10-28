@@ -1,6 +1,9 @@
 //! Módulo que detalla el tipo de dato de una columna.
 
+use crate::protocol::messages::responses::result::col_type::ColType;
+
 /// Representa el tipo de dato de una columna.
+#[derive(Clone)]
 pub enum ColumnDataType {
     /// Tipo de dato `String`.
     String,
@@ -10,4 +13,16 @@ pub enum ColumnDataType {
     Double,
     /// Tipo de dato `Int`.
     Int,
+}
+
+impl From<ColType> for ColumnDataType {
+    fn from(col: ColType) -> Self {
+        match col {
+            ColType::Varchar => ColumnDataType::String,
+            ColType::Timestamp => ColumnDataType::Timestamp,
+            ColType::Double => ColumnDataType::Double,
+            ColType::Int => ColumnDataType::Int,
+            _ => ColumnDataType::String,
+        }
+    }
 }

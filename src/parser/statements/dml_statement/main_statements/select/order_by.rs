@@ -1,6 +1,9 @@
 use std::cmp::Ordering;
 
-use crate::parser::data_types::identifier::identifier::Identifier;
+use crate::parser::{
+    data_types::identifier::identifier::Identifier,
+    statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
+};
 
 /// ordering_clause::= column_name [ ASC | DESC ] ( ',' column_name [ ASC | DESC ] )*
 #[derive(Debug)]
@@ -12,6 +15,15 @@ pub struct OrderBy {
 impl OrderBy {
     /// Crea una nueva cláusula ORDER BY.
     pub fn new(order_columns: Vec<(Identifier, Option<ProtocolOrdering>)>) -> Self {
+        OrderBy { order_columns }
+    }
+
+    /// Crea una nueva cláusula ORDER BY a partir de un vector de tuplas.
+    pub fn new_from_vec(vec: Vec<(String, ProtocolOrdering)>) -> Self {
+        let mut order_columns = Vec::new();
+        for (column, order) in vec {
+            order_columns.push((Identifier::new(column), Some(order)));
+        }
         OrderBy { order_columns }
     }
 
@@ -47,12 +59,4 @@ impl OrderBy {
             _ => value_a.cmp(value_b),
         }
     }
-}
-/// Representa la dirección de ordenación en una cláusula ORDER BY.
-#[derive(Debug, PartialEq)]
-pub enum ProtocolOrdering {
-    /// Orden ascendente.
-    Asc,
-    /// Orden descendente.
-    Desc,
 }

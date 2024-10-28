@@ -12,6 +12,7 @@ use crate::protocol::utils::{encode_string_to_bytes, parse_bytes_to_string};
 pub type UdtTypeFields = Vec<(String, Box<ColType>)>;
 
 /// Un "User Defined Type" (UDT) es un tipo de dato personalizado que crea el usuario.
+#[derive(Clone)]
 pub struct UdtType {
     /// El nombre del keyspace donde pertenece el UDT.
     ks: String,

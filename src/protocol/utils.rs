@@ -311,3 +311,11 @@ pub fn parse_bytes_to_reasonmap(bytes: &[Byte], i: &mut usize) -> Result<ReasonM
     *i += j; // aplicamos los cambios al índice
     Ok(reasonmap)
 }
+
+// pub fn encode_bytes_to_bytes(value: String) -> Vec<Byte> {
+//     let
+//     let value_lenght = value.len() as i32;
+//     rows_content.append(&mut value_lenght.to_be_bytes().to_vec());
+//     rows_content.append(&mut value.as_bytes().to_vec());
+
+// }

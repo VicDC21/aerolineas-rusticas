@@ -69,6 +69,9 @@ pub enum SvAction {
     /// Pedirle a este nodo que envie su endpoint state a otro nodo, dado el ID de este último.
     SendEndpointState(NodeId),
 
+    /// Query enviada internamente por otro nodo.
+    InternalQuery(Vec<Byte>),
+
     /// Mandar un mensaje de [EXIT](crate::server::actions::opcode::SvAction::Exit) a todos
     /// los nodos salvo sí mismo, y luego salir.
     Shutdown,
@@ -199,13 +202,18 @@ impl Byteable for SvAction {
                 bytes_vec.extend(Self::encode_nodes_map_to_bytes(nodes_map));
                 bytes_vec
             }
-            Self::SendEndpointState(id) => vec![0xF6, *id],
             Self::NewNeighbour(state) => {
-                let mut bytes = vec![0xF7];
+                let mut bytes = vec![0xF6];
                 bytes.extend(state.as_bytes());
                 bytes
             }
-            Self::Shutdown => vec![0xF8],
+            Self::SendEndpointState(id) => vec![0xF7, *id],
+            Self::InternalQuery(query_bytes) => {
+                let mut bytes = vec![0xF8];
+                bytes.extend(query_bytes);
+                bytes
+            }
+            Self::Shutdown => vec![0xF9],
         }
     }
 }
@@ -294,7 +302,8 @@ impl TryFrom<&[Byte]> for SvAction {
                 }
                 Ok(Self::SendEndpointState(bytes[1]))
             }
-            0xF8 => Ok(Self::Shutdown),
+            0xF8 => Ok(Self::InternalQuery(bytes[1..].to_vec())),
+            0xF9 => Ok(Self::Shutdown),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

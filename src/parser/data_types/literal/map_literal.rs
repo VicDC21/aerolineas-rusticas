@@ -46,4 +46,11 @@ impl MapLiteral {
         }
         Ok(Some(MapLiteral { values }))
     }
+
+    /// TODO: Desc básica
+    pub fn get_values(&self) -> &Vec<(Term, Term)>{
+        &self.values
+    }
+
+
 }

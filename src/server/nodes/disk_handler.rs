@@ -10,18 +10,26 @@ use super::{
     column_config::ColumnConfig, keyspace::Keyspace, replication_strategy::ReplicationStrategy,
     table::Table,
 };
-use crate::parser::statements::{
-    ddl_statement::{create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options},
-    dml_statement::main_statements::{
-        insert::Insert,
-        select::{order_by::OrderBy, ordering::Ordering, select_operation::Select},
-    },
-};
-use crate::protocol::{
+use crate::{parser::data_types::term::Term, protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
-};
+}};
 use crate::server::nodes::node::NodeId;
+use crate::{
+    parser::statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+        },
+        dml_statement::main_statements::{
+            insert::Insert,
+            select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
+        },
+    },
+    protocol::{
+        messages::responses::result::col_type::ColType, traits::Byteable,
+        utils::encode_string_to_bytes,
+    },
+};
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
@@ -63,73 +71,51 @@ impl DiskHandler {
         } else {
             create_dir(path_folder).map_err(|e| Error::ServerError(e.to_string()))?;
         }
-
         match Self::get_keyspace_replication(statement.options) {
             Ok(Some(replication)) => {
                 Ok(Some(Keyspace::new(keyspace_name.to_string(), replication)))
             }
-            Ok(None) => Err(Error::ServerError(
+            Ok(None) => {
+                println!("rompe aca");
+                Err(Error::ServerError(
                 "La estrategia de replicación es obligatoria".to_string(),
-            )),
+            ))},
             Err(e) => Err(e),
         }
     }
 
+    /// Obtiene la estrategia de replicación de un keyspace.
     fn get_keyspace_replication(options: Vec<Options>) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;
         while i < options.len() {
             match &options[i] {
-                Options::Identifier(identifier) => {
-                    if identifier.get_name() == "replication" {
-                        if let Options::MapLiteral(map) = &options[i + 1] {
-                            if map.values.len() != 2 {
-                                return Err(Error::ServerError(
-                                    "La estrategia de replicación simple debe tener 2 valores"
-                                        .to_string(),
-                                ));
-                            }
-                            let (key1, value1) = &map.values[0];
-                            let class = key1.get_value_as_string();
-                            if class != "class" {
-                                return Err(Error::ServerError(
-                                    "La estrategia de replicación debe especificar 'class'"
-                                        .to_string(),
-                                ));
-                            }
-                            let strategy = value1.get_value_as_string();
-                            if strategy != "SimpleStrategy" || strategy != "NetworkTopologyStrategy"
+                Options::MapLiteral(map_literal) => {
+                    let values = map_literal.get_values();
+                    let (term1, term2) = &values[0];
+                    if term1.get_value() == "class" && term2.get_value() == "SimpleStrategy"{
+                        let (term3, term4) = &values[1];
+                        if term3.get_value() == "replication_factor"{
+                            let replicas = match term4.get_value().parse::<u32>()
                             {
-                                return Err(Error::ServerError(
-                                    "La estrategia de replicación debe ser 'SimpleStrategy' o 'NetworkTopologyStrategy'".to_string(),
-                                ));
-                            }
-
-                            let (key2, value2) = &map.values[1];
-                            let strategy_option1 = key2.get_value_as_string();
-                            match strategy_option1.as_str() {
-                                "replication_factor" => {
-                                    let replicas = match value2.get_value_as_string().parse::<u32>()
-                                    {
-                                        Ok(replicas) => replicas,
-                                        Err(_) => {
-                                            return Err(Error::Invalid(
-                                                "El valor de 'replication_factor' debe ser un número".to_string(),
-                                            ));
-                                        }
-                                    };
-                                    return Ok(Some(ReplicationStrategy::SimpleStrategy(replicas)));
+                                Ok(replicas) => replicas,
+                                Err(_) => {
+                                    return Err(Error::Invalid(
+                                        "El valor de 'replication_factor' debe ser un número".to_string(),
+                                    ));
                                 }
-                                _ => {
-                                    // Aca estaria el caso de NetworkTopologyStrategy
-                                    todo!()
-                                }
-                            }
+                            };
+                            return Ok(Some(ReplicationStrategy::SimpleStrategy(replicas)));
+                        } else {
+                            return Err(Error::Invalid("Falto el campo replication_factor".to_string()));
                         }
+                    } else if term1.get_value() == "class" && term2.get_value() == "NetworkTopologyStrategy" {
+                        // Aca estaria el caso de NetworkTopologyStrategy
+                        todo!()
                     }
                 }
                 _ => break,
             }
-            i += 2;
+            i += 1;
         }
         Ok(None)
     }
@@ -190,15 +176,15 @@ impl DiskHandler {
         }
 
         let clustering_keys = primary_key[1..].to_vec();
-        let mut clustering_keys_and_order: Vec<(String, Ordering)> = Vec::new();
+        let mut clustering_keys_and_order: Vec<(String, ProtocolOrdering)> = Vec::new();
         for key in clustering_keys {
-            clustering_keys_and_order.push((key, Ordering::Asc));
+            clustering_keys_and_order.push((key, ProtocolOrdering::Asc));
         }
 
         if let Some(clustering_order) = &statement.clustering_order {
             for (key, order) in clustering_order {
                 if let Some(j) = clustering_keys_and_order.iter().position(|(k, _)| k == key) {
-                    let order = match Ordering::ordering_from_str(order) {
+                    let order = match ProtocolOrdering::ordering_from_str(order) {
                         Some(order) => order,
                         None => {
                             return Err(Error::Invalid(format!(
@@ -227,8 +213,7 @@ impl DiskHandler {
     }
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
-    pub fn do_insert(statement: Insert, storage_addr: &str) -> Result<Vec<Byte>> {
-        let res: Vec<Byte> = vec![0x0, 0x0, 0x0, 0x2];
+    pub fn do_insert(statement: &Insert, storage_addr: &str, table: &Table) -> Result<Vec<String>> {
         let keyspace = statement.table.get_keyspace();
         let name = statement.table.get_name();
         let table_addr = match keyspace {
@@ -280,7 +265,7 @@ impl DiskHandler {
         }
         // Si el ID existe y no se debe sobreescribir la línea, no hago nada
         if id_exists && statement.if_not_exists {
-            return Ok(res);
+            return Ok(Vec::new());
         }
 
         // Abro el archivo nuevamente para escribir
@@ -307,9 +292,19 @@ impl DiskHandler {
                 .write_all(new_row.as_bytes())
                 .map_err(|e| Error::ServerError(e.to_string()))?;
         }
-        Ok(res)
+
+        if let Some(order_by) = &table.clustering_key_and_order {
+            Self::order_table_data(
+                &table_addr,
+                &query_cols,
+                &OrderBy::new_from_vec(order_by.to_vec()),
+            )?;
+        }
+
+        Ok(new_row.trim().split(",").map(|s| s.to_string()).collect())
     }
 
+    /// Genera una fila para insertar en una tabla, en base a las columnas dadas en la query y de la tabla.
     fn generate_row_to_insert(
         values: &[String],
         query_cols: &[String],
@@ -326,8 +321,61 @@ impl DiskHandler {
         values_to_insert.join(",") + "\n"
     }
 
+    /// Ordena una tabla según el criterio de ordenación dado.
+    fn order_table_data(table_addr: &str, table_cols: &[String], order_by: &OrderBy) -> Result<()> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let mut reader = BufReader::new(&file);
+
+        let mut line = String::new();
+        let read_bytes = reader
+            .read_line(&mut line)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        if read_bytes == 0 {
+            return Err(Error::ServerError(format!(
+                "No se pudo leer la tabla con ruta {}",
+                &table_addr
+            )));
+        }
+
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        for line in reader.lines() {
+            let table_line = line.map_err(|e| Error::ServerError(e.to_string()))?;
+            let table_row: Vec<String> = table_line
+                .trim()
+                .split(",")
+                .map(|s| s.to_string())
+                .collect();
+            rows.push(table_row);
+        }
+
+        order_by.order(&mut rows, table_cols);
+
+        let mut ordered_table_data = Vec::new();
+        ordered_table_data.push(table_cols.join(","));
+        for row in rows {
+            ordered_table_data.push(row.join(","));
+        }
+        let final_table_data = ordered_table_data.join("\n");
+
+        let ordered_table = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let mut writer = BufWriter::new(&ordered_table);
+
+        writer
+            .write_all(final_table_data.as_bytes())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        Ok(())
+    }
+
     /// Selecciona filas en una tabla en el caso que corresponda.
-    pub fn do_select(statement: Select, storage_addr: &str) -> Result<Vec<Byte>> {
+    pub fn do_select(statement: &Select, storage_addr: &str, table: &Table) -> Result<Vec<Byte>> {
         let keyspace = statement.from.get_keyspace();
         let name = statement.from.get_name();
         let table_addr = match keyspace {
@@ -375,9 +423,9 @@ impl DiskHandler {
         }
 
         let result_rows = if let Some(order) = &statement.options.order_by {
-            Self::do_select_and_order(&statement, &mut reader, &table_cols, order)?
+            Self::do_select_and_order(statement, &mut reader, &table_cols, order)?
         } else {
-            Self::do_select_and_not_order(&statement, &mut reader, &table_cols)?
+            Self::do_select_and_not_order(statement, &mut reader, &table_cols)?
         };
         result.extend(result_rows);
 
@@ -385,13 +433,16 @@ impl DiskHandler {
             result,
             &query_cols,
             &table_cols,
+            table,
         ))
     }
 
+    /// Serializa en bytes el resultado de una consulta SELECT.
     fn serialize_select_result(
         result: Vec<Vec<String>>,
         query_cols: &[String],
         table_cols: &[String],
+        table: &Table,
     ) -> Vec<u8> {
         //kind of Result
         let mut res: Vec<u8> = vec![0x0, 0x0, 0x0, 0x2];
@@ -410,11 +461,28 @@ impl DiskHandler {
 
         // Si activamos flags entonces aca iria
         // [<paging_state>][<new_metadata_id>][<global_table_spec>?<col_spec_1>...<col_spec_n>]
+
+        let cols_name_and_type = table.get_columns_name_and_data_type();
+        for (col_name, data_type) in cols_name_and_type {
+            let col_type = ColType::from(data_type);
+            metadata.append(&mut encode_string_to_bytes(&col_name));
+            metadata.append(&mut col_type.as_bytes())
+        }
+
         let rows_count = result.len() as i32;
-        let mut rows_content: Vec<u8> = result
-            .into_iter()
-            .flat_map(|subvec| subvec.into_iter().flat_map(|s| s.into_bytes()))
-            .collect();
+
+        let mut rows_content: Vec<u8> = Vec::new();
+        for row in result {
+            for value in row {
+                let value_lenght = value.len() as i32;
+                rows_content.append(&mut value_lenght.to_be_bytes().to_vec());
+                rows_content.append(&mut value.as_bytes().to_vec());
+            }
+        }
+        // let mut rows_content: Vec<u8> = result
+        //     .into_iter()
+        //     .flat_map(|subvec| subvec.into_iter().flat_map(|s| s.into_bytes()))
+        //     .collect();
 
         res.append(&mut metadata);
         res.append(&mut rows_count.to_be_bytes().to_vec());
@@ -423,6 +491,7 @@ impl DiskHandler {
         res
     }
 
+    /// Realiza una consulta SELECT y ordena las filas según el criterio de ordenación dado.
     fn do_select_and_order(
         statement: &Select,
         reader: &mut BufReader<&File>,
@@ -459,6 +528,7 @@ impl DiskHandler {
         Ok(result_rows)
     }
 
+    /// Realiza una consulta SELECT sin ordenar las filas.
     fn do_select_and_not_order(
         statement: &Select,
         reader: &mut BufReader<&File>,
@@ -502,6 +572,7 @@ impl DiskHandler {
         Ok(result_rows)
     }
 
+    /// Genera una fila para seleccionar en una tabla, en base a las columnas dadas en la query y de la tabla.
     fn generate_row_to_select(
         table_row: &[String],
         table_cols: &[String],
@@ -520,7 +591,7 @@ impl DiskHandler {
                 }
             }
         }
-
+        new_row.push("\n".to_string());
         new_row
     }
 }

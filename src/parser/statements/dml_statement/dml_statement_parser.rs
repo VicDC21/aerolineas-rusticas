@@ -28,7 +28,7 @@ use crate::{
     protocol::errors::error::Error,
 };
 
-use super::{main_statements::select::order_by::ProtocolOrdering, r#where::operator::Operator};
+use super::{main_statements::select::ordering::ProtocolOrdering, r#where::operator::Operator};
 
 /// dml_statement::= select_statement
 /// | insert_statement
@@ -515,6 +515,7 @@ mod tests {
     use crate::{
         parser::{
             data_types::{
+                constant::Constant,
                 identifier::{
                     quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
                 },
@@ -522,7 +523,7 @@ mod tests {
                 unquoted_name::UnquotedName,
             },
             statements::dml_statement::{
-                main_statements::select::order_by::ProtocolOrdering,
+                main_statements::select::ordering::ProtocolOrdering,
                 r#where::expression::Expression,
             },
         },
@@ -583,8 +584,8 @@ mod tests {
                     );
                     assert_eq!(relation.operator, Operator::Equal);
                     assert_eq!(
-                        relation.column,
-                        Identifier::UnquotedIdentifier(UnquotedIdentifier::new("5".to_string()))
+                        relation.term_to_compare,
+                        Term::Constant(Constant::Integer(5))
                     );
                 } else {
                     return Err(Error::SyntaxError("Expected Relation expression".into()));
@@ -714,9 +715,13 @@ mod tests {
                         assert_eq!(relation2.operator, Operator::Equal);
                         assert_eq!(
                             relation2.term_to_compare,
-                            Term::is_term(&mut vec!["USA".to_string()])
-                                .unwrap()
-                                .unwrap()
+                            Term::is_term(&mut vec![
+                                "\'".to_string(),
+                                "USA".to_string(),
+                                "\'".to_string()
+                            ])
+                            .unwrap()
+                            .unwrap()
                         );
                     } else {
                         return Err(Error::SyntaxError(
@@ -757,9 +762,13 @@ mod tests {
                             assert_eq!(relation1.operator, Operator::Equal);
                             assert_eq!(
                                 relation1.term_to_compare,
-                                Term::is_term(&mut vec!["electronics".to_string()])
-                                    .unwrap()
-                                    .unwrap()
+                                Term::is_term(&mut vec![
+                                    "\'".to_string(),
+                                    "electronics".to_string(),
+                                    "\'".to_string()
+                                ])
+                                .unwrap()
+                                .unwrap()
                             );
                         } else {
                             return Err(Error::SyntaxError(
@@ -819,7 +828,7 @@ mod tests {
 
     #[test]
     fn test_03_where_clause_with_contains() -> Result<(), Error> {
-        let query = "SELECT * FROM users WHERE hobbies CONTAINS reading";
+        let query = "SELECT * FROM users WHERE hobbies CONTAINS 'reading'";
         let mut tokens = tokenize_query(query);
 
         let result = select_statement(&mut tokens)?;
@@ -838,9 +847,13 @@ mod tests {
                     assert_eq!(relation.operator, Operator::Contains);
                     assert_eq!(
                         relation.term_to_compare,
-                        Term::is_term(&mut vec!["reading".to_string()])
-                            .unwrap()
-                            .unwrap()
+                        Term::is_term(&mut vec![
+                            "\'".to_string(),
+                            "reading".to_string(),
+                            "\'".to_string()
+                        ])
+                        .unwrap()
+                        .unwrap()
                     );
                 } else {
                     return Err(Error::SyntaxError("Expected Relation expression".into()));

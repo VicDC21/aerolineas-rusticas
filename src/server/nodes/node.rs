@@ -10,13 +10,21 @@ use std::{
     thread::Builder,
 };
 
-use crate::parser::{
+use crate::{parser::{
+    data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
     statements::{
-        ddl_statement::ddl_statement_parser::DdlStatement,
-        dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable,
+            ddl_statement_parser::DdlStatement,
+        },
+        dml_statement::{
+            dml_statement_parser::DmlStatement,
+            main_statements::{insert::Insert, select::select_operation::Select},
+        },
+        statement::Statement,
     },
-};
+}, protocol::messages::responses::result_kinds::ResultKind};
 use crate::protocol::headers::{
     flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
 };
@@ -45,7 +53,12 @@ use crate::server::{
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 
-use super::{keyspace::Keyspace, table::Table};
+use super::{
+    graph::{N_NODES, START_ID},
+    keyspace::Keyspace,
+    table::Table,
+    utils::{divide_range, send_to_node_and_wait_response},
+};
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
@@ -81,18 +94,18 @@ pub struct Node {
     /// (nombre, tabla)
     tables: HashMap<String, Table>,
 
-    /// Valor de la columna de _partition key_ y el valor del hashing que le corresponde
-    partitions_range: HashMap<String, u32>,
+    /// Rangos asignados a cada nodo para determinar la partición de los datos.
+    nodes_ranges: Vec<(u64, u64)>,
 
-    /// Valor del hashing y el nodo que le corresponde
-    partitions_to_node: HashMap<u32, NodeId>,
+    /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
+    tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Self {
         let storage_addr = DiskHandler::new_node_storage(id);
-
+        let nodes_ranges = divide_range(0, 18446744073709551615, N_NODES as usize);
         Self {
             id,
             neighbours_states: NodesMap::new(),
@@ -101,8 +114,8 @@ impl Node {
             default_keyspace_name: "".to_string(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
-            partitions_range: HashMap::new(),
-            partitions_to_node: HashMap::new(),
+            nodes_ranges,
+            tables_and_partitions_keys_values: HashMap::new(),
         }
     }
 
@@ -122,6 +135,7 @@ impl Node {
     fn add_keyspace(&mut self, keyspace: Keyspace) {
         self.keyspaces
             .insert(keyspace.get_name().to_string(), keyspace);
+        println!("crea correctamente la keyspace");
     }
 
     fn get_keyspace(&self, keyspace_name: &str) -> Result<&Keyspace> {
@@ -161,21 +175,52 @@ impl Node {
         self.neighbours_states.keys().copied().collect()
     }
 
-    /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_.
-    fn select_node(&self, value: String) -> NodeId {
-        let neighbours_ids: Vec<NodeId> = self.get_neighbours_ids();
+    /// Inserta un valor en el mapa de tablas y _partition keys values_ segun el nombre de la tabla.
+    fn insert_in_table_partition_key_value(&mut self, value: String, table_name: String) {
+        if let Some(partition_keys_values) =
+            self.tables_and_partitions_keys_values.get_mut(&table_name)
+        {
+            partition_keys_values.push(value);
+        } else {
+            self.tables_and_partitions_keys_values
+                .insert(table_name, vec![value]);
+        }
+    }
+
+    /// Hashea el valor recibido.
+    fn hash_value(value: &str) -> u64 {
         let mut hasher = DefaultHasher::new();
         value.hash(&mut hasher);
-        let hash_val = hasher.finish();
+        hasher.finish()
+    }
 
-        let n = neighbours_ids.len() as u64;
-        let hashed_index = (hash_val % n) as usize;
-        neighbours_ids[hashed_index]
+    /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
+    fn select_node(&self, value: &str) -> NodeId {
+        let hash_val = Self::hash_value(value);
+
+        let mut i = 0;
+        for (a, b) in &self.nodes_ranges {
+            if *a <= hash_val && hash_val < *b {
+                return START_ID + i as NodeId;
+            }
+            i += 1;
+        }
+
+        START_ID + i as NodeId
+    }
+
+    fn send_message_and_wait_response(
+        &self,
+        bytes: Vec<Byte>,
+        node_id: u8,
+        port_type: PortType,
+    ) -> Result<Vec<u8>> {
+        send_to_node_and_wait_response(node_id, bytes, port_type)
     }
 
     /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
-    fn send_message(&self, bytes: Vec<Byte>, value: String, port_type: PortType) -> Result<()> {
-        send_to_node(self.select_node(value), bytes, port_type)
+    fn send_message(&mut self, bytes: Vec<Byte>, value: String, port_type: PortType) -> Result<()> {
+        send_to_node(self.select_node(&value), bytes, port_type)
     }
 
     /// Manda un mensaje en bytes a todos los vecinos del nodo.
@@ -495,7 +540,6 @@ impl Node {
                     };
                     // consumimos los bytes del stream para no mandarlos de vuelta en la response
                     bufreader.consume(bytes_vec.len());
-
                     let can_exit = Self::is_exit(&bytes_vec[..]);
                     if let Err(err) = proc_sender.send((tcp_stream, bytes_vec)) {
                         println!("Error mandando bytes al procesador:\n\n{}", err);
@@ -520,7 +564,7 @@ impl Node {
 
     pub fn process_tcp(&mut self, mut tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<bool> {
         match SvAction::get_action(&bytes[..]) {
-            Some(action) => match self.handle_sv_action(action) {
+            Some(action) => match self.handle_sv_action(action, tcp_stream) {
                 Ok(stop_loop) => Ok(stop_loop),
                 Err(err) => {
                     println!(
@@ -546,7 +590,7 @@ impl Node {
                     Ok(false)
                 }
                 ConnectionMode::Parsing => {
-                    match self.handle_request(&bytes[..]) {
+                    match self.handle_request(&bytes[..], false) {
                         Err(err) => {
                             println!("Error manejando una query:\n\n{}", err);
                         }
@@ -557,7 +601,6 @@ impl Node {
                             }
                         }
                     }
-
                     Ok(false)
                 }
             },
@@ -565,7 +608,7 @@ impl Node {
     }
 
     /// Maneja una acción de servidor.
-    fn handle_sv_action(&mut self, action: SvAction) -> Result<bool> {
+    fn handle_sv_action(&mut self, action: SvAction, mut tcp_stream: TcpStream) -> Result<bool> {
         match action {
             SvAction::Exit(proc_stop) => Ok(proc_stop),
             SvAction::Beat => {
@@ -605,12 +648,29 @@ impl Node {
                 // no interrumpe el nodo porque es el trabajo de EXIT
                 Ok(false)
             }
+            SvAction::InternalQuery(bytes) => match self.handle_request(&bytes, true) {
+                Err(err) => {
+                    let _ = tcp_stream.write_all(&err.as_bytes());
+                    if let Err(err) = tcp_stream.flush() {
+                        Err(Error::ServerError(err.to_string()))
+                    } else {
+                        Ok(false)
+                    }
+                }
+                Ok(response_bytes) => {
+                    let _ = tcp_stream.write_all(&response_bytes[..]);
+                    if let Err(err) = tcp_stream.flush() {
+                        Err(Error::ServerError(err.to_string()))
+                    } else {
+                        Ok(false)
+                    }
+                }
+            },
         }
     }
 
     /// Maneja una request.
-
-    fn handle_request(&mut self, request: &[Byte]) -> Result<Vec<Byte>> {
+    fn handle_request(&mut self, request: &[Byte], internal_request: bool) -> Result<Vec<Byte>> {
         if request.len() < 9 {
             return Err(Error::ProtocolError(
                 "No se cumple el protocolo del header".to_string(),
@@ -624,13 +684,12 @@ impl Node {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut request[..4].to_vec());
         // VER QUE HACER CON LAS FLAGS
-
         // Cada handler deberia devolver un Vec<Byte> que contenga: que opcode de respuesta mandar,
         // con que lenght y el body si es que tiene
         let mut _left_response = match opcode {
             Opcode::Startup => self.handle_startup(request, lenght),
             Opcode::Options => self.handle_options(),
-            Opcode::Query => self.handle_query(request, lenght),
+            Opcode::Query => self.handle_query(request, lenght, internal_request),
             Opcode::Prepare => self.handle_prepare(),
             Opcode::Execute => self.handle_execute(),
             Opcode::Register => self.handle_register(),
@@ -648,7 +707,7 @@ impl Node {
         Ok(response)
     }
 
-    fn handle_startup(&self, _request: &[Byte], _lenght: Length) -> Vec<Byte> {
+    fn handle_startup(&self, _request: &[Byte], _length: Length) -> Vec<Byte> {
         // El body es un [string map] con posibles opciones
         vec![0]
     }
@@ -660,22 +719,19 @@ impl Node {
         vec![0]
     }
 
-    fn handle_query(&mut self, request: &[Byte], lenght: Length) -> Vec<Byte> {
+    fn handle_query(
+        &mut self,
+        request: &[Byte],
+        lenght: Length,
+        internal_request: bool,
+    ) -> Vec<Byte> {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
                 Ok(statement) => {
-                    //let partition_in_node: Vec<String> = self.search_partitions(&statement);
-
-                    match statement {
-                        Statement::DdlStatement(ddl_statement) => {
-                            self.handle_ddl_statement(ddl_statement)
-                        }
-                        Statement::DmlStatement(dml_statement) => {
-                            self.handle_dml_statement(dml_statement)
-                        }
-                        Statement::UdtStatement(_udt_statement) => {
-                            todo!();
-                        }
+                    if internal_request {
+                        self.handle_internal_statement(statement)
+                    } else {
+                        self.handle_statement(statement, request)
                     }
                 }
                 Err(err) => {
@@ -710,33 +766,27 @@ impl Node {
         vec![0]
     }
 
-    /// Maneja una declaración DDL.
-    fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<Byte> {
-        match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => {
-                let name = keyspace_name.get_name();
-                if self.keyspaces.contains_key(name) {
-                    self.set_default_keyspace(name.to_string());
-                    vec![0x0, 0x0, 0x0, 0x3]
-                } else {
-                    Error::ServerError("El keyspace solicitado no existe".to_string()).as_bytes()
-                }
+    /// Maneja una declaración interna.
+    fn handle_internal_statement(&mut self, statement: Statement) -> Vec<Byte> {
+        match statement {
+            Statement::DdlStatement(ddl_statement) => {
+                self.handle_internal_ddl_statement(ddl_statement)
             }
+            Statement::DmlStatement(dml_statement) => {
+                self.handle_internal_dml_statement(dml_statement)
+            }
+            Statement::UdtStatement(_udt_statement) => {
+                todo!();
+            }
+        }
+    }
+
+    /// Maneja una declaración DDL.
+    fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<Byte> {
+        match ddl_statement {
+            DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name),
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
-                // if no_tenemos_la_info {
-                //
-                // } else {
-                //
-                // }
-                match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
-                    Ok(Some(keyspace)) => self.add_keyspace(keyspace),
-                    Ok(None) => {
-                        return Error::ServerError("No se pudo crear el keyspace".to_string())
-                            .as_bytes()
-                    }
-                    Err(err) => return err.as_bytes(),
-                };
-                vec![0x0, 0x0, 0x0, 0x1]
+                self.process_create_keyspace_statement(create_keyspace)
             }
             DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
                 todo!()
@@ -745,23 +795,7 @@ impl Node {
                 todo!()
             }
             DdlStatement::CreateTableStatement(create_table) => {
-                let default_keyspace_name = match self.get_default_keyspace() {
-                    Ok(keyspace) => keyspace.get_name().to_string(),
-                    Err(err) => return err.as_bytes(),
-                };
-                match DiskHandler::create_table(
-                    create_table,
-                    &self.storage_addr,
-                    &default_keyspace_name,
-                ) {
-                    Ok(Some(keyspace)) => self.add_table(keyspace),
-                    Ok(None) => {
-                        return Error::ServerError("No se pudo crear la tabla".to_string())
-                            .as_bytes()
-                    }
-                    Err(err) => return err.as_bytes(),
-                };
-                vec![0x0, 0x0, 0x0, 0x1]
+                self.process_create_table_statement(create_table)
             }
             DdlStatement::AlterTableStatement(_alter_table) => {
                 todo!()
@@ -775,15 +809,56 @@ impl Node {
         }
     }
 
+    fn process_use_statement(&mut self, keyspace_name: KeyspaceName) -> Vec<u8> {
+        let name = keyspace_name.get_name();
+        if self.keyspaces.contains_key(name) {
+            self.set_default_keyspace(name.to_string());
+            self.create_result_void()
+        } else {
+            Error::ServerError("El keyspace solicitado no existe".to_string()).as_bytes()
+        }
+    }
+
+    fn process_create_keyspace_statement(&mut self, create_keyspace: CreateKeyspace) -> Vec<u8> {
+        match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
+            Ok(Some(keyspace)) => self.add_keyspace(keyspace),
+            Ok(None) => return self.create_result_void(),
+            Err(err) => return err.as_bytes(),
+        };
+        self.create_result_void()
+    }
+    fn create_result_void(&mut self) -> Vec<Byte>{
+        let mut response: Vec<Byte> = Vec::new();
+        response.append(&mut Version::ResponseV5.as_bytes());
+        response.append(&mut Flag::Default.as_bytes());
+        response.append(&mut Stream::new(0).as_bytes());
+        response.append(&mut Opcode::Result.as_bytes());
+        response.append(&mut Length::new(4).as_bytes());
+
+        response.append(&mut ResultKind::Void.as_bytes());
+        response
+    }
+
+    fn process_create_table_statement(&mut self, create_table: CreateTable) -> Vec<u8> {
+        let default_keyspace_name = match self.get_default_keyspace() {
+            Ok(keyspace) => keyspace.get_name().to_string(),
+            Err(err) => return err.as_bytes(),
+        };
+        match DiskHandler::create_table(create_table, &self.storage_addr, &default_keyspace_name) {
+            Ok(Some(keyspace)) => self.add_table(keyspace),
+            Ok(None) => {
+                return Error::ServerError("No se pudo crear la tabla".to_string()).as_bytes()
+            }
+            Err(err) => return err.as_bytes(),
+        };
+        self.create_result_void()
+    }
+
     /// Maneja una declaración DML.
-    fn handle_dml_statement(&self, dml_statement: DmlStatement) -> Vec<Byte> {
+    fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement) -> Vec<Byte> {
         let res: Result<Vec<Byte>> = match dml_statement {
-            DmlStatement::SelectStatement(select) => {
-                DiskHandler::do_select(select, &self.storage_addr)
-            }
-            DmlStatement::InsertStatement(insert) => {
-                DiskHandler::do_insert(insert, &self.storage_addr)
-            }
+            DmlStatement::SelectStatement(select) => self.process_select(&select),
+            DmlStatement::InsertStatement(insert) => self.process_insert(&insert),
             DmlStatement::UpdateStatement(_update) => {
                 todo!()
             }
@@ -799,24 +874,64 @@ impl Node {
             Err(err) => err.as_bytes(),
         }
     }
-    /*
-    fn search_partitions(&mut self, statement: &Statement) -> Vec<String> {
-        match statement {
-            Statement::DdlStatement(ddl_statement) => self.search_partitions_ddl(ddl_statement),
-            Statement::DmlStatement(dml_statement) => todo!(),
-            Statement::UdtStatement(udt_statement) => todo!(),
-        };
 
-        Vec::new()
+    fn process_select(&self, select: &Select) -> Result<Vec<Byte>> {
+        let table = match self.get_table(&select.from.get_name()) {
+            Ok(table) => table,
+            Err(err) => return Err(err),
+        };
+        DiskHandler::do_select(select, &self.storage_addr, table)
     }
 
-    fn search_partitions_ddl(&mut self, ddl_statement: &DdlStatement) -> Vec<String> {
-        match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => {
-                todo!()
+    fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>> {
+        let table_name = insert.table.get_name();
+        let table = match self.get_table(&table_name) {
+            Ok(table) => table,
+            Err(err) => return Err(err),
+        };
+        match DiskHandler::do_insert(insert, &self.storage_addr, table) {
+            Ok(new_row) => {
+                if !new_row.is_empty() {
+                    let table_name = insert.table.get_name();
+                    let table = self.get_table(&table_name)?;
+                    let index = match table
+                        .get_columns_names()
+                        .iter()
+                        .position(|c| c == &table.get_partition_key())
+                    {
+                        Some(index) => index,
+                        None => {
+                            return Err(Error::ServerError(
+                                "No se pudo encontrar la columna de la partition key".to_string(),
+                            ))
+                        }
+                    };
+                    self.insert_in_table_partition_key_value(
+                        new_row[index].to_string(),
+                        table_name.to_string(),
+                    );
+                }
             }
+            Err(err) => return Err(err),
+        }
+        Ok(self.create_result_void())
+    }
+
+    fn handle_statement(&mut self, statement: Statement, request: &[Byte]) -> Vec<Byte> {
+        match statement {
+            Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
+            Statement::DmlStatement(dml_statement) => {
+                self.handle_dml_statement(dml_statement, request)
+            }
+            Statement::UdtStatement(_udt_statement) => todo!(),
+        }
+    }
+
+    fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<u8> {
+        match ddl_statement {
+            DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name),
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
-                todo!()
+                self.process_create_keyspace_statement(create_keyspace)
             }
             DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
                 todo!()
@@ -825,7 +940,7 @@ impl Node {
                 todo!()
             }
             DdlStatement::CreateTableStatement(create_table) => {
-                todo!()
+                self.process_create_table_statement(create_table)
             }
             DdlStatement::AlterTableStatement(_alter_table) => {
                 todo!()
@@ -837,7 +952,206 @@ impl Node {
                 todo!()
             }
         }
-    }*/
+    }
+
+    fn handle_dml_statement(&mut self, dml_statement: DmlStatement, request: &[Byte]) -> Vec<u8> {
+        let res = match dml_statement {
+            DmlStatement::SelectStatement(select) => self.select_with_other_nodes(select, request),
+            DmlStatement::InsertStatement(insert) => self.insert_with_other_nodes(insert, request),
+            DmlStatement::UpdateStatement(_update) => {
+                todo!()
+            }
+            DmlStatement::DeleteStatement(_delete) => {
+                todo!()
+            }
+            DmlStatement::BatchStatement(_batch) => {
+                todo!()
+            }
+        };
+        match res {
+            Ok(value) => value,
+            Err(err) => err.as_bytes(),
+        }
+    }
+
+    fn insert_with_other_nodes(&mut self, insert: Insert, request: &[u8]) -> Result<Vec<Byte>> {
+        let table_name: String = insert.table.get_name();
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
+        let mut response: Vec<Byte> = Vec::new();
+        for partition_key_value in partitions_keys_to_nodes {
+            let node_id = self.select_node(&partition_key_value);
+            let replication_factor = self.get_replicas_from_table_name(&table_name)?;
+            for i in 0..replication_factor {
+                let node_to_replicate = self.next_node_to_replicate_data(
+                    node_id,
+                    i as u8,
+                    START_ID,
+                    START_ID + N_NODES,
+                );
+                response = if node_id != self.id {
+                    self.send_message_and_wait_response(
+                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        node_to_replicate,
+                        PortType::Priv,
+                    )?
+                } else {
+                    self.process_insert(&insert)?
+                }
+            }
+        }
+        Ok(response)
+    }
+
+    fn next_node_to_replicate_data(
+        &self,
+        first_node_to_replicate: u8,
+        node_iterator: u8,
+        min: u8,
+        max: u8,
+    ) -> u8 {
+        let nodes_range = max - min + 1;
+        min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
+    }
+
+    fn select_with_other_nodes(&mut self, select: Select, request: &[Byte]) -> Result<Vec<Byte>> {
+        let mut results_from_another_nodes: Vec<u8> = Vec::new();
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&select.from.get_name())?;
+        let mut consulted_nodes: Vec<String> = Vec::new();
+        for partition_key_value in partitions_keys_to_nodes {
+            let node_id = self.select_node(partition_key_value);
+            if !consulted_nodes.contains(partition_key_value) {
+                if node_id == self.id {
+                    self.handle_result_from_node(
+                        &mut results_from_another_nodes,
+                        self.process_select(&select)?,
+                        &select,
+                    )?;
+                } else {
+                    let res = self.send_message_and_wait_response(
+                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        node_id,
+                        PortType::Priv,
+                    )?;
+                    match Opcode::try_from(res[4])? {
+                        Opcode::RequestError => return Err(Error::try_from(res[10..].to_vec())?),
+                        Opcode::Result => self.handle_result_from_node(
+                            &mut results_from_another_nodes,
+                            res,
+                            &select,
+                        )?,
+                        _ => {
+                            return Err(Error::ServerError(
+                                "Nodo manda opcode inesperado".to_string(),
+                            ))
+                        }
+                    };
+                    consulted_nodes.push(partition_key_value.to_string());
+                }
+            }
+        }
+        Ok(results_from_another_nodes)
+    }
+
+    fn get_partition_keys_values(&self, table_name: &String) -> Result<&Vec<String>> {
+        match self.tables_and_partitions_keys_values.get(table_name) {
+            Some(partitions_keys_to_nodes) => Ok(partitions_keys_to_nodes),
+            None => Err(Error::ServerError(
+                "La tabla indicada no existe".to_string(),
+            )),
+        }
+    }
+
+    fn get_replicas_from_table_name(&self, table_name: &str) -> Result<u32> {
+        let keyspace = self.get_keyspace(table_name)?;
+        match keyspace.simple_replicas() {
+            Some(replication_factor) => Ok(replication_factor),
+            None => Err(Error::ServerError("No es una simple strategy".to_string())),
+        }
+    }
+
+    fn handle_result_from_node(
+        &self,
+        results_from_another_nodes: &mut Vec<u8>,
+        mut result_from_actual_node: Vec<u8>,
+        select: &Select,
+    ) -> Result<()> {
+        if results_from_another_nodes.is_empty() {
+            results_from_another_nodes.append(&mut result_from_actual_node);
+            return Ok(());
+        }
+        let size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
+
+        let total_length_from_metadata =
+            self.get_columns_metadata_length(results_from_another_nodes);
+
+        let mut new_res =
+            results_from_another_nodes[total_length_from_metadata..size.len as usize].to_vec();
+        results_from_another_nodes.append(&mut new_res);
+
+        let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
+            results_from_another_nodes,
+            total_length_from_metadata,
+            select,
+        )?;
+
+        // le agrego el body de las filas a las que ya tenia
+        results_from_another_nodes.truncate(total_length_from_metadata);
+        results_from_another_nodes.append(&mut new_ordered_res_bytes);
+
+        Ok(())
+    }
+
+    fn get_columns_metadata_length(&self, results_from_another_nodes: &mut [u8]) -> usize {
+        let mut total_length_from_metadata: usize = 12;
+        let column_quantity = &results_from_another_nodes[13..17];
+        let column_quantity = i32::from_be_bytes([
+            column_quantity[0],
+            column_quantity[1],
+            column_quantity[2],
+            column_quantity[3],
+        ]);
+        for _ in 0..column_quantity {
+            let name_length = &results_from_another_nodes
+                [total_length_from_metadata..(total_length_from_metadata + 2)]; // Consigo el largo del [String]
+            let name_length = u16::from_be_bytes([name_length[0], name_length[1]]); // Lo casteo para sumarlo al total
+            total_length_from_metadata += (name_length as usize) + 2 + 2; // Sumamos el largo del <col_spec_i>
+        }
+        total_length_from_metadata
+    }
+
+    fn get_ordered_new_res_bytes(
+        &self,
+        results_from_another_nodes: &[Byte],
+        total_length_from_metadata: usize,
+        select: &Select,
+    ) -> Result<Vec<Byte>> {
+        let table_name = select.from.get_name();
+        let table = match self.get_table(&table_name) {
+            Ok(table) => table,
+            Err(err) => return Err(err),
+        };
+
+        let result_string =
+            String::from_utf8(results_from_another_nodes[total_length_from_metadata..].to_vec())
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let rows: Vec<&str> = result_string.split("\n").collect();
+        let mut splitted_rows: Vec<Vec<String>> = rows
+            .iter()
+            .map(|r| r.split(",").map(|s| s.to_string()).collect())
+            .collect();
+        if let Some(order_by) = &select.options.order_by {
+            order_by.order(&mut splitted_rows, &table.get_columns_names());
+        }
+
+        let new_ordered_res = splitted_rows
+            .iter()
+            .map(|r| r.join(","))
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        Ok(new_ordered_res.as_bytes().to_vec())
+    }
 }
 
 impl PartialEq for Node {

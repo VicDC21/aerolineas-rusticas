@@ -6,7 +6,6 @@ use rand::{
 };
 use std::{
     collections::HashSet,
-    hash::{DefaultHasher, Hash, Hasher},
     net::TcpStream,
     sync::mpsc::{channel, Sender},
     thread::{sleep, Builder, JoinHandle},
