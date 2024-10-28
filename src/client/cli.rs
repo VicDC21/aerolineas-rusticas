@@ -10,10 +10,7 @@ use std::{
 use crate::{
     parser::{
         main_parser::make_parse,
-        statements::{
-            dml_statement::main_statements::select::kind_of_columns::KindOfColumns,
-            statement::Statement,
-        },
+        statements::statement::Statement,
     },
     protocol::{
         aliases::{results::Result, types::Byte},
@@ -262,7 +259,7 @@ impl Client {
         let opcode = Opcode::try_from(request[4])?;
         let lenght = Length::try_from(request[5..9].to_vec())?;
 
-        let res = match opcode {
+        let _res = match opcode {
             Opcode::RequestError => self.handle_request_error(lenght, request),
             Opcode::Ready => self.handle_ready(),
             Opcode::Authenticate => self.handle_authenticate(),
@@ -280,8 +277,8 @@ impl Client {
         Ok(())
     }
 
-    fn handle_request_error(&self, lenght: Length, request: &[Byte]) -> Result<()> {
-        let a = Error::try_from(request[9..].to_vec())?;
+    fn handle_request_error(&self, _lenght: Length, request: &[Byte]) -> Result<()> {
+        let _err = Error::try_from(request[9..].to_vec())?;
 
         todo!()
     }
@@ -320,7 +317,7 @@ impl Client {
         todo!()
     }
 
-    fn deserialize_rows(&self, lenght: Length, request: &[Byte]) -> Result<()> {
+    fn deserialize_rows(&self, _lenght: Length, request: &[Byte]) -> Result<()> {
         let _flags = RowsFlag::try_from(request[..4].to_vec())?;
         let columns_count = u32::from_be_bytes([request[4], request[5], request[6], request[7]]);
         let mut actual_position: usize = 8;
@@ -371,7 +368,7 @@ impl Client {
         Ok(())
     }
 
-    fn set_keyspace(&self, lenght: Length, request: &[Byte]) -> Result<()> {
+    fn set_keyspace(&self, _lenght: Length, _request: &[Byte]) -> Result<()> {
         Ok(())
     }
 }
