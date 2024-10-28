@@ -539,7 +539,6 @@ impl Node {
                     };
                     // consumimos los bytes del stream para no mandarlos de vuelta en la response
                     bufreader.consume(bytes_vec.len());
-
                     let can_exit = Self::is_exit(&bytes_vec[..]);
                     if let Err(err) = proc_sender.send((tcp_stream, bytes_vec)) {
                         println!("Error mandando bytes al procesador:\n\n{}", err);

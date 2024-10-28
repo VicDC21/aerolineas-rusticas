@@ -202,12 +202,12 @@ impl Byteable for SvAction {
                 bytes_vec.extend(Self::encode_nodes_map_to_bytes(nodes_map));
                 bytes_vec
             }
-            Self::SendEndpointState(id) => vec![0xF6, *id],
             Self::NewNeighbour(state) => {
-                let mut bytes = vec![0xF7];
+                let mut bytes = vec![0xF6];
                 bytes.extend(state.as_bytes());
                 bytes
-            }
+            },
+            Self::SendEndpointState(id) => vec![0xF7, *id],
             Self::InternalQuery(query_bytes) => {
                 let mut bytes = vec![0xF8];
                 bytes.extend(query_bytes);
