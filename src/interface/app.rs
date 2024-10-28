@@ -28,7 +28,7 @@ pub const ORIG_LONG: f64 = -58.36909719124974;
 /// La app de aerolíneas misma.
 pub struct AerolineasApp {
     /// El cliente interno de la aplicación.
-    client: Arc<Client>,
+    client: Client,
 
     /// Guarda el estado del widget del mapa.
     map_memory: MapMemory,
@@ -73,7 +73,7 @@ impl AerolineasApp {
         let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
 
         Self {
-            client: Arc::new(Client::default()),
+            client: Client::default(),
             map_memory: mem,
             map_providers: Provider::providers(egui_ctx.to_owned()),
             selected_provider: Provider::OpenStreetMap,
@@ -120,7 +120,7 @@ impl App for AerolineasApp {
                 .sync_zoom(zoom_lvl);
             self.flights_loader
                 .sync_date(self.date)
-                .sync_client(Arc::clone(&self.client));
+                .sync_client(self.client.clone());
 
             // necesariamente antes de agregar al mapa
             if let Some(cur_airport) = self.screen_clicker.take_cur_airport() {
