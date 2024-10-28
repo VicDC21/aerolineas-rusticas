@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use eframe::egui::{Painter, Response};
+use eframe::egui::{Painter, PointerButton, Response};
 use walkers::{Plugin, Projector};
 
 use crate::data::{airports::Airport, utils::distances::distance_euclidean_pos2};
@@ -19,8 +19,11 @@ pub struct ScreenClicker {
     // El nivel de zoom actual.
     zoom: f32,
 
-    // El último aeropuerto clickeado.
+    // El último aeropuerto clickeado con el botón primario.
     current_airport: Option<Option<Airport>>,
+
+    // El último aeropuerto clickeado con el botón secundario.
+    extra_airport: Option<Option<Airport>>,
 }
 
 impl ScreenClicker {
@@ -29,11 +32,13 @@ impl ScreenClicker {
         airports: Arc<Vec<Airport>>,
         zoom: f32,
         current_airport: Option<Option<Airport>>,
+        extra_airport: Option<Option<Airport>>,
     ) -> Self {
         Self {
             airports,
             zoom,
             current_airport,
+            extra_airport,
         }
     }
 
@@ -62,11 +67,17 @@ impl ScreenClicker {
     pub fn take_cur_airport(&mut self) -> Option<Option<Airport>> {
         self.current_airport.take()
     }
+
+    /// **Consume** el aeropuerto secundario y lo devuelve.
+    pub fn take_extra_airport(&mut self) -> Option<Option<Airport>> {
+        self.extra_airport.take()
+    }
+
 }
 
 impl Default for ScreenClicker {
     fn default() -> Self {
-        Self::new(Arc::new(Vec::new()), 0.0, None)
+        Self::new(Arc::new(Vec::new()), 0.0, None, None)
     }
 }
 
@@ -84,13 +95,21 @@ impl Plugin for &mut ScreenClicker {
                 if zoom_is_showable(&airport.airport_type, self.zoom)
                     && distance_euclidean_pos2(&cur_pos, &airport_pos) < MIN_CLICK_DIST
                 {
-                    self.current_airport = Some(Some(airport.clone()));
+                    if response.clicked_by(PointerButton::Primary) {
+                        self.current_airport = Some(Some(airport.clone()));
+                    } else if response.clicked_by(PointerButton::Secondary) {
+                        self.extra_airport = Some(Some(airport.clone()));
+                    }
                     return;
                 }
             }
         }
 
         // hubo click pero no cerca de ningún aeropuerto
-        self.current_airport = Some(None);
+        if response.clicked_by(PointerButton::Primary) {
+            self.current_airport = Some(None);
+        } else if response.clicked_by(PointerButton::Secondary) {
+            self.extra_airport = Some(None);
+        }
     }
 }
