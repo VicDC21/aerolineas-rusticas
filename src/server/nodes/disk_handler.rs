@@ -10,18 +10,26 @@ use super::{
     column_config::ColumnConfig, keyspace::Keyspace, replication_strategy::ReplicationStrategy,
     table::Table,
 };
-use crate::parser::statements::{
-    ddl_statement::{create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options},
-    dml_statement::main_statements::{
-        insert::Insert,
-        select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
-    },
-};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
 };
 use crate::server::nodes::node::NodeId;
+use crate::{
+    parser::statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+        },
+        dml_statement::main_statements::{
+            insert::Insert,
+            select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
+        },
+    },
+    protocol::{
+        messages::responses::result::col_type::ColType, traits::Byteable,
+        utils::encode_string_to_bytes,
+    },
+};
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
@@ -390,7 +398,7 @@ impl DiskHandler {
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
-    pub fn do_select(statement: &Select, storage_addr: &str) -> Result<Vec<Byte>> {
+    pub fn do_select(statement: &Select, storage_addr: &str, table: &Table) -> Result<Vec<Byte>> {
         let keyspace = statement.from.get_keyspace();
         let name = statement.from.get_name();
         let table_addr = match keyspace {
@@ -448,6 +456,7 @@ impl DiskHandler {
             result,
             &query_cols,
             &table_cols,
+            table,
         ))
     }
 
@@ -456,6 +465,7 @@ impl DiskHandler {
         result: Vec<Vec<String>>,
         query_cols: &[String],
         table_cols: &[String],
+        table: &Table,
     ) -> Vec<u8> {
         //kind of Result
         let mut res: Vec<u8> = vec![0x0, 0x0, 0x0, 0x2];
@@ -474,11 +484,28 @@ impl DiskHandler {
 
         // Si activamos flags entonces aca iria
         // [<paging_state>][<new_metadata_id>][<global_table_spec>?<col_spec_1>...<col_spec_n>]
+
+        let cols_name_and_type = table.get_columns_name_and_data_type();
+        for (col_name, data_type) in cols_name_and_type {
+            let col_type = ColType::from(data_type);
+            metadata.append(&mut encode_string_to_bytes(&col_name));
+            metadata.append(&mut col_type.as_bytes())
+        }
+
         let rows_count = result.len() as i32;
-        let mut rows_content: Vec<u8> = result
-            .into_iter()
-            .flat_map(|subvec| subvec.into_iter().flat_map(|s| s.into_bytes()))
-            .collect();
+
+        let mut rows_content: Vec<u8> = Vec::new();
+        for row in result {
+            for value in row {
+                let value_lenght = value.len() as i32;
+                rows_content.append(&mut value_lenght.to_be_bytes().to_vec());
+                rows_content.append(&mut value.as_bytes().to_vec());
+            }
+        }
+        // let mut rows_content: Vec<u8> = result
+        //     .into_iter()
+        //     .flat_map(|subvec| subvec.into_iter().flat_map(|s| s.into_bytes()))
+        //     .collect();
 
         res.append(&mut metadata);
         res.append(&mut rows_count.to_be_bytes().to_vec());
@@ -587,7 +614,7 @@ impl DiskHandler {
                 }
             }
         }
-
+        new_row.push("\n".to_string());
         new_row
     }
 }

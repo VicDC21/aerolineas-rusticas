@@ -13,14 +13,19 @@ use std::{
 use eframe::glow::Query;
 
 use crate::parser::{
-    data_types::keyspace_name::KeyspaceName, main_parser::make_parse, statements::{
-        ddl_statement::{create_keyspace::CreateKeyspace, create_table::CreateTable, ddl_statement_parser::DdlStatement},
+    data_types::keyspace_name::KeyspaceName,
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable,
+            ddl_statement_parser::DdlStatement,
+        },
         dml_statement::{
             dml_statement_parser::DmlStatement,
             main_statements::{insert::Insert, select::select_operation::Select},
         },
         statement::Statement,
-    }
+    },
 };
 use crate::protocol::headers::{
     flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
@@ -645,26 +650,24 @@ impl Node {
                 // no interrumpe el nodo porque es el trabajo de EXIT
                 Ok(false)
             }
-            SvAction::InternalQuery(bytes) => {
-                match self.handle_request(&bytes, true) {
-                    Err(err) => {
-                        let _ = tcp_stream.write_all(&err.as_bytes());
-                        if let Err(err) = tcp_stream.flush() {
-                            Err(Error::ServerError(err.to_string()))
-                        } else {
-                            Ok(false)
-                        }
-                    }
-                    Ok(response_bytes) => {
-                        let _ = tcp_stream.write_all(&response_bytes[..]);
-                        if let Err(err) = tcp_stream.flush() {
-                            Err(Error::ServerError(err.to_string()))
-                        } else {
-                            Ok(false)
-                        }
+            SvAction::InternalQuery(bytes) => match self.handle_request(&bytes, true) {
+                Err(err) => {
+                    let _ = tcp_stream.write_all(&err.as_bytes());
+                    if let Err(err) = tcp_stream.flush() {
+                        Err(Error::ServerError(err.to_string()))
+                    } else {
+                        Ok(false)
                     }
                 }
-            }
+                Ok(response_bytes) => {
+                    let _ = tcp_stream.write_all(&response_bytes[..]);
+                    if let Err(err) = tcp_stream.flush() {
+                        Err(Error::ServerError(err.to_string()))
+                    } else {
+                        Ok(false)
+                    }
+                }
+            },
         }
     }
 
@@ -707,7 +710,7 @@ impl Node {
         Ok(response)
     }
 
-    fn handle_startup(&self, _request: &[Byte], _lenght: Length) -> Vec<Byte> {
+    fn handle_startup(&self, _request: &[Byte], _length: Length) -> Vec<Byte> {
         // El body es un [string map] con posibles opciones
         vec![0]
     }
@@ -719,7 +722,12 @@ impl Node {
         vec![0]
     }
 
-    fn handle_query(&mut self, request: &[Byte], lenght: Length, internal_request: bool) -> Vec<Byte> {
+    fn handle_query(
+        &mut self,
+        request: &[Byte],
+        lenght: Length,
+        internal_request: bool,
+    ) -> Vec<Byte> {
         if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec()) {
             let res = match make_parse(&mut tokenize_query(&query)) {
                 Ok(statement) => {
@@ -779,9 +787,7 @@ impl Node {
     /// Maneja una declaración DDL.
     fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<Byte> {
         match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => {
-                self.process_use_statement(keyspace_name)
-            }
+            DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name),
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
                 self.process_create_keyspace_statement(create_keyspace)
             }
@@ -816,12 +822,11 @@ impl Node {
         }
     }
 
-    fn process_create_keyspace_statement(&mut self, create_keyspace: CreateKeyspace) -> Vec<u8>{
+    fn process_create_keyspace_statement(&mut self, create_keyspace: CreateKeyspace) -> Vec<u8> {
         match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
             Ok(Some(keyspace)) => self.add_keyspace(keyspace),
             Ok(None) => {
-                return Error::ServerError("No se pudo crear el keyspace".to_string())
-                    .as_bytes()
+                return Error::ServerError("No se pudo crear el keyspace".to_string()).as_bytes()
             }
             Err(err) => return err.as_bytes(),
         };
@@ -833,15 +838,10 @@ impl Node {
             Ok(keyspace) => keyspace.get_name().to_string(),
             Err(err) => return err.as_bytes(),
         };
-        match DiskHandler::create_table(
-            create_table,
-            &self.storage_addr,
-            &default_keyspace_name,
-        ) {
+        match DiskHandler::create_table(create_table, &self.storage_addr, &default_keyspace_name) {
             Ok(Some(keyspace)) => self.add_table(keyspace),
             Ok(None) => {
-                return Error::ServerError("No se pudo crear la tabla".to_string())
-                    .as_bytes()
+                return Error::ServerError("No se pudo crear la tabla".to_string()).as_bytes()
             }
             Err(err) => return err.as_bytes(),
         };
@@ -851,12 +851,8 @@ impl Node {
     /// Maneja una declaración DML.
     fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement) -> Vec<Byte> {
         let res: Result<Vec<Byte>> = match dml_statement {
-            DmlStatement::SelectStatement(select) => {
-                self.process_select(&select)
-            }
-            DmlStatement::InsertStatement(insert) => {
-                self.process_insert(&insert)
-            }
+            DmlStatement::SelectStatement(select) => self.process_select(&select),
+            DmlStatement::InsertStatement(insert) => self.process_insert(&insert),
             DmlStatement::UpdateStatement(_update) => {
                 todo!()
             }
@@ -873,15 +869,19 @@ impl Node {
         }
     }
 
-    fn process_select(&self, select: &Select) -> Result<Vec<Byte>>{
-        DiskHandler::do_select(select, &self.storage_addr)
+    fn process_select(&self, select: &Select) -> Result<Vec<Byte>> {
+        let table = match self.get_table(&select.from.get_name()) {
+            Ok(table) => table,
+            Err(err) => return Err(err),
+        };
+        DiskHandler::do_select(select, &self.storage_addr, table)
     }
 
-    fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>>{
+    fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>> {
         let table_name = insert.table.get_name();
         let table = match self.get_table(&table_name) {
             Ok(table) => table,
-            Err(err) => return Err(err)
+            Err(err) => return Err(err),
         };
         match DiskHandler::do_insert(insert, &self.storage_addr, table) {
             Ok(new_row) => {
@@ -896,10 +896,8 @@ impl Node {
                         Some(index) => index,
                         None => {
                             return Err(Error::ServerError(
-                                "No se pudo encontrar la columna de la partition key"
-                                    .to_string()
+                                "No se pudo encontrar la columna de la partition key".to_string(),
                             ))
-                            
                         }
                     };
                     self.insert_in_table_partition_key_value(
@@ -915,9 +913,7 @@ impl Node {
 
     fn handle_statement(&mut self, statement: Statement, request: &[Byte]) -> Vec<Byte> {
         match statement {
-            Statement::DdlStatement(ddl_statement) => {
-                self.handle_ddl_statement(ddl_statement)
-            }
+            Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
             Statement::DmlStatement(dml_statement) => {
                 self.handle_dml_statement(dml_statement, request)
             }
@@ -927,9 +923,7 @@ impl Node {
 
     fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Vec<u8> {
         match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => {
-                self.process_use_statement(keyspace_name)
-            }
+            DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name),
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
                 self.process_create_keyspace_statement(create_keyspace)
             }
@@ -954,18 +948,10 @@ impl Node {
         }
     }
 
-    fn handle_dml_statement(
-        &mut self,
-        dml_statement: DmlStatement,
-        request: &[Byte],
-    ) -> Vec<u8> {
+    fn handle_dml_statement(&mut self, dml_statement: DmlStatement, request: &[Byte]) -> Vec<u8> {
         let res = match dml_statement {
-            DmlStatement::SelectStatement(select) => {
-                self.select_with_other_nodes(select, request)
-            }
-            DmlStatement::InsertStatement(insert) => {
-                self.insert_with_other_nodes(insert, request)
-            }
+            DmlStatement::SelectStatement(select) => self.select_with_other_nodes(select, request),
+            DmlStatement::InsertStatement(insert) => self.insert_with_other_nodes(insert, request),
             DmlStatement::UpdateStatement(_update) => {
                 todo!()
             }
@@ -976,9 +962,9 @@ impl Node {
                 todo!()
             }
         };
-        match res{
+        match res {
             Ok(value) => value,
-            Err(err) => err.as_bytes()
+            Err(err) => err.as_bytes(),
         }
     }
 
@@ -990,14 +976,35 @@ impl Node {
             let node_id = self.select_node(&partition_key_value);
             let replication_factor = self.get_replicas_from_table_name(&table_name)?;
             for i in 0..replication_factor {
+                let node_to_replicate = self.next_node_to_replicate_data(
+                    node_id,
+                    i as u8,
+                    START_ID,
+                    START_ID + N_NODES,
+                );
                 response = if node_id != self.id {
-                    self.send_message_and_wait_response(SvAction::InternalQuery(request.to_vec()).as_bytes(), node_id + (i as u8), PortType::Priv)?
+                    self.send_message_and_wait_response(
+                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        node_to_replicate,
+                        PortType::Priv,
+                    )?
                 } else {
                     self.process_insert(&insert)?
                 }
             }
         }
         Ok(response)
+    }
+
+    fn next_node_to_replicate_data(
+        &self,
+        first_node_to_replicate: u8,
+        node_iterator: u8,
+        min: u8,
+        max: u8,
+    ) -> u8 {
+        let nodes_range = max - min + 1;
+        min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
     }
 
     fn select_with_other_nodes(&mut self, select: Select, request: &[Byte]) -> Result<Vec<Byte>> {
@@ -1008,7 +1015,11 @@ impl Node {
             let node_id = self.select_node(partition_key_value);
             if !consulted_nodes.contains(partition_key_value) {
                 if node_id == self.id {
-                    self.handle_result_from_node(&mut results_from_another_nodes, self.process_select(&select)?, &select)?;
+                    self.handle_result_from_node(
+                        &mut results_from_another_nodes,
+                        self.process_select(&select)?,
+                        &select,
+                    )?;
                 } else {
                     let res = self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -1060,20 +1071,63 @@ impl Node {
     ) -> Result<()> {
         if results_from_another_nodes.is_empty() {
             results_from_another_nodes.append(&mut result_from_actual_node);
-        } else {
-            let size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
-            // le agrego el body de las filas a las que ya tenia
-            let mut new_res = results_from_another_nodes[12..size.len as usize].to_vec();
-            results_from_another_nodes.append(&mut new_res);
+            return Ok(());
         }
+        let size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
 
+        let total_length_from_metadata =
+            self.get_columns_metadata_length(results_from_another_nodes);
+
+        let mut new_res =
+            results_from_another_nodes[total_length_from_metadata..size.len as usize].to_vec();
+        results_from_another_nodes.append(&mut new_res);
+
+        let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
+            results_from_another_nodes,
+            total_length_from_metadata,
+            select,
+        )?;
+
+        // le agrego el body de las filas a las que ya tenia
+        results_from_another_nodes.truncate(total_length_from_metadata);
+        results_from_another_nodes.append(&mut new_ordered_res_bytes);
+
+        Ok(())
+    }
+
+    fn get_columns_metadata_length(&self, results_from_another_nodes: &mut [u8]) -> usize {
+        let mut total_length_from_metadata: usize = 12;
+        let column_quantity = &results_from_another_nodes[13..17];
+        let column_quantity = u32::from_be_bytes([
+            column_quantity[0],
+            column_quantity[1],
+            column_quantity[2],
+            column_quantity[3],
+        ]);
+        for _ in 0..column_quantity {
+            let name_length = &results_from_another_nodes
+                [total_length_from_metadata..(total_length_from_metadata + 2)]; // Consigo el largo del [String]
+            let name_length = u16::from_be_bytes([name_length[0], name_length[1]]); // Lo casteo para sumarlo al total
+            total_length_from_metadata += (name_length as usize) + 2 + 2; // Sumamos el largo del <col_spec_i>
+        }
+        total_length_from_metadata
+    }
+
+    fn get_ordered_new_res_bytes(
+        &self,
+        results_from_another_nodes: &[Byte],
+        total_length_from_metadata: usize,
+        select: &Select,
+    ) -> Result<Vec<Byte>> {
         let table_name = select.from.get_name();
         let table = match self.get_table(&table_name) {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
-        let result_string = String::from_utf8(results_from_another_nodes[12..].to_vec())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let result_string =
+            String::from_utf8(results_from_another_nodes[total_length_from_metadata..].to_vec())
+                .map_err(|e| Error::ServerError(e.to_string()))?;
 
         let rows: Vec<&str> = result_string.split("\n").collect();
         let mut splitted_rows: Vec<Vec<String>> = rows
@@ -1084,17 +1138,13 @@ impl Node {
             order_by.order(&mut splitted_rows, &table.get_columns_names());
         }
 
-        let new_res = splitted_rows
+        let new_ordered_res = splitted_rows
             .iter()
             .map(|r| r.join(","))
             .collect::<Vec<String>>()
             .join("\n");
-        let mut new_res_bytes = new_res.as_bytes().to_vec();
 
-        results_from_another_nodes.truncate(12);
-        results_from_another_nodes.append(&mut new_res_bytes);
-
-        Ok(())
+        Ok(new_ordered_res.as_bytes().to_vec())
     }
 }
 

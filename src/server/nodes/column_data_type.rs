@@ -1,6 +1,7 @@
 //! Módulo que detalla el tipo de dato de una columna.
 
 /// Representa el tipo de dato de una columna.
+#[derive(Clone)]
 pub enum ColumnDataType {
     /// Tipo de dato `String`.
     String,

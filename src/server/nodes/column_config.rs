@@ -20,4 +20,9 @@ impl ColumnConfig {
     pub fn get_name(&self) -> String {
         self.name.to_string()
     }
+
+    /// Obtiene el tipo de dato de la columna.
+    pub fn get_data_type(&self) -> ColumnDataType {
+        self.data_type.clone()
+    }
 }

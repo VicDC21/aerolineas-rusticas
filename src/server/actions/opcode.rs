@@ -302,9 +302,7 @@ impl TryFrom<&[Byte]> for SvAction {
                 }
                 Ok(Self::SendEndpointState(bytes[1]))
             }
-            0xF8 => {
-                Ok(Self::InternalQuery(bytes[1..].to_vec()))
-            }
+            0xF8 => Ok(Self::InternalQuery(bytes[1..].to_vec())),
             0xF9 => Ok(Self::Shutdown),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",

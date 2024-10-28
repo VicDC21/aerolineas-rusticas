@@ -1,6 +1,6 @@
 //! Módulo que detalla una tabla.
 
-use super::column_config::ColumnConfig;
+use super::{column_config::ColumnConfig, column_data_type::ColumnDataType};
 use crate::parser::statements::dml_statement::main_statements::select::ordering::ProtocolOrdering;
 
 /// Representa una tabla en CQL.
@@ -50,6 +50,22 @@ impl Table {
         self.columns
             .iter()
             .map(|column| column.get_name())
+            .collect()
+    }
+
+    /// Obtiene los tipos de datos de las columnas de la tabla.
+    pub fn get_columns_data_type(&self) -> Vec<ColumnDataType> {
+        self.columns
+            .iter()
+            .map(|column| column.get_data_type())
+            .collect()
+    }
+
+    /// Obtiene los nombres y tipos de datos de las columnas de la tabla.
+    pub fn get_columns_name_and_data_type(&self) -> Vec<(String, ColumnDataType)> {
+        self.columns
+            .iter()
+            .map(|column| (column.get_name(), column.get_data_type()))
             .collect()
     }
 }
