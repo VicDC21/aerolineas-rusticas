@@ -72,7 +72,6 @@ impl ScreenClicker {
     pub fn take_extra_airport(&mut self) -> Option<Option<Airport>> {
         self.extra_airport.take()
     }
-
 }
 
 impl Default for ScreenClicker {
@@ -84,7 +83,10 @@ impl Default for ScreenClicker {
 impl Plugin for &mut ScreenClicker {
     fn run(&mut self, response: &Response, _painter: Painter, projector: &Projector) {
         let cur_opt = response.interact_pointer_pos();
-        if !response.clicked() {
+        let prim_click = response.clicked_by(PointerButton::Primary);
+        let sec_click = response.clicked_by(PointerButton::Secondary);
+
+        if !((prim_click) || sec_click) {
             // Si arrastró o hizo otra cosa no nos interesa
             return;
         }
@@ -95,9 +97,9 @@ impl Plugin for &mut ScreenClicker {
                 if zoom_is_showable(&airport.airport_type, self.zoom)
                     && distance_euclidean_pos2(&cur_pos, &airport_pos) < MIN_CLICK_DIST
                 {
-                    if response.clicked_by(PointerButton::Primary) {
+                    if prim_click {
                         self.current_airport = Some(Some(airport.clone()));
-                    } else if response.clicked_by(PointerButton::Secondary) {
+                    } else if sec_click {
                         self.extra_airport = Some(Some(airport.clone()));
                     }
                     return;
@@ -106,9 +108,9 @@ impl Plugin for &mut ScreenClicker {
         }
 
         // hubo click pero no cerca de ningún aeropuerto
-        if response.clicked_by(PointerButton::Primary) {
+        if prim_click {
             self.current_airport = Some(None);
-        } else if response.clicked_by(PointerButton::Secondary) {
+        } else if sec_click {
             self.extra_airport = Some(None);
         }
     }

@@ -10,7 +10,7 @@ use walkers::{Map, MapMemory, Position};
 
 use crate::data::airports::Airport;
 use crate::interface::map::{
-    panels::airport_info,
+    panels::{cur_airport_info, extra_airport_info},
     providers::{Provider, ProvidersMap},
     windows::{controls, date_selector, go_to_my_position, zoom},
 };
@@ -46,6 +46,9 @@ pub struct AerolineasApp {
     /// El puerto seleccionado actualmente.
     selected_airport: Option<Airport>,
 
+    /// Un aeropuerto extra, para acciones especiales.
+    extra_airport: Option<Airport>,
+
     /// La fecha actual.
     date: NaiveDate,
 }
@@ -66,6 +69,7 @@ impl AerolineasApp {
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
             selected_airport: None,
+            extra_airport: None,
             date: Utc::now().date_naive(),
         }
     }
@@ -96,9 +100,27 @@ impl App for AerolineasApp {
                 .sync_airports(Arc::clone(&cur_airports))
                 .sync_zoom(zoom_lvl);
 
+            // necesariamente antes de agregar al mapa
             if let Some(cur_airport) = self.screen_clicker.take_cur_airport() {
-                // necesariamente antes de agregar al mapa
                 self.selected_airport = cur_airport;
+            }
+            if let Some(ex_airport) = self.screen_clicker.take_extra_airport() {
+                self.extra_airport = ex_airport;
+            }
+
+            match &self.selected_airport {
+                Some(cur_airport) => {
+                    if let Some(ex_airport) = &self.extra_airport {
+                        if cur_airport == ex_airport {
+                            // Si los aeropuertos son iguales, anular la selección.
+                            self.extra_airport = None;
+                        }
+                    }
+                }
+                None => {
+                    // Y si no hay aeropuerto seleccionado también
+                    self.extra_airport = None;
+                }
             }
 
             let map = map
@@ -118,7 +140,8 @@ impl App for AerolineasApp {
         });
 
         date_selector(ctx, &mut self.date);
-        airport_info(ctx, &self.selected_airport);
+        cur_airport_info(ctx, &self.selected_airport);
+        extra_airport_info(ctx, &self.selected_airport, &self.extra_airport);
     }
 }
 
