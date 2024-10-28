@@ -33,10 +33,12 @@ impl ColumnDefinition {
         }
     }
 
+    /// Obtiene el nombre de la columna.
     pub fn get_column_name(&self) -> String {
         self.column_name.get_name().to_string()
     }
 
+    /// Obtiene el tipo de dato de la columna.
     pub fn get_data_type(&self) -> &CQLType {
         &self.data_type
     }

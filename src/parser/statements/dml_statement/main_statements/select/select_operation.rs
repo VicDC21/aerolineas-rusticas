@@ -22,6 +22,7 @@ impl Select {
         }
     }
 
+    /// Obtiene el nombre de la tabla de la cual se seleccionarán los datos.
     pub fn get_columns_names(&self) -> Vec<String> {
         self.columns.get_columns()
     }

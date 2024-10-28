@@ -10,7 +10,6 @@ use std::{
     thread::Builder,
 };
 
-
 use crate::parser::{
     data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
