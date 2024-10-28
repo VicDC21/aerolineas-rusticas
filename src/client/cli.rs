@@ -4,29 +4,40 @@ use std::{
     collections::HashSet,
     io::{stdin, BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
+    time::Duration,
 };
 
 use crate::{
-    parser::{
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::ddl_statement_parser::DdlStatement,
-            dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
-        },
-    },
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        headers::{
-            flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
-            version::Version,
-        },
-        traits::Byteable,
-        utils::encode_string_to_bytes,
-    },
+    parser::{main_parser::make_parse, statements::statement::Statement},
+    protocol::{aliases::results::Result, errors::error::Error, traits::Byteable},
     server::{actions::opcode::SvAction, utils::get_available_sockets},
     tokenizer::tokenizer::tokenize_query,
 };
+
+use crate::client::frame::Frame;
+
+/// Flags específicas para queries CQL
+#[derive(Clone, Copy)]
+pub enum QueryFlags {
+    /// Para vincular valores a la query
+    Values = 0x01,
+    /// Si se quiere saltar los metadatos en la respuesta
+    SkipMetadata = 0x02,
+    /// Tamaño deseado de la página si se setea
+    PageSize = 0x04,
+    /// Estado de paginación
+    WithPagingState = 0x08,
+    /// Consistencia serial para actualizaciones de datos condicionales
+    WithSerialConsistency = 0x10,
+    /// Timestamp por defecto (en microsegundos)
+    WithDefaultTimestamp = 0x20,
+    /// Solo tiene sentido si se usa `Values`, para tener nombres de columnas en los valores
+    WithNamesForValues = 0x40,
+    /// Keyspace donde debe ejecutarse la query
+    WithKeyspace = 0x80,
+    /// Tiempo actual en segundos
+    WithNowInSeconds = 0x100,
+}
 
 /// Estructura principal de un cliente.
 pub struct Client {
@@ -66,62 +77,60 @@ impl Client {
     /// **Esto genera un loop infinito** hasta que el usuario ingrese `q` para salir.
     ///
     /// </div>
+
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
+        let _ = tcp_stream.set_nonblocking(true);
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
-        let mut sendable_lines = Vec::<String>::new();
 
         println!(
             "ECHO MODE:\n \
-                  ----------\n \
-                  Escribe lo que necesites.\n \
-                  Cuando salgas de este modo, se mandará todo de una al servidor.\n \
-                  ----------\n \
-                  'q' o línea vacía para salir\n \
-                  'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
-                  ----------\n"
+            ----------\n \
+            Escribe tus queries. Cada línea se enviará al presionar Enter.\n \
+            ----------\n \
+            'q' o línea vacía para salir\n \
+            'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
+            ----------\n"
         );
 
-        for line in reader.lines().map_while(|e| e.ok()) {
-            if line.eq_ignore_ascii_case("q") || line.is_empty() {
-                break;
-            }
-            if line.eq_ignore_ascii_case("shutdown") {
-                if let Err(err) = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]) {
-                    println!("Error mandando el mensaje de shutdown:\n\n{}", err);
+        for line in reader.lines() {
+            match line {
+                Ok(input) => {
+                    if input.eq_ignore_ascii_case("q") || input.is_empty() {
+                        break;
+                    }
+                    if input.eq_ignore_ascii_case("shutdown") {
+                        let _ = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]);
+                        return Ok(());
+                    }
+
+                    match self.send_query(&input, &mut tcp_stream) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("Error al enviar la query: {}", e);
+                            // Intentamos reconectar
+                            match self.connect() {
+                                Ok(new_stream) => {
+                                    let _ = new_stream.set_nonblocking(true);
+                                    tcp_stream = new_stream;
+                                    // Reintentamos enviar la query con la nueva conexión
+                                    if let Err(retry_err) = self.send_query(&input, &mut tcp_stream)
+                                    {
+                                        eprintln!("Error al reintentar la query: {}", retry_err);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("No se pudo reconectar: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
-                return Ok(());
-            }
-            sendable_lines.push(line);
-        }
-        if sendable_lines.is_empty() {
-            return Ok(());
-        }
-
-        let query = sendable_lines.join(" ");
-        let mut stream_id: i16 = 0;
-        while self.requests_stream.contains(&stream_id) {
-            stream_id += 1;
-        }
-        self.requests_stream.insert(stream_id);
-        let mut header = Vec::<Byte>::new();
-        // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
-        // Numero de stream, tiene que ser positivo en cliente
-        if self.parse_request(&query, &mut header, stream_id) {
-            if let Err(err) = tcp_stream.write(&header) {
-                println!("Error al escribir en el TCPStream:\n\n{}", err);
-            }
-
-            // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
-            if let Err(err) = tcp_stream.flush() {
-                println!("Error haciendo flush desde el cliente:\n\n{}", err);
-            }
-            let mut buf = Vec::<Byte>::new();
-            match tcp_stream.read_to_end(&mut buf) {
-                Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
-                Ok(i) => {
-                    println!("{} bytes - {:?}", i, buf);
+                Err(e) => {
+                    eprintln!("Error leyendo la entrada: {}", e);
+                    break;
                 }
             }
         }
@@ -129,71 +138,99 @@ impl Client {
         Ok(())
     }
 
-    fn parse_request(&mut self, line: &str, header: &mut Vec<Byte>, stream_id: i16) -> bool {
-        match make_parse(&mut tokenize_query(line)) {
+    fn send_query(&mut self, query: &str, tcp_stream: &mut TcpStream) -> Result<()> {
+        let mut stream_id: i16 = 0;
+        while self.requests_stream.contains(&stream_id) {
+            stream_id += 1;
+        }
+        self.requests_stream.insert(stream_id);
+
+        match make_parse(&mut tokenize_query(query)) {
             Ok(statement) => {
-                match statement {
-                    Statement::DdlStatement(ddl_statement) => {
-                        Self::fill_headers(line, header, stream_id);
-                        self.handle_ddl_statement(ddl_statement);
+                let frame = match statement {
+                    Statement::DmlStatement(_statement) => {
+                        Frame::query(stream_id, query.to_string())
                     }
-                    Statement::DmlStatement(dml_statement) => {
-                        Self::fill_headers(line, header, stream_id);
-                        self.handle_dml_statement(dml_statement);
-                    }
-                    Statement::UdtStatement(_udt_statement) => {
-                        Self::fill_headers(line, header, stream_id);
-                        todo!();
-                    }
+                    Statement::DdlStatement(_statement) => Frame::ddl(stream_id, query.to_string()),
+                    Statement::UdtStatement(_statement) => todo!(),
                 };
-                true
+
+                let _ = tcp_stream.write_all(&frame.as_bytes());
+                let _ = tcp_stream.flush();
+
+                // Buffer para leer la respuesta
+                let mut response = Vec::new();
+                let mut buffer = [0; 1024];
+                let mut timeout_count = 0;
+                const MAX_TIMEOUT: u32 = 50;
+
+                // Leemos la respuesta con timeout
+                loop {
+                    match tcp_stream.read(&mut buffer) {
+                        Ok(0) => {
+                            // Conexión cerrada por el servidor
+                            if response.is_empty() {
+                                // Solo es un error si no hemos recibido nada
+                                self.requests_stream.remove(&stream_id);
+                                return Err(Error::ServerError(
+                                    "Conexión cerrada por el servidor sin recibir datos".into(),
+                                ));
+                            }
+                            // Si ya teníamos datos, es normal que se cierre
+                            break;
+                        }
+                        Ok(n) => {
+                            response.extend_from_slice(&buffer[..n]);
+                            if Self::is_response_complete(&response) {
+                                break;
+                            }
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(100));
+                            timeout_count += 1;
+                            if timeout_count >= MAX_TIMEOUT {
+                                self.requests_stream.remove(&stream_id);
+                                return Err(Error::ServerError(
+                                    "Timeout esperando respuesta".into(),
+                                ));
+                            }
+                            continue;
+                        }
+                        Err(e) => {
+                            self.requests_stream.remove(&stream_id);
+                            return Err(Error::ServerError(e.to_string()));
+                        }
+                    }
+                }
+
+                self.requests_stream.remove(&stream_id);
+                println!("Received {} bytes: {:?}", response.len(), response);
+
+                // Reconectamos automáticamente para la siguiente query
+                if let Ok(new_stream) = self.connect() {
+                    let _ = new_stream.set_nonblocking(true);
+                    *tcp_stream = new_stream;
+                }
+
+                Ok(())
             }
             Err(err) => {
-                println!("{}", err);
-                false
+                println!("Error parsing query: {}", err);
+                self.requests_stream.remove(&stream_id);
+                Err(Error::ServerError(err.to_string()))
             }
         }
     }
 
-    /// Llena el resto de headers.
-    fn fill_headers(line: &str, header: &mut Vec<Byte>, stream_id: i16) {
-        let version = Version::RequestV5;
-        let flags = Flag::Default;
-        let stream = Stream::new(stream_id);
-        let opcode = Opcode::Query;
-        // Esto está mal, el body de una query tiene un montón de metadatos,
-        // y el len se le hace al vector de bytes serializados.
-        let line_bytes = encode_string_to_bytes(line);
-        let length = Length::new(line_bytes.len() as u32);
-
-        header.extend(Headers::new(version, vec![flags], stream, opcode, length).as_bytes());
-    }
-
-    /// Maneja una declaración DDL.
-    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) {
-        match ddl_statement {
-            DdlStatement::UseStatement(_keyspace_name) => {
-                println!("Handle USE!")
-            }
-            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {}
-            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {}
-            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {}
-            DdlStatement::CreateTableStatement(_create_table) => {}
-            DdlStatement::AlterTableStatement(_alter_table) => {}
-            DdlStatement::DropTableStatement(_drop_table) => {}
-            DdlStatement::TruncateStatement(_truncate) => {}
+    fn is_response_complete(response: &[u8]) -> bool {
+        if response.len() < 9 {
+            return false;
         }
-    }
 
-    /// Maneja una declaración DML.
-    fn handle_dml_statement(&self, dml_statement: DmlStatement) {
-        match dml_statement {
-            DmlStatement::SelectStatement(_select) => {}
-            DmlStatement::InsertStatement(_insert) => {}
-            DmlStatement::UpdateStatement(_update) => {}
-            DmlStatement::DeleteStatement(_delete) => {}
-            DmlStatement::BatchStatement(_batch) => {}
-        }
+        let body_length =
+            u32::from_be_bytes([response[5], response[6], response[7], response[8]]) as usize;
+
+        response.len() >= 9 + body_length
     }
 }
 

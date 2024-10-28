@@ -59,6 +59,10 @@ impl TableName {
                     && lista[1] != "DROP"
                     && lista[1] != "WITH"
                     && lista[1] != "RENAME"
+                    && lista[1] != "WHERE"
+                    && lista[1] != "VALUES"
+                    && lista[1] != "GROUP"
+                    && lista[1] != "ORDER"
                 {
                     KeyspaceName::check_kind_of_name(lista)?
                 } else {
