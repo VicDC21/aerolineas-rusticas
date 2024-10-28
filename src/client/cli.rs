@@ -7,30 +7,16 @@ use std::{
 };
 
 use crate::{
-    parser::{
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::ddl_statement_parser::DdlStatement,
-            dml_statement::dml_statement_parser::DmlStatement, statement::Statement,
-        },
-    },
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        headers::{
-            flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
-            version::Version,
-        },
-        notations::consistency::Consistency,
-        traits::Byteable,
-        utils::encode_string_to_bytes,
-    },
+    parser::{main_parser::make_parse, statements::statement::Statement},
+    protocol::{aliases::results::Result, errors::error::Error, traits::Byteable},
     server::{actions::opcode::SvAction, utils::get_available_sockets},
     tokenizer::tokenizer::tokenize_query,
 };
 
+use crate::client::frame::Frame;
+
 /// Flags específicas para queries CQL
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy)]
 pub enum QueryFlags {
     /// Para vincular valores a la query
     Values = 0x01,
@@ -50,92 +36,6 @@ pub enum QueryFlags {
     WithKeyspace = 0x80,
     /// Tiempo actual en segundos
     WithNowInSeconds = 0x100,
-}
-
-/// Estructura para el cuerpo de una query CQL
-pub struct QueryBody {
-    // [long string] - La query en sí
-    query: String,
-    // [consistency] - Nivel de consistencia
-    consistency: Consistency,
-    // [byte] - Flags
-    flags: Vec<QueryFlags>,
-    // Valores opcionales según las flags:
-    // [n] - Número de valores si Values flag
-    values: Option<Vec<Vec<u8>>>,
-    // [i32] - Page size si PageSize flag
-    page_size: Option<i32>,
-    // [bytes] - Estado de paginación si WithPagingState flag
-    paging_state: Option<Vec<u8>>,
-    // [consistency] - Consistencia serial si WithSerialConsistency flag
-    serial_consistency: Option<Consistency>,
-    // [long] - Timestamp si WithDefaultTimestamp flag
-    timestamp: Option<i64>,
-}
-
-impl QueryBody {
-    /// Crea una nueva instancia de `QueryBody`. Por defecto, la consistencia es `ONE`.
-    pub fn new(query: String) -> Self {
-        Self {
-            query,
-            consistency: Consistency::One,
-            flags: Vec::new(),
-            values: None,
-            page_size: None,
-            paging_state: None,
-            serial_consistency: None,
-            timestamp: None,
-        }
-    }
-
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-
-        let query_bytes = encode_string_to_bytes(&self.query);
-        bytes.extend((query_bytes.len() as i32).to_be_bytes());
-        bytes.extend(query_bytes);
-        bytes.extend((self.consistency as u16).to_be_bytes());
-
-        let flags_byte = self.flags.iter().fold(0u8, |acc, flag| acc | *flag as u8);
-        bytes.push(flags_byte);
-
-        for flag in &self.flags {
-            match flag {
-                QueryFlags::Values => {
-                    if let Some(values) = &self.values {
-                        bytes.extend((values.len() as i16).to_be_bytes());
-                        for value in values {
-                            bytes.extend((value.len() as i32).to_be_bytes());
-                            bytes.extend(value);
-                        }
-                    }
-                }
-                QueryFlags::PageSize => {
-                    if let Some(size) = self.page_size {
-                        bytes.extend(size.to_be_bytes());
-                    }
-                }
-                QueryFlags::WithPagingState => {
-                    if let Some(state) = &self.paging_state {
-                        bytes.extend((state.len() as i32).to_be_bytes());
-                        bytes.extend(state);
-                    }
-                }
-                QueryFlags::WithSerialConsistency => {
-                    if let Some(consistency) = &self.serial_consistency {
-                        bytes.extend((*consistency as u16).to_be_bytes());
-                    }
-                }
-                QueryFlags::WithDefaultTimestamp => {
-                    if let Some(ts) = self.timestamp {
-                        bytes.extend(ts.to_be_bytes());
-                    }
-                }
-                _ => {}
-            }
-        }
-        bytes
-    }
 }
 
 /// Estructura principal de un cliente.
@@ -176,62 +76,50 @@ impl Client {
     /// **Esto genera un loop infinito** hasta que el usuario ingrese `q` para salir.
     ///
     /// </div>
+
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
-        let mut sendable_lines = Vec::<String>::new();
 
         println!(
             "ECHO MODE:\n \
-                  ----------\n \
-                  Escribe lo que necesites.\n \
-                  Cuando salgas de este modo, se mandará todo de una al servidor.\n \
-                  ----------\n \
-                  'q' o línea vacía para salir\n \
-                  'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
-                  ----------\n"
+            ----------\n \
+            Escribe tus queries. Cada línea se enviará al presionar Enter.\n \
+            ----------\n \
+            'q' o línea vacía para salir\n \
+            'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
+            ----------\n"
         );
 
-        for line in reader.lines().map_while(|e| e.ok()) {
-            if line.eq_ignore_ascii_case("q") || line.is_empty() {
-                break;
-            }
-            if line.eq_ignore_ascii_case("shutdown") {
-                if let Err(err) = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]) {
-                    println!("Error mandando el mensaje de shutdown:\n\n{}", err);
+        for line in reader.lines() {
+            match line {
+                Ok(input) => {
+                    if input.eq_ignore_ascii_case("q") || input.is_empty() {
+                        break;
+                    }
+                    if input.eq_ignore_ascii_case("shutdown") {
+                        let _ = tcp_stream.write_all(&SvAction::Shutdown.as_bytes()[..]);
+                        return Ok(());
+                    }
+
+                    match self.send_query(input) {
+                        Ok(_) => (),
+                        Err(e) => {
+                            eprintln!("Error al enviar la query: {}", e);
+                            tcp_stream = match self.connect() {
+                                Ok(stream) => stream,
+                                Err(e) => {
+                                    eprintln!("No se pudo reconectar: {}", e);
+                                    break;
+                                }
+                            };
+                        }
+                    }
                 }
-                return Ok(());
-            }
-            sendable_lines.push(line);
-        }
-        if sendable_lines.is_empty() {
-            return Ok(());
-        }
-
-        let query = sendable_lines.join(" ");
-        let mut stream_id: i16 = 0;
-        while self.requests_stream.contains(&stream_id) {
-            stream_id += 1;
-        }
-        self.requests_stream.insert(stream_id);
-        let mut header = Vec::<Byte>::new();
-        // flags que despues vemos como las agregamos, en principio para la entrega intermedia no afecta
-        // Numero de stream, tiene que ser positivo en cliente
-        if self.parse_request(&query, &mut header, stream_id) {
-            if let Err(err) = tcp_stream.write(&header) {
-                println!("Error al escribir en el TCPStream:\n\n{}", err);
-            }
-
-            // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
-            if let Err(err) = tcp_stream.flush() {
-                println!("Error haciendo flush desde el cliente:\n\n{}", err);
-            }
-            let mut buf = Vec::<Byte>::new();
-            match tcp_stream.read_to_end(&mut buf) {
-                Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
-                Ok(i) => {
-                    println!("{} bytes - {:?}", i, buf);
+                Err(e) => {
+                    eprintln!("Error leyendo la entrada: {}", e);
+                    break;
                 }
             }
         }
@@ -239,80 +127,35 @@ impl Client {
         Ok(())
     }
 
-    fn parse_request(&mut self, line: &str, header: &mut Vec<Byte>, stream_id: i16) -> bool {
-        match make_parse(&mut tokenize_query(line)) {
-            Ok(statement) => {
-                let query_body = QueryBody::new(line.to_string());
-                let body_bytes = query_body.as_bytes();
+    fn send_query(&mut self, query: String) -> Result<()> {
+        let mut stream_id: i16 = 0;
+        while self.requests_stream.contains(&stream_id) {
+            stream_id += 1;
+        }
+        self.requests_stream.insert(stream_id);
 
-                match statement {
-                    Statement::DdlStatement(ddl_statement) => {
-                        Self::fill_headers(header, stream_id, &body_bytes, false);
-                        self.handle_ddl_statement(ddl_statement);
-                    }
-                    Statement::DmlStatement(dml_statement) => {
-                        let get_statement = self.handle_dml_statement(dml_statement);
-                        if get_statement {
-                            Self::fill_headers(header, stream_id, &body_bytes, true);
-                        } else {
-                            Self::fill_headers(header, stream_id, &body_bytes, false);
-                        }
-                    }
-                    Statement::UdtStatement(_udt_statement) => {
-                        Self::fill_headers(header, stream_id, &body_bytes, false);
-                        todo!();
-                    }
+        match make_parse(&mut tokenize_query(&query)) {
+            Ok(statement) => {
+                let frame = match statement {
+                    Statement::DmlStatement(_statement) => Frame::query(stream_id, query),
+                    Statement::DdlStatement(_statement) => todo!(),
+                    Statement::UdtStatement(_statement) => todo!(),
                 };
-                header.extend(body_bytes);
-                true
+
+                let mut tcp_stream = self.connect()?;
+                let _ = tcp_stream.write_all(&frame.as_bytes());
+                let _ = tcp_stream.flush();
+
+                let mut response = Vec::new();
+                let _ = tcp_stream.read_to_end(&mut response);
+
+                println!("Received {} bytes: {:?}", response.len(), response);
+                Ok(())
             }
             Err(err) => {
-                println!("{}", err);
-                false
+                println!("Error parsing query: {}", err);
+                Err(Error::ServerError(err.to_string()))
             }
-        }
-    }
-
-    /// Llena el resto de headers.
-    fn fill_headers(header: &mut Vec<Byte>, stream_id: i16, body: &[u8], is_batch: bool) {
-        let version = Version::RequestV5;
-        let flags = Flag::Default;
-        let stream = Stream::new(stream_id);
-        let opcode = if is_batch {
-            Opcode::Batch
-        } else {
-            Opcode::Query
-        };
-
-        let length = Length::new(body.len() as u32);
-
-        header.extend(Headers::new(version, vec![flags], stream, opcode, length).as_bytes());
-    }
-
-    /// Maneja una declaración DDL.
-    fn handle_ddl_statement(&self, ddl_statement: DdlStatement) {
-        match ddl_statement {
-            DdlStatement::UseStatement(_keyspace_name) => {
-                println!("Handle USE!")
-            }
-            DdlStatement::CreateKeyspaceStatement(_create_keyspace) => {}
-            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {}
-            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {}
-            DdlStatement::CreateTableStatement(_create_table) => {}
-            DdlStatement::AlterTableStatement(_alter_table) => {}
-            DdlStatement::DropTableStatement(_drop_table) => {}
-            DdlStatement::TruncateStatement(_truncate) => {}
-        }
-    }
-
-    /// Maneja una declaración DML.
-    fn handle_dml_statement(&self, dml_statement: DmlStatement) -> bool {
-        match dml_statement {
-            DmlStatement::SelectStatement(_select) => false,
-            DmlStatement::InsertStatement(_insert) => false,
-            DmlStatement::UpdateStatement(_update) => false,
-            DmlStatement::DeleteStatement(_delete) => false,
-            DmlStatement::BatchStatement(_batch) => true,
         }
     }
 }
