@@ -83,7 +83,7 @@ impl FlightsLoader {
                             break;
                         }
 
-                        let flights = match Self::load_flights(client) {
+                        let flights = match Self::load_flights(client, timestamp) {
                             Ok(loaded) => loaded,
                             Err(err) => {
                                 println!("Error cargando los vuelos:\n\n{}", err);
@@ -140,9 +140,22 @@ impl FlightsLoader {
     }
 
     /// Carga los vuelos con una _query_.
-    fn load_flights(client: Arc<Client>) -> Result<Vec<Flight>> {
+    fn load_flights(client: Arc<Client>, timestamp: Long) -> Result<Vec<Flight>> {
         /// TODO: Usar el cliente aquí
         Ok(Vec::new())
+    }
+
+    /// Apaga y espera a todos los hilos hijos.
+    pub fn wait_children(&mut self) {
+        let (date_child, date_sender) = &mut self.date_child;
+        if let Some(hanging) = date_child.take() {
+            if date_sender.send((Arc::clone(&self.client), 0)).is_err() {
+                println!("Error mandando un mensaje para parar hilo de área.")
+            }
+            if hanging.join().is_err() {
+                println!("Error esperando a que un hilo hijo termine.")
+            }
+        }
     }
 }
 
@@ -183,5 +196,11 @@ impl Plugin for &mut FlightsLoader {
                 self.flights = Some(new_flights);
             }
         }
+    }
+}
+
+impl Drop for FlightsLoader {
+    fn drop(&mut self) {
+        self.wait_children();
     }
 }
