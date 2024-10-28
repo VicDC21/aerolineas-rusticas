@@ -185,30 +185,28 @@ fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>,
             ));
         }
 
-        if !check_words(list, "WITH") {
-            return Err(Error::SyntaxError("Falta la condición WITH".to_string()));
-        }
-
-        let options = parse_table_options(list)?;
         let mut compact_storage = false;
         let mut clustering_order = None;
 
-        for option in options {
-            if let Options::Constant(term) = option {
-                match term.get_value().as_str() {
-                    "COMPACT STORAGE" => compact_storage = true,
-                    "CLUSTERING ORDER BY" => {
-                        clustering_order = Some(parse_clustering_order(&list.join(" "))?);
+        if check_words(list, "WITH") {
+            let options = parse_table_options(list)?;
+            for option in options {
+                if let Options::Constant(term) = option {
+                    match term.get_value().as_str() {
+                        "COMPACT STORAGE" => compact_storage = true,
+                        "CLUSTERING ORDER BY" => {
+                            clustering_order = Some(parse_clustering_order(&list.join(" "))?);
+                        }
+                        _ => {}
                     }
-                    _ => {}
-                }
-            } else if let Options::Identifier(term) = option {
-                match term.get_name() {
-                    "COMPACT STORAGE" => compact_storage = true,
-                    "CLUSTERING ORDER BY" => {
-                        clustering_order = Some(parse_clustering_order(&list.join(" "))?);
+                } else if let Options::Identifier(term) = option {
+                    match term.get_name() {
+                        "COMPACT STORAGE" => compact_storage = true,
+                        "CLUSTERING ORDER BY" => {
+                            clustering_order = Some(parse_clustering_order(&list.join(" "))?);
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
         }
@@ -908,7 +906,7 @@ mod tests {
     fn test_07_create_table_missing_with_clause() -> Result<(), Error> {
         let query = "CREATE TABLE users (id UUID PRIMARY KEY, name TEXT)";
         let mut tokens = tokenize_query(query);
-        assert!(create_table_statement(&mut tokens).is_err());
+        assert!(create_table_statement(&mut tokens).is_ok());
         Ok(())
     }
 
