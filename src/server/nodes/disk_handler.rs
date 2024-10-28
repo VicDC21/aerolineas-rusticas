@@ -10,10 +10,10 @@ use super::{
     column_config::ColumnConfig, keyspace::Keyspace, replication_strategy::ReplicationStrategy,
     table::Table,
 };
-use crate::protocol::{
+use crate::{parser::data_types::term::Term, protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
-};
+}};
 use crate::server::nodes::node::NodeId;
 use crate::{
     parser::statements::{
@@ -71,14 +71,15 @@ impl DiskHandler {
         } else {
             create_dir(path_folder).map_err(|e| Error::ServerError(e.to_string()))?;
         }
-
         match Self::get_keyspace_replication(statement.options) {
             Ok(Some(replication)) => {
                 Ok(Some(Keyspace::new(keyspace_name.to_string(), replication)))
             }
-            Ok(None) => Err(Error::ServerError(
+            Ok(None) => {
+                println!("rompe aca");
+                Err(Error::ServerError(
                 "La estrategia de replicación es obligatoria".to_string(),
-            )),
+            ))},
             Err(e) => Err(e),
         }
     }
@@ -88,57 +89,33 @@ impl DiskHandler {
         let mut i = 0;
         while i < options.len() {
             match &options[i] {
-                Options::Identifier(identifier) => {
-                    if identifier.get_name() == "replication" {
-                        if let Options::MapLiteral(map) = &options[i + 1] {
-                            if map.values.len() != 2 {
-                                return Err(Error::ServerError(
-                                    "La estrategia de replicación simple debe tener 2 valores"
-                                        .to_string(),
-                                ));
-                            }
-                            let (key1, value1) = &map.values[0];
-                            let class = key1.get_value_as_string();
-                            if class != "class" {
-                                return Err(Error::ServerError(
-                                    "La estrategia de replicación debe especificar 'class'"
-                                        .to_string(),
-                                ));
-                            }
-                            let strategy = value1.get_value_as_string();
-                            if strategy != "SimpleStrategy" || strategy != "NetworkTopologyStrategy"
+                Options::MapLiteral(map_literal) => {
+                    let values = map_literal.get_values();
+                    let (term1, term2) = &values[0];
+                    if term1.get_value() == "class" && term2.get_value() == "SimpleStrategy"{
+                        let (term3, term4) = &values[1];
+                        if term3.get_value() == "replication_factor"{
+                            let replicas = match term4.get_value().parse::<u32>()
                             {
-                                return Err(Error::ServerError(
-                                    "La estrategia de replicación debe ser 'SimpleStrategy' o 'NetworkTopologyStrategy'".to_string(),
-                                ));
-                            }
-
-                            let (key2, value2) = &map.values[1];
-                            let strategy_option1 = key2.get_value_as_string();
-                            match strategy_option1.as_str() {
-                                "replication_factor" => {
-                                    let replicas = match value2.get_value_as_string().parse::<u32>()
-                                    {
-                                        Ok(replicas) => replicas,
-                                        Err(_) => {
-                                            return Err(Error::Invalid(
-                                                "El valor de 'replication_factor' debe ser un número".to_string(),
-                                            ));
-                                        }
-                                    };
-                                    return Ok(Some(ReplicationStrategy::SimpleStrategy(replicas)));
+                                Ok(replicas) => replicas,
+                                Err(_) => {
+                                    return Err(Error::Invalid(
+                                        "El valor de 'replication_factor' debe ser un número".to_string(),
+                                    ));
                                 }
-                                _ => {
-                                    // Aca estaria el caso de NetworkTopologyStrategy
-                                    todo!()
-                                }
-                            }
+                            };
+                            return Ok(Some(ReplicationStrategy::SimpleStrategy(replicas)));
+                        } else {
+                            return Err(Error::Invalid("Falto el campo replication_factor".to_string()));
                         }
+                    } else if term1.get_value() == "class" && term2.get_value() == "NetworkTopologyStrategy" {
+                        // Aca estaria el caso de NetworkTopologyStrategy
+                        todo!()
                     }
                 }
                 _ => break,
             }
-            i += 2;
+            i += 1;
         }
         Ok(None)
     }

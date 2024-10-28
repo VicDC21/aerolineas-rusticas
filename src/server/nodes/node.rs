@@ -10,7 +10,7 @@ use std::{
     thread::Builder,
 };
 
-use crate::parser::{
+use crate::{parser::{
     data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
     statements::{
@@ -24,7 +24,7 @@ use crate::parser::{
         },
         statement::Statement,
     },
-};
+}, protocol::messages::responses::result_kinds::ResultKind};
 use crate::protocol::headers::{
     flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
 };
@@ -135,6 +135,7 @@ impl Node {
     fn add_keyspace(&mut self, keyspace: Keyspace) {
         self.keyspaces
             .insert(keyspace.get_name().to_string(), keyspace);
+        println!("crea correctamente la keyspace");
     }
 
     fn get_keyspace(&self, keyspace_name: &str) -> Result<&Keyspace> {
@@ -683,7 +684,6 @@ impl Node {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut request[..4].to_vec());
         // VER QUE HACER CON LAS FLAGS
-
         // Cada handler deberia devolver un Vec<Byte> que contenga: que opcode de respuesta mandar,
         // con que lenght y el body si es que tiene
         let mut _left_response = match opcode {
@@ -813,7 +813,7 @@ impl Node {
         let name = keyspace_name.get_name();
         if self.keyspaces.contains_key(name) {
             self.set_default_keyspace(name.to_string());
-            vec![0x0, 0x0, 0x0, 0x3]
+            self.create_result_void()
         } else {
             Error::ServerError("El keyspace solicitado no existe".to_string()).as_bytes()
         }
@@ -822,12 +822,21 @@ impl Node {
     fn process_create_keyspace_statement(&mut self, create_keyspace: CreateKeyspace) -> Vec<u8> {
         match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
             Ok(Some(keyspace)) => self.add_keyspace(keyspace),
-            Ok(None) => {
-                return Error::ServerError("No se pudo crear el keyspace".to_string()).as_bytes()
-            }
+            Ok(None) => return self.create_result_void(),
             Err(err) => return err.as_bytes(),
         };
-        vec![0x0, 0x0, 0x0, 0x1]
+        self.create_result_void()
+    }
+    fn create_result_void(&mut self) -> Vec<Byte>{
+        let mut response: Vec<Byte> = Vec::new();
+        response.append(&mut Version::ResponseV5.as_bytes());
+        response.append(&mut Flag::Default.as_bytes());
+        response.append(&mut Stream::new(0).as_bytes());
+        response.append(&mut Opcode::Result.as_bytes());
+        response.append(&mut Length::new(4).as_bytes());
+
+        response.append(&mut ResultKind::Void.as_bytes());
+        response
     }
 
     fn process_create_table_statement(&mut self, create_table: CreateTable) -> Vec<u8> {
@@ -842,7 +851,7 @@ impl Node {
             }
             Err(err) => return err.as_bytes(),
         };
-        vec![0x0, 0x0, 0x0, 0x1]
+        self.create_result_void()
     }
 
     /// Maneja una declaración DML.
@@ -905,7 +914,7 @@ impl Node {
             }
             Err(err) => return Err(err),
         }
-        Ok(vec![0x0, 0x0, 0x0, 0x2])
+        Ok(self.create_result_void())
     }
 
     fn handle_statement(&mut self, statement: Statement, request: &[Byte]) -> Vec<Byte> {

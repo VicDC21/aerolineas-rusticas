@@ -27,7 +27,8 @@ impl Frame {
 
     /// Crea un frame para una query
     pub fn query(stream_id: i16, query: String) -> Self {
-        let body = QueryBody::new(query).as_bytes();
+        
+        let body = query.as_bytes().to_vec();
         let headers = Headers::new(
             Version::RequestV5,
             vec![Flag::Default],
@@ -40,7 +41,7 @@ impl Frame {
 
     /// Crea un frame para un DDL statement
     pub fn ddl(stream_id: i16, statement: String) -> Self {
-        let body = DdlBody::new(statement).as_bytes();
+        let body = statement.as_bytes().to_vec();
         let headers = Headers::new(
             Version::RequestV5,
             vec![Flag::Default],
