@@ -4,6 +4,7 @@ use std::{
     collections::HashSet,
     io::{stdin, BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
+    time::Duration,
 };
 
 use crate::{
@@ -79,6 +80,7 @@ impl Client {
 
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
+        let _ = tcp_stream.set_nonblocking(true);
         let stream = &mut stdin();
         let reader = BufReader::new(stream);
 
@@ -103,12 +105,15 @@ impl Client {
                         return Ok(());
                     }
 
-                    match self.send_query(input) {
+                    match self.send_query(input, &mut tcp_stream) {
                         Ok(_) => (),
                         Err(e) => {
                             eprintln!("Error al enviar la query: {}", e);
                             tcp_stream = match self.connect() {
-                                Ok(stream) => stream,
+                                Ok(stream) => {
+                                    let _ = stream.set_nonblocking(true);
+                                    stream
+                                }
                                 Err(e) => {
                                     eprintln!("No se pudo reconectar: {}", e);
                                     break;
@@ -127,7 +132,7 @@ impl Client {
         Ok(())
     }
 
-    fn send_query(&mut self, query: String) -> Result<()> {
+    fn send_query(&mut self, query: String, tcp_stream: &mut TcpStream) -> Result<()> {
         let mut stream_id: i16 = 0;
         while self.requests_stream.contains(&stream_id) {
             stream_id += 1;
@@ -138,17 +143,53 @@ impl Client {
             Ok(statement) => {
                 let frame = match statement {
                     Statement::DmlStatement(_statement) => Frame::query(stream_id, query),
-                    Statement::DdlStatement(_statement) => todo!(),
+                    Statement::DdlStatement(_statement) => Frame::ddl(stream_id, query),
                     Statement::UdtStatement(_statement) => todo!(),
                 };
 
-                let mut tcp_stream = self.connect()?;
                 let _ = tcp_stream.write_all(&frame.as_bytes());
                 let _ = tcp_stream.flush();
 
+                // Buffer para leer la respuesta
                 let mut response = Vec::new();
-                let _ = tcp_stream.read_to_end(&mut response);
+                let mut buffer = [0; 1024];
+                let mut timeout_count = 0;
+                const MAX_TIMEOUT: u32 = 50; // 5 segundos máximo de espera (50 * 100ms)
 
+                // Leemos la respuesta con timeout
+                loop {
+                    match tcp_stream.read(&mut buffer) {
+                        Ok(0) => {
+                            // Conexión cerrada por el servidor
+                            if response.is_empty() {
+                                return Err(Error::ServerError(
+                                    "Conexión cerrada por el servidor".into(),
+                                ));
+                            }
+                            break;
+                        }
+                        Ok(n) => {
+                            response.extend_from_slice(&buffer[..n]);
+                            if Self::is_response_complete(&response) {
+                                break;
+                            }
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            // No hay datos disponibles en este momento
+                            std::thread::sleep(Duration::from_millis(100));
+                            timeout_count += 1;
+                            if timeout_count >= MAX_TIMEOUT {
+                                return Err(Error::ServerError(
+                                    "Timeout esperando respuesta".into(),
+                                ));
+                            }
+                            continue;
+                        }
+                        Err(e) => return Err(Error::ServerError(e.to_string())),
+                    }
+                }
+
+                self.requests_stream.remove(&stream_id);
                 println!("Received {} bytes: {:?}", response.len(), response);
                 Ok(())
             }
@@ -157,6 +198,21 @@ impl Client {
                 Err(Error::ServerError(err.to_string()))
             }
         }
+    }
+
+    /// Verifica si la respuesta está completa basándose en el protocolo CQL
+    fn is_response_complete(response: &[u8]) -> bool {
+        if response.len() < 9 {
+            return false;
+        }
+
+        // Los primeros 9 bytes contienen el header
+        // Los bytes 5-8 contienen la longitud del cuerpo
+        let body_length =
+            u32::from_be_bytes([response[5], response[6], response[7], response[8]]) as usize;
+
+        // Verificamos si tenemos el header completo + el cuerpo
+        response.len() >= 9 + body_length
     }
 }
 

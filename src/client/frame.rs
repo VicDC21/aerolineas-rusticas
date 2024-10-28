@@ -38,6 +38,19 @@ impl Frame {
         Self::new(headers, body)
     }
 
+    /// Crea un frame para un DDL statement
+    pub fn ddl(stream_id: i16, statement: String) -> Self {
+        let body = DdlBody::new(statement).as_bytes();
+        let headers = Headers::new(
+            Version::RequestV5,
+            vec![Flag::Default],
+            Stream::new(stream_id),
+            Opcode::Query, // DDL usa el mismo opcode que las queries normales
+            Length::new(body.len() as u32),
+        );
+        Self::new(headers, body)
+    }
+
     /* Crea un frame para un batch
     pub fn batch(stream_id: i16, queries: Vec<DmlStatement>) -> Self {
         let body = BatchBody::new(queries).as_bytes();
@@ -158,6 +171,155 @@ impl Byteable for QueryBody {
                 _ => {}
             }
         }
+        bytes
+    }
+}
+
+/// Body específico para DDL statements
+pub struct DdlBody {
+    statement: String,
+    consistency: Consistency,
+    keyspace_flags: Option<KeyspaceFlags>,
+    table_flags: Option<TableFlags>,
+}
+
+/// Flags específicas para la creación/alteración de keyspaces
+#[derive(Clone, Copy)]
+pub struct KeyspaceFlags(u8);
+
+impl KeyspaceFlags {
+    /// Crea un nuevo conjunto de flags vacío
+    pub fn new() -> Self {
+        Self(0)
+    }
+
+    /// Añade una flag al conjunto
+    pub fn add(&mut self, flag: KeyspaceFlag) {
+        self.0 |= flag as u8;
+    }
+
+    /// Obtiene el valor raw de las flags
+    pub fn bits(&self) -> u8 {
+        self.0
+    }
+}
+
+impl Default for KeyspaceFlags {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Flags individuales para keyspaces
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum KeyspaceFlag {
+    /// Flag para estrategia de replicación
+    ReplicationStrategy = 0x01,
+    /// Flag para factor de replicación
+    ReplicationFactor = 0x02,
+    /// Flag para durable writes
+    DurableWrites = 0x04,
+}
+
+/// Flags específicas para la creación/alteración de tablas
+#[derive(Clone, Copy)]
+pub struct TableFlags(u8);
+
+impl TableFlags {
+    /// Crea un nuevo conjunto de flags vacío
+    pub fn new() -> Self {
+        Self(0)
+    }
+
+    /// Añade una flag al conjunto
+    pub fn add(&mut self, flag: TableFlag) {
+        self.0 |= flag as u8;
+    }
+
+    /// Obtiene el valor raw de las flags
+    pub fn bits(&self) -> u8 {
+        self.0
+    }
+}
+
+impl Default for TableFlags {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Flags individuales para tablas
+#[derive(Clone, Copy)]
+#[repr(u8)]
+pub enum TableFlag {
+    /// Flag para ordenamiento
+    ClusteringOrder = 0x01,
+    /// Flags para compresión
+    Compression = 0x02,
+    /// Flags para caching
+    Caching = 0x04,
+    /// Flags para compaction
+    Compaction = 0x08,
+}
+
+impl DdlBody {
+    /// Crea un nuevo body para DDL statements
+    pub fn new(statement: String) -> Self {
+        Self {
+            statement,
+            consistency: Consistency::All, // DDL statements típicamente usan consistencia ALL
+            keyspace_flags: None,
+            table_flags: None,
+        }
+    }
+
+    /// Configura flags para keyspaces de manera segura
+    pub fn with_keyspace_flags(mut self, flags: &[KeyspaceFlag]) -> Self {
+        let mut keyspace_flags = KeyspaceFlags::new();
+        for &flag in flags {
+            keyspace_flags.add(flag);
+        }
+        self.keyspace_flags = Some(keyspace_flags);
+        self
+    }
+
+    /// Configura flags para tablas de manera segura
+    pub fn with_table_flags(mut self, flags: &[TableFlag]) -> Self {
+        let mut table_flags = TableFlags::new();
+        for &flag in flags {
+            table_flags.add(flag);
+        }
+        self.table_flags = Some(table_flags);
+        self
+    }
+}
+
+impl Byteable for DdlBody {
+    fn as_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+
+        // Statement string
+        let statement_bytes = encode_string_to_bytes(&self.statement);
+        bytes.extend((statement_bytes.len() as i32).to_be_bytes());
+        bytes.extend(statement_bytes);
+
+        // Consistency
+        bytes.extend((self.consistency as u16).to_be_bytes());
+
+        // Flags base (0 para DDL statements básicos)
+        bytes.push(0);
+
+        // Si hay flags de keyspace, las agregamos usando el valor raw seguro
+        if let Some(keyspace_flags) = &self.keyspace_flags {
+            bytes.push(keyspace_flags.bits());
+        }
+
+        // Si hay flags de tabla, las agregamos usando el valor raw seguro
+        if let Some(table_flags) = &self.table_flags {
+            bytes.push(table_flags.bits());
+        }
+
         bytes
     }
 }
