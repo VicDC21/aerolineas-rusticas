@@ -390,11 +390,8 @@ fn parse_primary_key(list: &mut Vec<String>) -> Result<Option<PrimaryKey>, Error
                 "Falta el paréntesis de apertura en PRIMARY KEY".to_string(),
             ));
         }
-
-        check_words(list, "(");
-        let primary_key = PrimaryKey::parse(list)?;
-
-        Ok(Some(primary_key))
+        let partition_key_and_clustering_columns = PrimaryKey::parse(list)?;
+        Ok(Some(partition_key_and_clustering_columns))
     } else {
         Ok(None)
     }
@@ -800,7 +797,10 @@ mod tests {
         assert!(!table.if_not_exists);
         assert_eq!(table.columns.len(), 3);
         assert_eq!(
-            table.primary_key.as_ref().map_or(1, |pk| pk.columns.len()),
+            table
+                .primary_key
+                .as_ref()
+                .map_or(1, |pk| pk.partition_key.len()),
             1
         );
         assert!(table.compact_storage);
@@ -826,7 +826,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_create_table_with_compound_primary_key() -> Result<(), Error> {
+    fn test_03_create_table_with_primary_key_and_clustering_column() -> Result<(), Error> {
         let query = "CREATE TABLE posts (
             user_id UUID,
             post_id TIMEUUID,
@@ -840,15 +840,57 @@ mod tests {
 
         assert_eq!(table.columns.len(), 3);
         assert_eq!(
-            table.primary_key.as_ref().map_or(0, |pk| pk.columns.len()),
-            2
+            table
+                .primary_key
+                .as_ref()
+                .map_or(0, |pk| pk.partition_key.len()),
+            1
+        );
+        assert_eq!(
+            table
+                .primary_key
+                .as_ref()
+                .map_or(0, |pk| pk.clustering_columns.len()),
+            1
         );
         assert!(table.clustering_order.is_some());
         Ok(())
     }
 
     #[test]
-    fn test_04_create_table_without_compact_storage() -> Result<(), Error> {
+    fn test_03_create_table_with_compound_primary_key_and_clustering_column() -> Result<(), Error> {
+        let query = "CREATE TABLE posts (
+            user_id UUID,
+            post_id TIMEUUID,
+            content TEXT,
+            PRIMARY KEY ((user_id, post_id), content)
+        ) WITH 'CLUSTERING ORDER BY' (post_id DESC)";
+        let mut tokens = tokenize_query(query);
+
+        let result = create_table_statement(&mut tokens)?;
+        let table = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
+
+        assert_eq!(table.columns.len(), 3);
+        assert_eq!(
+            table
+                .primary_key
+                .as_ref()
+                .map_or(0, |pk| pk.partition_key.len()),
+            2
+        );
+        assert_eq!(
+            table
+                .primary_key
+                .as_ref()
+                .map_or(0, |pk| pk.clustering_columns.len()),
+            1
+        );
+        assert!(table.clustering_order.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn test_05_create_table_without_compact_storage() -> Result<(), Error> {
         let query = "CREATE TABLE events (
             id UUID PRIMARY KEY,
             data TEXT
@@ -865,7 +907,7 @@ mod tests {
     }
 
     #[test]
-    fn test_05_create_table_with_quoted_names() -> Result<(), Error> {
+    fn test_06_create_table_with_quoted_names() -> Result<(), Error> {
         let query = "CREATE TABLE \"My Table\" (
             \"User ID\" UUID PRIMARY KEY,
             \"Full Name\" TEXT
@@ -893,7 +935,7 @@ mod tests {
     }
 
     #[test]
-    fn test_06_invalid_create_table_statement() -> Result<(), Error> {
+    fn test_07_invalid_create_table_statement() -> Result<(), Error> {
         let query = "CREATE TABLE";
         let mut tokens = tokenize_query(query);
 

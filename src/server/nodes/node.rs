@@ -123,7 +123,11 @@ impl Node {
     }
 
     fn add_table(&mut self, table: Table) {
-        self.tables.insert(table.get_name().to_string(), table);
+        let table_name = table.get_name().to_string();
+        let partition_key = table.get_partition_key();
+        self.tables.insert(table_name.clone(), table);
+        self.tables_and_partitions_keys_values
+            .insert(table_name, partition_key);
     }
 
     fn get_table(&self, table_name: &str) -> Result<&Table> {
@@ -843,7 +847,9 @@ impl Node {
             Err(err) => return Err(err),
         };
         match DiskHandler::create_table(create_table, &self.storage_addr, &default_keyspace_name) {
-            Ok(Some(keyspace)) => self.add_table(keyspace),
+            Ok(Some(table)) => {
+                self.add_table(table);
+            }
             Ok(None) => return Err(Error::ServerError("No se pudo crear la tabla".to_string())),
             Err(err) => return Err(err),
         };
@@ -889,7 +895,7 @@ impl Node {
                     let index = match table
                         .get_columns_names()
                         .iter()
-                        .position(|c| c == &table.get_partition_key())
+                        .position(|c| *c == table.get_partition_key().join(","))
                     {
                         Some(index) => index,
                         None => {

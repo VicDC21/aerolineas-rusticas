@@ -10,12 +10,11 @@ use super::{
     column_config::ColumnConfig, keyspace::Keyspace, replication_strategy::ReplicationStrategy,
     table::Table,
 };
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+};
 use crate::server::nodes::node::NodeId;
-use crate::
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-    };
 use crate::{
     parser::statements::{
         ddl_statement::{
@@ -76,11 +75,9 @@ impl DiskHandler {
             Ok(Some(replication)) => {
                 Ok(Some(Keyspace::new(keyspace_name.to_string(), replication)))
             }
-            Ok(None) => {
-                Err(Error::ServerError(
-                    "La estrategia de replicación es obligatoria".to_string(),
-                ))
-            }
+            Ok(None) => Err(Error::ServerError(
+                "La estrategia de replicación es obligatoria".to_string(),
+            )),
             Err(e) => Err(e),
         }
     }
@@ -161,15 +158,15 @@ impl DiskHandler {
             .write_all(columns_names.join(",").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
         let primary_key = match statement.primary_key {
-            Some(primary_key) => primary_key.columns,
+            Some(primary_key) => primary_key,
             None => {
                 return Err(Error::SyntaxError(
                     "La clave primaria es obligatoria".to_string(),
                 ))
             }
         };
-        let partition_key = primary_key[0].to_string();
-        if primary_key.len() == 1 {
+        let partition_key = primary_key.partition_key;
+        if primary_key.clustering_columns.is_empty() {
             return Ok(Some(Table::new(
                 table_name,
                 keyspace_name,
@@ -179,7 +176,7 @@ impl DiskHandler {
             )));
         }
 
-        let clustering_keys = primary_key[1..].to_vec();
+        let clustering_keys = primary_key.clustering_columns;
         let mut clustering_keys_and_order: Vec<(String, ProtocolOrdering)> = Vec::new();
         for key in clustering_keys {
             clustering_keys_and_order.push((key, ProtocolOrdering::Asc));

@@ -12,7 +12,7 @@ pub struct Table {
     /// Columnas de la tabla.
     pub columns: Vec<ColumnConfig>,
     /// Clave primaria de la tabla.
-    pub partition_key: String,
+    pub partition_key: Vec<String>,
     /// Clave de clustering de la tabla y orden de agrupamiento de las columnas.
     pub clustering_key_and_order: Option<Vec<(String, ProtocolOrdering)>>,
 }
@@ -23,7 +23,7 @@ impl Table {
         name: String,
         keyspace: String,
         columns: Vec<ColumnConfig>,
-        partition_key: String,
+        partition_key: Vec<String>,
         clustering_key_and_order: Option<Vec<(String, ProtocolOrdering)>>,
     ) -> Self {
         Table {
@@ -41,8 +41,8 @@ impl Table {
     }
 
     /// Obtiene la partition key de la tabla.
-    pub fn get_partition_key(&self) -> String {
-        self.partition_key.to_string()
+    pub fn get_partition_key(&self) -> Vec<String> {
+        self.partition_key.clone()
     }
 
     /// Obtiene los nombres de las columnas de la tabla.
