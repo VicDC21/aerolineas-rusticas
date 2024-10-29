@@ -825,6 +825,7 @@ impl Node {
         };
         Ok(self.create_result_void())
     }
+
     fn create_result_void(&mut self) -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());

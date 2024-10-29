@@ -11,13 +11,11 @@ use super::{
     table::Table,
 };
 use crate::server::nodes::node::NodeId;
-use crate::{
-    parser::data_types::term::Term,
+use crate::
     protocol::{
         aliases::{results::Result, types::Byte},
         errors::error::Error,
-    },
-};
+    };
 use crate::{
     parser::statements::{
         ddl_statement::{
@@ -79,7 +77,6 @@ impl DiskHandler {
                 Ok(Some(Keyspace::new(keyspace_name.to_string(), replication)))
             }
             Ok(None) => {
-                println!("rompe aca");
                 Err(Error::ServerError(
                     "La estrategia de replicación es obligatoria".to_string(),
                 ))
