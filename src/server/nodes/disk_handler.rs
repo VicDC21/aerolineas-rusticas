@@ -239,9 +239,11 @@ impl DiskHandler {
             None => format!("{}/{}/{}.csv", storage_addr, default_keyspace, name),
         };
 
+        // Leer el contenido del archivo
         let content =
             std::fs::read_to_string(&table_addr).map_err(|e| Error::ServerError(e.to_string()))?;
 
+        // Dividir el contenido en líneas y filtrar líneas vacías
         let mut lines: Vec<String> = content
             .lines()
             .map(|s| s.trim().to_string())
@@ -259,6 +261,7 @@ impl DiskHandler {
         let table_cols: Vec<&str> = header.split(",").collect();
         let query_cols = statement.get_columns_names();
 
+        // Validar columnas
         for col in &query_cols {
             if !table_cols.contains(&col.as_str()) {
                 return Err(Error::ServerError(format!(
@@ -272,6 +275,7 @@ impl DiskHandler {
         let mut id_exists = false;
         let mut id_position = None;
 
+        // Buscar ID existente en las líneas de datos (saltando el header)
         for (i, line) in lines.iter().enumerate().skip(1) {
             if line.starts_with(&values[0]) {
                 id_exists = true;
@@ -285,25 +289,119 @@ impl DiskHandler {
         }
 
         let new_row = Self::generate_row_to_insert(&values, &query_cols, &table_cols);
+
+        // Manejar las líneas de datos (sin el header)
         let mut data_lines = lines.split_off(1);
+
         if let Some(pos) = id_position {
             data_lines[pos - 1] = new_row.clone();
         } else {
             data_lines.push(new_row.clone());
         }
 
+        // Crear el OrderBy para la Partition Key
+        let partition_key = table.get_partition_key();
+        let mut order_criteria = vec![];
+
+        // Agregar la Partition Key como primer criterio de ordenamiento
+        for key in partition_key {
+            order_criteria.push((key.to_string(), true)); // true para orden ascendente
+        }
+
+        // Agregar las Clustering Columns si existen
+        if let Some(clustering_key_and_order) = &table.clustering_key_and_order {
+            order_criteria.extend(
+                clustering_key_and_order
+                    .clone()
+                    .into_iter()
+                    .map(|(key, order)| (key, order == ProtocolOrdering::Asc)),
+            );
+        }
+
+        // Crear el OrderBy con todos los criterios
+        let order_criteria: Vec<(String, ProtocolOrdering)> = order_criteria
+            .into_iter()
+            .map(|(key, asc)| {
+                (
+                    key,
+                    if asc {
+                        ProtocolOrdering::Asc
+                    } else {
+                        ProtocolOrdering::Desc
+                    },
+                )
+            })
+            .collect();
+        let order_by = OrderBy::new_from_vec(order_criteria);
+
+        // Escribir el contenido con header y datos
         let content = format!("{}\n{}", header, data_lines.join("\n"));
         std::fs::write(&table_addr, content).map_err(|e| Error::ServerError(e.to_string()))?;
 
-        if let Some(order_by) = &table.clustering_key_and_order {
-            Self::order_table_data(
-                &table_addr,
-                &query_cols,
-                &OrderBy::new_from_vec(order_by.to_vec()),
-            )?;
-        }
+        // Siempre ordenar según la Partition Key (y Clustering Columns si existen)
+        Self::order_table_data(&table_addr, &query_cols, &order_by)?;
 
         Ok(new_row.trim().split(",").map(|s| s.to_string()).collect())
+    }
+
+    /// Ordena una tabla según el criterio de ordenación dado.
+    fn order_table_data(table_addr: &str, table_cols: &[String], order_by: &OrderBy) -> Result<()> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let mut reader = BufReader::new(&file);
+
+        // Leer y guardar el header
+        let mut header = String::new();
+        reader
+            .read_line(&mut header)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let header = header.trim().to_string();
+
+        // Leer y ordenar las líneas de datos
+        let mut rows: Vec<Vec<String>> = Vec::new();
+        for line in reader.lines() {
+            let table_line = line.map_err(|e| Error::ServerError(e.to_string()))?;
+            if !table_line.trim().is_empty() {
+                let table_row: Vec<String> = table_line
+                    .trim()
+                    .split(",")
+                    .map(|s| s.to_string())
+                    .collect();
+                rows.push(table_row);
+            }
+        }
+
+        // Ordenar según todos los criterios definidos
+        order_by.order(&mut rows, table_cols);
+
+        // Construir el contenido final
+        let mut final_content = header;
+        if !rows.is_empty() {
+            final_content.push('\n');
+            final_content.push_str(
+                &rows
+                    .iter()
+                    .map(|row| row.join(","))
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+            );
+        }
+
+        // Escribir el contenido ordenado
+        let ordered_table = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let mut writer = BufWriter::new(&ordered_table);
+
+        writer
+            .write_all(final_content.as_bytes())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        Ok(())
     }
 
     /// Genera una fila para insertar en una tabla, en base a las columnas dadas en la query y de la tabla.
@@ -321,59 +419,6 @@ impl DiskHandler {
         }
 
         values_to_insert.join(",") + "\n"
-    }
-
-    /// Ordena una tabla según el criterio de ordenación dado.
-    fn order_table_data(table_addr: &str, table_cols: &[String], order_by: &OrderBy) -> Result<()> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open(table_addr)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-        let mut reader = BufReader::new(&file);
-        let mut header = String::new();
-        reader
-            .read_line(&mut header)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        let header = header.trim().to_string();
-        let mut rows: Vec<Vec<String>> = Vec::new();
-        for line in reader.lines() {
-            let table_line = line.map_err(|e| Error::ServerError(e.to_string()))?;
-            if !table_line.trim().is_empty() {
-                let table_row: Vec<String> = table_line
-                    .trim()
-                    .split(",")
-                    .map(|s| s.to_string())
-                    .collect();
-                rows.push(table_row);
-            }
-        }
-
-        order_by.order(&mut rows, table_cols);
-        let mut final_content = header;
-        if !rows.is_empty() {
-            final_content.push('\n');
-            final_content.push_str(
-                &rows
-                    .iter()
-                    .map(|row| row.join(","))
-                    .collect::<Vec<String>>()
-                    .join("\n"),
-            );
-        }
-
-        let ordered_table = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(table_addr)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-        let mut writer = BufWriter::new(&ordered_table);
-
-        writer
-            .write_all(final_content.as_bytes())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        Ok(())
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
