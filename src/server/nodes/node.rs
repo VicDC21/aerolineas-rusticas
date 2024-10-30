@@ -144,8 +144,16 @@ impl Node {
             .insert(keyspace.get_name().to_string(), keyspace);
     }
 
-    fn get_keyspace(&self, keyspace_name: &str) -> Result<&Keyspace> {
-        match self.keyspaces.get(keyspace_name) {
+    fn get_keyspace(&self, table_name: &str) -> Result<&Keyspace> {
+        let table = match self.tables.get(table_name) {
+            Some(table) => table,
+            None => {
+                return Err(Error::ServerError(
+                    "La tabla solicitada no existe".to_string(),
+                ))
+            }
+        };
+        match self.keyspaces.get(table.keyspace.as_str()) {
             Some(keyspace) => Ok(keyspace),
             None => Err(Error::ServerError(
                 "El keyspace solicitado no existe".to_string(),
@@ -207,12 +215,12 @@ impl Node {
         let mut i = 0;
         for (a, b) in &self.nodes_ranges {
             if *a <= hash_val && hash_val < *b {
-                return START_ID + i as NodeId;
+                return START_ID + (i - 1) as NodeId;
             }
             i += 1;
         }
 
-        START_ID + i as NodeId
+        START_ID + (i - 1) as NodeId
     }
 
     fn send_message_and_wait_response(
@@ -887,7 +895,12 @@ impl Node {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
-        match DiskHandler::do_insert(insert, &self.storage_addr, table) {
+        match DiskHandler::do_insert(
+            insert,
+            &self.storage_addr,
+            table,
+            &self.default_keyspace_name,
+        ) {
             Ok(new_row) => {
                 if !new_row.is_empty() {
                     let table_name = insert.table.get_name();

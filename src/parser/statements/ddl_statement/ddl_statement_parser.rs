@@ -858,7 +858,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_create_table_with_compound_primary_key_and_clustering_column() -> Result<(), Error> {
+    fn test_04_create_table_with_compound_primary_key_and_clustering_column() -> Result<(), Error> {
         let query = "CREATE TABLE posts (
             user_id UUID,
             post_id TIMEUUID,

@@ -2,7 +2,7 @@
 
 use std::{
     fs::{create_dir, File, OpenOptions},
-    io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
+    io::{BufRead, BufReader, BufWriter, Read, Write},
     path::Path,
 };
 
@@ -38,17 +38,19 @@ impl DiskHandler {
     /// Crea una carpeta de almacenamiento para el nodo.
     /// Devuelve la ruta a dicho almacenamiento.
     pub fn new_node_storage(id: NodeId) -> String {
-        let path_folder = Path::new("storage");
-        if !path_folder.exists() && !path_folder.is_dir() {
-            create_dir(path_folder).expect("No se pudo crear la carpeta de almacenamiento");
-        }
-        let storage_addr: String = format!("storage/storage_node_{}", id);
-        let path_folder = Path::new(&storage_addr);
-        if !path_folder.exists() && !path_folder.is_dir() {
-            create_dir(path_folder)
-                .expect("No se pudo crear la carpeta de almacenamiento del nodo");
-        }
+        let main_path = "storage";
+        DiskHandler::create_directory(main_path);
+        let storage_addr: String = format!("{}/storage_node_{}", main_path, id);
+        DiskHandler::create_directory(&storage_addr);
         storage_addr
+    }
+
+    fn create_directory(path: &str) {
+        let path_folder = Path::new(path);
+        if !path_folder.exists() && !path_folder.is_dir() {
+            let err_msg = format!("No se pudo crear la carpeta de almacenamiento {}", path);
+            create_dir(path_folder).expect(&err_msg);
+        }
     }
 
     /// Crea un nuevo keyspace en el caso que corresponda.
@@ -141,7 +143,6 @@ impl DiskHandler {
                 keyspace_name
             )));
         }
-
         let columns: Vec<ColumnConfig> = statement.get_columns()?;
         let columns_names = columns
             .iter()
@@ -156,6 +157,9 @@ impl DiskHandler {
         let mut writer = BufWriter::new(&file);
         writer
             .write_all(columns_names.join(",").as_bytes())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        writer
+            .write_all("\n".as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
         let primary_key = match statement.primary_key {
             Some(primary_key) => primary_key,
@@ -214,34 +218,42 @@ impl DiskHandler {
     }
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
-    pub fn do_insert(statement: &Insert, storage_addr: &str, table: &Table) -> Result<Vec<String>> {
+    pub fn do_insert(
+        statement: &Insert,
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+    ) -> Result<Vec<String>> {
         let keyspace = statement.table.get_keyspace();
         let name = statement.table.get_name();
         let table_addr = match keyspace {
             Some(keyspace) => format!("{}/{}/{}.csv", storage_addr, keyspace, name),
-            None => format!("{}/{}.csv", storage_addr, name),
+            None => format!("{}/{}/{}.csv", storage_addr, default_keyspace, name),
         };
 
-        let file = OpenOptions::new()
-            .read(true)
-            .open(&table_addr)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-        let mut reader = BufReader::new(&file);
+        let mut content = String::new();
+        {
+            let file = OpenOptions::new()
+                .read(true)
+                .open(&table_addr)
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+            let mut reader = BufReader::new(&file);
+            reader
+                .read_to_string(&mut content)
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+        }
 
-        let mut line = String::new();
-        let read_bytes = reader
-            .read_line(&mut line)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-        if read_bytes == 0 {
+        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        if lines.is_empty() {
             return Err(Error::ServerError(format!(
                 "No se pudo leer la tabla con ruta {}",
                 &table_addr
             )));
         }
-        line = line.trim().to_string();
 
+        let header = lines[0].clone();
+        let table_cols: Vec<&str> = header.split(",").collect();
         let query_cols = statement.get_columns_names();
-        let table_cols: Vec<&str> = line.split(",").collect();
         for col in &query_cols {
             if !table_cols.contains(&col.as_str()) {
                 return Err(Error::ServerError(format!(
@@ -253,44 +265,41 @@ impl DiskHandler {
 
         let values = statement.get_values();
         let mut id_exists = false;
-        let mut buffer = Vec::new();
-        let mut position = 0;
-        // Leo línea por línea y verifico si el ID de la fila ya existe
-        while let Some(Ok(line)) = reader.by_ref().lines().next() {
+        let mut id_position = None;
+
+        for (i, line) in lines.iter().enumerate().skip(1) {
             if line.starts_with(&values[0]) {
                 id_exists = true;
+                id_position = Some(i);
                 break;
             }
-            position += line.len() + 1; // Actualizo la posicion a sobreescribir si existe el ID
-            buffer.push(line);
         }
-        // Si el ID existe y no se debe sobreescribir la línea, no hago nada
+
         if id_exists && statement.if_not_exists {
             return Ok(Vec::new());
         }
 
-        // Abro el archivo nuevamente para escribir
+        let new_row = Self::generate_row_to_insert(&values, &query_cols, &table_cols);
+        if let Some(pos) = id_position {
+            lines[pos] = new_row.clone();
+        } else {
+            lines.push(new_row.clone());
+        }
+
         let mut writer = OpenOptions::new()
             .write(true)
+            .truncate(true)
             .open(&table_addr)
             .map_err(|e| Error::ServerError(e.to_string()))?;
 
-        let new_row = Self::generate_row_to_insert(&values, &query_cols, &table_cols);
-        if id_exists {
-            // Si el ID ya existia, sobrescribo la línea
+        for (i, line) in lines.iter().enumerate() {
+            if i > 0 {
+                writer
+                    .write_all(b"\n")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
+            }
             writer
-                .seek(SeekFrom::Start(position as u64))
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-            writer
-                .write_all(new_row.as_bytes())
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-        } else {
-            // Si no existia el ID, escribo al final del archivo
-            writer
-                .seek(SeekFrom::End(0))
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-            writer
-                .write_all(new_row.as_bytes())
+                .write_all(line.as_bytes())
                 .map_err(|e| Error::ServerError(e.to_string()))?;
         }
 
