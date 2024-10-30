@@ -2,7 +2,7 @@
 
 use std::{
     fs::{create_dir, File, OpenOptions},
-    io::{BufRead, BufReader, BufWriter, Read, Write},
+    io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
 };
 
@@ -10,11 +10,14 @@ use super::{
     column_config::ColumnConfig, keyspace::Keyspace, replication_strategy::ReplicationStrategy,
     table::Table,
 };
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-};
 use crate::server::nodes::node::NodeId;
+use crate::{
+    parser::data_types::term::Term,
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+    },
+};
 use crate::{
     parser::statements::{
         ddl_statement::{
@@ -90,26 +93,10 @@ impl DiskHandler {
         while i < options.len() {
             match &options[i] {
                 Options::MapLiteral(map_literal) => {
-                    let values = map_literal.get_values();
+                    let values = map_literal.get_values().as_slice();
                     let (term1, term2) = &values[0];
                     if term1.get_value() == "class" && term2.get_value() == "SimpleStrategy" {
-                        let (term3, term4) = &values[1];
-                        if term3.get_value() == "replication_factor" {
-                            let replicas = match term4.get_value().parse::<u32>() {
-                                Ok(replicas) => replicas,
-                                Err(_) => {
-                                    return Err(Error::Invalid(
-                                        "El valor de 'replication_factor' debe ser un número"
-                                            .to_string(),
-                                    ));
-                                }
-                            };
-                            return Ok(Some(ReplicationStrategy::SimpleStrategy(replicas)));
-                        } else {
-                            return Err(Error::Invalid(
-                                "Falto el campo replication_factor".to_string(),
-                            ));
-                        }
+                        return DiskHandler::get_single_strategy_replication(values);
                     } else if term1.get_value() == "class"
                         && term2.get_value() == "NetworkTopologyStrategy"
                     {
@@ -122,6 +109,27 @@ impl DiskHandler {
             i += 1;
         }
         Ok(None)
+    }
+
+    fn get_single_strategy_replication(
+        values: &[(Term, Term)],
+    ) -> Result<Option<ReplicationStrategy>> {
+        let (term3, term4) = &values[1];
+        if term3.get_value() == "replication_factor" {
+            let replicas = match term4.get_value().parse::<u32>() {
+                Ok(replicas) => replicas,
+                Err(_) => {
+                    return Err(Error::Invalid(
+                        "El valor de 'replication_factor' debe ser un número".to_string(),
+                    ));
+                }
+            };
+            Ok(Some(ReplicationStrategy::SimpleStrategy(replicas)))
+        } else {
+            Err(Error::Invalid(
+                "Falto el campo replication_factor".to_string(),
+            ))
+        }
     }
 
     /// Crea una nueva tabla en el caso que corresponda.
@@ -231,19 +239,15 @@ impl DiskHandler {
             None => format!("{}/{}/{}.csv", storage_addr, default_keyspace, name),
         };
 
-        let mut content = String::new();
-        {
-            let file = OpenOptions::new()
-                .read(true)
-                .open(&table_addr)
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-            let mut reader = BufReader::new(&file);
-            reader
-                .read_to_string(&mut content)
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-        }
+        let content =
+            std::fs::read_to_string(&table_addr).map_err(|e| Error::ServerError(e.to_string()))?;
 
-        let mut lines: Vec<String> = content.lines().map(|s| s.to_string()).collect();
+        let mut lines: Vec<String> = content
+            .lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
         if lines.is_empty() {
             return Err(Error::ServerError(format!(
                 "No se pudo leer la tabla con ruta {}",
@@ -254,6 +258,7 @@ impl DiskHandler {
         let header = lines[0].clone();
         let table_cols: Vec<&str> = header.split(",").collect();
         let query_cols = statement.get_columns_names();
+
         for col in &query_cols {
             if !table_cols.contains(&col.as_str()) {
                 return Err(Error::ServerError(format!(
@@ -280,28 +285,15 @@ impl DiskHandler {
         }
 
         let new_row = Self::generate_row_to_insert(&values, &query_cols, &table_cols);
+        let mut data_lines = lines.split_off(1);
         if let Some(pos) = id_position {
-            lines[pos] = new_row.clone();
+            data_lines[pos - 1] = new_row.clone();
         } else {
-            lines.push(new_row.clone());
+            data_lines.push(new_row.clone());
         }
 
-        let mut writer = OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .open(&table_addr)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        for (i, line) in lines.iter().enumerate() {
-            if i > 0 {
-                writer
-                    .write_all(b"\n")
-                    .map_err(|e| Error::ServerError(e.to_string()))?;
-            }
-            writer
-                .write_all(line.as_bytes())
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-        }
+        let content = format!("{}\n{}", header, data_lines.join("\n"));
+        std::fs::write(&table_addr, content).map_err(|e| Error::ServerError(e.to_string()))?;
 
         if let Some(order_by) = &table.clustering_key_and_order {
             Self::order_table_data(
@@ -338,37 +330,37 @@ impl DiskHandler {
             .open(table_addr)
             .map_err(|e| Error::ServerError(e.to_string()))?;
         let mut reader = BufReader::new(&file);
-
-        let mut line = String::new();
-        let read_bytes = reader
-            .read_line(&mut line)
+        let mut header = String::new();
+        reader
+            .read_line(&mut header)
             .map_err(|e| Error::ServerError(e.to_string()))?;
-        if read_bytes == 0 {
-            return Err(Error::ServerError(format!(
-                "No se pudo leer la tabla con ruta {}",
-                &table_addr
-            )));
-        }
 
+        let header = header.trim().to_string();
         let mut rows: Vec<Vec<String>> = Vec::new();
         for line in reader.lines() {
             let table_line = line.map_err(|e| Error::ServerError(e.to_string()))?;
-            let table_row: Vec<String> = table_line
-                .trim()
-                .split(",")
-                .map(|s| s.to_string())
-                .collect();
-            rows.push(table_row);
+            if !table_line.trim().is_empty() {
+                let table_row: Vec<String> = table_line
+                    .trim()
+                    .split(",")
+                    .map(|s| s.to_string())
+                    .collect();
+                rows.push(table_row);
+            }
         }
 
         order_by.order(&mut rows, table_cols);
-
-        let mut ordered_table_data = Vec::new();
-        ordered_table_data.push(table_cols.join(","));
-        for row in rows {
-            ordered_table_data.push(row.join(","));
+        let mut final_content = header;
+        if !rows.is_empty() {
+            final_content.push('\n');
+            final_content.push_str(
+                &rows
+                    .iter()
+                    .map(|row| row.join(","))
+                    .collect::<Vec<String>>()
+                    .join("\n"),
+            );
         }
-        let final_table_data = ordered_table_data.join("\n");
 
         let ordered_table = OpenOptions::new()
             .write(true)
@@ -378,7 +370,7 @@ impl DiskHandler {
         let mut writer = BufWriter::new(&ordered_table);
 
         writer
-            .write_all(final_table_data.as_bytes())
+            .write_all(final_content.as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
 
         Ok(())

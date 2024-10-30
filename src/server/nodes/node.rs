@@ -992,7 +992,7 @@ impl Node {
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(&partition_key_value);
             let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-            for i in 0..replication_factor {
+            for i in 0..replication_factor - 1 {
                 let node_to_replicate = self.next_node_to_replicate_data(
                     node_id,
                     i as u8,
