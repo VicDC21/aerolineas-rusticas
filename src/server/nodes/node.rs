@@ -6,6 +6,7 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
     io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    path::Path,
     sync::mpsc::{Receiver, Sender},
     thread::Builder,
 };
@@ -187,18 +188,6 @@ impl Node {
     /// Consulta los IDs de los vecinos, incluyendo el propio.
     fn get_neighbours_ids(&self) -> Vec<NodeId> {
         self.neighbours_states.keys().copied().collect()
-    }
-
-    /// Inserta un valor en el mapa de tablas y _partition keys values_ segun el nombre de la tabla.
-    fn insert_in_table_partition_key_value(&mut self, value: String, table_name: String) {
-        if let Some(partition_keys_values) =
-            self.tables_and_partitions_keys_values.get_mut(&table_name)
-        {
-            partition_keys_values.push(value);
-        } else {
-            self.tables_and_partitions_keys_values
-                .insert(table_name, vec![value]);
-        }
     }
 
     /// Hashea el valor recibido.
@@ -396,7 +385,7 @@ impl Node {
         }) {
             Ok(proc_handler) => Ok(proc_handler),
             Err(err) => Err(Error::ServerError(format!(
-                "Error em el hilo prcesador:\n\n{}",
+                "Error em el hilo procesador:\n\n{}",
                 err
             ))),
         }
@@ -780,9 +769,7 @@ impl Node {
             Statement::DmlStatement(dml_statement) => {
                 self.handle_internal_dml_statement(dml_statement)
             }
-            Statement::UdtStatement(_udt_statement) => {
-                todo!();
-            }
+            Statement::UdtStatement(_udt_statement) => todo!(),
         }
     }
 
@@ -793,37 +780,37 @@ impl Node {
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
                 self.process_create_keyspace_statement(create_keyspace)
             }
-            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
-                todo!()
-            }
-            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
-                todo!()
-            }
+            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => todo!(),
+            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => todo!(),
             DdlStatement::CreateTableStatement(create_table) => {
                 self.process_create_table_statement(create_table)
             }
-            DdlStatement::AlterTableStatement(_alter_table) => {
-                todo!()
-            }
-            DdlStatement::DropTableStatement(_drop_table) => {
-                todo!()
-            }
-            DdlStatement::TruncateStatement(_truncate) => {
-                todo!()
-            }
+            DdlStatement::AlterTableStatement(_alter_table) => todo!(),
+            DdlStatement::DropTableStatement(_drop_table) => todo!(),
+            DdlStatement::TruncateStatement(_truncate) => todo!(),
         }
     }
 
     fn process_use_statement(&mut self, keyspace_name: KeyspaceName) -> Result<Vec<u8>> {
-        let name = keyspace_name.get_name();
-        if self.keyspaces.contains_key(name) {
-            self.set_default_keyspace(name.to_string());
+        let name = keyspace_name.get_name().to_string();
+        if self.keyspaces.contains_key(&name) {
+            self.set_default_keyspace(name.clone());
             Ok(self.create_result_void())
         } else {
+            if self.check_if_keyspace_exists(keyspace_name) {
+                self.set_default_keyspace(name.clone());
+                return Ok(self.create_result_void());
+            }
             Err(Error::ServerError(
                 "El keyspace solicitado no existe".to_string(),
             ))
         }
+    }
+
+    fn check_if_keyspace_exists(&self, keyspace_name: KeyspaceName) -> bool {
+        let keyspace_addr = format!("{}/{}", self.storage_addr, keyspace_name.get_name());
+        let path_folder = Path::new(&keyspace_addr);
+        path_folder.exists() && path_folder.is_dir()
     }
 
     fn process_create_keyspace_statement(
@@ -869,15 +856,9 @@ impl Node {
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select),
             DmlStatement::InsertStatement(insert) => self.process_insert(&insert),
-            DmlStatement::UpdateStatement(_update) => {
-                todo!()
-            }
-            DmlStatement::DeleteStatement(_delete) => {
-                todo!()
-            }
-            DmlStatement::BatchStatement(_batch) => {
-                todo!()
-            }
+            DmlStatement::UpdateStatement(_update) => todo!(),
+            DmlStatement::DeleteStatement(_delete) => todo!(),
+            DmlStatement::BatchStatement(_batch) => todo!(),
         }
     }
 
@@ -886,7 +867,12 @@ impl Node {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
-        DiskHandler::do_select(select, &self.storage_addr, table)
+        DiskHandler::do_select(
+            select,
+            &self.storage_addr,
+            table,
+            &self.default_keyspace_name,
+        )
     }
 
     fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>> {
@@ -895,36 +881,12 @@ impl Node {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
-        match DiskHandler::do_insert(
+        DiskHandler::do_insert(
             insert,
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
-        ) {
-            Ok(new_row) => {
-                if !new_row.is_empty() {
-                    let table_name = insert.table.get_name();
-                    let table = self.get_table(&table_name)?;
-                    let index = match table
-                        .get_columns_names()
-                        .iter()
-                        .position(|c| *c == table.get_partition_key().join(","))
-                    {
-                        Some(index) => index,
-                        None => {
-                            return Err(Error::ServerError(
-                                "No se pudo encontrar la columna de la partition key".to_string(),
-                            ))
-                        }
-                    };
-                    self.insert_in_table_partition_key_value(
-                        new_row[index].to_string(),
-                        table_name.to_string(),
-                    );
-                }
-            }
-            Err(err) => return Err(err),
-        }
+        )?;
         Ok(self.create_result_void())
     }
 

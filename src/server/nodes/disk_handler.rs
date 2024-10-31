@@ -401,12 +401,17 @@ impl DiskHandler {
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
-    pub fn do_select(statement: &Select, storage_addr: &str, table: &Table) -> Result<Vec<Byte>> {
+    pub fn do_select(
+        statement: &Select,
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+    ) -> Result<Vec<Byte>> {
         let keyspace = statement.from.get_keyspace();
         let name = statement.from.get_name();
         let table_addr = match keyspace {
             Some(keyspace) => format!("{}/{}/{}.csv", storage_addr, keyspace, name),
-            None => format!("{}/{}.csv", storage_addr, name),
+            None => format!("{}/{}/{}.csv", storage_addr, default_keyspace, name),
         };
 
         let file = OpenOptions::new()
