@@ -333,7 +333,6 @@ impl Client {
             col_types.push(ColType::try_from(&request[actual_position..])?);
             actual_position += displacement + 2;
         }
-        // <rows_count><rows_content>
         let rows_count = i32::from_be_bytes([
             request[actual_position],
             request[actual_position + 1],
@@ -347,86 +346,27 @@ impl Client {
             for i in 0..columns_count {
                 let col_data = match ColumnDataType::from(col_types[i as usize].clone()) {
                     ColumnDataType::String => {
-                        let string_len = self.get_lenght(request, actual_position);
-                        actual_position += 4;
-                        let right_position = actual_position + string_len as usize;
-                        let value_string = match String::from_utf8(
-                            request[actual_position..right_position].to_vec(),
-                        ) {
-                            Ok(value) => value,
-                            Err(_err) => {
-                                return Err(Error::TruncateError(
-                                    "Error al transformar bytes a utf8".to_string(),
-                                ))
-                            }
-                        };
-                        ColData::String(value_string)
+                        let value = self.parse_string(request, &mut actual_position)?;
+                        actual_position += value.len();
+                        ColData::String(value)
                     }
                     ColumnDataType::Timestamp => {
-                        let timestamp_len = self.get_lenght(request, actual_position);
-                        actual_position += 4;
-                        let right_position = actual_position + timestamp_len as usize;
-                        let value_timestamp =
-                            match std::str::from_utf8(&request[actual_position..right_position]) {
-                                Ok(value) => match value.parse::<i64>() {
-                                    Ok(parsed_value) => parsed_value,
-                                    Err(_err) => {
-                                        return Err(Error::TruncateError(
-                                            "Error al parsear string a i64".to_string(),
-                                        ))
-                                    }
-                                },
-                                Err(_err) => {
-                                    return Err(Error::TruncateError(
-                                        "Error al transformar bytes a utf8".to_string(),
-                                    ))
-                                }
-                            };
-                        ColData::Timestamp(value_timestamp)
+                        let value =
+                            self.parse_column_value::<i64>(request, &mut actual_position)?;
+                        actual_position += value.to_string().len();
+                        ColData::Timestamp(value)
                     }
                     ColumnDataType::Double => {
-                        let double_len = self.get_lenght(request, actual_position);
-                        actual_position += 4;
-                        let right_position = actual_position + double_len as usize;
-                        let value_double =
-                            match std::str::from_utf8(&request[actual_position..right_position]) {
-                                Ok(value) => match value.parse::<f64>() {
-                                    Ok(parsed_value) => parsed_value,
-                                    Err(_err) => {
-                                        return Err(Error::TruncateError(
-                                            "Error al parsear string a f64".to_string(),
-                                        ))
-                                    }
-                                },
-                                Err(_err) => {
-                                    return Err(Error::TruncateError(
-                                        "Error al transformar bytes a utf8".to_string(),
-                                    ))
-                                }
-                            };
-                        ColData::Double(value_double)
+                        let value =
+                            self.parse_column_value::<f64>(request, &mut actual_position)?;
+                        actual_position += value.to_string().len();
+                        ColData::Double(value)
                     }
                     ColumnDataType::Int => {
-                        let int_len = self.get_lenght(request, actual_position);
-                        actual_position += 4;
-                        let right_position = actual_position + int_len as usize;
-                        let value_int =
-                            match std::str::from_utf8(&request[actual_position..right_position]) {
-                                Ok(value) => match value.parse::<i32>() {
-                                    Ok(parsed_value) => parsed_value,
-                                    Err(_err) => {
-                                        return Err(Error::TruncateError(
-                                            "Error al parsear string a i32".to_string(),
-                                        ))
-                                    }
-                                },
-                                Err(_err) => {
-                                    return Err(Error::TruncateError(
-                                        "Error al transformar bytes a utf8".to_string(),
-                                    ))
-                                }
-                            };
-                        ColData::Int(value_int)
+                        let value =
+                            self.parse_column_value::<i32>(request, &mut actual_position)?;
+                        actual_position += value.to_string().len();
+                        ColData::Int(value)
                     }
                 };
 
@@ -454,6 +394,32 @@ impl Client {
             request[actual_position + 2],
             request[actual_position + 3],
         ])
+    }
+
+    fn parse_column_value<T>(&self, request: &[u8], actual_position: &mut usize) -> Result<T>
+    where
+        T: std::str::FromStr,
+        T::Err: std::fmt::Display,
+    {
+        let value_len = self.get_lenght(request, *actual_position);
+        *actual_position += 4;
+        let right_position = *actual_position + value_len as usize;
+
+        let str_value = std::str::from_utf8(&request[*actual_position..right_position])
+            .map_err(|_| Error::TruncateError("Error al transformar bytes a utf8".to_string()))?;
+
+        str_value
+            .parse::<T>()
+            .map_err(|e| Error::TruncateError(format!("Error al parsear string: {}", e)))
+    }
+
+    fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {
+        let string_len = self.get_lenght(request, *actual_position);
+        *actual_position += 4;
+        let right_position = *actual_position + string_len as usize;
+
+        String::from_utf8(request[*actual_position..right_position].to_vec())
+            .map_err(|_| Error::TruncateError("Error al transformar bytes a utf8".to_string()))
     }
 }
 
