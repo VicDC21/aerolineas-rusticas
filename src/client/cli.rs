@@ -124,7 +124,6 @@ impl Client {
                         Ok(_) => (),
                         Err(e) => {
                             eprintln!("Error al enviar la query: {}", e);
-                            // Intentar reconectar solo si es un error de conexión
                             match e {
                                 Error::ServerError(msg) if msg.contains("conexión") => {
                                     match self.connect() {
@@ -175,7 +174,6 @@ impl Client {
 
         match make_parse(&mut tokenize_query(query)) {
             Ok(statement) => {
-                // Crear el frame adecuado según el tipo de statement
                 let frame = match statement {
                     Statement::DmlStatement(_) => Frame::query(stream_id, query.to_string()),
                     Statement::DdlStatement(_) => Frame::ddl(stream_id, query.to_string()),
@@ -183,18 +181,15 @@ impl Client {
                         return Err(Error::ServerError("UDT statements no soportados".into()))
                     }
                 };
+                
+                tcp_stream.write_all(&frame.as_bytes()).map_err(|e| Error::ServerError(e.to_string()))?;
+                tcp_stream.flush().map_err(|e| Error::ServerError(e.to_string()))?;
 
-                // Enviar el frame
-                let _ = tcp_stream.write_all(&frame.as_bytes());
-                let _ = tcp_stream.flush();
-
-                // Buffer para la respuesta
                 let mut response = Vec::new();
                 let mut buffer = [0; 1024];
                 let mut timeout_count = 0;
                 const MAX_TIMEOUT: u32 = 50;
 
-                // Leer la respuesta con timeout
                 loop {
                     match tcp_stream.read(&mut buffer) {
                         Ok(0) => {
@@ -208,8 +203,8 @@ impl Client {
                         }
                         Ok(n) => {
                             response.extend_from_slice(&buffer[..n]);
-                            if Self::is_response_complete(&response) {
-                                break;
+                            if !response.is_empty() && Self::is_response_complete(&response) {
+                                return self.handle_response(&response);
                             }
                         }
                         Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -229,11 +224,6 @@ impl Client {
                         }
                     }
                 }
-                // Procesar la respuesta
-                if !response.is_empty() {
-                    return self.handle_response(&response);
-                }
-
                 self.requests_stream.remove(&stream_id);
                 Ok(ProtocolResult::Void)
             }
@@ -260,7 +250,7 @@ impl Client {
                 "No se cumple el protocolo del header".to_string(),
             ));
         };
-        println!("la response es: {:?}", request);
+        println!("Server response: {:?}", request);
         let _version = Version::try_from(request[0])?;
         let _flags = Flag::try_from(request[1])?;
         let _stream = Stream::try_from(request[2..4].to_vec())?;
