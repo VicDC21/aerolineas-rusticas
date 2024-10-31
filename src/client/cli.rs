@@ -181,9 +181,13 @@ impl Client {
                         return Err(Error::ServerError("UDT statements no soportados".into()))
                     }
                 };
-                
-                tcp_stream.write_all(&frame.as_bytes()).map_err(|e| Error::ServerError(e.to_string()))?;
-                tcp_stream.flush().map_err(|e| Error::ServerError(e.to_string()))?;
+
+                tcp_stream
+                    .write_all(&frame.as_bytes())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
+                tcp_stream
+                    .flush()
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
 
                 let mut response = Vec::new();
                 let mut buffer = [0; 1024];
