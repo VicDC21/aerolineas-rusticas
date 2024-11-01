@@ -2,8 +2,8 @@
 //!
 //! Al ser "ventanas" flotantes, se pueden mostrar por encima del mapa.
 
-use chrono::NaiveDate;
-use eframe::egui::{Align2, ComboBox, Context, Image, RichText, Ui, Window};
+use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
+use eframe::egui::{Align2, ComboBox, Context, DragValue, Image, RichText, Ui, Window};
 use egui_extras::DatePickerButton;
 use walkers::{sources::Attribution, MapMemory};
 
@@ -89,13 +89,57 @@ pub fn go_to_my_position(ui: &Ui, map_memory: &mut MapMemory) {
 }
 
 /// Seleccionar la fecha actual.
-pub fn date_selector(ctx: &Context, date: &mut NaiveDate) {
+pub fn date_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
+    let mut date = datetime.date_naive();
     Window::new("Date Selector")
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
         .anchor(Align2::LEFT_BOTTOM, [100., -10.])
         .show(ctx, |ui| {
-            ui.add(DatePickerButton::new(date).id_salt("date_selector"));
+            ui.add(DatePickerButton::new(&mut date).id_salt("date_selector"));
         });
+
+    let local = datetime.naive_local();
+    NaiveDateTime::new(date, local.time())
+        .and_local_timezone(Local)
+        .single()
+}
+
+/// Seleccionar la hora actual.
+pub fn clock_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
+    let mut hour = datetime.hour();
+    let mut minute = datetime.minute();
+    let mut second = datetime.second();
+    let slider_spd = 0.5;
+
+    Window::new("Clock Selector")
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(false)
+        .anchor(Align2::LEFT_BOTTOM, [220., -10.])
+        .show(ctx, |ui| {
+            ui.collapsing(
+                RichText::new(format!("{:0<2}:{:0<2}:{:0<2}", &hour, &minute, &second)),
+                |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Hora:").heading());
+                        ui.add(DragValue::new(&mut hour).range(0..=23).speed(slider_spd));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Minutos:").heading());
+                        ui.add(DragValue::new(&mut minute).range(0..=59).speed(slider_spd));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Segundos:").heading());
+                        ui.add(DragValue::new(&mut second).range(0..=59).speed(slider_spd));
+                    });
+                },
+            );
+        });
+    if let Some(time) = NaiveTime::from_hms_opt(hour, minute, second) {
+        datetime.with_time(time).single()
+    } else {
+        None
+    }
 }
