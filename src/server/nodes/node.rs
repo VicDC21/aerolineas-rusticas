@@ -49,7 +49,9 @@ use crate::{
             },
             dml_statement::{
                 dml_statement_parser::DmlStatement,
-                main_statements::{insert::Insert, select::select_operation::Select},
+                main_statements::{
+                    insert::Insert, select::select_operation::Select, update::Update,
+                },
             },
             statement::Statement,
         },
@@ -856,7 +858,7 @@ impl Node {
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select),
             DmlStatement::InsertStatement(insert) => self.process_insert(&insert),
-            DmlStatement::UpdateStatement(_update) => todo!(),
+            DmlStatement::UpdateStatement(update) => self.process_update(&update),
             DmlStatement::DeleteStatement(_delete) => todo!(),
             DmlStatement::BatchStatement(_batch) => todo!(),
         }
@@ -883,6 +885,21 @@ impl Node {
         };
         DiskHandler::do_insert(
             insert,
+            &self.storage_addr,
+            table,
+            &self.default_keyspace_name,
+        )?;
+        Ok(self.create_result_void())
+    }
+
+    fn process_update(&mut self, update: &Update) -> Result<Vec<Byte>> {
+        let table_name = update.table_name.get_name();
+        let table = match self.get_table(&table_name) {
+            Ok(table) => table,
+            Err(err) => return Err(err),
+        };
+        DiskHandler::do_update(
+            update,
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
@@ -935,9 +952,7 @@ impl Node {
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.select_with_other_nodes(select, request),
             DmlStatement::InsertStatement(insert) => self.insert_with_other_nodes(insert, request),
-            DmlStatement::UpdateStatement(_update) => {
-                todo!()
-            }
+            DmlStatement::UpdateStatement(update) => self.update_with_other_nodes(update, request),
             DmlStatement::DeleteStatement(_delete) => {
                 todo!()
             }
@@ -973,6 +988,83 @@ impl Node {
             }
         }
         Ok(response)
+    }
+
+    fn update_with_other_nodes(&mut self, update: Update, request: &[u8]) -> Result<Vec<Byte>> {
+        let table_name = update.table_name.get_name();
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
+        let mut results_from_nodes: Vec<u8> = Vec::new();
+        let mut consulted_nodes: Vec<String> = Vec::new();
+    
+        // Primero actualizamos en los nodos principales
+        for partition_key_value in partitions_keys_to_nodes {
+            let node_id = self.select_node(&partition_key_value);
+            
+            // Solo procesamos si no hemos consultado este nodo antes
+            if !consulted_nodes.contains(&partition_key_value) {
+                let mut current_response = if node_id == self.id {
+                    // Si somos el nodo principal, procesamos localmente
+                    self.process_update(&update)?
+                } else {
+                    // Si es otro nodo, enviamos la consulta
+                    let res = self.send_message_and_wait_response(
+                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        node_id,
+                        PortType::Priv,
+                    )?;
+                    
+                    // Verificamos la respuesta
+                    match Opcode::try_from(res[4])? {
+                        Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+                        Opcode::Result => res,
+                        _ => {
+                            return Err(Error::ServerError(
+                                "Nodo manda opcode inesperado".to_string(),
+                            ))
+                        }
+                    }
+                };
+    
+                // Actualizamos los resultados
+                results_from_nodes.extend_from_slice(&current_response);
+                consulted_nodes.push(partition_key_value.clone());
+    
+                // Replicamos la actualización según el factor de replicación
+                let replication_factor = self.get_replicas_from_table_name(&table_name)?;
+                
+                // Replicamos a los nodos adicionales
+                for i in 0..replication_factor - 1 {
+                    let node_to_replicate = self.next_node_to_replicate_data(
+                        node_id,
+                        i as u8,
+                        START_ID,
+                        START_ID + N_NODES,
+                    );
+                    
+                    // No replicamos si el nodo destino es el mismo que procesó originalmente
+                    if node_to_replicate != node_id {
+                        let replica_response = self.send_message_and_wait_response(
+                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                            node_to_replicate,
+                            PortType::Priv,
+                        )?;
+    
+                        // Verificamos la respuesta de la réplica
+                        match Opcode::try_from(replica_response[4])? {
+                            Opcode::RequestError => return Err(Error::try_from(replica_response[9..].to_vec())?),
+                            Opcode::Result => current_response = replica_response,
+                            _ => {
+                                return Err(Error::ServerError(
+                                    "Nodo de réplica manda opcode inesperado".to_string(),
+                                ))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    
+        Ok(results_from_nodes)
     }
 
     fn next_node_to_replicate_data(
@@ -1027,7 +1119,9 @@ impl Node {
 
     fn get_partition_keys_values(&self, table_name: &String) -> Result<&Vec<String>> {
         match self.tables_and_partitions_keys_values.get(table_name) {
-            Some(partitions_keys_to_nodes) => Ok(partitions_keys_to_nodes),
+            Some(partitions_keys_to_nodes) => {
+                Ok(partitions_keys_to_nodes)
+            }
             None => Err(Error::ServerError(
                 "La tabla indicada no existe".to_string(),
             )),

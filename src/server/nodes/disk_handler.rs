@@ -19,13 +19,17 @@ use crate::{
     },
 };
 use crate::{
-    parser::statements::{
-        ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
-        },
-        dml_statement::main_statements::{
-            insert::Insert,
-            select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
+    parser::{
+        assignment::Assignment,
+        statements::{
+            ddl_statement::{
+                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+            },
+            dml_statement::main_statements::{
+                insert::Insert,
+                select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
+                update::Update,
+            },
         },
     },
     protocol::{
@@ -624,5 +628,217 @@ impl DiskHandler {
         }
         new_row.push("\n".to_string());
         new_row
+    }
+
+    /// Actualiza filas en una tabla en el caso que corresponda.
+    pub fn do_update(
+        statement: &Update,
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+    ) -> Result<Vec<String>> {
+        // Obtener la ruta de la tabla
+        let keyspace = statement.table_name.get_keyspace();
+        let name = statement.table_name.get_name();
+        let table_addr = match keyspace {
+            Some(keyspace) => format!("{}/{}/{}.csv", storage_addr, keyspace, name),
+            None => format!("{}/{}/{}.csv", storage_addr, default_keyspace, name),
+        };
+
+        // Leer el contenido del archivo
+        let file = OpenOptions::new()
+            .read(true)
+            .open(&table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let mut reader = BufReader::new(&file);
+        let mut header = String::new();
+        reader
+            .read_line(&mut header)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        if header.trim().is_empty() {
+            return Err(Error::ServerError(format!(
+                "No se pudo leer la tabla con ruta {}",
+                &table_addr
+            )));
+        }
+
+        let table_cols: Vec<String> = header.trim().split(",").map(|s| s.to_string()).collect();
+
+        // Validar que las columnas a actualizar existen
+        for assignment in &statement.set_parameter {
+            match assignment {
+                Assignment::ColumnNameTerm(col, _term) => {
+                    if !table_cols.contains(&col.get_name().to_string()) {
+                        return Err(Error::ServerError(format!(
+                            "La tabla con ruta {} no contiene la columna {}",
+                            &table_addr,
+                            col.get_name()
+                        )));
+                    }
+                }
+                Assignment::ColumnNameColTerm(target_col, source_col, _term) => {
+                    // Validar columna objetivo
+                    if !table_cols.contains(&target_col.get_name().to_string()) {
+                        return Err(Error::ServerError(format!(
+                            "La tabla con ruta {} no contiene la columna objetivo {}",
+                            &table_addr,
+                            target_col.get_name()
+                        )));
+                    }
+                    // Validar columna fuente
+                    if !table_cols.contains(&source_col.get_name().to_string()) {
+                        return Err(Error::ServerError(format!(
+                            "La tabla con ruta {} no contiene la columna fuente {}",
+                            &table_addr,
+                            source_col.get_name()
+                        )));
+                    }
+                }
+                Assignment::ColumnNameListCol(target_col, _list, source_col) => {
+                    // Validar columna objetivo
+                    if !table_cols.contains(&target_col.get_name().to_string()) {
+                        return Err(Error::ServerError(format!(
+                            "La tabla con ruta {} no contiene la columna objetivo {}",
+                            &table_addr,
+                            target_col.get_name()
+                        )));
+                    }
+                    // Validar columna fuente
+                    if !table_cols.contains(&source_col.get_name().to_string()) {
+                        return Err(Error::ServerError(format!(
+                            "La tabla con ruta {} no contiene la columna fuente {}",
+                            &table_addr,
+                            source_col.get_name()
+                        )));
+                    }
+                }
+            }
+        }
+
+        let mut updated_rows = Vec::new();
+        let mut all_rows = vec![header.trim().to_string()];
+
+        // Procesar cada línea del archivo
+        for line in reader.lines() {
+            let table_line = line.map_err(|e| Error::ServerError(e.to_string()))?;
+            if table_line.trim().is_empty() {
+                continue;
+            }
+
+            let mut row_values: Vec<String> = table_line
+                .trim()
+                .split(",")
+                .map(|s| s.to_string())
+                .collect();
+
+            // Aplicar filtro WHERE si existe
+            if let Some(the_where) = &statement.the_where {
+                if the_where.filter(&row_values, &table_cols)? {
+                    // Actualizar valores según las asignaciones
+                    for assignment in statement.set_parameter.iter() {
+                        match assignment {
+                            Assignment::ColumnNameTerm(col, term) => {
+                                if let Some(col_index) =
+                                    table_cols.iter().position(|c| *c == col.get_name())
+                                {
+                                    row_values[col_index] = term.get_value().to_string();
+                                }
+                            }
+                            Assignment::ColumnNameColTerm(target_col, _source_col, term) => {
+                                if let Some(col_index) =
+                                    table_cols.iter().position(|c| *c == target_col.get_name())
+                                {
+                                    row_values[col_index] = term.get_value().to_string();
+                                }
+                            }
+                            Assignment::ColumnNameListCol(target_col, _list, source_col) => {
+                                if let Some(col_index) =
+                                    table_cols.iter().position(|c| *c == target_col.get_name())
+                                {
+                                    row_values[col_index] = source_col.get_name().to_string();
+                                }
+                            }
+                        }
+                    }
+                    updated_rows.push(row_values.clone());
+                }
+            } else {
+                // Si no hay WHERE, actualizar todas las filas
+                for assignment in statement.set_parameter.iter() {
+                    match assignment {
+                        Assignment::ColumnNameTerm(col, term) => {
+                            if let Some(col_index) =
+                                table_cols.iter().position(|c| c == col.get_name())
+                            {
+                                row_values[col_index] = term.get_value().to_string();
+                            }
+                        }
+                        Assignment::ColumnNameColTerm(target_col, _source_col, term) => {
+                            if let Some(col_index) =
+                                table_cols.iter().position(|c| *c == target_col.get_name())
+                            {
+                                row_values[col_index] = term.get_value().to_string();
+                            }
+                        }
+                        Assignment::ColumnNameListCol(target_col, _list, source_col) => {
+                            if let Some(col_index) =
+                                table_cols.iter().position(|c| *c == target_col.get_name())
+                            {
+                                row_values[col_index] = source_col.get_name().to_string();
+                            }
+                        }
+                    }
+                }
+                updated_rows.push(row_values.clone());
+            }
+
+            all_rows.push(row_values.join(","));
+        }
+
+        // Si se actualizaron filas, reordenar según las claves
+        if !updated_rows.is_empty() {
+            // Construir criterios de ordenamiento
+            let partition_key = table.get_partition_key();
+            let mut order_criteria = vec![];
+            for key in partition_key {
+                order_criteria.push((key.to_string(), true));
+            }
+
+            if let Some(clustering_key_and_order) = &table.clustering_key_and_order {
+                order_criteria.extend(
+                    clustering_key_and_order
+                        .clone()
+                        .into_iter()
+                        .map(|(key, order)| (key, order == ProtocolOrdering::Asc)),
+                );
+            }
+
+            let order_criteria: Vec<(String, ProtocolOrdering)> = order_criteria
+                .into_iter()
+                .map(|(key, asc)| {
+                    (
+                        key,
+                        if asc {
+                            ProtocolOrdering::Asc
+                        } else {
+                            ProtocolOrdering::Desc
+                        },
+                    )
+                })
+                .collect();
+            let order_by = OrderBy::new_from_vec(order_criteria);
+
+            // Escribir contenido actualizado
+            let content = all_rows.join("\n");
+            std::fs::write(&table_addr, content).map_err(|e| Error::ServerError(e.to_string()))?;
+
+            // Ordenar la tabla
+            Self::order_table_data(&table_addr, &table_cols, &order_by)?;
+        }
+
+        // Devolver las filas actualizadas
+        Ok(updated_rows.iter().map(|row| row.join(",")).collect())
     }
 }
