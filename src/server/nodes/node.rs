@@ -355,39 +355,10 @@ impl Node {
         listeners: Vec<NodeHandle>,
     ) -> Result<NodeHandle> {
         let builder = Builder::new().name("processor".to_string());
-        match builder.spawn(move || {
-            loop {
-                match receiver.recv() {
-                    Err(err) => {
-                        println!("Error recibiendo request en hilo procesador:\n\n{}", err);
-                        break;
-                    }
-
-                    Ok((tcp_stream, bytes)) => match self.process_tcp(tcp_stream, bytes) {
-                        Ok(stop) => {
-                            if stop {
-                                break;
-                            }
-                        }
-                        Err(err) => {
-                            println!("Error procesando request en hilo procesador:\n\n{}", err);
-                        }
-                    },
-                }
-            }
-
-            // Esperamos primero a que todos los hilos relacionados mueran primero.
-            for listener in listeners {
-                if listener.join().is_err() {
-                    println!("Ocurrió un error mientras se esperaba a que termine un escuchador.");
-                }
-            }
-
-            Ok(())
-        }) {
+        match builder.spawn(move || self.thread_request(receiver, listeners)) {
             Ok(proc_handler) => Ok(proc_handler),
             Err(err) => Err(Error::ServerError(format!(
-                "Error em el hilo procesador:\n\n{}",
+                "Error en el hilo procesador:\n\n{}",
                 err
             ))),
         }
@@ -398,23 +369,7 @@ impl Node {
         let mut own_gossip = GossipInfo::new(); // quiero info de estos nodos
         let mut response_nodes = NodesMap::new(); // doy info de estos nodos
 
-        for (node_id, heartbeat) in &gossip_info {
-            let endpoint_state_opt = &self.neighbours_states.get(node_id);
-            match endpoint_state_opt {
-                Some(endpoint_state) => {
-                    let cur_heartbeat = endpoint_state.get_heartbeat();
-                    if cur_heartbeat > heartbeat {
-                        response_nodes.insert(*node_id, (*endpoint_state).clone());
-                    } else if cur_heartbeat < heartbeat {
-                        own_gossip.insert(*node_id, endpoint_state.clone_heartbeat());
-                    }
-                }
-                None => {
-                    // Se trata de un vecino que no conocemos aún
-                    own_gossip.insert(*node_id, HeartbeatState::minimal());
-                }
-            }
-        }
+        self.classify_nodes_in_gossip(&gossip_info, &mut response_nodes, &mut own_gossip);
 
         // Ahora rondamos nuestros vecinos para ver si tenemos uno que el nodo emisor no
         for (own_node_id, endpoint_state) in &self.neighbours_states {
@@ -436,6 +391,8 @@ impl Node {
         Ok(())
     }
 
+
+    
     /// Se recibe un mensaje [ACK](crate::server::actions::opcode::SvAction::Ack).
     fn ack(
         &mut self,
@@ -500,49 +457,14 @@ impl Node {
         proc_sender: Sender<(TcpStream, Vec<Byte>)>,
         port_type: PortType,
     ) -> Result<()> {
-        let listener = match TcpListener::bind(socket) {
-            Ok(tcp_listener) => tcp_listener,
-            Err(_) => {
-                return Err(Error::ServerError(format!(
-                    "No se pudo bindear a la dirección '{}'",
-                    socket
-                )))
-            }
-        };
-
+        let listener = Node::bind_with_socket(socket)?;
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
-                Err(_) => {
-                    let falla = match &port_type {
-                        PortType::Cli => "cliente",
-                        PortType::Priv => "nodo o estructura interna",
-                    };
-                    return Err(Error::ServerError(format!(
-                        "Un {} no pudo conectarse al nodo con ID {}",
-                        falla,
-                        guess_id(&socket.ip())
-                    )));
-                }
+                Err(_) => return Node::tcp_stream_error(&port_type, &socket),
                 Ok(tcp_stream) => {
-                    let buffered_stream = match tcp_stream.try_clone() {
-                        Ok(cloned) => cloned,
-                        Err(err) => {
-                            return Err(Error::ServerError(format!(
-                                "No se pudo clonar el stream:\n\n{}",
-                                err
-                            )))
-                        }
-                    };
+                    let buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
                     let mut bufreader = BufReader::new(buffered_stream);
-                    let bytes_vec = match bufreader.fill_buf() {
-                        Ok(recv) => recv.to_vec(),
-                        Err(err) => {
-                            return Err(Error::ServerError(format!(
-                                "No se pudo escribir los bytes:\n\n{}",
-                                err
-                            )))
-                        }
-                    };
+                    let bytes_vec = Node::write_bytes_in_buffer(&mut bufreader)?;
                     // consumimos los bytes del stream para no mandarlos de vuelta en la response
                     bufreader.consume(bytes_vec.len());
                     let can_exit = Self::is_exit(&bytes_vec[..]);
@@ -567,7 +489,7 @@ impl Node {
     /// Esta función no debería ser llamada en los listeners, y está más pensada para el hilo
     /// procesador del nodo.
 
-    pub fn process_tcp(&mut self, mut tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<bool> {
+    pub fn process_tcp(&mut self, tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<bool> {
         match SvAction::get_action(&bytes[..]) {
             Some(action) => match self.handle_sv_action(action, tcp_stream) {
                 Ok(stop_loop) => Ok(stop_loop),
@@ -579,64 +501,36 @@ impl Node {
                     Ok(false)
                 }
             },
-            None => match self.mode() {
-                ConnectionMode::Echo => {
-                    let printable_bytes = bytes
-                        .iter()
-                        .map(|b| format!("{:#X}", b))
-                        .collect::<Vec<String>>();
-                    println!("[{} - ECHO] {}", self.id, printable_bytes.join(" "));
-                    if let Err(err) = tcp_stream.write_all(&bytes) {
-                        println!("Error al escribir en el TCPStream:\n\n{}", err);
-                    }
-                    if let Err(err) = tcp_stream.flush() {
-                        println!("Error haciendo flush desde el nodo:\n\n{}", err);
-                    }
-                    Ok(false)
-                }
-                ConnectionMode::Parsing => {
-                    let res = self.handle_request(&bytes[..], false);
-                    let _ = tcp_stream.write_all(&res[..]);
-                    if let Err(err) = tcp_stream.flush() {
-                        println!("Error haciendo flush desde el nodo:\n\n{}", err);
-                    }
-                    Ok(false)
-                }
-            },
+            None => self.match_kind_of_conection_mode(bytes, tcp_stream),
         }
     }
 
+
     /// Maneja una acción de servidor.
     fn handle_sv_action(&mut self, action: SvAction, mut tcp_stream: TcpStream) -> Result<bool> {
+        let mut stop = false;
         match action {
-            SvAction::Exit(proc_stop) => Ok(proc_stop),
+            SvAction::Exit(proc_stop) => stop = proc_stop,
             SvAction::Beat => {
                 self.beat();
-                Ok(false)
             }
             SvAction::Gossip(neighbours) => {
                 self.gossip(neighbours)?;
-                Ok(false)
             }
             SvAction::Syn(emissor_id, gossip_info) => {
                 self.syn(emissor_id, gossip_info)?;
-                Ok(false)
             }
             SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
                 self.ack(receptor_id, gossip_info, nodes_map)?;
-                Ok(false)
             }
             SvAction::Ack2(nodes_map) => {
                 self.ack2(nodes_map)?;
-                Ok(false)
             }
             SvAction::NewNeighbour(state) => {
                 self.add_neighbour_state(state);
-                Ok(false)
             }
             SvAction::SendEndpointState(id) => {
                 self.send_endpoint_state(id);
-                Ok(false)
             }
             SvAction::Shutdown => {
                 for socket in get_available_sockets() {
@@ -645,18 +539,16 @@ impl Node {
                     send_to_node(node_id, SvAction::Exit(true).as_bytes(), PortType::Priv)?;
                 }
                 // no interrumpe el nodo porque es el trabajo de EXIT
-                Ok(false)
             }
             SvAction::InternalQuery(bytes) => {
                 let response = self.handle_request(&bytes, true);
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
-                    Err(Error::ServerError(err.to_string()))
-                } else {
-                    Ok(false)
-                }
+                    return Err(Error::ServerError(err.to_string()))
+                };
             }
-        }
+        };
+        Ok(stop)
     }
 
     /// Maneja una request.
@@ -683,10 +575,6 @@ impl Node {
             Ok(value) => value,
             Err(err) => self.make_error_response(err),
         }
-        // response.append(&mut left_response);
-        // aca deberiamos mandar la response de alguna manera
-        // response.append(&mut left_response);
-        // Ok(left_response)
     }
 
     fn make_error_response(&mut self, err: Error) -> Vec<Byte> {
@@ -1022,40 +910,45 @@ impl Node {
                 results_from_nodes.extend_from_slice(&current_response);
                 consulted_nodes.push(partition_key_value.clone());
                 let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-                for i in 0..replication_factor - 1 {
-                    let node_to_replicate = self.next_node_to_replicate_data(
-                        node_id,
-                        i as u8,
-                        START_ID,
-                        START_ID + N_NODES,
-                    );
-
-                    if node_to_replicate != node_id {
-                        let replica_response = self.send_message_and_wait_response(
-                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                            node_to_replicate,
-                            PortType::Priv,
-                        )?;
-
-                        match Opcode::try_from(replica_response[4])? {
-                            Opcode::RequestError => {
-                                return Err(Error::try_from(replica_response[9..].to_vec())?)
-                            }
-                            Opcode::Result => (),
-                            _ => {
-                                return Err(Error::ServerError(
-                                    "Nodo de réplica manda opcode inesperado".to_string(),
-                                ))
-                            }
-                        }
-                    }
-                }
+                self.replicate_update_in_other_nodes(replication_factor, node_id, request)?;
             }
         }
 
         Ok(results_from_nodes)
     }
 
+    fn replicate_update_in_other_nodes(&mut self, replication_factor: u32, node_id: u8, request: &[u8]) -> Result<()> {
+        for i in 0..replication_factor - 1 {
+            let node_to_replicate = self.next_node_to_replicate_data(
+                node_id,
+                i as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+    
+            if node_to_replicate != node_id {
+                let replica_response = self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_to_replicate,
+                    PortType::Priv,
+                )?;
+    
+                match Opcode::try_from(replica_response[4])? {
+                    Opcode::RequestError => {
+                        return Err(Error::try_from(replica_response[9..].to_vec())?)
+                    }
+                    Opcode::Result => (),
+                    _ => {
+                        return Err(Error::ServerError(
+                            "Nodo de réplica manda opcode inesperado".to_string(),
+                        ))
+                    }
+                }
+            }
+        };
+        Ok(())
+    }
+    
     fn next_node_to_replicate_data(
         &self,
         first_node_to_replicate: u8,
@@ -1180,10 +1073,7 @@ impl Node {
         select: &Select,
     ) -> Result<Vec<Byte>> {
         let table_name = select.from.get_name();
-        let table = match self.get_table(&table_name) {
-            Ok(table) => table,
-            Err(err) => return Err(err),
-        };
+        let table = self.get_table(&table_name)?;
 
         let result_string =
             String::from_utf8(results_from_another_nodes[total_length_from_metadata..].to_vec())
@@ -1206,6 +1096,129 @@ impl Node {
 
         Ok(new_ordered_res.as_bytes().to_vec())
     }
+
+    fn thread_request(
+        &mut self,
+        receiver: Receiver<(TcpStream, Vec<Byte>)>,
+        listeners: Vec<NodeHandle>,
+    ) -> Result<()> {
+        loop {
+            match receiver.recv() {
+                Err(err) => {
+                    println!("Error recibiendo request en hilo procesador:\n\n{}", err);
+                    break;
+                }
+
+                Ok((tcp_stream, bytes)) => match self.process_tcp(tcp_stream, bytes) {
+                    Ok(stop) => {
+                        if stop {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        println!("Error procesando request en hilo procesador:\n\n{}", err);
+                    }
+                },
+            }
+        }
+        // Esperamos primero a que todos los hilos relacionados mueran primero.
+        for listener in listeners {
+            if listener.join().is_err() {
+                println!("Ocurrió un error mientras se esperaba a que termine un escuchador.");
+            }
+        }
+        Ok(())
+    }
+
+    fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
+        match TcpListener::bind(socket) {
+            Ok(tcp_listener) => Ok(tcp_listener),
+            Err(_) => Err(Error::ServerError(format!(
+                "No se pudo bindear a la dirección '{}'",
+                socket
+            ))),
+        }
+    }
+
+    fn tcp_stream_error(port_type: &PortType, socket: &SocketAddr) -> Result<()> {
+        let falla = match port_type {
+            PortType::Cli => "cliente",
+            PortType::Priv => "nodo o estructura interna",
+        };
+        Err(Error::ServerError(format!(
+            "Un {} no pudo conectarse al nodo con ID {}",
+            falla,
+            guess_id(&socket.ip())
+        )))
+    }
+
+    fn clone_tcp_stream(tcp_stream: &TcpStream) -> Result<TcpStream> {
+        match tcp_stream.try_clone() {
+            Ok(cloned) => Ok(cloned),
+            Err(err) => Err(Error::ServerError(format!(
+                "No se pudo clonar el stream:\n\n{}",
+                err
+            ))),
+        }
+    }
+
+    fn write_bytes_in_buffer(bufreader: &mut BufReader<TcpStream>) -> Result<Vec<Byte>> {
+        match bufreader.fill_buf() {
+            Ok(recv) => Ok(recv.to_vec()),
+            Err(err) => Err(Error::ServerError(format!(
+                "No se pudo escribir los bytes:\n\n{}",
+                err
+            ))),
+        }
+    }
+
+    fn classify_nodes_in_gossip(&mut self, gossip_info: &HashMap<u8, HeartbeatState>, response_nodes: &mut HashMap<u8, EndpointState>, own_gossip: &mut HashMap<u8, HeartbeatState>) {
+        for (node_id, heartbeat) in gossip_info {
+            let endpoint_state_opt = &self.neighbours_states.get(node_id);
+            match endpoint_state_opt {
+                Some(endpoint_state) => {
+                    let cur_heartbeat = endpoint_state.get_heartbeat();
+                    if cur_heartbeat > heartbeat {
+                        response_nodes.insert(*node_id, (*endpoint_state).clone());
+                    } else if cur_heartbeat < heartbeat {
+                        own_gossip.insert(*node_id, endpoint_state.clone_heartbeat());
+                    }
+                }
+                None => {
+                    // Se trata de un vecino que no conocemos aún
+                    own_gossip.insert(*node_id, HeartbeatState::minimal());
+                }
+            }
+        }
+    }
+
+    fn match_kind_of_conection_mode(&mut self, bytes: Vec<u8>, mut tcp_stream: TcpStream) -> Result<bool> {
+        match self.mode() {
+            ConnectionMode::Echo => {
+                let printable_bytes = bytes
+                    .iter()
+                    .map(|b| format!("{:#X}", b))
+                    .collect::<Vec<String>>();
+                println!("[{} - ECHO] {}", self.id, printable_bytes.join(" "));
+                if let Err(err) = tcp_stream.write_all(&bytes) {
+                    println!("Error al escribir en el TCPStream:\n\n{}", err);
+                }
+                if let Err(err) = tcp_stream.flush() {
+                    println!("Error haciendo flush desde el nodo:\n\n{}", err);
+                }
+                Ok(false)
+            }
+            ConnectionMode::Parsing => {
+                let res = self.handle_request(&bytes[..], false);
+                let _ = tcp_stream.write_all(&res[..]);
+                if let Err(err) = tcp_stream.flush() {
+                    println!("Error haciendo flush desde el nodo:\n\n{}", err);
+                }
+                Ok(false)
+            }
+        }
+    }
+    
 }
 
 impl PartialEq for Node {

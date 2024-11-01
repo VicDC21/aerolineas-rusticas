@@ -144,29 +144,8 @@ impl NodesGraph {
             let cli_sender = proc_sender.clone();
             let priv_sender = proc_sender.clone();
 
-            let cli_builder = Builder::new().name(format!("{}_cli", current_id));
-            let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_sender));
-            match cli_res {
-                Ok(cli_handler) => node_listeners.push(cli_handler),
-                Err(err) => {
-                    return Err(Error::ServerError(format!(
-                        "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
-                        i, err
-                    )));
-                }
-            }
-
-            let priv_builder = Builder::new().name(format!("{}_priv", current_id));
-            let priv_res = priv_builder.spawn(move || Node::priv_listen(priv_socket, priv_sender));
-            match priv_res {
-                Ok(priv_handler) => node_listeners.push(priv_handler),
-                Err(err) => {
-                    return Err(Error::ServerError(format!(
-                        "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
-                        i, err
-                    )));
-                }
-            }
+            create_client_and_private_conexion(current_id, cli_socket, cli_sender, &mut node_listeners, i, priv_socket, priv_sender)?;
+            
             let processor = node.request_processor(proc_receiver, node_listeners)?;
 
             // Los join de los listeners están dentro del procesador
@@ -183,54 +162,7 @@ impl NodesGraph {
         let builder = Builder::new().name("gossip".to_string());
         let weights = self.get_weights();
         match builder.spawn(move || {
-            loop {
-                sleep(Duration::from_millis(200));
-                if let Ok(stop) = receiver.try_recv() {
-                    if stop {
-                        break;
-                    }
-                }
-
-                let dist = if let Ok(dist) = WeightedIndex::new(&weights) {
-                    dist
-                } else {
-                    return Err(Error::ServerError(format!(
-                        "No se pudo crear una distribución de pesos con {:?}.",
-                        &weights
-                    )));
-                };
-
-                let mut rng = thread_rng();
-                let mut selected_ids: HashSet<NodeId> = HashSet::new();
-                while selected_ids.len() < SIMULTANEOUS_GOSSIPERS as usize {
-                    let selected_id = dist.sample(&mut rng) as NodeId;
-                    if !selected_ids.contains(&selected_id) {
-                        // No contener repetidos
-                        selected_ids.insert(selected_id);
-                    }
-                }
-
-                for selected_id in selected_ids {
-                    let mut neighbours: HashSet<NodeId> = HashSet::new();
-                    while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
-                        let selected_neighbour = dist.sample(&mut rng) as NodeId;
-                        if (selected_neighbour != selected_id)
-                            && (!neighbours.contains(&selected_neighbour))
-                        {
-                            neighbours.insert(selected_neighbour);
-                        }
-                    }
-
-                    if let Err(err) = send_to_node(
-                        selected_id as NodeId,
-                        SvAction::Gossip(neighbours).as_bytes(),
-                        PortType::Priv,
-                    ) {
-                        println!("Ocurrió un error enviando mensaje de gossip:\n\n{}", err);
-                    }
-                }
-            }
-            Ok(())
+            exec_gossip(receiver, weights)
         }) {
             Ok(handler) => Ok((handler, sender.clone())),
             Err(_) => Err(Error::ServerError(
@@ -284,23 +216,7 @@ impl NodesGraph {
         let builder = Builder::new().name("beater".to_string());
         let ids = self.get_ids();
         match builder.spawn(move || {
-            loop {
-                sleep(Duration::from_secs(1));
-                if let Ok(stop) = receiver.try_recv() {
-                    if stop {
-                        break;
-                    }
-                }
-                for node_id in &ids {
-                    if send_to_node(*node_id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
-                        return Err(Error::ServerError(format!(
-                            "Error enviado mensaje de heartbeat a nodo {}",
-                            node_id
-                        )));
-                    }
-                }
-            }
-            Ok(())
+            increase_heartbeat_from_nodes(receiver, ids)
         }) {
             Ok(handler) => Ok((handler, sender.clone())),
             Err(_) => Err(Error::ServerError(
@@ -324,6 +240,103 @@ impl NodesGraph {
             }
         }
     }
+}
+
+fn create_client_and_private_conexion(current_id: u8, cli_socket: std::net::SocketAddr, cli_sender: Sender<(TcpStream, Vec<u8>)>, node_listeners: &mut Vec<JoinHandle<Result<()>>>, i: u8, priv_socket: std::net::SocketAddr, priv_sender: Sender<(TcpStream, Vec<u8>)>) -> Result<()> {
+    let cli_builder = Builder::new().name(format!("{}_cli", current_id));
+    let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_sender));
+    match cli_res {
+        Ok(cli_handler) => node_listeners.push(cli_handler),
+        Err(err) => {
+            return Err(Error::ServerError(format!(
+                "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
+                i, err
+            )));
+        }
+    }
+    let priv_builder = Builder::new().name(format!("{}_priv", current_id));
+    let priv_res = priv_builder.spawn(move || Node::priv_listen(priv_socket, priv_sender));
+    match priv_res {
+        Ok(priv_handler) => node_listeners.push(priv_handler),
+        Err(err) => {
+            return Err(Error::ServerError(format!(
+                "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
+                i, err
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn increase_heartbeat_from_nodes(receiver: std::sync::mpsc::Receiver<bool>, ids: Vec<u8>) -> std::result::Result<(), Error> {
+    loop {
+        sleep(Duration::from_secs(1));
+        if let Ok(stop) = receiver.try_recv() {
+            if stop {
+                break;
+            }
+        }
+        for node_id in &ids {
+            if send_to_node(*node_id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
+                return Err(Error::ServerError(format!(
+                    "Error enviado mensaje de heartbeat a nodo {}",
+                    node_id
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn exec_gossip(receiver: std::sync::mpsc::Receiver<bool>, weights: Vec<usize>) -> std::result::Result<(), Error> {
+    loop {
+        sleep(Duration::from_millis(200));
+        if let Ok(stop) = receiver.try_recv() {
+            if stop {
+                break;
+            }
+        }
+
+        let dist = if let Ok(dist) = WeightedIndex::new(&weights) {
+            dist
+        } else {
+            return Err(Error::ServerError(format!(
+                "No se pudo crear una distribución de pesos con {:?}.",
+                &weights
+            )));
+        };
+
+        let mut rng = thread_rng();
+        let mut selected_ids: HashSet<NodeId> = HashSet::new();
+        while selected_ids.len() < SIMULTANEOUS_GOSSIPERS as usize {
+            let selected_id = dist.sample(&mut rng) as NodeId;
+            if !selected_ids.contains(&selected_id) {
+                // No contener repetidos
+                selected_ids.insert(selected_id);
+            }
+        }
+
+        for selected_id in selected_ids {
+            let mut neighbours: HashSet<NodeId> = HashSet::new();
+            while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
+                let selected_neighbour = dist.sample(&mut rng) as NodeId;
+                if (selected_neighbour != selected_id)
+                    && (!neighbours.contains(&selected_neighbour))
+                {
+                    neighbours.insert(selected_neighbour);
+                }
+            }
+
+            if let Err(err) = send_to_node(
+                selected_id as NodeId,
+                SvAction::Gossip(neighbours).as_bytes(),
+                PortType::Priv,
+            ) {
+                println!("Ocurrió un error enviando mensaje de gossip:\n\n{}", err);
+            }
+        }
+    }
+    Ok(())
 }
 
 impl Default for NodesGraph {
