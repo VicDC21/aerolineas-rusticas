@@ -995,25 +995,19 @@ impl Node {
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut results_from_nodes: Vec<u8> = Vec::new();
         let mut consulted_nodes: Vec<String> = Vec::new();
-    
-        // Primero actualizamos en los nodos principales
+
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(&partition_key_value);
-            
-            // Solo procesamos si no hemos consultado este nodo antes
+
             if !consulted_nodes.contains(&partition_key_value) {
-                let mut current_response = if node_id == self.id {
-                    // Si somos el nodo principal, procesamos localmente
+                let current_response = if node_id == self.id {
                     self.process_update(&update)?
                 } else {
-                    // Si es otro nodo, enviamos la consulta
                     let res = self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
                         PortType::Priv,
                     )?;
-                    
-                    // Verificamos la respuesta
                     match Opcode::try_from(res[4])? {
                         Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
                         Opcode::Result => res,
@@ -1024,15 +1018,10 @@ impl Node {
                         }
                     }
                 };
-    
-                // Actualizamos los resultados
+
                 results_from_nodes.extend_from_slice(&current_response);
                 consulted_nodes.push(partition_key_value.clone());
-    
-                // Replicamos la actualización según el factor de replicación
                 let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-                
-                // Replicamos a los nodos adicionales
                 for i in 0..replication_factor - 1 {
                     let node_to_replicate = self.next_node_to_replicate_data(
                         node_id,
@@ -1040,19 +1029,19 @@ impl Node {
                         START_ID,
                         START_ID + N_NODES,
                     );
-                    
-                    // No replicamos si el nodo destino es el mismo que procesó originalmente
+
                     if node_to_replicate != node_id {
                         let replica_response = self.send_message_and_wait_response(
                             SvAction::InternalQuery(request.to_vec()).as_bytes(),
                             node_to_replicate,
                             PortType::Priv,
                         )?;
-    
-                        // Verificamos la respuesta de la réplica
+
                         match Opcode::try_from(replica_response[4])? {
-                            Opcode::RequestError => return Err(Error::try_from(replica_response[9..].to_vec())?),
-                            Opcode::Result => current_response = replica_response,
+                            Opcode::RequestError => {
+                                return Err(Error::try_from(replica_response[9..].to_vec())?)
+                            }
+                            Opcode::Result => (),
                             _ => {
                                 return Err(Error::ServerError(
                                     "Nodo de réplica manda opcode inesperado".to_string(),
@@ -1063,7 +1052,7 @@ impl Node {
                 }
             }
         }
-    
+
         Ok(results_from_nodes)
     }
 
@@ -1119,9 +1108,7 @@ impl Node {
 
     fn get_partition_keys_values(&self, table_name: &String) -> Result<&Vec<String>> {
         match self.tables_and_partitions_keys_values.get(table_name) {
-            Some(partitions_keys_to_nodes) => {
-                Ok(partitions_keys_to_nodes)
-            }
+            Some(partitions_keys_to_nodes) => Ok(partitions_keys_to_nodes),
             None => Err(Error::ServerError(
                 "La tabla indicada no existe".to_string(),
             )),
