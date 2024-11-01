@@ -6,14 +6,12 @@ use std::{
     path::Path,
 };
 
-use super::{
-    column_config::ColumnConfig, keyspace::Keyspace, replication_strategy::ReplicationStrategy,
-    table::Table,
-};
+use super::{keyspace::Keyspace, replication_strategy::ReplicationStrategy, table::Table};
 use crate::{
     parser::{
         assignment::Assignment,
         data_types::term::Term,
+        primary_key::PrimaryKey,
         statements::{
             ddl_statement::{
                 create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
@@ -246,6 +244,37 @@ impl DiskHandler {
         storage_addr: &str,
         default_keyspace: &str,
     ) -> Result<Option<Table>> {
+        let (keyspace_name, table_name) = Self::validate_and_get_keyspace_table_names(
+            &statement,
+            default_keyspace,
+            storage_addr,
+        )?;
+        let columns = statement.get_columns()?;
+        let columns_names = columns
+            .iter()
+            .map(|c| c.get_name())
+            .collect::<Vec<String>>();
+
+        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
+
+        let primary_key = Self::validate_and_get_primary_key(&statement)?;
+        let clustering_keys_and_order = Self::get_clustering_keys_and_order(&statement)?;
+
+        Ok(Some(Table::new(
+            table_name,
+            keyspace_name,
+            columns,
+            primary_key.partition_key,
+            clustering_keys_and_order,
+        )))
+    }
+
+    /// Valida y obtiene los nombres de keyspace y tabla
+    fn validate_and_get_keyspace_table_names(
+        statement: &CreateTable,
+        default_keyspace: &str,
+        storage_addr: &str,
+    ) -> Result<(String, String)> {
         let table_name = statement.get_name();
         let keyspace_name = match statement.get_keyspace() {
             Some(keyspace) => keyspace,
@@ -253,23 +282,31 @@ impl DiskHandler {
         };
         let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
         let path_folder = Path::new(&keyspace_addr);
+
         if !path_folder.exists() && !path_folder.is_dir() {
             return Err(Error::ServerError(format!(
                 "El keyspace {} no existe",
                 keyspace_name
             )));
         }
-        let columns: Vec<ColumnConfig> = statement.get_columns()?;
-        let columns_names = columns
-            .iter()
-            .map(|c| c.get_name())
-            .collect::<Vec<String>>();
+
+        Ok((keyspace_name, table_name))
+    }
+
+    /// Crea el archivo CSV para la tabla
+    fn create_table_csv_file(
+        storage_addr: &str,
+        keyspace_name: &str,
+        table_name: &str,
+        columns_names: &[String],
+    ) -> Result<()> {
         let table_addr = format!("{}/{}/{}.csv", storage_addr, keyspace_name, table_name);
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&table_addr)
             .map_err(|e| Error::ServerError(e.to_string()))?;
+
         let mut writer = BufWriter::new(&file);
         writer
             .write_all(columns_names.join(",").as_bytes())
@@ -277,60 +314,75 @@ impl DiskHandler {
         writer
             .write_all("\n".as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
-        let primary_key = match statement.primary_key {
-            Some(primary_key) => primary_key,
-            None => {
-                return Err(Error::SyntaxError(
-                    "La clave primaria es obligatoria".to_string(),
-                ))
-            }
-        };
-        let partition_key = primary_key.partition_key;
-        if primary_key.clustering_columns.is_empty() {
-            return Ok(Some(Table::new(
-                table_name,
-                keyspace_name,
-                columns,
-                partition_key,
-                None,
-            )));
+
+        Ok(())
+    }
+
+    /// Valida y obtiene la clave primaria
+    fn validate_and_get_primary_key(statement: &CreateTable) -> Result<PrimaryKey> {
+        match &statement.primary_key {
+            Some(primary_key) => Ok(primary_key.clone()),
+            None => Err(Error::SyntaxError(
+                "La clave primaria es obligatoria".to_string(),
+            )),
+        }
+    }
+
+    /// Obtiene las columnas de clustering y su orden
+    fn get_clustering_keys_and_order(
+        statement: &CreateTable,
+    ) -> Result<Option<Vec<(String, ProtocolOrdering)>>> {
+        if statement
+            .primary_key
+            .as_ref()
+            .map_or(true, |pk| pk.clustering_columns.is_empty())
+        {
+            return Ok(None);
         }
 
-        let clustering_keys = primary_key.clustering_columns;
-        let mut clustering_keys_and_order: Vec<(String, ProtocolOrdering)> = Vec::new();
-        for key in clustering_keys {
-            clustering_keys_and_order.push((key, ProtocolOrdering::Asc));
-        }
+        let mut clustering_keys_and_order = statement
+            .primary_key
+            .as_ref()
+            .map(|pk| {
+                pk.clustering_columns
+                    .iter()
+                    .map(|key| (key.clone(), ProtocolOrdering::Asc))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         if let Some(clustering_order) = &statement.clustering_order {
-            for (key, order) in clustering_order {
-                if let Some(j) = clustering_keys_and_order.iter().position(|(k, _)| k == key) {
-                    let order = match ProtocolOrdering::ordering_from_str(order) {
-                        Some(order) => order,
-                        None => {
-                            return Err(Error::Invalid(format!(
-                                "La dirección de ordenación {} no es válida",
-                                order
-                            )));
-                        }
-                    };
-                    clustering_keys_and_order[j] = (key.to_string(), order);
-                } else {
-                    return Err(Error::Invalid(format!(
-                        "La columna {} no es parte de la clave de clustering",
-                        key
-                    )));
-                }
-            }
+            Self::update_clustering_order(&mut clustering_keys_and_order, clustering_order)?;
         }
 
-        Ok(Some(Table::new(
-            table_name,
-            keyspace_name,
-            columns,
-            partition_key,
-            Some(clustering_keys_and_order),
-        )))
+        Ok(Some(clustering_keys_and_order))
+    }
+
+    /// Actualiza el orden de las columnas de clustering
+    fn update_clustering_order(
+        clustering_keys_and_order: &mut [(String, ProtocolOrdering)],
+        clustering_order: &[(String, String)],
+    ) -> Result<()> {
+        for (key, order) in clustering_order {
+            if let Some(j) = clustering_keys_and_order.iter().position(|(k, _)| k == key) {
+                let order = match ProtocolOrdering::ordering_from_str(order) {
+                    Some(order) => order,
+                    None => {
+                        return Err(Error::Invalid(format!(
+                            "La dirección de ordenación {} no es válida",
+                            order
+                        )))
+                    }
+                };
+                clustering_keys_and_order[j] = (key.to_string(), order);
+            } else {
+                return Err(Error::Invalid(format!(
+                    "La columna {} no es parte de la clave de clustering",
+                    key
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
@@ -540,22 +592,12 @@ impl DiskHandler {
         new_row
     }
 
-    /// Actualiza filas en una tabla en el caso que corresponda.
-    pub fn do_update(
-        statement: &Update,
-        storage_addr: &str,
-        table: &Table,
-        default_keyspace: &str,
-    ) -> Result<Vec<String>> {
-        let path = TablePath::new(
-            storage_addr,
-            statement.table_name.get_keyspace(),
-            &statement.table_name.get_name(),
-            default_keyspace,
-        );
-
-        let table_ops = TableOperations::new(path)?;
-        for assignment in &statement.set_parameter {
+    /// Valida que las columnas de una asignación existan en la tabla
+    fn validate_update_columns(
+        table_ops: &TableOperations,
+        assignments: &[Assignment],
+    ) -> Result<()> {
+        for assignment in assignments {
             match assignment {
                 Assignment::ColumnNameTerm(col, _) => {
                     table_ops.validate_columns(&[col.get_name().to_string()])?;
@@ -574,7 +616,60 @@ impl DiskHandler {
                 }
             }
         }
+        Ok(())
+    }
 
+    /// Actualiza un valor de fila según el tipo de asignación
+    fn update_row_value(
+        row: &mut [String],
+        assignment: &Assignment,
+        columns: &[String],
+    ) -> Result<()> {
+        match assignment {
+            Assignment::ColumnNameTerm(col, term) => {
+                if let Some(col_index) = columns
+                    .iter()
+                    .position(|c| c == &col.get_name().to_string())
+                {
+                    row[col_index] = term.get_value().to_string();
+                }
+            }
+            Assignment::ColumnNameColTerm(target_col, _, term) => {
+                if let Some(col_index) = columns
+                    .iter()
+                    .position(|c| c == &target_col.get_name().to_string())
+                {
+                    row[col_index] = term.get_value().to_string();
+                }
+            }
+            Assignment::ColumnNameListCol(target_col, _, source_col) => {
+                if let Some(col_index) = columns
+                    .iter()
+                    .position(|c| c == &target_col.get_name().to_string())
+                {
+                    row[col_index] = source_col.get_name().to_string();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Actualiza filas en una tabla en el caso que corresponda.
+    pub fn do_update(
+        statement: &Update,
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+    ) -> Result<Vec<String>> {
+        let path = TablePath::new(
+            storage_addr,
+            statement.table_name.get_keyspace(),
+            &statement.table_name.get_name(),
+            default_keyspace,
+        );
+
+        let table_ops = TableOperations::new(path)?;
+        Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
         let mut rows = table_ops.read_rows()?;
         let mut updated_rows = Vec::new();
 
@@ -583,38 +678,9 @@ impl DiskHandler {
                 Some(the_where) => the_where.filter(row, &table_ops.columns)?,
                 None => true,
             };
-
             if should_update {
                 for assignment in &statement.set_parameter {
-                    match assignment {
-                        Assignment::ColumnNameTerm(col, term) => {
-                            if let Some(col_index) = table_ops
-                                .columns
-                                .iter()
-                                .position(|c| c == &col.get_name().to_string())
-                            {
-                                row[col_index] = term.get_value().to_string();
-                            }
-                        }
-                        Assignment::ColumnNameColTerm(target_col, _, term) => {
-                            if let Some(col_index) = table_ops
-                                .columns
-                                .iter()
-                                .position(|c| c == &target_col.get_name().to_string())
-                            {
-                                row[col_index] = term.get_value().to_string();
-                            }
-                        }
-                        Assignment::ColumnNameListCol(target_col, _, source_col) => {
-                            if let Some(col_index) = table_ops
-                                .columns
-                                .iter()
-                                .position(|c| c == &target_col.get_name().to_string())
-                            {
-                                row[col_index] = source_col.get_name().to_string();
-                            }
-                        }
-                    }
+                    Self::update_row_value(row, assignment, &table_ops.columns)?;
                 }
                 updated_rows.push(row.clone());
             }
@@ -625,6 +691,7 @@ impl DiskHandler {
             order_by.order(&mut rows, &table_ops.columns);
             table_ops.write_rows(&rows)?;
         }
+
         Ok(updated_rows.iter().map(|row| row.join(",")).collect())
     }
 }

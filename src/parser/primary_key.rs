@@ -5,7 +5,7 @@ use super::statements::ddl_statement::ddl_statement_parser::check_words;
 /// Representa la clave primaria de una tabla.
 /// primary_key ::= PRIMARY KEY '(' column_name (',' column_name)* ')'
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PrimaryKey {
     /// Un vector de nombres de columnas que componen la clave primaria.
     /// columns ::= column_name (',' column_name)*
