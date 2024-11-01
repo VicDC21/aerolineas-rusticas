@@ -17,6 +17,7 @@ use crate::{
                 create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
             },
             dml_statement::main_statements::{
+                delete::Delete,
                 insert::Insert,
                 select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
                 update::Update,
@@ -154,14 +155,6 @@ impl DiskHandler {
         storage_addr
     }
 
-    fn create_directory(path: &str) {
-        let path_folder = Path::new(path);
-        if !path_folder.exists() && !path_folder.is_dir() {
-            let err_msg = format!("No se pudo crear la carpeta de almacenamiento {}", path);
-            create_dir(path_folder).expect(&err_msg);
-        }
-    }
-
     /// Crea un nuevo keyspace en el caso que corresponda.
     pub fn create_keyspace(
         statement: CreateKeyspace,
@@ -193,6 +186,236 @@ impl DiskHandler {
         }
     }
 
+    /// Crea una nueva tabla en el caso que corresponda.
+    pub fn create_table(
+        statement: CreateTable,
+        storage_addr: &str,
+        default_keyspace: &str,
+    ) -> Result<Option<Table>> {
+        let (keyspace_name, table_name) = Self::validate_and_get_keyspace_table_names(
+            &statement,
+            default_keyspace,
+            storage_addr,
+        )?;
+        let columns = statement.get_columns()?;
+        let columns_names = columns
+            .iter()
+            .map(|c| c.get_name())
+            .collect::<Vec<String>>();
+
+        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
+
+        let primary_key = Self::validate_and_get_primary_key(&statement)?;
+        let clustering_keys_and_order = Self::get_clustering_keys_and_order(&statement)?;
+
+        Ok(Some(Table::new(
+            table_name,
+            keyspace_name,
+            columns,
+            primary_key.partition_key,
+            clustering_keys_and_order,
+        )))
+    }
+
+    /// Inserta una nueva fila en una tabla en el caso que corresponda.
+    pub fn do_insert(
+        statement: &Insert,
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+    ) -> Result<Vec<String>> {
+        let path = TablePath::new(
+            storage_addr,
+            statement.table.get_keyspace(),
+            &statement.table.get_name(),
+            default_keyspace,
+        );
+
+        let table_ops = TableOperations::new(path)?;
+        table_ops.validate_columns(&statement.get_columns_names())?;
+        let mut rows = table_ops.read_rows()?;
+        let values = statement.get_values();
+        let mut id_exists = false;
+        let mut id_position = None;
+
+        for (i, row) in rows.iter().enumerate() {
+            if row[0] == values[0] {
+                id_exists = true;
+                id_position = Some(i);
+                break;
+            }
+        }
+
+        if id_exists && statement.if_not_exists {
+            return Ok(Vec::new());
+        }
+
+        let new_row = Self::generate_row_to_insert(
+            &values,
+            &statement.get_columns_names(),
+            &table_ops
+                .columns
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<&str>>(),
+        );
+
+        let new_row_vec: Vec<String> = new_row.trim().split(',').map(|s| s.to_string()).collect();
+
+        if let Some(pos) = id_position {
+            rows[pos] = new_row_vec.clone();
+        } else {
+            rows.push(new_row_vec.clone());
+        }
+
+        let order_by = Self::get_table_ordering(table);
+        order_by.order(&mut rows, &table_ops.columns);
+        table_ops.write_rows(&rows)?;
+        Ok(new_row_vec)
+    }
+
+    /// Selecciona filas en una tabla en el caso que corresponda.
+    pub fn do_select(
+        statement: &Select,
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+    ) -> Result<Vec<Byte>> {
+        let path = TablePath::new(
+            storage_addr,
+            statement.from.get_keyspace(),
+            &statement.from.get_name(),
+            default_keyspace,
+        );
+
+        let table_ops = TableOperations::new(path)?;
+        let query_cols = statement.columns.get_columns();
+
+        if query_cols.len() != 1 && query_cols[0] != "*" {
+            table_ops.validate_columns(&query_cols)?;
+        }
+
+        let mut result = Vec::new();
+        if query_cols.len() == 1 && query_cols[0] == "*" {
+            result.push(table_ops.columns.clone());
+        } else {
+            result.push(query_cols.clone());
+        }
+
+        let mut rows = table_ops.read_rows()?;
+
+        if let Some(the_where) = &statement.options.the_where {
+            rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
+        }
+
+        if let Some(order) = &statement.options.order_by {
+            order.order(&mut rows, &table_ops.columns);
+        }
+
+        let result_rows: Vec<Vec<String>> = rows
+            .into_iter()
+            .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols))
+            .collect();
+
+        result.extend(result_rows);
+
+        Ok(Self::serialize_select_result(
+            result,
+            &query_cols,
+            &table_ops.columns,
+            table,
+        ))
+    }
+
+    /// Actualiza filas en una tabla en el caso que corresponda.
+    pub fn do_update(
+        statement: &Update,
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+    ) -> Result<Vec<String>> {
+        let path = TablePath::new(
+            storage_addr,
+            statement.table_name.get_keyspace(),
+            &statement.table_name.get_name(),
+            default_keyspace,
+        );
+
+        let table_ops = TableOperations::new(path)?;
+        Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
+        let mut rows = table_ops.read_rows()?;
+        let mut updated_rows = Vec::new();
+
+        for row in rows.iter_mut() {
+            let should_update = match &statement.the_where {
+                Some(the_where) => the_where.filter(row, &table_ops.columns)?,
+                None => true,
+            };
+            if should_update {
+                for assignment in &statement.set_parameter {
+                    Self::update_row_value(row, assignment, &table_ops.columns)?;
+                }
+                updated_rows.push(row.clone());
+            }
+        }
+
+        if !updated_rows.is_empty() {
+            let order_by = Self::get_table_ordering(table);
+            order_by.order(&mut rows, &table_ops.columns);
+            table_ops.write_rows(&rows)?;
+        }
+
+        Ok(updated_rows.iter().map(|row| row.join(",")).collect())
+    }
+
+    /// Elimina filas en una tabla en el caso que corresponda.
+    pub fn do_delete(
+        statement: &Delete,
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+    ) -> Result<Vec<String>> {
+        let path = TablePath::new(
+            storage_addr,
+            statement.from.get_keyspace(),
+            &statement.from.get_name(),
+            default_keyspace,
+        );
+
+        let table_ops = TableOperations::new(path)?;
+        let rows = table_ops.read_rows()?;
+        let mut deleted_rows = Vec::new();
+        let mut remaining_rows = Vec::new();
+
+        for row in rows {
+            let should_delete = match &statement.the_where {
+                Some(the_where) => the_where.filter(&row, &table_ops.columns)?,
+                None => true,
+            };
+
+            if should_delete {
+                deleted_rows.push(row);
+            } else {
+                remaining_rows.push(row);
+            }
+        }
+
+        if !deleted_rows.is_empty() {
+            let order_by = Self::get_table_ordering(table);
+            order_by.order(&mut remaining_rows, &table_ops.columns);
+
+            table_ops.write_rows(&remaining_rows)?;
+        }
+        Ok(deleted_rows.iter().map(|row| row.join(",")).collect())
+    }
+
+    fn create_directory(path: &str) {
+        let path_folder = Path::new(path);
+        if !path_folder.exists() && !path_folder.is_dir() {
+            let err_msg = format!("No se pudo crear la carpeta de almacenamiento {}", path);
+            create_dir(path_folder).expect(&err_msg);
+        }
+    }
     /// Obtiene la estrategia de replicación de un keyspace.
     fn get_keyspace_replication(options: Vec<Options>) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;
@@ -236,37 +459,6 @@ impl DiskHandler {
                 "Falto el campo replication_factor".to_string(),
             ))
         }
-    }
-
-    /// Crea una nueva tabla en el caso que corresponda.
-    pub fn create_table(
-        statement: CreateTable,
-        storage_addr: &str,
-        default_keyspace: &str,
-    ) -> Result<Option<Table>> {
-        let (keyspace_name, table_name) = Self::validate_and_get_keyspace_table_names(
-            &statement,
-            default_keyspace,
-            storage_addr,
-        )?;
-        let columns = statement.get_columns()?;
-        let columns_names = columns
-            .iter()
-            .map(|c| c.get_name())
-            .collect::<Vec<String>>();
-
-        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
-
-        let primary_key = Self::validate_and_get_primary_key(&statement)?;
-        let clustering_keys_and_order = Self::get_clustering_keys_and_order(&statement)?;
-
-        Ok(Some(Table::new(
-            table_name,
-            keyspace_name,
-            columns,
-            primary_key.partition_key,
-            clustering_keys_and_order,
-        )))
     }
 
     /// Valida y obtiene los nombres de keyspace y tabla
@@ -385,63 +577,6 @@ impl DiskHandler {
         Ok(())
     }
 
-    /// Inserta una nueva fila en una tabla en el caso que corresponda.
-    pub fn do_insert(
-        statement: &Insert,
-        storage_addr: &str,
-        table: &Table,
-        default_keyspace: &str,
-    ) -> Result<Vec<String>> {
-        let path = TablePath::new(
-            storage_addr,
-            statement.table.get_keyspace(),
-            &statement.table.get_name(),
-            default_keyspace,
-        );
-
-        let table_ops = TableOperations::new(path)?;
-        table_ops.validate_columns(&statement.get_columns_names())?;
-        let mut rows = table_ops.read_rows()?;
-        let values = statement.get_values();
-        let mut id_exists = false;
-        let mut id_position = None;
-
-        for (i, row) in rows.iter().enumerate() {
-            if row[0] == values[0] {
-                id_exists = true;
-                id_position = Some(i);
-                break;
-            }
-        }
-
-        if id_exists && statement.if_not_exists {
-            return Ok(Vec::new());
-        }
-
-        let new_row = Self::generate_row_to_insert(
-            &values,
-            &statement.get_columns_names(),
-            &table_ops
-                .columns
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<&str>>(),
-        );
-
-        let new_row_vec: Vec<String> = new_row.trim().split(',').map(|s| s.to_string()).collect();
-
-        if let Some(pos) = id_position {
-            rows[pos] = new_row_vec.clone();
-        } else {
-            rows.push(new_row_vec.clone());
-        }
-
-        let order_by = Self::get_table_ordering(table);
-        order_by.order(&mut rows, &table_ops.columns);
-        table_ops.write_rows(&rows)?;
-        Ok(new_row_vec)
-    }
-
     fn get_table_ordering(table: &Table) -> OrderBy {
         let partition_key = table.get_partition_key();
         let mut order_criteria = vec![];
@@ -472,59 +607,6 @@ impl DiskHandler {
         }
 
         values_to_insert.join(",") + "\n"
-    }
-
-    /// Selecciona filas en una tabla en el caso que corresponda.
-    pub fn do_select(
-        statement: &Select,
-        storage_addr: &str,
-        table: &Table,
-        default_keyspace: &str,
-    ) -> Result<Vec<Byte>> {
-        let path = TablePath::new(
-            storage_addr,
-            statement.from.get_keyspace(),
-            &statement.from.get_name(),
-            default_keyspace,
-        );
-
-        let table_ops = TableOperations::new(path)?;
-        let query_cols = statement.columns.get_columns();
-
-        if query_cols.len() != 1 && query_cols[0] != "*" {
-            table_ops.validate_columns(&query_cols)?;
-        }
-
-        let mut result = Vec::new();
-        if query_cols.len() == 1 && query_cols[0] == "*" {
-            result.push(table_ops.columns.clone());
-        } else {
-            result.push(query_cols.clone());
-        }
-
-        let mut rows = table_ops.read_rows()?;
-
-        if let Some(the_where) = &statement.options.the_where {
-            rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
-        }
-
-        if let Some(order) = &statement.options.order_by {
-            order.order(&mut rows, &table_ops.columns);
-        }
-
-        let result_rows: Vec<Vec<String>> = rows
-            .into_iter()
-            .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols))
-            .collect();
-
-        result.extend(result_rows);
-
-        Ok(Self::serialize_select_result(
-            result,
-            &query_cols,
-            &table_ops.columns,
-            table,
-        ))
     }
 
     /// Serializa en bytes el resultado de una consulta SELECT.
@@ -652,46 +734,5 @@ impl DiskHandler {
             }
         }
         Ok(())
-    }
-
-    /// Actualiza filas en una tabla en el caso que corresponda.
-    pub fn do_update(
-        statement: &Update,
-        storage_addr: &str,
-        table: &Table,
-        default_keyspace: &str,
-    ) -> Result<Vec<String>> {
-        let path = TablePath::new(
-            storage_addr,
-            statement.table_name.get_keyspace(),
-            &statement.table_name.get_name(),
-            default_keyspace,
-        );
-
-        let table_ops = TableOperations::new(path)?;
-        Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
-        let mut rows = table_ops.read_rows()?;
-        let mut updated_rows = Vec::new();
-
-        for row in rows.iter_mut() {
-            let should_update = match &statement.the_where {
-                Some(the_where) => the_where.filter(row, &table_ops.columns)?,
-                None => true,
-            };
-            if should_update {
-                for assignment in &statement.set_parameter {
-                    Self::update_row_value(row, assignment, &table_ops.columns)?;
-                }
-                updated_rows.push(row.clone());
-            }
-        }
-
-        if !updated_rows.is_empty() {
-            let order_by = Self::get_table_ordering(table);
-            order_by.order(&mut rows, &table_ops.columns);
-            table_ops.write_rows(&rows)?;
-        }
-
-        Ok(updated_rows.iter().map(|row| row.join(",")).collect())
     }
 }

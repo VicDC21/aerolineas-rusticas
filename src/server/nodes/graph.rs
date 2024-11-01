@@ -144,8 +144,16 @@ impl NodesGraph {
             let cli_sender = proc_sender.clone();
             let priv_sender = proc_sender.clone();
 
-            create_client_and_private_conexion(current_id, cli_socket, cli_sender, &mut node_listeners, i, priv_socket, priv_sender)?;
-            
+            create_client_and_private_conexion(
+                current_id,
+                cli_socket,
+                cli_sender,
+                &mut node_listeners,
+                i,
+                priv_socket,
+                priv_sender,
+            )?;
+
             let processor = node.request_processor(proc_receiver, node_listeners)?;
 
             // Los join de los listeners están dentro del procesador
@@ -161,9 +169,7 @@ impl NodesGraph {
         let (sender, receiver) = channel::<bool>();
         let builder = Builder::new().name("gossip".to_string());
         let weights = self.get_weights();
-        match builder.spawn(move || {
-            exec_gossip(receiver, weights)
-        }) {
+        match builder.spawn(move || exec_gossip(receiver, weights)) {
             Ok(handler) => Ok((handler, sender.clone())),
             Err(_) => Err(Error::ServerError(
                 "Error procesando la ronda de gossip de los nodos.".to_string(),
@@ -215,9 +221,7 @@ impl NodesGraph {
         let (sender, receiver) = channel::<bool>();
         let builder = Builder::new().name("beater".to_string());
         let ids = self.get_ids();
-        match builder.spawn(move || {
-            increase_heartbeat_from_nodes(receiver, ids)
-        }) {
+        match builder.spawn(move || increase_heartbeat_from_nodes(receiver, ids)) {
             Ok(handler) => Ok((handler, sender.clone())),
             Err(_) => Err(Error::ServerError(
                 "Error procesando los beats de los nodos.".to_string(),
@@ -242,7 +246,15 @@ impl NodesGraph {
     }
 }
 
-fn create_client_and_private_conexion(current_id: u8, cli_socket: std::net::SocketAddr, cli_sender: Sender<(TcpStream, Vec<u8>)>, node_listeners: &mut Vec<JoinHandle<Result<()>>>, i: u8, priv_socket: std::net::SocketAddr, priv_sender: Sender<(TcpStream, Vec<u8>)>) -> Result<()> {
+fn create_client_and_private_conexion(
+    current_id: u8,
+    cli_socket: std::net::SocketAddr,
+    cli_sender: Sender<(TcpStream, Vec<u8>)>,
+    node_listeners: &mut Vec<JoinHandle<Result<()>>>,
+    i: u8,
+    priv_socket: std::net::SocketAddr,
+    priv_sender: Sender<(TcpStream, Vec<u8>)>,
+) -> Result<()> {
     let cli_builder = Builder::new().name(format!("{}_cli", current_id));
     let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_sender));
     match cli_res {
@@ -268,7 +280,10 @@ fn create_client_and_private_conexion(current_id: u8, cli_socket: std::net::Sock
     Ok(())
 }
 
-fn increase_heartbeat_from_nodes(receiver: std::sync::mpsc::Receiver<bool>, ids: Vec<u8>) -> std::result::Result<(), Error> {
+fn increase_heartbeat_from_nodes(
+    receiver: std::sync::mpsc::Receiver<bool>,
+    ids: Vec<u8>,
+) -> std::result::Result<(), Error> {
     loop {
         sleep(Duration::from_secs(1));
         if let Ok(stop) = receiver.try_recv() {
@@ -288,7 +303,10 @@ fn increase_heartbeat_from_nodes(receiver: std::sync::mpsc::Receiver<bool>, ids:
     Ok(())
 }
 
-fn exec_gossip(receiver: std::sync::mpsc::Receiver<bool>, weights: Vec<usize>) -> std::result::Result<(), Error> {
+fn exec_gossip(
+    receiver: std::sync::mpsc::Receiver<bool>,
+    weights: Vec<usize>,
+) -> std::result::Result<(), Error> {
     loop {
         sleep(Duration::from_millis(200));
         if let Ok(stop) = receiver.try_recv() {

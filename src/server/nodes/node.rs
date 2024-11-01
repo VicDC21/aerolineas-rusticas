@@ -50,7 +50,8 @@ use crate::{
             dml_statement::{
                 dml_statement_parser::DmlStatement,
                 main_statements::{
-                    insert::Insert, select::select_operation::Select, update::Update,
+                    delete::Delete, insert::Insert, select::select_operation::Select,
+                    update::Update,
                 },
             },
             statement::Statement,
@@ -391,8 +392,6 @@ impl Node {
         Ok(())
     }
 
-
-    
     /// Se recibe un mensaje [ACK](crate::server::actions::opcode::SvAction::Ack).
     fn ack(
         &mut self,
@@ -505,7 +504,6 @@ impl Node {
         }
     }
 
-
     /// Maneja una acción de servidor.
     fn handle_sv_action(&mut self, action: SvAction, mut tcp_stream: TcpStream) -> Result<bool> {
         let mut stop = false;
@@ -544,7 +542,7 @@ impl Node {
                 let response = self.handle_request(&bytes, true);
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
-                    return Err(Error::ServerError(err.to_string()))
+                    return Err(Error::ServerError(err.to_string()));
                 };
             }
         };
@@ -747,7 +745,7 @@ impl Node {
             DmlStatement::SelectStatement(select) => self.process_select(&select),
             DmlStatement::InsertStatement(insert) => self.process_insert(&insert),
             DmlStatement::UpdateStatement(update) => self.process_update(&update),
-            DmlStatement::DeleteStatement(_delete) => todo!(),
+            DmlStatement::DeleteStatement(delete) => self.process_delete(&delete),
             DmlStatement::BatchStatement(_batch) => todo!(),
         }
     }
@@ -766,8 +764,7 @@ impl Node {
     }
 
     fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>> {
-        let table_name = insert.table.get_name();
-        let table = match self.get_table(&table_name) {
+        let table = match self.get_table(&insert.table.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
@@ -781,8 +778,7 @@ impl Node {
     }
 
     fn process_update(&mut self, update: &Update) -> Result<Vec<Byte>> {
-        let table_name = update.table_name.get_name();
-        let table = match self.get_table(&table_name) {
+        let table = match self.get_table(&update.table_name.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
@@ -841,12 +837,8 @@ impl Node {
             DmlStatement::SelectStatement(select) => self.select_with_other_nodes(select, request),
             DmlStatement::InsertStatement(insert) => self.insert_with_other_nodes(insert, request),
             DmlStatement::UpdateStatement(update) => self.update_with_other_nodes(update, request),
-            DmlStatement::DeleteStatement(_delete) => {
-                todo!()
-            }
-            DmlStatement::BatchStatement(_batch) => {
-                todo!()
-            }
+            DmlStatement::DeleteStatement(delete) => self.delete_with_other_nodes(delete, request),
+            DmlStatement::BatchStatement(_batch) => todo!(),
         }
     }
 
@@ -917,22 +909,23 @@ impl Node {
         Ok(results_from_nodes)
     }
 
-    fn replicate_update_in_other_nodes(&mut self, replication_factor: u32, node_id: u8, request: &[u8]) -> Result<()> {
+    fn replicate_update_in_other_nodes(
+        &mut self,
+        replication_factor: u32,
+        node_id: u8,
+        request: &[u8],
+    ) -> Result<()> {
         for i in 0..replication_factor - 1 {
-            let node_to_replicate = self.next_node_to_replicate_data(
-                node_id,
-                i as u8,
-                START_ID,
-                START_ID + N_NODES,
-            );
-    
+            let node_to_replicate =
+                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+
             if node_to_replicate != node_id {
                 let replica_response = self.send_message_and_wait_response(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_to_replicate,
                     PortType::Priv,
                 )?;
-    
+
                 match Opcode::try_from(replica_response[4])? {
                     Opcode::RequestError => {
                         return Err(Error::try_from(replica_response[9..].to_vec())?)
@@ -945,10 +938,10 @@ impl Node {
                     }
                 }
             }
-        };
+        }
         Ok(())
     }
-    
+
     fn next_node_to_replicate_data(
         &self,
         first_node_to_replicate: u8,
@@ -997,6 +990,83 @@ impl Node {
             }
         }
         Ok(results_from_another_nodes)
+    }
+
+    fn process_delete(&mut self, delete: &Delete) -> Result<Vec<Byte>> {
+        let table = match self.get_table(&delete.from.get_name()) {
+            Ok(table) => table,
+            Err(err) => return Err(err),
+        };
+
+        DiskHandler::do_delete(
+            delete,
+            &self.storage_addr,
+            table,
+            &self.default_keyspace_name,
+        )?;
+
+        Ok(self.create_result_void())
+    }
+
+    fn delete_with_other_nodes(&mut self, delete: Delete, request: &[u8]) -> Result<Vec<Byte>> {
+        let table_name = delete.from.get_name();
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
+        let mut results_from_nodes: Vec<u8> = Vec::new();
+        let mut consulted_nodes: Vec<String> = Vec::new();
+
+        for partition_key_value in partitions_keys_to_nodes {
+            let node_id = self.select_node(&partition_key_value);
+
+            if !consulted_nodes.contains(&partition_key_value) {
+                let current_response = if node_id == self.id {
+                    self.process_delete(&delete)?
+                } else {
+                    let res = self.send_message_and_wait_response(
+                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        node_id,
+                        PortType::Priv,
+                    )?;
+                    match Opcode::try_from(res[4])? {
+                        Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+                        Opcode::Result => res,
+                        _ => {
+                            return Err(Error::ServerError(
+                                "Nodo manda opcode inesperado".to_string(),
+                            ))
+                        }
+                    }
+                };
+
+                results_from_nodes.extend_from_slice(&current_response);
+                consulted_nodes.push(partition_key_value.clone());
+                let replication_factor = self.get_replicas_from_table_name(&table_name)?;
+                self.replicate_delete_in_other_nodes(replication_factor, node_id, request)?;
+            }
+        }
+
+        Ok(results_from_nodes)
+    }
+
+    // Función auxiliar para replicar el delete en otros nodos
+    fn replicate_delete_in_other_nodes(
+        &mut self,
+        replication_factor: u32,
+        node_id: u8,
+        request: &[u8],
+    ) -> Result<()> {
+        for i in 0..replication_factor - 1 {
+            let node_to_replicate =
+                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+
+            if node_to_replicate != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_to_replicate,
+                    PortType::Priv,
+                )?;
+            }
+        }
+        Ok(())
     }
 
     fn get_partition_keys_values(&self, table_name: &String) -> Result<&Vec<String>> {
@@ -1172,7 +1242,12 @@ impl Node {
         }
     }
 
-    fn classify_nodes_in_gossip(&mut self, gossip_info: &HashMap<u8, HeartbeatState>, response_nodes: &mut HashMap<u8, EndpointState>, own_gossip: &mut HashMap<u8, HeartbeatState>) {
+    fn classify_nodes_in_gossip(
+        &mut self,
+        gossip_info: &HashMap<u8, HeartbeatState>,
+        response_nodes: &mut HashMap<u8, EndpointState>,
+        own_gossip: &mut HashMap<u8, HeartbeatState>,
+    ) {
         for (node_id, heartbeat) in gossip_info {
             let endpoint_state_opt = &self.neighbours_states.get(node_id);
             match endpoint_state_opt {
@@ -1192,7 +1267,11 @@ impl Node {
         }
     }
 
-    fn match_kind_of_conection_mode(&mut self, bytes: Vec<u8>, mut tcp_stream: TcpStream) -> Result<bool> {
+    fn match_kind_of_conection_mode(
+        &mut self,
+        bytes: Vec<u8>,
+        mut tcp_stream: TcpStream,
+    ) -> Result<bool> {
         match self.mode() {
             ConnectionMode::Echo => {
                 let printable_bytes = bytes
@@ -1218,7 +1297,6 @@ impl Node {
             }
         }
     }
-    
 }
 
 impl PartialEq for Node {
