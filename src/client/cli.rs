@@ -21,7 +21,7 @@ use crate::{
         utils::parse_bytes_to_string,
     },
     server::{
-        actions::opcode::SvAction, nodes::column_data_type::ColumnDataType,
+        actions::opcode::SvAction, nodes::table_metadata::column_data_type::ColumnDataType,
         utils::get_available_sockets,
     },
     tokenizer::tokenizer::tokenize_query,

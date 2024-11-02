@@ -63,8 +63,8 @@ use crate::tokenizer::tokenizer::tokenize_query;
 
 use super::{
     graph::{N_NODES, START_ID},
-    keyspace::Keyspace,
-    table::Table,
+    keyspace_metadata::keyspace::Keyspace,
+    table_metadata::table::Table,
     utils::{divide_range, send_to_node_and_wait_response},
 };
 
