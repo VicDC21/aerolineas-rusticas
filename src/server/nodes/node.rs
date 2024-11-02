@@ -9,15 +9,33 @@ use std::{
     path::Path,
     sync::mpsc::{Receiver, Sender},
     thread::Builder,
+    vec::IntoIter,
 };
 
-use crate::protocol::headers::{
-    flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+use crate::parser::{
+    data_types::keyspace_name::KeyspaceName,
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable,
+            ddl_statement_parser::DdlStatement,
+        },
+        dml_statement::{
+            dml_statement_parser::DmlStatement,
+            main_statements::{insert::Insert, select::select_operation::Select, update::Update},
+        },
+        statement::Statement,
+    },
 };
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
-    traits::Byteable,
+    headers::{
+        flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
+        version::Version,
+    },
+    messages::responses::result_kinds::ResultKind,
+    traits::{Byteable, Serializable},
 };
 use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
@@ -33,31 +51,14 @@ use crate::server::{
                 HeartbeatState, {GenType, VerType},
             },
         },
-        utils::{guess_id, send_to_node},
+        utils::{
+            guess_id, hashmap_to_string, hashmap_vec_to_string, send_to_node, string_to_hashmap,
+            string_to_hashmap_vec,
+        },
     },
     utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{
-    parser::{
-        data_types::keyspace_name::KeyspaceName,
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::{
-                create_keyspace::CreateKeyspace, create_table::CreateTable,
-                ddl_statement_parser::DdlStatement,
-            },
-            dml_statement::{
-                dml_statement_parser::DmlStatement,
-                main_statements::{
-                    insert::Insert, select::select_operation::Select, update::Update,
-                },
-            },
-            statement::Statement,
-        },
-    },
-    protocol::{headers::msg_headers::Headers, messages::responses::result_kinds::ResultKind},
-};
 
 use super::{
     graph::{N_NODES, START_ID},
@@ -391,8 +392,6 @@ impl Node {
         Ok(())
     }
 
-
-    
     /// Se recibe un mensaje [ACK](crate::server::actions::opcode::SvAction::Ack).
     fn ack(
         &mut self,
@@ -505,7 +504,6 @@ impl Node {
         }
     }
 
-
     /// Maneja una acción de servidor.
     fn handle_sv_action(&mut self, action: SvAction, mut tcp_stream: TcpStream) -> Result<bool> {
         let mut stop = false;
@@ -544,7 +542,7 @@ impl Node {
                 let response = self.handle_request(&bytes, true);
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
-                    return Err(Error::ServerError(err.to_string()))
+                    return Err(Error::ServerError(err.to_string()));
                 };
             }
         };
@@ -917,22 +915,23 @@ impl Node {
         Ok(results_from_nodes)
     }
 
-    fn replicate_update_in_other_nodes(&mut self, replication_factor: u32, node_id: u8, request: &[u8]) -> Result<()> {
+    fn replicate_update_in_other_nodes(
+        &mut self,
+        replication_factor: u32,
+        node_id: u8,
+        request: &[u8],
+    ) -> Result<()> {
         for i in 0..replication_factor - 1 {
-            let node_to_replicate = self.next_node_to_replicate_data(
-                node_id,
-                i as u8,
-                START_ID,
-                START_ID + N_NODES,
-            );
-    
+            let node_to_replicate =
+                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+
             if node_to_replicate != node_id {
                 let replica_response = self.send_message_and_wait_response(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_to_replicate,
                     PortType::Priv,
                 )?;
-    
+
                 match Opcode::try_from(replica_response[4])? {
                     Opcode::RequestError => {
                         return Err(Error::try_from(replica_response[9..].to_vec())?)
@@ -945,10 +944,10 @@ impl Node {
                     }
                 }
             }
-        };
+        }
         Ok(())
     }
-    
+
     fn next_node_to_replicate_data(
         &self,
         first_node_to_replicate: u8,
@@ -1172,7 +1171,12 @@ impl Node {
         }
     }
 
-    fn classify_nodes_in_gossip(&mut self, gossip_info: &HashMap<u8, HeartbeatState>, response_nodes: &mut HashMap<u8, EndpointState>, own_gossip: &mut HashMap<u8, HeartbeatState>) {
+    fn classify_nodes_in_gossip(
+        &mut self,
+        gossip_info: &HashMap<u8, HeartbeatState>,
+        response_nodes: &mut HashMap<u8, EndpointState>,
+        own_gossip: &mut HashMap<u8, HeartbeatState>,
+    ) {
         for (node_id, heartbeat) in gossip_info {
             let endpoint_state_opt = &self.neighbours_states.get(node_id);
             match endpoint_state_opt {
@@ -1192,7 +1196,11 @@ impl Node {
         }
     }
 
-    fn match_kind_of_conection_mode(&mut self, bytes: Vec<u8>, mut tcp_stream: TcpStream) -> Result<bool> {
+    fn match_kind_of_conection_mode(
+        &mut self,
+        bytes: Vec<u8>,
+        mut tcp_stream: TcpStream,
+    ) -> Result<bool> {
         match self.mode() {
             ConnectionMode::Echo => {
                 let printable_bytes = bytes
@@ -1218,11 +1226,91 @@ impl Node {
             }
         }
     }
-    
 }
 
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.endpoint_state.eq(&other.endpoint_state)
+    }
+}
+
+impl Serializable for Node {
+    fn serialize(&self) -> Vec<u8> {
+        // id,default_keyspace,keyspaces,tables,tables_and_partitions_keys_values
+        let parameters: Vec<String> = vec![
+            self.id.to_string(),
+            self.default_keyspace_name.clone(),
+            hashmap_to_string(&self.keyspaces),
+            hashmap_to_string(&self.tables),
+            hashmap_vec_to_string(&self.tables_and_partitions_keys_values),
+        ];
+        parameters.join(",").into_bytes()
+    }
+
+    fn deserialize(data: &[u8]) -> Result<Self> {
+        let line: String = String::from_utf8(data.to_vec())
+            .map_err(|_| Error::ServerError("No se pudieron deserializar los datos".to_string()))?;
+        let mut parameters: IntoIter<String> = line
+            .split(",")
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+            .into_iter();
+
+        let id: u8 = parameters
+            .next()
+            .ok_or(Error::ServerError(
+                "No se pudo obtener el ID del nodo".to_string(),
+            ))?
+            .parse()
+            .map_err(|_| Error::ServerError("No se pudo parsear el ID del nodo".to_string()))?;
+
+        let default_keyspace_name: String = parameters
+            .next()
+            .ok_or(Error::ServerError(
+                "No se pudo obtener el keyspace por defecto del nodo".to_string(),
+            ))?
+            .parse()
+            .map_err(|_| {
+                Error::ServerError(
+                    "No se pudo parsear el keyspace por defecto del nodo".to_string(),
+                )
+            })?;
+
+        let keyspaces: String = parameters.next().ok_or(Error::ServerError(
+            "No se pudo obtener los keyspaces del nodo".to_string(),
+        ))?;
+        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|_| {
+            Error::ServerError("No se pudieron parsear los keyspaces del nodo".to_string())
+        })?;
+
+        let tables: String = parameters.next().ok_or(Error::ServerError(
+            "No se pudo obtener las tablas del nodo".to_string(),
+        ))?;
+        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|_| {
+            Error::ServerError("No se pudieron parsear las tablas del nodo".to_string())
+        })?;
+
+        let tables_and_partitions_keys_values: String =
+            parameters.next().ok_or(Error::ServerError(
+                "No se pudo obtener las tablas y sus particiones del nodo".to_string(),
+            ))?;
+        let tables_and_partitions_keys_values: HashMap<String, Vec<String>> =
+            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|_| {
+                Error::ServerError(
+                    "No se pudieron parsear las tablas y sus particiones del nodo".to_string(),
+                )
+            })?;
+
+        Ok(Node {
+            id,
+            neighbours_states: HashMap::new(),
+            endpoint_state: EndpointState::with_id(id),
+            storage_addr: DiskHandler::get_node_storage(id),
+            default_keyspace_name,
+            keyspaces,
+            tables,
+            nodes_ranges: divide_range(0, 18446744073709551615, N_NODES as usize),
+            tables_and_partitions_keys_values,
+        })
     }
 }

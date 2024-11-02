@@ -1,5 +1,9 @@
 //! Módulo que detalla un keyspace.
 
+use std::{fmt, str::FromStr};
+
+use crate::protocol::{aliases::results::Result, errors::error::Error};
+
 use super::replication_strategy::ReplicationStrategy;
 
 /// Representa un keyspace en CQL.
@@ -25,5 +29,29 @@ impl Keyspace {
     /// Si no es estrategia simple, retorna None.
     pub fn simple_replicas(&self) -> Option<u32> {
         self.replication.simple_replicas()
+    }
+}
+
+impl fmt::Display for Keyspace {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}-{}", self.name, self.replication)
+    }
+}
+
+impl FromStr for Keyspace {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let parts: Vec<&str> = s.split('-').collect();
+        if parts.len() != 2 {
+            return Err(Error::ServerError(
+                "No se pudo parsear el keyspace".to_string(),
+            ));
+        }
+
+        let name: String = parts[0].to_string();
+        let replication: ReplicationStrategy = parts[1].parse()?;
+
+        Ok(Keyspace::new(name, replication))
     }
 }
