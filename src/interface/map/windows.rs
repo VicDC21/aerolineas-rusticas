@@ -2,7 +2,7 @@
 //!
 //! Al ser "ventanas" flotantes, se pueden mostrar por encima del mapa.
 
-use chrono::NaiveDate;
+use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
 use eframe::egui::{Align2, ComboBox, Context, Image, RichText, Ui, Window};
 use egui_extras::DatePickerButton;
 use walkers::{sources::Attribution, MapMemory};
@@ -89,13 +89,65 @@ pub fn go_to_my_position(ui: &Ui, map_memory: &mut MapMemory) {
 }
 
 /// Seleccionar la fecha actual.
-pub fn date_selector(ctx: &Context, date: &mut NaiveDate) {
+pub fn date_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
+    let mut date = datetime.date_naive();
     Window::new("Date Selector")
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
         .anchor(Align2::LEFT_BOTTOM, [100., -10.])
         .show(ctx, |ui| {
-            ui.add(DatePickerButton::new(date).id_salt("date_selector"));
+            ui.add(DatePickerButton::new(&mut date).id_salt("date_selector"));
         });
+
+    let local = datetime.naive_local();
+    NaiveDateTime::new(date, local.time())
+        .and_local_timezone(Local)
+        .single()
+}
+
+/// Seleccionar la hora actual.
+pub fn clock_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
+    let mut hour = datetime.hour();
+    let mut minute = datetime.minute();
+    let mut second = datetime.second();
+
+    Window::new("Clock Selector")
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(false)
+        .anchor(Align2::LEFT_BOTTOM, [220., -10.])
+        .show(ctx, |ui| {
+            ui.collapsing(
+                RichText::new(format!("{:0>2}:{:0>2}:{:0>2}", &hour, &minute, &second)),
+                |ui| {
+                    ComboBox::from_label("Hora")
+                        .selected_text(format!("{}", hour))
+                        .show_ui(ui, |ui| {
+                            for h in 0..24 {
+                                ui.selectable_value(&mut hour, h, format!("{:0>2}", h));
+                            }
+                        });
+                    ComboBox::from_label("Minutos")
+                        .selected_text(format!("{}", minute))
+                        .show_ui(ui, |ui| {
+                            for m in 0..60 {
+                                ui.selectable_value(&mut minute, m, format!("{:0>2}", m));
+                            }
+                        });
+                    ComboBox::from_label("Segundos")
+                        .selected_text(format!("{}", second))
+                        .show_ui(ui, |ui| {
+                            for s in 0..60 {
+                                ui.selectable_value(&mut second, s, format!("{:0>2}", s));
+                            }
+                        });
+                },
+            );
+        });
+    if let Some(time) = NaiveTime::from_hms_opt(hour, minute, second) {
+        datetime.with_time(time).single()
+    } else {
+        None
+    }
 }

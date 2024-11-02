@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use chrono::{NaiveDate, Utc};
+use chrono::{DateTime, Local};
 use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
 use egui_extras::install_image_loaders;
@@ -13,7 +13,7 @@ use crate::data::{airports::Airport, flights::Flight};
 use crate::interface::map::{
     panels::{cur_airport_info, extra_airport_info},
     providers::{Provider, ProvidersMap},
-    windows::{controls, date_selector, go_to_my_position, zoom},
+    windows::{clock_selector, controls, date_selector, go_to_my_position, zoom},
 };
 use crate::interface::plugins::{
     airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
@@ -58,7 +58,7 @@ pub struct AerolineasApp {
     extra_airport: Option<Airport>,
 
     /// La fecha actual.
-    date: NaiveDate,
+    datetime: DateTime<Local>,
 
     /// Los vuelos actualmente en memoria.
     current_flights: Arc<Vec<Flight>>,
@@ -83,7 +83,7 @@ impl AerolineasApp {
             flights_loader: FlightsLoader::default(),
             selected_airport: None,
             extra_airport: None,
-            date: Utc::now().date_naive(),
+            datetime: Local::now(),
             current_flights: Arc::new(Vec::new()),
         }
     }
@@ -119,7 +119,7 @@ impl App for AerolineasApp {
                 .sync_airports(Arc::clone(&cur_airports))
                 .sync_zoom(zoom_lvl);
             self.flights_loader
-                .sync_date(self.date)
+                .sync_date(self.datetime)
                 .sync_client(self.client.clone());
 
             // necesariamente antes de agregar al mapa
@@ -162,13 +162,24 @@ impl App for AerolineasApp {
             );
         });
 
-        date_selector(ctx, &mut self.date);
+        if let Some(valid_date) = date_selector(ctx, &mut self.datetime) {
+            self.datetime = valid_date;
+        }
+        if let Some(valid_time) = clock_selector(ctx, &mut self.datetime) {
+            self.datetime = valid_time;
+        }
         cur_airport_info(
             ctx,
             &self.selected_airport,
             Arc::clone(&self.current_flights),
         );
-        extra_airport_info(ctx, &self.selected_airport, &self.extra_airport);
+        extra_airport_info(
+            ctx,
+            &self.selected_airport,
+            &self.extra_airport,
+            self.client.clone(),
+            self.datetime.timestamp(),
+        );
     }
 }
 

@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use chrono::{DateTime, Local};
 use eframe::egui::{Painter, Response};
 use walkers::{Plugin, Projector};
 
@@ -41,7 +41,7 @@ pub struct FlightsLoader {
     last_checked: Instant,
 
     /// Fecha seleccionada.
-    date: NaiveDate,
+    date: DateTime<Local>,
 
     /// Extremo de canal que recibe actualizaciones de los vuelos.
     receiver: Receiver<Vec<Flight>>,
@@ -56,7 +56,7 @@ impl FlightsLoader {
         client: Client,
         flights: Option<Vec<Flight>>,
         last_checked: Instant,
-        date: NaiveDate,
+        date: DateTime<Local>,
         receiver: Receiver<Vec<Flight>>,
         date_child: DateChild,
     ) -> Self {
@@ -117,7 +117,7 @@ impl FlightsLoader {
     }
 
     /// Sincroniza la fecha seleccionada en la aplicación con la guardada aquí.
-    pub fn sync_date(&mut self, new_date: NaiveDate) -> &mut Self {
+    pub fn sync_date(&mut self, new_date: DateTime<Local>) -> &mut Self {
         self.date = new_date;
         self
     }
@@ -205,7 +205,7 @@ impl Default for FlightsLoader {
             Client::default(),
             Some(Vec::new()),
             Instant::now(),
-            Utc::now().date_naive(),
+            Local::now(),
             main_receiver,
             Self::gen_date_child(main_sender.clone()),
         )
@@ -217,15 +217,9 @@ impl Plugin for &mut FlightsLoader {
         if self.elapsed_at_least(&Duration::from_secs(FLIGHTS_INTERVAL_SECS)) {
             self.reset_instant();
 
-            if let Some(naive_date) = NaiveTime::from_hms_opt(0, 0, 0) {
-                let cur_datetime = NaiveDateTime::new(self.date, naive_date);
-
-                let (_, date_sender) = &mut self.date_child;
-                if let Err(err) =
-                    date_sender.send((self.client.clone(), cur_datetime.and_utc().timestamp()))
-                {
-                    println!("Error al enviar timestamp al cargador:\n\n{}", err);
-                }
+            let (_, date_sender) = &mut self.date_child;
+            if let Err(err) = date_sender.send((self.client.clone(), self.date.timestamp())) {
+                println!("Error al enviar timestamp al cargador:\n\n{}", err);
             }
         }
 
