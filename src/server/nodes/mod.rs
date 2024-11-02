@@ -2,7 +2,7 @@
 
 pub mod column_config;
 pub mod column_data_type;
-pub mod disk_handler;
+pub mod disk_operations;
 pub mod graph;
 pub mod keyspace;
 pub mod node;
