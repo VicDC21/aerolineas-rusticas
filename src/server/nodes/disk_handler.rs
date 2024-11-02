@@ -128,16 +128,23 @@ impl TableOperations {
     }
 
     fn write_rows(&self, rows: &[Vec<String>]) -> Result<()> {
-        let mut content = self.columns.join(",");
-        content.push('\n');
+        let mut file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(self.path.full_path())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
 
-        for row in rows {
-            content.push_str(&row.join(","));
-            content.push('\n');
+        if !rows.is_empty() {
+            writeln!(file, "{}", self.columns.join(","))
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+
+            for row in rows {
+                writeln!(file, "{}", row.join(","))
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
+            }
         }
-
-        std::fs::write(self.path.full_path(), content)
-            .map_err(|e| Error::ServerError(e.to_string()))
+        Ok(())
     }
 }
 
@@ -351,31 +358,94 @@ impl DiskHandler {
             default_keyspace,
         );
 
-        let table_ops = TableOperations::new(path)?;
+        let mut table_ops = TableOperations::new(path)?;
         let rows = table_ops.read_rows()?;
-        let mut deleted_rows = Vec::new();
-        let mut remaining_rows = Vec::new();
+        let mut modified_rows = Vec::new();
+        let mut deleted_data = Vec::new();
 
-        for row in rows {
-            let should_delete = match &statement.the_where {
-                Some(the_where) => the_where.filter(&row, &table_ops.columns)?,
-                None => true,
-            };
+        if statement.cols.is_empty() && statement.the_where.is_none() {
+            table_ops.write_rows(&Vec::new())?;
+            return Ok(rows.iter().map(|row| row.join(",")).collect());
+        }
 
-            if should_delete {
-                deleted_rows.push(row);
+        if statement.cols.is_empty() {
+            for row in rows {
+                let should_delete = match &statement.the_where {
+                    Some(the_where) => the_where.filter(&row, &table_ops.columns)?,
+                    None => true,
+                };
+
+                if should_delete {
+                    deleted_data.push(row.join(","));
+                } else {
+                    modified_rows.push(row);
+                }
+            }
+        } else {
+            let columns_to_delete: Vec<usize> = statement
+                .cols
+                .iter()
+                .filter_map(|col_name| table_ops.columns.iter().position(|col| col == col_name))
+                .collect();
+
+            if statement.the_where.is_none() {
+                let new_columns: Vec<String> = table_ops
+                    .columns
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| !columns_to_delete.contains(i))
+                    .map(|(_, col)| col.clone())
+                    .collect();
+
+                for row in rows {
+                    let new_row: Vec<String> = row
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| !columns_to_delete.contains(i))
+                        .map(|(_, val)| val.clone())
+                        .collect();
+
+                    modified_rows.push(new_row);
+                }
+
+                table_ops.columns = new_columns;
             } else {
-                remaining_rows.push(row);
+                for row in rows {
+                    let should_modify = match &statement.the_where {
+                        Some(the_where) => the_where.filter(&row, &table_ops.columns)?,
+                        None => true,
+                    };
+
+                    let mut new_row = row.clone();
+
+                    if should_modify {
+                        let deleted_values: Vec<String> = columns_to_delete
+                            .iter()
+                            .filter_map(|&idx| row.get(idx))
+                            .cloned()
+                            .collect();
+
+                        deleted_data.push(deleted_values.join(","));
+
+                        for &col_idx in &columns_to_delete {
+                            if col_idx < new_row.len() {
+                                new_row[col_idx] = String::new();
+                            }
+                        }
+                    }
+
+                    modified_rows.push(new_row);
+                }
             }
         }
 
-        if !deleted_rows.is_empty() {
+        if !modified_rows.is_empty() || statement.cols.is_empty() {
             let order_by = Self::get_table_ordering(table);
-            order_by.order(&mut remaining_rows, &table_ops.columns);
-
-            table_ops.write_rows(&remaining_rows)?;
+            order_by.order(&mut modified_rows, &table_ops.columns);
+            table_ops.write_rows(&modified_rows)?;
         }
-        Ok(deleted_rows.iter().map(|row| row.join(",")).collect())
+
+        Ok(deleted_data)
     }
 
     fn create_directory(path: &str) {
@@ -386,7 +456,7 @@ impl DiskHandler {
         }
     }
     /// Obtiene la estrategia de replicación de un keyspace.
-    fn get_keyspace_replication(options: &Vec<Options>) -> Result<Option<ReplicationStrategy>> {
+    fn get_keyspace_replication(options: &[Options]) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;
         while i < options.len() {
             match &options[i] {
@@ -436,11 +506,8 @@ impl DiskHandler {
         storage_addr: &str,
         default_keyspace: &str,
     ) -> Result<Option<Table>> {
-        let (keyspace_name, table_name) = Self::validate_and_get_keyspace_table_names(
-            &statement,
-            default_keyspace,
-            storage_addr,
-        )?;
+        let (keyspace_name, table_name) =
+            Self::validate_and_get_keyspace_table_names(statement, default_keyspace, storage_addr)?;
         let columns = statement.get_columns()?;
         let columns_names = columns
             .iter()
@@ -449,8 +516,8 @@ impl DiskHandler {
 
         Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
 
-        let primary_key = Self::validate_and_get_primary_key(&statement)?;
-        let clustering_keys_and_order = Self::get_clustering_keys_and_order(&statement)?;
+        let primary_key = Self::validate_and_get_primary_key(statement)?;
+        let clustering_keys_and_order = Self::get_clustering_keys_and_order(statement)?;
 
         Ok(Some(Table::new(
             table_name,

@@ -663,7 +663,9 @@ impl Node {
     /// Maneja una declaración DDL.
     fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Result<Vec<Byte>> {
         match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => self.process_internal_use_statement(&keyspace_name),
+            DdlStatement::UseStatement(keyspace_name) => {
+                self.process_internal_use_statement(&keyspace_name)
+            }
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
                 self.process_internal_create_keyspace_statement(&create_keyspace)
             }
@@ -678,7 +680,11 @@ impl Node {
         }
     }
 
-    fn process_use_statement(&mut self, keyspace_name: KeyspaceName, request: &[Byte]) -> Result<Vec<u8>> {
+    fn process_use_statement(
+        &mut self,
+        keyspace_name: KeyspaceName,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
         let mut response: Vec<Byte> = Vec::new();
         for actual_node in 0..5 {
             let node_id = self.next_node_to_replicate_data(
@@ -696,7 +702,7 @@ impl Node {
             } else {
                 self.process_internal_use_statement(&keyspace_name)?
             }
-        };
+        }
         Ok(response)
     }
 
@@ -737,7 +743,7 @@ impl Node {
     fn process_create_keyspace_statement(
         &mut self,
         create_keyspace: CreateKeyspace,
-        request: &[Byte]
+        request: &[Byte],
     ) -> Result<Vec<u8>> {
         let mut response: Vec<Byte> = Vec::new();
         for actual_node in 0..5 {
@@ -756,7 +762,7 @@ impl Node {
             } else {
                 self.process_internal_create_keyspace_statement(&create_keyspace)?
             }
-        };
+        }
         Ok(response)
     }
 
@@ -771,7 +777,10 @@ impl Node {
         response
     }
 
-    fn process_internal_create_table_statement(&mut self, create_table: &CreateTable) -> Result<Vec<u8>> {
+    fn process_internal_create_table_statement(
+        &mut self,
+        create_table: &CreateTable,
+    ) -> Result<Vec<u8>> {
         let default_keyspace_name = match self.get_default_keyspace() {
             Ok(keyspace) => keyspace.get_name().to_string(),
             Err(err) => return Err(err),
@@ -786,7 +795,11 @@ impl Node {
         Ok(self.create_result_void())
     }
 
-    fn process_create_table_statement(&mut self, create_table: CreateTable, request: &[Byte]) -> Result<Vec<u8>> {
+    fn process_create_table_statement(
+        &mut self,
+        create_table: CreateTable,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
         let mut response: Vec<Byte> = Vec::new();
         for actual_node in 0..5 {
             let node_id = self.next_node_to_replicate_data(
@@ -804,7 +817,7 @@ impl Node {
             } else {
                 self.process_internal_create_table_statement(&create_table)?
             }
-        };
+        }
         Ok(response)
     }
     /// Maneja una declaración DML.
@@ -861,7 +874,9 @@ impl Node {
 
     fn handle_statement(&mut self, statement: Statement, request: &[Byte]) -> Result<Vec<Byte>> {
         match statement {
-            Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement, request),
+            Statement::DdlStatement(ddl_statement) => {
+                self.handle_ddl_statement(ddl_statement, request)
+            }
             Statement::DmlStatement(dml_statement) => {
                 self.handle_dml_statement(dml_statement, request)
             }
@@ -869,9 +884,15 @@ impl Node {
         }
     }
 
-    fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement, request: &[Byte]) -> Result<Vec<u8>> {
+    fn handle_ddl_statement(
+        &mut self,
+        ddl_statement: DdlStatement,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
         match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name, request),
+            DdlStatement::UseStatement(keyspace_name) => {
+                self.process_use_statement(keyspace_name, request)
+            }
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
                 self.process_create_keyspace_statement(create_keyspace, request)
             }
@@ -917,7 +938,7 @@ impl Node {
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(&partition_key_value);
             let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-            for i in 0..replication_factor{
+            for i in 0..replication_factor {
                 let node_to_replicate = self.next_node_to_replicate_data(
                     node_id,
                     i as u8,
