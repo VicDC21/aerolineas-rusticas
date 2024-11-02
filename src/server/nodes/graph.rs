@@ -221,7 +221,7 @@ impl NodesGraph {
         let (sender, receiver) = channel::<bool>();
         let builder = Builder::new().name("beater".to_string());
         let ids = self.get_ids();
-        match builder.spawn(move || increase_heartbeat_from_nodes(receiver, ids)) {
+        match builder.spawn(move || increase_heartbeat_and_store_nodes(receiver, ids)) {
             Ok(handler) => Ok((handler, sender.clone())),
             Err(_) => Err(Error::ServerError(
                 "Error procesando los beats de los nodos.".to_string(),
@@ -280,7 +280,7 @@ fn create_client_and_private_conexion(
     Ok(())
 }
 
-fn increase_heartbeat_from_nodes(
+fn increase_heartbeat_and_store_nodes(
     receiver: std::sync::mpsc::Receiver<bool>,
     ids: Vec<u8>,
 ) -> std::result::Result<(), Error> {
@@ -294,7 +294,13 @@ fn increase_heartbeat_from_nodes(
         for node_id in &ids {
             if send_to_node(*node_id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
                 return Err(Error::ServerError(format!(
-                    "Error enviado mensaje de heartbeat a nodo {}",
+                    "Error enviando mensaje de heartbeat a nodo {}",
+                    node_id
+                )));
+            }
+            if send_to_node(*node_id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
+                return Err(Error::ServerError(format!(
+                    "Error enviando mensaje de almacenamiento de metadata a nodo {}",
                     node_id
                 )));
             }

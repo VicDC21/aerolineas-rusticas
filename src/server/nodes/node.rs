@@ -41,7 +41,7 @@ use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
     nodes::{
-        disk_handler::DiskHandler,
+        disk_operations::disk_handler::DiskHandler,
         graph::NodeHandle,
         port_type::PortType,
         states::{
@@ -545,6 +545,14 @@ impl Node {
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
+            }
+            SvAction::StoreMetadata => {
+                if let Err(e) = DiskHandler::store_node_metadata(self.id, &self.serialize()) {
+                    return Err(Error::ServerError(format!(
+                        "Error guardando metadata del nodo {}: {}",
+                        &self.id, e
+                    )));
+                }
             }
         };
         Ok(stop)
@@ -1238,14 +1246,15 @@ impl PartialEq for Node {
 impl Serializable for Node {
     fn serialize(&self) -> Vec<u8> {
         // id,default_keyspace,keyspaces,tables,tables_and_partitions_keys_values
-        let parameters: Vec<String> = vec![
-            self.id.to_string(),
-            self.default_keyspace_name.clone(),
+        let parameters: String = format!(
+            "{},{},{},{},{}\n",
+            self.id,
+            self.default_keyspace_name,
             hashmap_to_string(&self.keyspaces),
             hashmap_to_string(&self.tables),
             hashmap_vec_to_string(&self.tables_and_partitions_keys_values),
-        ];
-        parameters.join(",").into_bytes()
+        );
+        parameters.into_bytes()
     }
 
     fn deserialize(data: &[u8]) -> Result<Self> {
