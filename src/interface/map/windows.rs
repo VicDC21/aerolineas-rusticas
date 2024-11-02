@@ -3,7 +3,7 @@
 //! Al ser "ventanas" flotantes, se pueden mostrar por encima del mapa.
 
 use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
-use eframe::egui::{Align2, ComboBox, Context, DragValue, Image, RichText, Ui, Window};
+use eframe::egui::{Align2, ComboBox, Context, Image, RichText, Ui, Window};
 use egui_extras::DatePickerButton;
 use walkers::{sources::Attribution, MapMemory};
 
@@ -111,7 +111,6 @@ pub fn clock_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<D
     let mut hour = datetime.hour();
     let mut minute = datetime.minute();
     let mut second = datetime.second();
-    let slider_spd = 0.5;
 
     Window::new("Clock Selector")
         .collapsible(false)
@@ -120,20 +119,29 @@ pub fn clock_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<D
         .anchor(Align2::LEFT_BOTTOM, [220., -10.])
         .show(ctx, |ui| {
             ui.collapsing(
-                RichText::new(format!("{:0<2}:{:0<2}:{:0<2}", &hour, &minute, &second)),
+                RichText::new(format!("{:0>2}:{:0>2}:{:0>2}", &hour, &minute, &second)),
                 |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Hora:").heading());
-                        ui.add(DragValue::new(&mut hour).range(0..=23).speed(slider_spd));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Minutos:").heading());
-                        ui.add(DragValue::new(&mut minute).range(0..=59).speed(slider_spd));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Segundos:").heading());
-                        ui.add(DragValue::new(&mut second).range(0..=59).speed(slider_spd));
-                    });
+                    ComboBox::from_label("Hora")
+                        .selected_text(format!("{}", hour))
+                        .show_ui(ui, |ui| {
+                            for h in 0..24 {
+                                ui.selectable_value(&mut hour, h, format!("{:0>2}", h));
+                            }
+                        });
+                    ComboBox::from_label("Minutos")
+                        .selected_text(format!("{}", minute))
+                        .show_ui(ui, |ui| {
+                            for m in 0..60 {
+                                ui.selectable_value(&mut minute, m, format!("{:0>2}", m));
+                            }
+                        });
+                    ComboBox::from_label("Segundos")
+                        .selected_text(format!("{}", second))
+                        .show_ui(ui, |ui| {
+                            for s in 0..60 {
+                                ui.selectable_value(&mut second, s, format!("{:0>2}", s));
+                            }
+                        });
                 },
             );
         });
