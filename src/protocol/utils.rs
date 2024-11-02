@@ -1,12 +1,17 @@
 //! Módulo para objetos de utilidad y funciones auxiliares.
 
-use std::net::IpAddr;
+use std::{
+    fs::{read, write},
+    net::IpAddr,
+};
 
 use crate::protocol::aliases::{
     results::Result,
     types::{Byte, Int, ReasonMap, Short},
 };
 use crate::protocol::errors::error::Error;
+
+use super::traits::Serializable;
 
 /// Transforma un [String] a una colección de [Byte]s tal cual como está especificado
 /// en el protocolo de Cassandra.
@@ -319,3 +324,33 @@ pub fn parse_bytes_to_reasonmap(bytes: &[Byte], i: &mut usize) -> Result<ReasonM
 //     rows_content.append(&mut value.as_bytes().to_vec());
 
 // }
+
+/// Toma un vector con elementos de tipo genérico T, que pueden serializarse,
+/// y crea un nuevo vector con cada elemento serializado. Cada elemento
+/// termina siendo una linea de un archivo csv.
+pub fn serialize_vec<T: Serializable>(vec: &Vec<T>) -> Vec<u8> {
+    vec.serialize()
+}
+
+/// Toma un conjunto de bytes que se pueden deserializar en elementos, y crea
+/// un vector con elementos de tipo genérico leido de los bytes.
+pub fn deserialize_vec<T: Serializable>(data: &[u8]) -> Result<Vec<T>> {
+    Vec::<T>::deserialize(data)
+}
+
+/// Toma un elemento genérico serializable, lo serializa, y escribe
+/// el contenido serializable a la ruta recibida por parámetro
+pub fn store_serializable<T: Serializable>(serializable: &T, path: &str) -> Result<()> {
+    let data: Vec<u8> = serializable.serialize();
+
+    write(path, data).map_err(|_| Error::ServerError("Error escribiendo datos".to_string()))
+}
+
+/// Toma la ruta al nombre de un archivo, cuyo contenido es serializable,
+/// lo deserealiza y devuelve el contenido
+pub fn load_serializable<T: Serializable>(path: &str) -> Result<T> {
+    let data: Vec<u8> =
+        read(path).map_err(|_| Error::ServerError("Error leyendo datos".to_string()))?;
+
+    T::deserialize(&data).map_err(|_| Error::ServerError("Error deserializando datos".to_string()))
+}
