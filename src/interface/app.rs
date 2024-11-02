@@ -173,7 +173,13 @@ impl App for AerolineasApp {
             &self.selected_airport,
             Arc::clone(&self.current_flights),
         );
-        extra_airport_info(ctx, &self.selected_airport, &self.extra_airport);
+        extra_airport_info(
+            ctx,
+            &self.selected_airport,
+            &self.extra_airport,
+            self.client.clone(),
+            self.datetime.timestamp(),
+        );
     }
 }
 

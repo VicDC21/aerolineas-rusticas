@@ -4,7 +4,11 @@ use std::sync::Arc;
 
 use eframe::egui::{Button, Color32, Context, Frame, Margin, RichText, ScrollArea, SidePanel, Ui};
 
-use crate::data::{airports::Airport, flights::Flight};
+use crate::{
+    client::cli::Client,
+    data::{airports::Airport, flights::Flight},
+    protocol::aliases::{results::Result, types::Long},
+};
 
 /// Muestra por un panel lateral los detalles del aeropuerto actualmente seleccionado.
 pub fn cur_airport_info(ctx: &Context, cur_airport: &Option<Airport>, flights: Arc<Vec<Flight>>) {
@@ -49,6 +53,8 @@ pub fn extra_airport_info(
     ctx: &Context,
     selected_airport: &Option<Airport>,
     extra_airport: &Option<Airport>,
+    client: Client,
+    timestamp: Long,
 ) {
     let panel_frame = Frame {
         fill: Color32::from_rgba_unmultiplied(60, 60, 60, 200),
@@ -66,11 +72,11 @@ pub fn extra_airport_info(
         if let Some(ex_airport) = extra_airport {
             if let Some(cur_airport) = selected_airport {
                 let button = Button::new(RichText::new("Añadir Vuelo").heading());
-                if ui.add_enabled(selected_airport.is_some(), button).clicked() {
-                    println!(
-                        "Agregando vuelo desde '{}' hasta '{}'...",
-                        &cur_airport.name, &ex_airport.name
-                    );
+                if ui.add_enabled(selected_airport.is_some() && extra_airport.is_some(), button).clicked() {
+                    if let Err(err) = insert_flight(client, timestamp, cur_airport, ex_airport) {
+                        println!("Ocurrió un error tratando de agregar un vuelo desde '{}' hasta '{}'\n\n{}",
+                                 &cur_airport.name, &ex_airport.name, err);
+                    }
                 }
             }
         }
@@ -113,4 +119,24 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
             RichText::new(format!("\tCountry (ISO):\t{}", &airport.iso_country)).color(text_color),
         );
     }
+}
+
+/// Inserta un nuevo vuelo.
+fn insert_flight(
+    mut client: Client,
+    timestamp: Long,
+    cur_airport: &Airport,
+    ex_airport: &Airport,
+) -> Result<()> {
+    let mut tcp_stream = client.connect()?;
+    let _protocol_result = client.send_query(
+        format!(
+            "INSERT INTO flights (orig, dest, take_off) VALUES ('{}', '{}', {})",
+            cur_airport.ident, ex_airport.ident, timestamp
+        )
+        .as_str(),
+        &mut tcp_stream,
+    )?;
+
+    Ok(())
 }
