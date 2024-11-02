@@ -4,6 +4,7 @@ use std::{
     fs::{create_dir, OpenOptions},
     io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
+    str::FromStr,
 };
 
 use super::{keyspace::Keyspace, replication_strategy::ReplicationStrategy, table::Table};
@@ -152,6 +153,11 @@ impl DiskHandler {
         let storage_addr: String = format!("{}/storage_node_{}", main_path, id);
         DiskHandler::create_directory(&storage_addr);
         storage_addr
+    }
+
+    /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
+    pub fn get_node_storage(id: NodeId) -> String {
+        format!("storage/storage_node_{}", id)
     }
 
     fn create_directory(path: &str) {
@@ -365,9 +371,9 @@ impl DiskHandler {
     ) -> Result<()> {
         for (key, order) in clustering_order {
             if let Some(j) = clustering_keys_and_order.iter().position(|(k, _)| k == key) {
-                let order = match ProtocolOrdering::ordering_from_str(order) {
-                    Some(order) => order,
-                    None => {
+                let order = match ProtocolOrdering::from_str(order) {
+                    Ok(order) => order,
+                    Err(_) => {
                         return Err(Error::Invalid(format!(
                             "La dirección de ordenación {} no es válida",
                             order
