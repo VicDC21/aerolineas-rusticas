@@ -95,18 +95,18 @@ impl NodesGraph {
 
     /// Inicializa el grafo y levanta todos los handlers necesarios.
     pub fn init(&mut self) -> Result<()> {
-        let (gossiper, gossip_stopper) = self.gossiper()?;
-        let (beater, beat_stopper) = self.beater()?;
         let nodes = self.bootup_nodes(N_NODES)?;
+        let (beater, beat_stopper) = self.beater()?;
+        let (gossiper, gossip_stopper) = self.gossiper()?;
 
         self.handlers.extend(nodes);
 
         // Paramos los handlers especiales primero
-        let _ = gossip_stopper.send(true);
-        let _ = gossiper.join();
-
-        let _ = beat_stopper.send(true);
         let _ = beater.join();
+        let _ = beat_stopper.send(true);
+
+        let _ = gossiper.join();
+        let _ = gossip_stopper.send(true);
 
         self.wait();
         Ok(())
@@ -217,7 +217,7 @@ impl NodesGraph {
     }
 
     /// Avanza a cada segundo el estado de _heartbeat_ de los nodos.
-    fn beater(&mut self) -> Result<(NodeHandle, Sender<bool>)> {
+    fn beater(&self) -> Result<(NodeHandle, Sender<bool>)> {
         let (sender, receiver) = channel::<bool>();
         let builder = Builder::new().name("beater".to_string());
         let ids = self.get_ids();
@@ -334,9 +334,9 @@ fn exec_gossip(
         let mut selected_ids: HashSet<NodeId> = HashSet::new();
         while selected_ids.len() < SIMULTANEOUS_GOSSIPERS as usize {
             let selected_id = dist.sample(&mut rng) as NodeId;
-            if !selected_ids.contains(&selected_id) {
+            if !selected_ids.contains(&(selected_id + START_ID)) {
                 // No contener repetidos
-                selected_ids.insert(selected_id);
+                selected_ids.insert(selected_id + START_ID);
             }
         }
 
@@ -344,10 +344,10 @@ fn exec_gossip(
             let mut neighbours: HashSet<NodeId> = HashSet::new();
             while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
                 let selected_neighbour = dist.sample(&mut rng) as NodeId;
-                if (selected_neighbour != selected_id)
-                    && (!neighbours.contains(&selected_neighbour))
+                if ((selected_neighbour + START_ID) != selected_id)
+                    && (!neighbours.contains(&(selected_neighbour + START_ID)))
                 {
-                    neighbours.insert(selected_neighbour);
+                    neighbours.insert(selected_neighbour + START_ID);
                 }
             }
 

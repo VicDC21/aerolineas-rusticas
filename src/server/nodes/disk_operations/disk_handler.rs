@@ -60,10 +60,13 @@ impl DiskHandler {
     pub fn store_node_metadata(id: NodeId, metadata: &[u8]) -> Result<()> {
         let file = OpenOptions::new()
             .create(true)
+            .write(true)
             .truncate(false)
             .read(true)
             .open("nodes.csv")
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|e| {
+                Error::ServerError(format!("Error abriendo el archivo de metadata: {}", e))
+            })?;
         let mut reader = BufReader::new(&file);
 
         let mut id_exists = false;
