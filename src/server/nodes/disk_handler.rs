@@ -186,37 +186,6 @@ impl DiskHandler {
         }
     }
 
-    /// Crea una nueva tabla en el caso que corresponda.
-    pub fn create_table(
-        statement: CreateTable,
-        storage_addr: &str,
-        default_keyspace: &str,
-    ) -> Result<Option<Table>> {
-        let (keyspace_name, table_name) = Self::validate_and_get_keyspace_table_names(
-            &statement,
-            default_keyspace,
-            storage_addr,
-        )?;
-        let columns = statement.get_columns()?;
-        let columns_names = columns
-            .iter()
-            .map(|c| c.get_name())
-            .collect::<Vec<String>>();
-
-        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
-
-        let primary_key = Self::validate_and_get_primary_key(&statement)?;
-        let clustering_keys_and_order = Self::get_clustering_keys_and_order(&statement)?;
-
-        Ok(Some(Table::new(
-            table_name,
-            keyspace_name,
-            columns,
-            primary_key.partition_key,
-            clustering_keys_and_order,
-        )))
-    }
-
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
     pub fn do_insert(
         statement: &Insert,
