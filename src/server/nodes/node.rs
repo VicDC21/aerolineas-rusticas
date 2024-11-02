@@ -35,7 +35,7 @@ use crate::protocol::{
         version::Version,
     },
     messages::responses::result_kinds::ResultKind,
-    traits::{Byteable, Serializable},
+    traits::Byteable,
 };
 use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
@@ -56,6 +56,7 @@ use crate::server::{
             string_to_hashmap_vec,
         },
     },
+    traits::Serializable,
     utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
