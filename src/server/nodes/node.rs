@@ -207,12 +207,11 @@ impl Node {
         let mut i = 0;
         for (a, b) in &self.nodes_ranges {
             if *a <= hash_val && hash_val < *b {
-                return START_ID + (i - 1) as NodeId;
+                return START_ID + i as NodeId;
             }
             i += 1;
         }
-
-        START_ID + (i - 1) as NodeId
+        START_ID + (i) as NodeId
     }
 
     fn send_message_and_wait_response(
@@ -918,13 +917,14 @@ impl Node {
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(&partition_key_value);
             let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-            for i in 0..replication_factor - 1 {
+            for i in 0..replication_factor{
                 let node_to_replicate = self.next_node_to_replicate_data(
                     node_id,
                     i as u8,
                     START_ID,
                     START_ID + N_NODES,
                 );
+                println!("envia data al nodo: {}", node_to_replicate);
                 response = if node_id != self.id {
                     self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -984,7 +984,7 @@ impl Node {
         node_id: u8,
         request: &[u8],
     ) -> Result<()> {
-        for i in 0..replication_factor - 1 {
+        for i in 0..replication_factor {
             let node_to_replicate =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
 
@@ -1123,7 +1123,7 @@ impl Node {
         node_id: u8,
         request: &[u8],
     ) -> Result<()> {
-        for i in 0..replication_factor - 1 {
+        for i in 0..replication_factor {
             let node_to_replicate =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
 
