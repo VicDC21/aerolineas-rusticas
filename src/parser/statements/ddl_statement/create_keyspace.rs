@@ -21,4 +21,10 @@ impl CreateKeyspace {
             options,
         }
     }
+
+    pub fn get_options(&self) -> &Vec<Options>{
+        &self.options
+    }
+
+
 }

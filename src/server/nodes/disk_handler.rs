@@ -157,7 +157,7 @@ impl DiskHandler {
 
     /// Crea un nuevo keyspace en el caso que corresponda.
     pub fn create_keyspace(
-        statement: CreateKeyspace,
+        statement: &CreateKeyspace,
         storage_addr: &str,
     ) -> Result<Option<Keyspace>> {
         let keyspace_name = statement.keyspace_name.get_name();
@@ -175,7 +175,7 @@ impl DiskHandler {
         } else {
             create_dir(path_folder).map_err(|e| Error::ServerError(e.to_string()))?;
         }
-        match Self::get_keyspace_replication(statement.options) {
+        match Self::get_keyspace_replication(statement.get_options()) {
             Ok(Some(replication)) => {
                 Ok(Some(Keyspace::new(keyspace_name.to_string(), replication)))
             }
@@ -417,7 +417,7 @@ impl DiskHandler {
         }
     }
     /// Obtiene la estrategia de replicación de un keyspace.
-    fn get_keyspace_replication(options: Vec<Options>) -> Result<Option<ReplicationStrategy>> {
+    fn get_keyspace_replication(options: &Vec<Options>) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;
         while i < options.len() {
             match &options[i] {
@@ -459,6 +459,37 @@ impl DiskHandler {
                 "Falto el campo replication_factor".to_string(),
             ))
         }
+    }
+
+    /// Crea una nueva tabla en el caso que corresponda.
+    pub fn create_table(
+        statement: &CreateTable,
+        storage_addr: &str,
+        default_keyspace: &str,
+    ) -> Result<Option<Table>> {
+        let (keyspace_name, table_name) = Self::validate_and_get_keyspace_table_names(
+            &statement,
+            default_keyspace,
+            storage_addr,
+        )?;
+        let columns = statement.get_columns()?;
+        let columns_names = columns
+            .iter()
+            .map(|c| c.get_name())
+            .collect::<Vec<String>>();
+
+        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
+
+        let primary_key = Self::validate_and_get_primary_key(&statement)?;
+        let clustering_keys_and_order = Self::get_clustering_keys_and_order(&statement)?;
+
+        Ok(Some(Table::new(
+            table_name,
+            keyspace_name,
+            columns,
+            primary_key.partition_key,
+            clustering_keys_and_order,
+        )))
     }
 
     /// Valida y obtiene los nombres de keyspace y tabla
