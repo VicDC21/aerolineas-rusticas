@@ -7,6 +7,7 @@ use rand::{
 use std::{
     collections::HashSet,
     net::TcpStream,
+    path::Path,
     sync::mpsc::{channel, Sender},
     thread::{sleep, Builder, JoinHandle},
     time::Duration,
@@ -25,6 +26,7 @@ use crate::server::{
         port_type::PortType,
         utils::send_to_node,
     },
+    utils::load_serializable,
 };
 
 /// El handle donde vive una operación de nodo.
@@ -38,6 +40,8 @@ pub const START_ID: NodeId = 10;
 const HANDSHAKE_NEIGHBOURS: u8 = 3;
 /// La cantidad de nodos que comenzarán su intercambio de _gossip_ con otros [n](crate::server::nodes::graph::HANDSHAKE_NEIGHBOURS) nodos.
 const SIMULTANEOUS_GOSSIPERS: u8 = 3;
+/// El archivo donde se guardan los nodos.
+pub const NODES_PATH: &str = "nodes.csv";
 
 /// Un grafo es una colección de nodos.
 ///
@@ -126,6 +130,16 @@ impl NodesGraph {
     ///
     /// * `n` es la cantidad de nodos a crear en el proceso.
     fn bootup_nodes(&mut self, n: u8) -> Result<Vec<Option<NodeHandle>>> {
+        let nodes_path = Path::new(NODES_PATH);
+        if nodes_path.exists() {
+            self.bootup_existing_nodes()
+        } else {
+            self.bootup_new_nodes(n)
+        }
+    }
+
+    /// Inicializa nodos nuevos.
+    fn bootup_new_nodes(&mut self, n: u8) -> Result<Vec<Option<NodeHandle>>> {
         self.node_weights = vec![1; n as usize];
         self.node_weights[0] *= 3; // El primer nodo tiene el triple de probabilidades de ser elegido.
 
@@ -150,6 +164,57 @@ impl NodesGraph {
                 cli_sender,
                 &mut node_listeners,
                 i,
+                priv_socket,
+                priv_sender,
+            )?;
+
+            let processor = node.request_processor(proc_receiver, node_listeners)?;
+
+            // Los join de los listeners están dentro del procesador
+            handlers.push(Some(processor));
+        }
+        // Llenamos de información al nodo "seed".
+        self.send_states_to_node(self.max_weight());
+        Ok(handlers)
+    }
+
+    /// Inicializa nodos existentes.
+    fn bootup_existing_nodes(&mut self) -> Result<Vec<Option<NodeHandle>>> {
+        let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
+        let nodes: Vec<Node> = load_serializable(NODES_PATH)?;
+
+        let existing_ids: Vec<NodeId> = nodes.iter().map(|node| node.get_id()).collect();
+        self.prox_id = match existing_ids.iter().max() {
+            Some(max) => max + 1,
+            None => START_ID,
+        };
+
+        for (i, node) in nodes.into_iter().enumerate() {
+            let node_id = node.get_id();
+            self.node_ids.push(node_id);
+            if node_id == START_ID {
+                self.node_weights.push(3);
+            } else {
+                self.node_weights.push(1);
+            }
+
+            let mut node_listeners: Vec<NodeHandle> = Vec::new();
+
+            let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
+            let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
+
+            let (proc_sender, proc_receiver) = channel::<(TcpStream, Vec<Byte>)>();
+
+            // Sino aparentemente el hilo toma ownership antes de poder clonarlo.
+            let cli_sender = proc_sender.clone();
+            let priv_sender = proc_sender.clone();
+
+            create_client_and_private_conexion(
+                node_id,
+                cli_socket,
+                cli_sender,
+                &mut node_listeners,
+                i as u8,
                 priv_socket,
                 priv_sender,
             )?;

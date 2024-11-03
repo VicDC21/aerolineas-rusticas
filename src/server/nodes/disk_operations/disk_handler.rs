@@ -23,6 +23,7 @@ use crate::protocol::{
     utils::encode_string_to_bytes,
 };
 use crate::server::nodes::{
+    graph::NODES_PATH,
     keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
     node::NodeId,
     table_metadata::table::Table,
@@ -63,7 +64,7 @@ impl DiskHandler {
             .write(true)
             .truncate(false)
             .read(true)
-            .open("nodes.csv")
+            .open(NODES_PATH)
             .map_err(|e| {
                 Error::ServerError(format!("Error abriendo el archivo de metadata: {}", e))
             })?;
@@ -85,7 +86,7 @@ impl DiskHandler {
         // Abro el archivo nuevamente para escribir
         let mut writer = OpenOptions::new()
             .write(true)
-            .open("nodes.csv")
+            .open(NODES_PATH)
             .map_err(|e| Error::ServerError(e.to_string()))?;
 
         if id_exists {

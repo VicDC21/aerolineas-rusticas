@@ -3,6 +3,7 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
+    fmt,
     hash::{DefaultHasher, Hash, Hasher},
     io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -179,9 +180,9 @@ impl Node {
         }
     }
 
-    /// Consulta el ID del nodo.
-    fn get_id(&self) -> &NodeId {
-        &self.id
+    /// Obtiene una copia del ID del nodo.
+    pub fn get_id(&self) -> NodeId {
+        self.id.clone()
     }
 
     /// Consulta el estado del nodo.
@@ -1243,18 +1244,25 @@ impl PartialEq for Node {
     }
 }
 
-impl Serializable for Node {
-    fn serialize(&self) -> Vec<u8> {
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Se muestra en formato .csv
         // id,default_keyspace,keyspaces,tables,tables_and_partitions_keys_values
-        let parameters: String = format!(
-            "{},{},{},{},{}\n",
+        writeln!(
+            f,
+            "{},{},{},{},{}",
             self.id,
             self.default_keyspace_name,
             hashmap_to_string(&self.keyspaces),
             hashmap_to_string(&self.tables),
             hashmap_vec_to_string(&self.tables_and_partitions_keys_values),
-        );
-        parameters.into_bytes()
+        )
+    }
+}
+
+impl Serializable for Node {
+    fn serialize(&self) -> Vec<u8> {
+        self.to_string().into_bytes()
     }
 
     fn deserialize(data: &[u8]) -> Result<Self> {
