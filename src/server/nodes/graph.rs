@@ -112,6 +112,9 @@ impl NodesGraph {
         let _ = gossiper.join();
         let _ = gossip_stopper.send(true);
 
+        // Corremos los scripts iniciales
+        
+
         self.wait();
         Ok(())
     }

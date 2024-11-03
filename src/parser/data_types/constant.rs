@@ -7,7 +7,7 @@ use crate::protocol::{
 
 // Revisar u32 despues de mergear para no hacer conflicto
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// constant::= string | integer | double | boolean | uuid | blob | NULL
 pub enum Constant {
     /// ''' (any character where ' can appear if doubled)+ '''.

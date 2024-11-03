@@ -6,7 +6,7 @@ use super::unquoted_identifier::UnquotedIdentifier;
 /// column_name::= identifier
 /// identifier::= unquoted_identifier | quoted_identifier
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Identifier {
     /// TODO: Desc básica
     UnquotedIdentifier(UnquotedIdentifier),

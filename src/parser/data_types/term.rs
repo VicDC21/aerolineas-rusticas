@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 
 #[allow(dead_code)]
 /// TODO: Desc básica
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Term {
     /// TODO: Desc básica
     Constant(Constant),

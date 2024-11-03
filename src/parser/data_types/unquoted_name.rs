@@ -2,7 +2,7 @@ use crate::protocol::errors::error::Error;
 
 #[allow(dead_code)]
 /// re('[a-zA-Z_0-9]\{1, 48}')
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq, Clone)]
 pub struct UnquotedName {
     /// TODO: Desc básica
     name: String,

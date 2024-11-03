@@ -14,19 +14,22 @@ use std::{
 };
 
 use crate::parser::{
-    data_types::keyspace_name::KeyspaceName,
-    main_parser::make_parse,
-    statements::{
-        ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable,
-            ddl_statement_parser::DdlStatement,
+        data_types::keyspace_name::KeyspaceName,
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::{
+                create_keyspace::CreateKeyspace, create_table::CreateTable,
+                ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace,
+            },
+            dml_statement::{
+                dml_statement_parser::DmlStatement,
+                main_statements::{
+                    delete::Delete, insert::Insert, select::select_operation::Select,
+                    update::Update,
+                },
+            },
+            statement::Statement,
         },
-        dml_statement::{
-            dml_statement_parser::DmlStatement,
-            main_statements::{insert::Insert, select::select_operation::Select, update::Update},
-        },
-        statement::Statement,
-    },
 };
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
@@ -130,7 +133,7 @@ impl Node {
 
     fn add_table(&mut self, table: Table) {
         let table_name = table.get_name().to_string();
-        let partition_key = table.get_partition_key();
+        let partition_key: Vec<String> = Vec::new();
         self.tables.insert(table_name.clone(), table);
         self.tables_and_partitions_keys_values
             .insert(table_name, partition_key);
@@ -209,12 +212,11 @@ impl Node {
         let mut i = 0;
         for (a, b) in &self.nodes_ranges {
             if *a <= hash_val && hash_val < *b {
-                return START_ID + (i - 1) as NodeId;
+                return START_ID + i as NodeId;
             }
             i += 1;
         }
-
-        START_ID + (i - 1) as NodeId
+        START_ID + (i) as NodeId
     }
 
     fn send_message_and_wait_response(
@@ -679,14 +681,20 @@ impl Node {
     /// Maneja una declaración DDL.
     fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Result<Vec<Byte>> {
         match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name),
-            DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
-                self.process_create_keyspace_statement(create_keyspace)
+            DdlStatement::UseStatement(keyspace_name) => {
+                self.process_internal_use_statement(&keyspace_name)
             }
-            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => todo!(),
-            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => todo!(),
+            DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
+                self.process_internal_create_keyspace_statement(&create_keyspace)
+            }
+            DdlStatement::AlterKeyspaceStatement(alter_keyspace) => {
+                self.process_internal_alter_keyspace_statement(&alter_keyspace)
+            }
+            DdlStatement::DropKeyspaceStatement(drop_keyspace) => {
+                self.process_internal_drop_keyspace_statement(&drop_keyspace)
+            }
             DdlStatement::CreateTableStatement(create_table) => {
-                self.process_create_table_statement(create_table)
+                self.process_internal_create_table_statement(&create_table)
             }
             DdlStatement::AlterTableStatement(_alter_table) => todo!(),
             DdlStatement::DropTableStatement(_drop_table) => todo!(),
@@ -694,7 +702,39 @@ impl Node {
         }
     }
 
-    fn process_use_statement(&mut self, keyspace_name: KeyspaceName) -> Result<Vec<u8>> {
+    fn check_if_keyspace_exists(&self, keyspace_name: &KeyspaceName) -> bool {
+        let keyspace_addr = format!("{}/{}", self.storage_addr, keyspace_name.get_name());
+        let path_folder = Path::new(&keyspace_addr);
+        path_folder.exists() && path_folder.is_dir()
+    }
+
+    fn process_use_statement(
+        &mut self,
+        keyspace_name: KeyspaceName,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
+        let mut response: Vec<Byte> = Vec::new();
+        for actual_node in 0..5 {
+            let node_id = self.next_node_to_replicate_data(
+                self.id,
+                actual_node as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+            response = if node_id != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_id,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_internal_use_statement(&keyspace_name)?
+            }
+        }
+        Ok(response)
+    }
+
+    fn process_internal_use_statement(&mut self, keyspace_name: &KeyspaceName) -> Result<Vec<u8>> {
         let name = keyspace_name.get_name().to_string();
         if self.keyspaces.contains_key(&name) {
             self.set_default_keyspace(name.clone());
@@ -710,15 +750,35 @@ impl Node {
         }
     }
 
-    fn check_if_keyspace_exists(&self, keyspace_name: KeyspaceName) -> bool {
-        let keyspace_addr = format!("{}/{}", self.storage_addr, keyspace_name.get_name());
-        let path_folder = Path::new(&keyspace_addr);
-        path_folder.exists() && path_folder.is_dir()
-    }
-
     fn process_create_keyspace_statement(
         &mut self,
         create_keyspace: CreateKeyspace,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
+        let mut response: Vec<Byte> = Vec::new();
+        for actual_node in 0..5 {
+            let node_id = self.next_node_to_replicate_data(
+                self.id,
+                actual_node as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+            response = if node_id != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_id,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_internal_create_keyspace_statement(&create_keyspace)?
+            }
+        }
+        Ok(response)
+    }
+
+    fn process_internal_create_keyspace_statement(
+        &mut self,
+        create_keyspace: &CreateKeyspace,
     ) -> Result<Vec<u8>> {
         match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
             Ok(Some(keyspace)) => self.add_keyspace(keyspace),
@@ -726,6 +786,126 @@ impl Node {
             Err(err) => return Err(err),
         };
         Ok(self.create_result_void())
+    }
+
+    fn process_alter_statement(
+        &mut self,
+        alter_keyspace: AlterKeyspace,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
+        let keyspace_name = alter_keyspace.name.get_name();
+        if !self.keyspaces.contains_key(keyspace_name) && !alter_keyspace.if_exists {
+            return Err(Error::ServerError(format!(
+                "El keyspace {} no existe",
+                keyspace_name
+            )));
+        }
+
+        let mut responses = Vec::new();
+        for actual_node in 0..5 {
+            let node_id = self.next_node_to_replicate_data(
+                self.id,
+                actual_node as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+
+            let response = if node_id != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_id,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_internal_alter_keyspace_statement(&alter_keyspace)?
+            };
+            responses.push(response);
+        }
+        Ok(self.create_result_void())
+    }
+
+    fn process_internal_alter_keyspace_statement(
+        &mut self,
+        alter_keyspace: &AlterKeyspace,
+    ) -> Result<Vec<u8>> {
+        let keyspace_name = alter_keyspace.name.get_name();
+        match self.keyspaces.get_mut(keyspace_name) {
+            Some(keyspace) => {
+                if let Ok(Some(new_replication)) =
+                    DiskHandler::get_keyspace_replication(alter_keyspace.get_options())
+                {
+                    keyspace.set_replication(new_replication);
+                }
+                Ok(self.create_result_void())
+            }
+            None => {
+                if alter_keyspace.if_exists {
+                    Ok(self.create_result_void())
+                } else {
+                    Err(Error::ServerError(format!(
+                        "El keyspace {} no existe",
+                        keyspace_name
+                    )))
+                }
+            }
+        }
+    }
+
+    fn process_drop_keyspace_statement(
+        &mut self,
+        drop_keyspace: DropKeyspace,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
+        let keyspace_name = drop_keyspace.name.get_name();
+        if !self.keyspaces.contains_key(keyspace_name) && !drop_keyspace.if_exists {
+            return Err(Error::ServerError(format!(
+                "El keyspace {} no existe",
+                keyspace_name
+            )));
+        }
+
+        let mut responses = Vec::new();
+        for actual_node in 0..5 {
+            let node_id = self.next_node_to_replicate_data(
+                self.id,
+                actual_node as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+
+            let response = if node_id != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_id,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_internal_drop_keyspace_statement(&drop_keyspace)?
+            };
+            responses.push(response);
+        }
+        Ok(self.create_result_void())
+    }
+
+    fn process_internal_drop_keyspace_statement(
+        &mut self,
+        drop_keyspace: &DropKeyspace,
+    ) -> Result<Vec<u8>> {
+        let keyspace_name = drop_keyspace.name.get_name();
+        if self.keyspaces.contains_key(keyspace_name) {
+            self.keyspaces.remove(keyspace_name);
+            match DiskHandler::drop_keyspace(keyspace_name, &self.storage_addr) {
+                Ok(_) => Ok(self.create_result_void()),
+                Err(e) => Err(e),
+            }
+        } else if drop_keyspace.if_exists {
+            Ok(self.create_result_void())
+        } else {
+            Err(Error::ServerError(format!(
+                "El keyspace {} no existe",
+                keyspace_name
+            )))
+        }
     }
 
     fn create_result_void(&mut self) -> Vec<Byte> {
@@ -739,7 +919,10 @@ impl Node {
         response
     }
 
-    fn process_create_table_statement(&mut self, create_table: CreateTable) -> Result<Vec<u8>> {
+    fn process_internal_create_table_statement(
+        &mut self,
+        create_table: &CreateTable,
+    ) -> Result<Vec<u8>> {
         let default_keyspace_name = match self.get_default_keyspace() {
             Ok(keyspace) => keyspace.get_name().to_string(),
             Err(err) => return Err(err),
@@ -754,13 +937,38 @@ impl Node {
         Ok(self.create_result_void())
     }
 
+    fn process_create_table_statement(
+        &mut self,
+        create_table: CreateTable,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
+        let mut response: Vec<Byte> = Vec::new();
+        for actual_node in 0..5 {
+            let node_id = self.next_node_to_replicate_data(
+                self.id,
+                actual_node as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+            response = if node_id != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_id,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_internal_create_table_statement(&create_table)?
+            }
+        }
+        Ok(response)
+    }
     /// Maneja una declaración DML.
     fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement) -> Result<Vec<Byte>> {
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select),
             DmlStatement::InsertStatement(insert) => self.process_insert(&insert),
             DmlStatement::UpdateStatement(update) => self.process_update(&update),
-            DmlStatement::DeleteStatement(_delete) => todo!(),
+            DmlStatement::DeleteStatement(delete) => self.process_delete(&delete),
             DmlStatement::BatchStatement(_batch) => todo!(),
         }
     }
@@ -770,17 +978,24 @@ impl Node {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
-        DiskHandler::do_select(
+        let mut res = DiskHandler::do_select(
             select,
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
-        )
+        )?;
+        let mut response: Vec<Byte> = Vec::new();
+        response.append(&mut Version::ResponseV5.as_bytes());
+        response.append(&mut Flag::Default.as_bytes());
+        response.append(&mut Stream::new(0).as_bytes());
+        response.append(&mut Opcode::Result.as_bytes());
+        response.append(&mut Length::new(res.len() as u32).as_bytes());
+        response.append(&mut res);
+        Ok(response)
     }
 
     fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>> {
-        let table_name = insert.table.get_name();
-        let table = match self.get_table(&table_name) {
+        let table = match self.get_table(&insert.table.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
@@ -790,12 +1005,48 @@ impl Node {
             table,
             &self.default_keyspace_name,
         )?;
+        match self.check_if_has_new_partition_value(insert, table)? {
+            Some(new_partition_values) => self
+                .tables_and_partitions_keys_values
+                .insert(insert.table.get_name().to_string(), new_partition_values),
+            None => None,
+        };
         Ok(self.create_result_void())
     }
 
+    fn check_if_has_new_partition_value(
+        &self,
+        insert: &Insert,
+        table: &Table,
+    ) -> Result<Option<Vec<String>>> {
+        let table_name = table.get_name();
+        let mut partition_values: Vec<String> =
+            match self.tables_and_partitions_keys_values.get(table_name) {
+                Some(partition_values) => partition_values.clone(),
+                None => {
+                    return Err(Error::SyntaxError(
+                        "La tabla solicitada no existe".to_string(),
+                    ))
+                }
+            };
+        let insert_columns = insert.get_columns_names();
+
+        let position = match insert_columns
+            .iter()
+            .position(|x| x == &table.get_partition_key()[0])
+        {
+            Some(position) => position,
+            None => return Ok(None),
+        };
+        if !partition_values.contains(&insert_columns[position]) {
+            partition_values.push(insert_columns[position].clone());
+            return Ok(Some(partition_values));
+        };
+        Ok(None)
+    }
+
     fn process_update(&mut self, update: &Update) -> Result<Vec<Byte>> {
-        let table_name = update.table_name.get_name();
-        let table = match self.get_table(&table_name) {
+        let table = match self.get_table(&update.table_name.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
@@ -810,7 +1061,9 @@ impl Node {
 
     fn handle_statement(&mut self, statement: Statement, request: &[Byte]) -> Result<Vec<Byte>> {
         match statement {
-            Statement::DdlStatement(ddl_statement) => self.handle_ddl_statement(ddl_statement),
+            Statement::DdlStatement(ddl_statement) => {
+                self.handle_ddl_statement(ddl_statement, request)
+            }
             Statement::DmlStatement(dml_statement) => {
                 self.handle_dml_statement(dml_statement, request)
             }
@@ -818,20 +1071,26 @@ impl Node {
         }
     }
 
-    fn handle_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Result<Vec<u8>> {
+    fn handle_ddl_statement(
+        &mut self,
+        ddl_statement: DdlStatement,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
         match ddl_statement {
-            DdlStatement::UseStatement(keyspace_name) => self.process_use_statement(keyspace_name),
+            DdlStatement::UseStatement(keyspace_name) => {
+                self.process_use_statement(keyspace_name, request)
+            }
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
-                self.process_create_keyspace_statement(create_keyspace)
+                self.process_create_keyspace_statement(create_keyspace, request)
             }
-            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
-                todo!()
+            DdlStatement::AlterKeyspaceStatement(alter_keyspace) => {
+                self.process_alter_statement(alter_keyspace, request)
             }
-            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
-                todo!()
+            DdlStatement::DropKeyspaceStatement(drop_keyspace) => {
+                self.process_drop_keyspace_statement(drop_keyspace, request)
             }
             DdlStatement::CreateTableStatement(create_table) => {
-                self.process_create_table_statement(create_table)
+                self.process_create_table_statement(create_table, request)
             }
             DdlStatement::AlterTableStatement(_alter_table) => {
                 todo!()
@@ -854,41 +1113,58 @@ impl Node {
             DmlStatement::SelectStatement(select) => self.select_with_other_nodes(select, request),
             DmlStatement::InsertStatement(insert) => self.insert_with_other_nodes(insert, request),
             DmlStatement::UpdateStatement(update) => self.update_with_other_nodes(update, request),
-            DmlStatement::DeleteStatement(_delete) => {
-                todo!()
-            }
-            DmlStatement::BatchStatement(_batch) => {
-                todo!()
-            }
+            DmlStatement::DeleteStatement(delete) => self.delete_with_other_nodes(delete, request),
+            DmlStatement::BatchStatement(_batch) => todo!(),
         }
     }
 
     fn insert_with_other_nodes(&mut self, insert: Insert, request: &[u8]) -> Result<Vec<Byte>> {
         let table_name: String = insert.table.get_name();
-        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
+        // let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut response: Vec<Byte> = Vec::new();
-        for partition_key_value in partitions_keys_to_nodes {
-            let node_id = self.select_node(&partition_key_value);
-            let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-            for i in 0..replication_factor - 1 {
-                let node_to_replicate = self.next_node_to_replicate_data(
-                    node_id,
-                    i as u8,
-                    START_ID,
-                    START_ID + N_NODES,
-                );
-                response = if node_id != self.id {
-                    self.send_message_and_wait_response(
-                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                        node_to_replicate,
-                        PortType::Priv,
-                    )?
-                } else {
-                    self.process_insert(&insert)?
-                }
+        let partition_key_value = self
+            .get_partition_key_value_from_insert_statement(&insert, self.get_table(&table_name)?)?;
+        let node_id = self.select_node(&partition_key_value);
+        let replication_factor = self.get_replicas_from_table_name(&table_name)?;
+        for i in 0..replication_factor {
+            let node_to_replicate =
+                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+            response = if node_to_replicate != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_to_replicate,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_insert(&insert)?
             }
         }
         Ok(response)
+    }
+
+    fn get_partition_key_value_from_insert_statement(
+        &self,
+        insert: &Insert,
+        table: &Table,
+    ) -> Result<String> {
+        let insert_columns = insert.get_columns_names();
+        let position = match insert_columns
+            .iter()
+            .position(|col| col == &table.get_partition_key()[0])
+        {
+            Some(position) => position,
+            None => {
+                return Err(Error::SyntaxError(
+                    "The partition key column must be in the request".to_string(),
+                ))
+            }
+        };
+        match insert.get_values().get(position) {
+            Some(partition_value) => Ok(partition_value.to_string()),
+            None => Err(Error::SyntaxError(
+                "The partition key column must be in the request".to_string(),
+            )),
+        }
     }
 
     fn update_with_other_nodes(&mut self, update: Update, request: &[u8]) -> Result<Vec<Byte>> {
@@ -936,7 +1212,7 @@ impl Node {
         node_id: u8,
         request: &[u8],
     ) -> Result<()> {
-        for i in 0..replication_factor - 1 {
+        for i in 0..replication_factor {
             let node_to_replicate =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
 
@@ -970,7 +1246,7 @@ impl Node {
         min: u8,
         max: u8,
     ) -> u8 {
-        let nodes_range = max - min + 1;
+        let nodes_range = max - min;
         min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
     }
 
@@ -1011,6 +1287,83 @@ impl Node {
             }
         }
         Ok(results_from_another_nodes)
+    }
+
+    fn process_delete(&mut self, delete: &Delete) -> Result<Vec<Byte>> {
+        let table = match self.get_table(&delete.from.get_name()) {
+            Ok(table) => table,
+            Err(err) => return Err(err),
+        };
+
+        DiskHandler::do_delete(
+            delete,
+            &self.storage_addr,
+            table,
+            &self.default_keyspace_name,
+        )?;
+
+        Ok(self.create_result_void())
+    }
+
+    fn delete_with_other_nodes(&mut self, delete: Delete, request: &[u8]) -> Result<Vec<Byte>> {
+        let table_name = delete.from.get_name();
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
+        let mut results_from_nodes: Vec<u8> = Vec::new();
+        let mut consulted_nodes: Vec<String> = Vec::new();
+
+        for partition_key_value in partitions_keys_to_nodes {
+            let node_id = self.select_node(&partition_key_value);
+
+            if !consulted_nodes.contains(&partition_key_value) {
+                let current_response = if node_id == self.id {
+                    self.process_delete(&delete)?
+                } else {
+                    let res = self.send_message_and_wait_response(
+                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        node_id,
+                        PortType::Priv,
+                    )?;
+                    match Opcode::try_from(res[4])? {
+                        Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+                        Opcode::Result => res,
+                        _ => {
+                            return Err(Error::ServerError(
+                                "Nodo manda opcode inesperado".to_string(),
+                            ))
+                        }
+                    }
+                };
+
+                results_from_nodes.extend_from_slice(&current_response);
+                consulted_nodes.push(partition_key_value.clone());
+                let replication_factor = self.get_replicas_from_table_name(&table_name)?;
+                self.replicate_delete_in_other_nodes(replication_factor, node_id, request)?;
+            }
+        }
+
+        Ok(results_from_nodes)
+    }
+
+    // Función auxiliar para replicar el delete en otros nodos
+    fn replicate_delete_in_other_nodes(
+        &mut self,
+        replication_factor: u32,
+        node_id: u8,
+        request: &[u8],
+    ) -> Result<()> {
+        for i in 0..replication_factor {
+            let node_to_replicate =
+                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+
+            if node_to_replicate != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_to_replicate,
+                    PortType::Priv,
+                )?;
+            }
+        }
+        Ok(())
     }
 
     fn get_partition_keys_values(&self, table_name: &String) -> Result<&Vec<String>> {
