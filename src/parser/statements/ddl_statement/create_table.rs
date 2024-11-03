@@ -5,9 +5,7 @@ use crate::parser::{
     table_name::TableName,
 };
 use crate::protocol::errors::error::Error;
-use crate::server::nodes::table_metadata::{
-    column_config::ColumnConfig, column_data_type::ColumnDataType,
-};
+use crate::server::nodes::{column_config::ColumnConfig, column_data_type::ColumnDataType};
 
 /// Representa una declaración CREATE TABLE en CQL.
 #[derive(Debug)]

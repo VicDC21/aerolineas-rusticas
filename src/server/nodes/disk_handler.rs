@@ -22,12 +22,7 @@ use crate::protocol::{
     traits::Byteable,
     utils::encode_string_to_bytes,
 };
-use crate::server::nodes::{
-    graph::NODES_PATH,
-    keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
-    node::NodeId,
-    table_metadata::table::Table,
-};
+use crate::server::nodes::{graph::NODES_PATH, node::NodeId};
 
 use std::{
     fs::{create_dir, OpenOptions},
@@ -36,7 +31,7 @@ use std::{
     str::FromStr,
 };
 
-use super::{table_operations::TableOperations, table_path::TablePath};
+use super::{keyspace::Keyspace, replication_strategy::ReplicationStrategy, table::Table};
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
@@ -649,5 +644,123 @@ impl DiskHandler {
         }
 
         Ok(updated_rows.iter().map(|row| row.join(",")).collect())
+    }
+}
+
+/// Estructura común para manejar paths
+pub struct TablePath {
+    /// Dirección del storage
+    pub storage_addr: String,
+    /// Keyspace de la tabla
+    pub keyspace: String,
+    /// Nombre de la tabla
+    pub table_name: String,
+}
+
+impl TablePath {
+    /// Crea una nueva instancia de `TablePath`.
+    pub fn new(
+        storage_addr: &str,
+        keyspace: Option<String>,
+        table_name: &str,
+        default_keyspace: &str,
+    ) -> Self {
+        let keyspace = keyspace.unwrap_or_else(|| default_keyspace.to_string());
+        Self {
+            storage_addr: storage_addr.to_string(),
+            keyspace,
+            table_name: table_name.to_string(),
+        }
+    }
+
+    /// Devuelve el path completo de la tabla.
+    pub fn full_path(&self) -> String {
+        format!(
+            "{}/{}/{}.csv",
+            self.storage_addr, self.keyspace, self.table_name
+        )
+    }
+}
+
+/// Estructura para manejar operaciones comunes sobre tablas
+pub struct TableOperations {
+    /// Ruta de la tabla
+    pub path: TablePath,
+    /// Columnas de la tabla
+    pub columns: Vec<String>,
+}
+
+impl TableOperations {
+    /// Crea una nueva instancia de `TableOperations`.
+    pub fn new(path: TablePath) -> Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(path.full_path())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let mut reader = BufReader::new(&file);
+        let mut header = String::new();
+        reader
+            .read_line(&mut header)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        if header.trim().is_empty() {
+            return Err(Error::ServerError(format!(
+                "No se pudo leer la tabla con ruta {}",
+                path.full_path()
+            )));
+        }
+
+        let columns = header.trim().split(',').map(|s| s.to_string()).collect();
+
+        Ok(Self { path, columns })
+    }
+
+    /// Valida que las columnas existan en la tabla.
+    pub fn validate_columns(&self, columns: &[String]) -> Result<()> {
+        for col in columns {
+            if !self.columns.contains(col) {
+                return Err(Error::ServerError(format!(
+                    "La tabla con ruta {} no contiene la columna {}",
+                    self.path.full_path(),
+                    col
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Lee las filas de la tabla.
+    pub fn read_rows(&self) -> Result<Vec<Vec<String>>> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(self.path.full_path())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let reader = BufReader::new(file);
+        let mut rows = Vec::new();
+
+        for line in reader.lines().skip(1) {
+            let line = line.map_err(|e| Error::ServerError(e.to_string()))?;
+            if !line.trim().is_empty() {
+                rows.push(line.trim().split(',').map(|s| s.to_string()).collect());
+            }
+        }
+
+        Ok(rows)
+    }
+
+    /// Escribe las filas en la tabla.
+    pub fn write_rows(&self, rows: &[Vec<String>]) -> Result<()> {
+        let mut content = self.columns.join(",");
+        content.push('\n');
+
+        for row in rows {
+            content.push_str(&row.join(","));
+            content.push('\n');
+        }
+
+        std::fs::write(self.path.full_path(), content)
+            .map_err(|e| Error::ServerError(e.to_string()))
     }
 }

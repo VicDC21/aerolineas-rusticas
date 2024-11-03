@@ -42,7 +42,6 @@ use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
     nodes::{
-        disk_operations::disk_handler::DiskHandler,
         graph::NodeHandle,
         port_type::PortType,
         states::{
@@ -63,9 +62,10 @@ use crate::server::{
 use crate::tokenizer::tokenizer::tokenize_query;
 
 use super::{
+    disk_handler::DiskHandler,
     graph::{N_NODES, START_ID},
-    keyspace_metadata::keyspace::Keyspace,
-    table_metadata::table::Table,
+    keyspace::Keyspace,
+    table::Table,
     utils::{divide_range, send_to_node_and_wait_response},
 };
 
@@ -182,7 +182,7 @@ impl Node {
 
     /// Obtiene una copia del ID del nodo.
     pub fn get_id(&self) -> NodeId {
-        self.id.clone()
+        self.id
     }
 
     /// Consulta el estado del nodo.
@@ -191,7 +191,7 @@ impl Node {
     }
 
     /// Consulta los IDs de los vecinos, incluyendo el propio.
-    fn get_neighbours_ids(&self) -> Vec<NodeId> {
+    pub fn get_neighbours_ids(&self) -> Vec<NodeId> {
         self.neighbours_states.keys().copied().collect()
     }
 
@@ -227,12 +227,17 @@ impl Node {
     }
 
     /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
-    fn send_message(&mut self, bytes: Vec<Byte>, value: String, port_type: PortType) -> Result<()> {
+    pub fn send_message(
+        &mut self,
+        bytes: Vec<Byte>,
+        value: String,
+        port_type: PortType,
+    ) -> Result<()> {
         send_to_node(self.select_node(&value), bytes, port_type)
     }
 
     /// Manda un mensaje en bytes a todos los vecinos del nodo.
-    fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
+    pub fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
         for neighbour_id in self.get_neighbours_ids() {
             if neighbour_id == self.id {
                 continue;
@@ -243,7 +248,7 @@ impl Node {
     }
 
     /// Compara si el _heartbeat_ de un nodo es más nuevo que otro.
-    fn is_newer(&self, other: &Self) -> bool {
+    pub fn is_newer(&self, other: &Self) -> bool {
         self.endpoint_state.is_newer(&other.endpoint_state)
     }
 
@@ -314,7 +319,7 @@ impl Node {
     }
 
     /// Consulta si el nodo todavía esta booteando.
-    fn is_bootstraping(&self) -> bool {
+    pub fn is_bootstraping(&self) -> bool {
         matches!(
             self.endpoint_state.get_appstate().get_status(),
             AppStatus::Bootstrap
@@ -322,7 +327,7 @@ impl Node {
     }
 
     /// Consulta el estado de _heartbeat_.
-    fn get_beat(&mut self) -> (GenType, VerType) {
+    pub fn get_beat(&mut self) -> (GenType, VerType) {
         self.endpoint_state.get_heartbeat().as_tuple()
     }
 
