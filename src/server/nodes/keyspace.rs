@@ -26,4 +26,9 @@ impl Keyspace {
     pub fn simple_replicas(&self) -> Option<u32> {
         self.replication.simple_replicas()
     }
+
+    /// Establece la estrategia de replicación del keyspace.
+    pub fn set_replication(&mut self, replication: ReplicationStrategy) {
+        self.replication = replication;
+    }
 }

@@ -1,6 +1,6 @@
 /// '"' (any character where " can appear if doubled)+ '"'
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct QuotedIdentifier {
     text: String,
 }

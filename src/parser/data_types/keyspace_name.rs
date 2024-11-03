@@ -5,7 +5,7 @@ use super::unquoted_name::UnquotedName;
 /// keyspace_name::= name
 /// name::= unquoted_name | quoted_name
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum KeyspaceName {
     /// TODO: Desc básica
     UnquotedName(UnquotedName),

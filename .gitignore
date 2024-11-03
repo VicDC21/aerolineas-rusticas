@@ -15,3 +15,5 @@ Cargo.lock
 
 # FrontEnd stuff
 .cache/
+
+.vscode/

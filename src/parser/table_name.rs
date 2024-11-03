@@ -63,6 +63,7 @@ impl TableName {
                     && lista[1] != "VALUES"
                     && lista[1] != "GROUP"
                     && lista[1] != "ORDER"
+                    && lista[1] != "IF"
                 {
                     KeyspaceName::check_kind_of_name(lista)?
                 } else {

@@ -187,10 +187,6 @@ fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
     }
 
     let from = from_clause(list)?;
-
-    if list.first() != Some(&"WHERE".to_string()) {
-        return Err(Error::SyntaxError("Falta la cláusula WHERE".to_string()));
-    }
     let r#where = where_clause(list)?;
     let if_condition = check_if_condition(list)?;
     Ok(Some(Delete::new(cols, from, r#where, if_condition)))
@@ -1128,7 +1124,7 @@ mod tests {
 
     #[test]
     fn test_07_invalid_delete() -> Result<(), Error> {
-        let query = "DELETE FROM users";
+        let query = "DELETE users";
         let mut tokens = tokenize_query(query);
         assert!(delete_statement(&mut tokens).is_err());
         Ok(())
