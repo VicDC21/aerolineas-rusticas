@@ -1,7 +1,11 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
 use std::{
-    fs::File, io::{BufRead, BufReader, Read, Result as IOResult, Write}, net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream}
+    collections::HashMap,
+    fs::File,
+    io::{BufRead, BufReader, Read, Result as IOResult, Write},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    str::FromStr,
 };
 
 use crate::protocol::{
@@ -110,7 +114,10 @@ pub fn query_from_source(path: &str) -> Result<Vec<String>> {
     let file = match File::open(path) {
         Ok(f) => f,
         Err(file_err) => {
-            return Err(Error::ServerError(format!("Error abriendo el archivo:\n\n{}", file_err)));
+            return Err(Error::ServerError(format!(
+                "Error abriendo el archivo:\n\n{}",
+                file_err
+            )));
         }
     };
     let bufreader = BufReader::new(file);
@@ -121,4 +128,97 @@ pub fn query_from_source(path: &str) -> Result<Vec<String>> {
     }
 
     Ok(queries)
+}
+
+/// Convierte un hashmap a un string.
+pub fn hashmap_to_string<T: ToString>(map: &HashMap<String, T>) -> String {
+    let mut res = String::new();
+
+    for (key, value) in map {
+        res.push_str(&key.to_string());
+        res.push('.');
+        res.push_str(&value.to_string());
+        res.push(';');
+    }
+
+    res
+}
+
+/// Convierte un string a un hashmap.
+pub fn string_to_hashmap<T: FromStr>(str: &str) -> Result<HashMap<String, T>> {
+    let mut res = HashMap::new();
+
+    for pair in str.split(';') {
+        if pair.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = pair.split('.').collect();
+        if parts.len() != 2 {
+            return Err(Error::ServerError(
+                "No se pudo parsear el hashmap".to_string(),
+            ));
+        }
+
+        let key = parts[0].to_string();
+        let value = parts[1].parse().map_err(|_| {
+            Error::ServerError("No se pudo parsear el valor del hashmap".to_string())
+        })?;
+
+        res.insert(key, value);
+    }
+
+    Ok(res)
+}
+
+/// Convierte un hashmap de vectores a un string.
+pub fn hashmap_vec_to_string<T: ToString>(map: &HashMap<String, Vec<T>>) -> String {
+    let mut res = String::new();
+
+    for (key, value) in map {
+        res.push_str(key);
+        res.push('.');
+        res.push_str(
+            &value
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join("-"),
+        );
+        res.push(';');
+    }
+
+    res
+}
+
+/// Convierte un string a un hashmap de vectores.
+pub fn string_to_hashmap_vec<T: FromStr>(str: &str) -> Result<HashMap<String, Vec<T>>> {
+    let mut res = HashMap::new();
+
+    for pair in str.split(';') {
+        if pair.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = pair.split('.').collect();
+        if parts.len() != 2 {
+            return Err(Error::ServerError(
+                "No se pudo parsear el hashmap".to_string(),
+            ));
+        }
+
+        let key = parts[0].to_string();
+        let value = parts[1]
+            .split('-')
+            .map(|v| {
+                v.parse().map_err(|_| {
+                    Error::ServerError("No se pudo parsear el valor del hashmap".to_string())
+                })
+            })
+            .collect::<Result<Vec<T>>>()?;
+
+        res.insert(key, value);
+    }
+
+    Ok(res)
 }

@@ -75,6 +75,9 @@ pub enum SvAction {
     /// Mandar un mensaje de [EXIT](crate::server::actions::opcode::SvAction::Exit) a todos
     /// los nodos salvo sí mismo, y luego salir.
     Shutdown,
+
+    /// Guardar metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
+    StoreMetadata,
 }
 
 impl SvAction {
@@ -214,6 +217,7 @@ impl Byteable for SvAction {
                 bytes
             }
             Self::Shutdown => vec![0xF9],
+            Self::StoreMetadata => vec![0xFA],
         }
     }
 }
@@ -304,6 +308,7 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xF8 => Ok(Self::InternalQuery(bytes[1..].to_vec())),
             0xF9 => Ok(Self::Shutdown),
+            0xFA => Ok(Self::StoreMetadata),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

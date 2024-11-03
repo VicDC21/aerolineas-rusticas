@@ -1,5 +1,9 @@
 //! Módulo que detalla una estrategia de replicación de un keyspace.
 
+use std::{fmt, str::FromStr};
+
+use crate::protocol::{aliases::results::Result, errors::error::Error};
+
 /// Representa una estrategia de replicación.
 pub enum ReplicationStrategy {
     /// SimpleStrategy(replicas)
@@ -25,6 +29,47 @@ impl ReplicationStrategy {
         match self {
             ReplicationStrategy::SimpleStrategy(replicas) => Some(*replicas),
             _ => None,
+        }
+    }
+}
+
+impl fmt::Display for ReplicationStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ReplicationStrategy::SimpleStrategy(replicas) => {
+                write!(f, "SimpleStrategy_{}", replicas)
+            }
+            ReplicationStrategy::NetworkTopologyStrategy(_datacenter_and_replicas) => {
+                todo!()
+            }
+        }
+    }
+}
+
+impl FromStr for ReplicationStrategy {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        let parts: Vec<&str> = s.split('_').collect();
+        if parts.len() != 2 {
+            return Err(Error::ServerError(
+                "No se pudo parsear la estrategia de replicación".to_string(),
+            ));
+        }
+
+        let replicas: u32 = parts[1].parse().map_err(|_| {
+            Error::ServerError(
+                "No se pudo parsear la cantidad de réplicas de la estrategia de replicación"
+                    .to_string(),
+            )
+        })?;
+
+        match parts[0] {
+            "SimpleStrategy" => Ok(ReplicationStrategy::SimpleStrategy(replicas)),
+            "NetworkTopologyStrategy" => todo!(),
+            _ => Err(Error::ServerError(
+                "No se pudo parsear la estrategia de replicación".to_string(),
+            )),
         }
     }
 }
