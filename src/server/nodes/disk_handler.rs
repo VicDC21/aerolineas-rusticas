@@ -237,54 +237,27 @@ impl DiskHandler {
         table: &Table,
         default_keyspace: &str,
     ) -> Result<Vec<String>> {
-        let path = TablePath::new(
-            storage_addr,
-            statement.table.get_keyspace(),
-            &statement.table.get_name(),
-            default_keyspace,
-        );
-
-        let table_ops = TableOperations::new(path)?;
+        let table_ops =
+            DiskHandler::initialize_table_operations(storage_addr, statement, default_keyspace)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
+
         let mut rows = table_ops.read_rows()?;
         let values = statement.get_values();
-        let mut id_exists = false;
-        let mut id_position = None;
 
-        for (i, row) in rows.iter().enumerate() {
-            if row[0] == values[0] {
-                id_exists = true;
-                id_position = Some(i);
-                break;
+        if let Some(existing_row_position) = DiskHandler::find_existing_row(&rows, &values) {
+            if statement.if_not_exists {
+                return Ok(Vec::new());
             }
+
+            let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
+            rows[existing_row_position] = new_row.clone();
+            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
+            return Ok(new_row);
         }
-
-        if id_exists && statement.if_not_exists {
-            return Ok(Vec::new());
-        }
-
-        let new_row = Self::generate_row_to_insert(
-            &values,
-            &statement.get_columns_names(),
-            &table_ops
-                .columns
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<&str>>(),
-        );
-
-        let new_row_vec: Vec<String> = new_row.trim().split(',').map(|s| s.to_string()).collect();
-
-        if let Some(pos) = id_position {
-            rows[pos] = new_row_vec.clone();
-        } else {
-            rows.push(new_row_vec.clone());
-        }
-
-        let order_by = Self::get_table_ordering(table);
-        order_by.order(&mut rows, &table_ops.columns);
-        table_ops.write_rows(&rows)?;
-        Ok(new_row_vec)
+        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
+        rows.push(new_row.clone());
+        DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
+        Ok(new_row)
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
@@ -441,6 +414,48 @@ impl DiskHandler {
         }
 
         Ok(deleted_data)
+    }
+
+    fn initialize_table_operations(
+        storage_addr: &str,
+        statement: &Insert,
+        default_keyspace: &str,
+    ) -> Result<TableOperations> {
+        let path = TablePath::new(
+            storage_addr,
+            statement.table.get_keyspace(),
+            &statement.table.get_name(),
+            default_keyspace,
+        );
+        TableOperations::new(path)
+    }
+
+    fn find_existing_row(rows: &[Vec<String>], values: &[String]) -> Option<usize> {
+        rows.iter().position(|row| row[0] == values[0])
+    }
+
+    fn generate_row_values(
+        statement: &Insert,
+        table_ops: &TableOperations,
+        values: &[String],
+    ) -> Vec<String> {
+        let table_columns: Vec<&str> = table_ops.columns.iter().map(|s| s.as_str()).collect();
+
+        Self::generate_row_to_insert(values, &statement.get_columns_names(), &table_columns)
+            .trim()
+            .split(',')
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    fn order_and_save_rows(
+        table_ops: &TableOperations,
+        rows: &mut [Vec<String>],
+        table: &Table,
+    ) -> Result<()> {
+        let order_by = Self::get_table_ordering(table);
+        order_by.order(rows, &table_ops.columns);
+        table_ops.write_rows(rows)
     }
 
     fn process_full_row_delete(
