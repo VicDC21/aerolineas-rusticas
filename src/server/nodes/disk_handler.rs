@@ -26,7 +26,7 @@ use crate::{
                     },
                     update::Update,
                 },
-                r#where::operator::Operator,
+                r#where::{operator::Operator, where_parser::Where},
             },
         },
     },
@@ -144,6 +144,44 @@ impl TableOperations {
 
         std::fs::write(self.path.full_path(), content)
             .map_err(|e| Error::ServerError(e.to_string()))
+    }
+}
+
+struct RowOperations;
+
+impl RowOperations {
+    fn verify_row_conditions(
+        rows: &[Vec<String>],
+        conditions: &[Condition],
+        columns: &[String],
+    ) -> Result<bool> {
+        DiskHandler::verify_conditions(rows, conditions, columns)
+    }
+
+    fn should_process_row(
+        row: &[String],
+        if_condition: &IfCondition,
+        columns: &[String],
+        where_clause: Option<&Where>,
+    ) -> Result<bool> {
+        let passes_where = match where_clause {
+            Some(the_where) => the_where.filter(row, columns)?,
+            None => true,
+        };
+
+        if !passes_where {
+            return Ok(false);
+        }
+
+        let passes_conditions = match if_condition {
+            IfCondition::Conditions(conditions) => {
+                Self::verify_row_conditions(&[row.to_vec()], conditions, columns)?
+            }
+            IfCondition::Exists => true,
+            _ => true,
+        };
+
+        Ok(passes_conditions)
     }
 }
 
@@ -359,106 +397,108 @@ impl DiskHandler {
 
         let table_ops = TableOperations::new(path)?;
         let rows = table_ops.read_rows()?;
-        let mut modified_rows = Vec::new();
-        let mut deleted_data = Vec::new();
 
         if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
             return Ok(Vec::new());
         }
 
-        if statement.cols.is_empty() && statement.the_where.is_none() {
-            if let IfCondition::Conditions(conditions) = &statement.if_condition {
-                let all_conditions_met =
-                    DiskHandler::verify_conditions(&rows, conditions, &table_ops.columns)?;
-                if !all_conditions_met {
-                    return Ok(Vec::new());
-                }
-            }
-
-            modified_rows = Vec::new();
-            deleted_data = rows.iter().map(|row| row.join(",")).collect();
-        } else if statement.cols.is_empty() {
-            for row in rows {
-                let should_delete = match &statement.the_where {
-                    Some(the_where) => the_where.filter(&row, &table_ops.columns)?,
-                    None => true,
-                };
-
-                if should_delete {
-                    let should_proceed = match &statement.if_condition {
-                        IfCondition::Conditions(conditions) => DiskHandler::verify_conditions(
-                            &[row.clone()],
-                            conditions,
-                            &table_ops.columns,
-                        )?,
-                        _ => true,
-                    };
-
-                    if should_proceed {
-                        deleted_data.push(row.join(","));
-                    } else {
-                        modified_rows.push(row);
-                    }
-                } else {
-                    modified_rows.push(row);
-                }
-            }
+        let result = if statement.cols.is_empty() {
+            DiskHandler::process_full_row_delete(statement, &rows, &table_ops)?
         } else {
-            let columns_to_modify: Vec<usize> = statement
-                .cols
-                .iter()
-                .filter_map(|col_name| table_ops.columns.iter().position(|col| col == col_name))
-                .collect();
+            DiskHandler::process_partial_row_delete(statement, &rows, &table_ops)?
+        };
 
-            for row in rows {
-                let should_modify = match &statement.the_where {
-                    Some(the_where) => the_where.filter(&row, &table_ops.columns)?,
-                    None => true,
-                };
-
-                let mut new_row = row.clone();
-
-                if should_modify {
-                    let should_proceed = match &statement.if_condition {
-                        IfCondition::Conditions(conditions) => DiskHandler::verify_conditions(
-                            &[row.clone()],
-                            conditions,
-                            &table_ops.columns,
-                        )?,
-                        _ => true,
-                    };
-
-                    if should_proceed {
-                        let deleted_values: Vec<String> = columns_to_modify
-                            .iter()
-                            .filter_map(|&idx| row.get(idx))
-                            .cloned()
-                            .collect();
-
-                        deleted_data.push(deleted_values.join(","));
-
-                        for &col_idx in &columns_to_modify {
-                            if col_idx < new_row.len() {
-                                new_row[col_idx] = String::new();
-                            }
-                        }
-                    }
-                }
-
-                modified_rows.push(new_row);
-            }
-        }
+        let (modified_rows, deleted_data) = result;
 
         if !deleted_data.is_empty() || modified_rows.is_empty() {
-            let order_by = Self::get_table_ordering(table);
-            order_by.order(&mut modified_rows, &table_ops.columns);
-            table_ops.write_rows(&modified_rows)?;
+            let order_by = DiskHandler::get_table_ordering(table);
+            let mut rows_to_write = modified_rows.clone();
+            order_by.order(&mut rows_to_write, &table_ops.columns);
+            table_ops.write_rows(&rows_to_write)?;
         }
 
         Ok(deleted_data)
     }
 
-    // Función auxiliar para verificar las condiciones IF para una fila específica
+    fn process_full_row_delete(
+        statement: &Delete,
+        rows: &[Vec<String>],
+        table_ops: &TableOperations,
+    ) -> Result<(Vec<Vec<String>>, Vec<String>)> {
+        let mut modified_rows = Vec::new();
+        let mut deleted_data = Vec::new();
+
+        if statement.the_where.is_none() {
+            if let IfCondition::Conditions(conditions) = &statement.if_condition {
+                let all_conditions_met =
+                    RowOperations::verify_row_conditions(rows, conditions, &table_ops.columns)?;
+                if !all_conditions_met {
+                    return Ok((rows.to_vec(), Vec::new()));
+                }
+                return Ok((Vec::new(), rows.iter().map(|row| row.join(",")).collect()));
+            }
+        }
+
+        for row in rows {
+            if RowOperations::should_process_row(
+                row,
+                &statement.if_condition,
+                &table_ops.columns,
+                statement.the_where.as_ref(),
+            )? {
+                deleted_data.push(row.join(","));
+            } else {
+                modified_rows.push(row.to_vec());
+            }
+        }
+
+        Ok((modified_rows, deleted_data))
+    }
+
+    fn process_partial_row_delete(
+        statement: &Delete,
+        rows: &[Vec<String>],
+        table_ops: &TableOperations,
+    ) -> Result<(Vec<Vec<String>>, Vec<String>)> {
+        let mut modified_rows = Vec::new();
+        let mut deleted_data = Vec::new();
+
+        let columns_to_modify: Vec<usize> = statement
+            .cols
+            .iter()
+            .filter_map(|col_name| table_ops.columns.iter().position(|col| col == col_name))
+            .collect();
+
+        for row in rows {
+            if RowOperations::should_process_row(
+                row,
+                &statement.if_condition,
+                &table_ops.columns,
+                statement.the_where.as_ref(),
+            )? {
+                let mut new_row = row.to_vec();
+                let deleted_values: Vec<String> = columns_to_modify
+                    .iter()
+                    .filter_map(|&idx| row.get(idx))
+                    .cloned()
+                    .collect();
+
+                deleted_data.push(deleted_values.join(","));
+
+                for &col_idx in &columns_to_modify {
+                    if col_idx < new_row.len() {
+                        new_row[col_idx] = String::new();
+                    }
+                }
+                modified_rows.push(new_row);
+            } else {
+                modified_rows.push(row.to_vec());
+            }
+        }
+
+        Ok((modified_rows, deleted_data))
+    }
+
     fn verify_row_conditions(
         row: &[String],
         conditions: &[Condition],
@@ -523,6 +563,7 @@ impl DiskHandler {
             create_dir(path_folder).expect(&err_msg);
         }
     }
+
     /// Obtiene la estrategia de replicación de un keyspace.
     fn get_keyspace_replication(options: &[Options]) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;

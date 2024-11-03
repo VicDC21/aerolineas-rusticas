@@ -1124,7 +1124,7 @@ mod tests {
 
     #[test]
     fn test_07_invalid_delete() -> Result<(), Error> {
-        let query = "DELETE FROM users";
+        let query = "DELETE users";
         let mut tokens = tokenize_query(query);
         assert!(delete_statement(&mut tokens).is_err());
         Ok(())
