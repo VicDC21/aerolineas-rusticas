@@ -48,7 +48,7 @@ use crate::{
         statements::{
             ddl_statement::{
                 create_keyspace::CreateKeyspace, create_table::CreateTable,
-                ddl_statement_parser::DdlStatement,
+                ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace,
             },
             dml_statement::{
                 dml_statement_parser::DmlStatement,
@@ -675,7 +675,9 @@ impl Node {
             DdlStatement::AlterKeyspaceStatement(alter_keyspace) => {
                 self.process_internal_alter_keyspace_statement(&alter_keyspace)
             }
-            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => todo!(),
+            DdlStatement::DropKeyspaceStatement(drop_keyspace) => {
+                self.process_internal_drop_keyspace_statement(&drop_keyspace)
+            }
             DdlStatement::CreateTableStatement(create_table) => {
                 self.process_internal_create_table_statement(&create_table)
             }
@@ -831,6 +833,63 @@ impl Node {
                     )))
                 }
             }
+        }
+    }
+
+    fn process_drop_keyspace_statement(
+        &mut self,
+        drop_keyspace: DropKeyspace,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
+        let keyspace_name = drop_keyspace.name.get_name();
+        if !self.keyspaces.contains_key(keyspace_name) && !drop_keyspace.if_exists {
+            return Err(Error::ServerError(format!(
+                "El keyspace {} no existe",
+                keyspace_name
+            )));
+        }
+
+        let mut responses = Vec::new();
+        for actual_node in 0..5 {
+            let node_id = self.next_node_to_replicate_data(
+                self.id,
+                actual_node as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+
+            let response = if node_id != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_id,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_internal_drop_keyspace_statement(&drop_keyspace)?
+            };
+            responses.push(response);
+        }
+        Ok(self.create_result_void())
+    }
+
+    fn process_internal_drop_keyspace_statement(
+        &mut self,
+        drop_keyspace: &DropKeyspace,
+    ) -> Result<Vec<u8>> {
+        let keyspace_name = drop_keyspace.name.get_name();
+        if self.keyspaces.contains_key(keyspace_name) {
+            self.keyspaces.remove(keyspace_name);
+            match DiskHandler::drop_keyspace(keyspace_name, &self.storage_addr) {
+                Ok(_) => Ok(self.create_result_void()),
+                Err(e) => Err(e),
+            }
+        } else if drop_keyspace.if_exists {
+            Ok(self.create_result_void())
+        } else {
+            Err(Error::ServerError(format!(
+                "El keyspace {} no existe",
+                keyspace_name
+            )))
         }
     }
 
@@ -1011,8 +1070,8 @@ impl Node {
             DdlStatement::AlterKeyspaceStatement(alter_keyspace) => {
                 self.process_alter_statement(alter_keyspace, request)
             }
-            DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
-                todo!()
+            DdlStatement::DropKeyspaceStatement(drop_keyspace) => {
+                self.process_drop_keyspace_statement(drop_keyspace, request)
             }
             DdlStatement::CreateTableStatement(create_table) => {
                 self.process_create_table_statement(create_table, request)
@@ -1057,7 +1116,6 @@ impl Node {
                     START_ID,
                     START_ID + N_NODES,
                 );
-                println!("envia data al nodo: {}", node_to_replicate);
                 response = if node_id != self.id {
                     self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),

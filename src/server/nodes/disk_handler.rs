@@ -85,6 +85,27 @@ impl DiskHandler {
         }
     }
 
+    /// Elimina un keyspace en el caso que corresponda.
+    pub fn drop_keyspace(keyspace_name: &str, storage_addr: &str) -> Result<()> {
+        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let path_folder = Path::new(&keyspace_addr);
+
+        if path_folder.exists() && path_folder.is_dir() {
+            std::fs::remove_dir_all(path_folder).map_err(|e| {
+                Error::ServerError(format!(
+                    "Error al eliminar el keyspace {}: {}",
+                    keyspace_name, e
+                ))
+            })?;
+            Ok(())
+        } else {
+            Err(Error::ServerError(format!(
+                "El directorio del keyspace {} no existe",
+                keyspace_name
+            )))
+        }
+    }
+
     /// Crea una nueva tabla en el caso que corresponda.
     pub fn create_table(
         statement: &CreateTable,
