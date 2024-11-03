@@ -14,22 +14,21 @@ use std::{
 };
 
 use crate::parser::{
-        data_types::keyspace_name::KeyspaceName,
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::{
-                create_keyspace::CreateKeyspace, create_table::CreateTable,
-                ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace,
-            },
-            dml_statement::{
-                dml_statement_parser::DmlStatement,
-                main_statements::{
-                    delete::Delete, insert::Insert, select::select_operation::Select,
-                    update::Update,
-                },
-            },
-            statement::Statement,
+    data_types::keyspace_name::KeyspaceName,
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable,
+            ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace,
         },
+        dml_statement::{
+            dml_statement_parser::DmlStatement,
+            main_statements::{
+                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
+            },
+        },
+        statement::Statement,
+    },
 };
 use crate::protocol::{
     aliases::{results::Result, types::Byte},

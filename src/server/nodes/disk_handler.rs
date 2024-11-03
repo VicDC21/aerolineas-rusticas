@@ -1,33 +1,31 @@
 //! Módulo para manejo del almacenamiento en disco.
 
 use crate::parser::{
-        assignment::Assignment,
-        data_types::{constant::Constant, term::Term},
-        primary_key::PrimaryKey,
-        statements::{
-            ddl_statement::{
-                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
-            },
-            dml_statement::{
-                if_condition::{Condition, IfCondition},
-                main_statements::{
-                    delete::Delete,
-                    insert::Insert,
-                    select::{
-                        order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
-                    },
-                    update::Update,
-                },
-                r#where::{operator::Operator, where_parser::Where},
-            },
+    assignment::Assignment,
+    data_types::{constant::Constant, term::Term},
+    primary_key::PrimaryKey,
+    statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
         },
+        dml_statement::{
+            if_condition::{Condition, IfCondition},
+            main_statements::{
+                delete::Delete,
+                insert::Insert,
+                select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
+                update::Update,
+            },
+            r#where::{operator::Operator, where_parser::Where},
+        },
+    },
 };
 use crate::protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        messages::responses::result::col_type::ColType,
-        traits::Byteable,
-        utils::encode_string_to_bytes,
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    messages::responses::result::col_type::ColType,
+    traits::Byteable,
+    utils::encode_string_to_bytes,
 };
 use crate::server::nodes::{graph::NODES_PATH, node::NodeId};
 

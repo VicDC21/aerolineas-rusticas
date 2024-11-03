@@ -114,7 +114,10 @@ pub fn query_from_source(path: &str) -> Result<Vec<String>> {
     let file = match File::open(path) {
         Ok(f) => f,
         Err(file_err) => {
-            return Err(Error::ServerError(format!("Error abriendo el archivo:\n\n{}", file_err)));
+            return Err(Error::ServerError(format!(
+                "Error abriendo el archivo:\n\n{}",
+                file_err
+            )));
         }
     };
     let bufreader = BufReader::new(file);
