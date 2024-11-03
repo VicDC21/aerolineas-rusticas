@@ -357,25 +357,48 @@ impl DiskHandler {
         let table_ops = TableOperations::new(path)?;
         Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
         let mut rows = table_ops.read_rows()?;
-        let mut updated_rows = Vec::new();
 
+        if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut updated_rows = Vec::new();
+        let mut should_write = false;
+
+        if matches!(statement.if_condition, IfCondition::Conditions(_))
+            && statement.the_where.is_none()
+        {
+            if let IfCondition::Conditions(conditions) = &statement.if_condition {
+                let all_conditions_met =
+                    RowOperations::verify_row_conditions(&rows, conditions, &table_ops.columns)?;
+                if !all_conditions_met {
+                    return Ok(Vec::new());
+                }
+                should_write = true;
+            }
+        }
+
+        let mut modified_rows = Vec::new();
         for row in rows.iter_mut() {
-            let should_update = match &statement.the_where {
-                Some(the_where) => the_where.filter(row, &table_ops.columns)?,
-                None => true,
-            };
-            if should_update {
+            if RowOperations::should_process_row(
+                row,
+                &statement.if_condition,
+                &table_ops.columns,
+                statement.the_where.as_ref(),
+            )? {
                 for assignment in &statement.set_parameter {
                     Self::update_row_value(row, assignment, &table_ops.columns)?;
                 }
                 updated_rows.push(row.clone());
+                should_write = true;
             }
+            modified_rows.push(row.clone());
         }
 
-        if !updated_rows.is_empty() {
+        if should_write {
             let order_by = Self::get_table_ordering(table);
-            order_by.order(&mut rows, &table_ops.columns);
-            table_ops.write_rows(&rows)?;
+            order_by.order(&mut modified_rows, &table_ops.columns);
+            table_ops.write_rows(&modified_rows)?;
         }
 
         Ok(updated_rows.iter().map(|row| row.join(",")).collect())

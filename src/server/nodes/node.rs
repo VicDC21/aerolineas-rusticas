@@ -850,7 +850,6 @@ impl Node {
         response.append(&mut Length::new(res.len() as u32).as_bytes());
         response.append(&mut res);
         Ok(response)
-
     }
 
     fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>> {
@@ -1069,7 +1068,7 @@ impl Node {
                     let res = self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
-                        PortType::Priv, 
+                        PortType::Priv,
                     )?;
                     match Opcode::try_from(res[4])? {
                         Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
