@@ -918,7 +918,31 @@ impl Node {
             table,
             &self.default_keyspace_name,
         )?;
+        // println!("rompe aca");
+        // match self.check_if_has_new_partition_value(insert, table)?{
+        //     Some(new_partition_values) => self.tables_and_partitions_keys_values.insert(insert.table.get_name().to_string(), new_partition_values),
+        //     None => None
+        // };
         Ok(self.create_result_void())
+    }
+
+    fn check_if_has_new_partition_value(&self, insert: &Insert, table: &Table)-> Result<Option<Vec<String>>> {
+        let table_name = table.get_name();
+        let mut partition_values: Vec<String> = match self.tables_and_partitions_keys_values.get(table_name){
+            Some(partition_values) => partition_values.clone(),
+            None => return Err(Error::SyntaxError("La tabla solicitada no existe".to_string()))
+        };
+        let insert_columns = insert.get_columns_names();
+
+        let position = match insert_columns.iter().position(|x|x == &table.get_partition_key()[0]){
+            Some(position) => position,
+            None => return Ok(None)
+        };
+        if !partition_values.contains(&insert_columns[position]){
+            partition_values.push(insert_columns[position].clone());
+            return Ok(Some(partition_values));
+        };
+        Ok(None)
     }
 
     fn process_update(&mut self, update: &Update) -> Result<Vec<Byte>> {
