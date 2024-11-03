@@ -40,151 +40,6 @@ use crate::{
     server::nodes::node::NodeId,
 };
 
-// Estructura común para manejar paths
-struct TablePath {
-    storage_addr: String,
-    keyspace: String,
-    table_name: String,
-}
-
-impl TablePath {
-    fn new(
-        storage_addr: &str,
-        keyspace: Option<String>,
-        table_name: &str,
-        default_keyspace: &str,
-    ) -> Self {
-        let keyspace = keyspace.unwrap_or_else(|| default_keyspace.to_string());
-        Self {
-            storage_addr: storage_addr.to_string(),
-            keyspace,
-            table_name: table_name.to_string(),
-        }
-    }
-
-    fn full_path(&self) -> String {
-        format!(
-            "{}/{}/{}.csv",
-            self.storage_addr, self.keyspace, self.table_name
-        )
-    }
-}
-
-// Estructura para manejar operaciones comunes sobre tablas
-struct TableOperations {
-    path: TablePath,
-    columns: Vec<String>,
-}
-
-impl TableOperations {
-    fn new(path: TablePath) -> Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open(path.full_path())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        let mut reader = BufReader::new(&file);
-        let mut header = String::new();
-        reader
-            .read_line(&mut header)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        if header.trim().is_empty() {
-            return Err(Error::ServerError(format!(
-                "No se pudo leer la tabla con ruta {}",
-                path.full_path()
-            )));
-        }
-
-        let columns = header.trim().split(',').map(|s| s.to_string()).collect();
-
-        Ok(Self { path, columns })
-    }
-
-    fn validate_columns(&self, columns: &[String]) -> Result<()> {
-        for col in columns {
-            if !self.columns.contains(col) {
-                return Err(Error::ServerError(format!(
-                    "La tabla con ruta {} no contiene la columna {}",
-                    self.path.full_path(),
-                    col
-                )));
-            }
-        }
-        Ok(())
-    }
-
-    fn read_rows(&self) -> Result<Vec<Vec<String>>> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open(self.path.full_path())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        let reader = BufReader::new(file);
-        let mut rows = Vec::new();
-
-        for line in reader.lines().skip(1) {
-            let line = line.map_err(|e| Error::ServerError(e.to_string()))?;
-            if !line.trim().is_empty() {
-                rows.push(line.trim().split(',').map(|s| s.to_string()).collect());
-            }
-        }
-
-        Ok(rows)
-    }
-
-    fn write_rows(&self, rows: &[Vec<String>]) -> Result<()> {
-        let mut content = self.columns.join(",");
-        content.push('\n');
-
-        for row in rows {
-            content.push_str(&row.join(","));
-            content.push('\n');
-        }
-
-        std::fs::write(self.path.full_path(), content)
-            .map_err(|e| Error::ServerError(e.to_string()))
-    }
-}
-
-struct RowOperations;
-
-impl RowOperations {
-    fn verify_row_conditions(
-        rows: &[Vec<String>],
-        conditions: &[Condition],
-        columns: &[String],
-    ) -> Result<bool> {
-        DiskHandler::verify_conditions(rows, conditions, columns)
-    }
-
-    fn should_process_row(
-        row: &[String],
-        if_condition: &IfCondition,
-        columns: &[String],
-        where_clause: Option<&Where>,
-    ) -> Result<bool> {
-        let passes_where = match where_clause {
-            Some(the_where) => the_where.filter(row, columns)?,
-            None => true,
-        };
-
-        if !passes_where {
-            return Ok(false);
-        }
-
-        let passes_conditions = match if_condition {
-            IfCondition::Conditions(conditions) => {
-                Self::verify_row_conditions(&[row.to_vec()], conditions, columns)?
-            }
-            IfCondition::Exists => true,
-            _ => true,
-        };
-
-        Ok(passes_conditions)
-    }
-}
-
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
 
@@ -228,6 +83,34 @@ impl DiskHandler {
             )),
             Err(e) => Err(e),
         }
+    }
+
+    /// Crea una nueva tabla en el caso que corresponda.
+    pub fn create_table(
+        statement: &CreateTable,
+        storage_addr: &str,
+        default_keyspace: &str,
+    ) -> Result<Option<Table>> {
+        let (keyspace_name, table_name) =
+            Self::validate_and_get_keyspace_table_names(statement, default_keyspace, storage_addr)?;
+        let columns = statement.get_columns()?;
+        let columns_names = columns
+            .iter()
+            .map(|c| c.get_name())
+            .collect::<Vec<String>>();
+
+        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
+
+        let primary_key = Self::validate_and_get_primary_key(statement)?;
+        let clustering_keys_and_order = Self::get_clustering_keys_and_order(statement)?;
+
+        Ok(Some(Table::new(
+            table_name,
+            keyspace_name,
+            columns,
+            primary_key.partition_key,
+            clustering_keys_and_order,
+        )))
     }
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
@@ -602,7 +485,6 @@ impl DiskHandler {
         }
     }
 
-    /// Obtiene la estrategia de replicación de un keyspace.
     fn get_keyspace_replication(options: &[Options]) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;
         while i < options.len() {
@@ -647,35 +529,6 @@ impl DiskHandler {
         }
     }
 
-    /// Crea una nueva tabla en el caso que corresponda.
-    pub fn create_table(
-        statement: &CreateTable,
-        storage_addr: &str,
-        default_keyspace: &str,
-    ) -> Result<Option<Table>> {
-        let (keyspace_name, table_name) =
-            Self::validate_and_get_keyspace_table_names(statement, default_keyspace, storage_addr)?;
-        let columns = statement.get_columns()?;
-        let columns_names = columns
-            .iter()
-            .map(|c| c.get_name())
-            .collect::<Vec<String>>();
-
-        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
-
-        let primary_key = Self::validate_and_get_primary_key(statement)?;
-        let clustering_keys_and_order = Self::get_clustering_keys_and_order(statement)?;
-
-        Ok(Some(Table::new(
-            table_name,
-            keyspace_name,
-            columns,
-            primary_key.partition_key,
-            clustering_keys_and_order,
-        )))
-    }
-
-    /// Valida y obtiene los nombres de keyspace y tabla
     fn validate_and_get_keyspace_table_names(
         statement: &CreateTable,
         default_keyspace: &str,
@@ -699,7 +552,6 @@ impl DiskHandler {
         Ok((keyspace_name, table_name))
     }
 
-    /// Crea el archivo CSV para la tabla
     fn create_table_csv_file(
         storage_addr: &str,
         keyspace_name: &str,
@@ -724,7 +576,6 @@ impl DiskHandler {
         Ok(())
     }
 
-    /// Valida y obtiene la clave primaria
     fn validate_and_get_primary_key(statement: &CreateTable) -> Result<PrimaryKey> {
         match &statement.primary_key {
             Some(primary_key) => Ok(primary_key.clone()),
@@ -734,7 +585,6 @@ impl DiskHandler {
         }
     }
 
-    /// Obtiene las columnas de clustering y su orden
     fn get_clustering_keys_and_order(
         statement: &CreateTable,
     ) -> Result<Option<Vec<(String, ProtocolOrdering)>>> {
@@ -764,7 +614,6 @@ impl DiskHandler {
         Ok(Some(clustering_keys_and_order))
     }
 
-    /// Actualiza el orden de las columnas de clustering
     fn update_clustering_order(
         clustering_keys_and_order: &mut [(String, ProtocolOrdering)],
         clustering_order: &[(String, String)],
@@ -806,7 +655,6 @@ impl DiskHandler {
         OrderBy::new_from_vec(order_criteria)
     }
 
-    /// Genera una fila para insertar en una tabla, en base a las columnas dadas en la query y de la tabla.
     fn generate_row_to_insert(
         values: &[String],
         query_cols: &[String],
@@ -823,7 +671,6 @@ impl DiskHandler {
         values_to_insert.join(",") + "\n"
     }
 
-    /// Serializa en bytes el resultado de una consulta SELECT.
     fn serialize_select_result(
         result: Vec<Vec<String>>,
         query_cols: &[String],
@@ -865,7 +712,6 @@ impl DiskHandler {
         res
     }
 
-    /// Genera una fila para seleccionar en una tabla, en base a las columnas dadas en la query y de la tabla.
     fn generate_row_to_select(
         table_row: &[String],
         table_cols: &[String],
@@ -888,7 +734,6 @@ impl DiskHandler {
         new_row
     }
 
-    /// Valida que las columnas de una asignación existan en la tabla
     fn validate_update_columns(
         table_ops: &TableOperations,
         assignments: &[Assignment],
@@ -915,7 +760,6 @@ impl DiskHandler {
         Ok(())
     }
 
-    /// Actualiza un valor de fila según el tipo de asignación
     fn update_row_value(
         row: &mut [String],
         assignment: &Assignment,
@@ -948,5 +792,148 @@ impl DiskHandler {
             }
         }
         Ok(())
+    }
+}
+
+struct TablePath {
+    storage_addr: String,
+    keyspace: String,
+    table_name: String,
+}
+
+impl TablePath {
+    fn new(
+        storage_addr: &str,
+        keyspace: Option<String>,
+        table_name: &str,
+        default_keyspace: &str,
+    ) -> Self {
+        let keyspace = keyspace.unwrap_or_else(|| default_keyspace.to_string());
+        Self {
+            storage_addr: storage_addr.to_string(),
+            keyspace,
+            table_name: table_name.to_string(),
+        }
+    }
+
+    fn full_path(&self) -> String {
+        format!(
+            "{}/{}/{}.csv",
+            self.storage_addr, self.keyspace, self.table_name
+        )
+    }
+}
+
+struct TableOperations {
+    path: TablePath,
+    columns: Vec<String>,
+}
+
+impl TableOperations {
+    fn new(path: TablePath) -> Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(path.full_path())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let mut reader = BufReader::new(&file);
+        let mut header = String::new();
+        reader
+            .read_line(&mut header)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        if header.trim().is_empty() {
+            return Err(Error::ServerError(format!(
+                "No se pudo leer la tabla con ruta {}",
+                path.full_path()
+            )));
+        }
+
+        let columns = header.trim().split(',').map(|s| s.to_string()).collect();
+
+        Ok(Self { path, columns })
+    }
+
+    fn validate_columns(&self, columns: &[String]) -> Result<()> {
+        for col in columns {
+            if !self.columns.contains(col) {
+                return Err(Error::ServerError(format!(
+                    "La tabla con ruta {} no contiene la columna {}",
+                    self.path.full_path(),
+                    col
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn read_rows(&self) -> Result<Vec<Vec<String>>> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(self.path.full_path())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let reader = BufReader::new(file);
+        let mut rows = Vec::new();
+
+        for line in reader.lines().skip(1) {
+            let line = line.map_err(|e| Error::ServerError(e.to_string()))?;
+            if !line.trim().is_empty() {
+                rows.push(line.trim().split(',').map(|s| s.to_string()).collect());
+            }
+        }
+
+        Ok(rows)
+    }
+
+    fn write_rows(&self, rows: &[Vec<String>]) -> Result<()> {
+        let mut content = self.columns.join(",");
+        content.push('\n');
+
+        for row in rows {
+            content.push_str(&row.join(","));
+            content.push('\n');
+        }
+
+        std::fs::write(self.path.full_path(), content)
+            .map_err(|e| Error::ServerError(e.to_string()))
+    }
+}
+
+struct RowOperations;
+
+impl RowOperations {
+    fn verify_row_conditions(
+        rows: &[Vec<String>],
+        conditions: &[Condition],
+        columns: &[String],
+    ) -> Result<bool> {
+        DiskHandler::verify_conditions(rows, conditions, columns)
+    }
+
+    fn should_process_row(
+        row: &[String],
+        if_condition: &IfCondition,
+        columns: &[String],
+        where_clause: Option<&Where>,
+    ) -> Result<bool> {
+        let passes_where = match where_clause {
+            Some(the_where) => the_where.filter(row, columns)?,
+            None => true,
+        };
+
+        if !passes_where {
+            return Ok(false);
+        }
+
+        let passes_conditions = match if_condition {
+            IfCondition::Conditions(conditions) => {
+                Self::verify_row_conditions(&[row.to_vec()], conditions, columns)?
+            }
+            IfCondition::Exists => true,
+            _ => true,
+        };
+
+        Ok(passes_conditions)
     }
 }
