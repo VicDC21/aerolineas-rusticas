@@ -131,7 +131,7 @@ impl Node {
 
     fn add_table(&mut self, table: Table) {
         let table_name = table.get_name().to_string();
-        let partition_key = table.get_partition_key();
+        let partition_key: Vec<String> = Vec::new();
         self.tables.insert(table_name.clone(), table);
         self.tables_and_partitions_keys_values
             .insert(table_name, partition_key);
@@ -990,11 +990,10 @@ impl Node {
             table,
             &self.default_keyspace_name,
         )?;
-        // println!("rompe aca");
-        // match self.check_if_has_new_partition_value(insert, table)?{
-        //     Some(new_partition_values) => self.tables_and_partitions_keys_values.insert(insert.table.get_name().to_string(), new_partition_values),
-        //     None => None
-        // };
+        match self.check_if_has_new_partition_value(insert, table)?{
+            Some(new_partition_values) => self.tables_and_partitions_keys_values.insert(insert.table.get_name().to_string(), new_partition_values),
+            None => None
+        };
         Ok(self.create_result_void())
     }
 
@@ -1104,31 +1103,43 @@ impl Node {
 
     fn insert_with_other_nodes(&mut self, insert: Insert, request: &[u8]) -> Result<Vec<Byte>> {
         let table_name: String = insert.table.get_name();
-        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
+        // let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut response: Vec<Byte> = Vec::new();
-        for partition_key_value in partitions_keys_to_nodes {
-            let node_id = self.select_node(&partition_key_value);
-            let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-            for i in 0..replication_factor {
-                let node_to_replicate = self.next_node_to_replicate_data(
-                    node_id,
-                    i as u8,
-                    START_ID,
-                    START_ID + N_NODES,
-                );
-                response = if node_id != self.id {
-                    self.send_message_and_wait_response(
-                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                        node_to_replicate,
-                        PortType::Priv,
-                    )?
-                } else {
-                    self.process_insert(&insert)?
-                }
+        let partition_key_value = self.get_partition_key_value_from_insert_statement(&insert, self.get_table(&table_name)?)?;
+        let node_id = self.select_node(&partition_key_value);
+        let replication_factor = self.get_replicas_from_table_name(&table_name)?;
+        for i in 0..replication_factor {
+            let node_to_replicate = self.next_node_to_replicate_data(
+                node_id,
+                i as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+            response = if node_to_replicate != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_to_replicate,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_insert(&insert)?
             }
         }
         Ok(response)
     }
+
+    fn get_partition_key_value_from_insert_statement(&self, insert: & Insert, table: &Table) -> Result<String>{
+        let insert_columns = insert.get_columns_names();
+        let position = match insert_columns.iter().position(|col| col == &table.get_partition_key()[0]){
+            Some(position) => position,
+            None => return Err(Error::SyntaxError("The partition key column must be in the request".to_string()))
+        };
+        match insert.get_values().get(position){
+            Some(partition_value) => Ok(partition_value.to_string()),
+            None => Err(Error::SyntaxError("The partition key column must be in the request".to_string()))
+        }
+    }
+
 
     fn update_with_other_nodes(&mut self, update: Update, request: &[u8]) -> Result<Vec<Byte>> {
         let table_name = update.table_name.get_name();
