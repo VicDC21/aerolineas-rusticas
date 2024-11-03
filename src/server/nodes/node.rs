@@ -151,15 +151,6 @@ impl Node {
             .insert(keyspace.get_name().to_string(), keyspace);
     }
 
-    fn drop_keyspace(&mut self, keyspace_name: &str) -> Result<()> {
-        match self.keyspaces.remove(keyspace_name) {
-            Some(_) => Ok(()),
-            None => Err(Error::ServerError(
-                "El keyspace solicitado no existe".to_string(),
-            )),
-        }
-    }
-
     fn get_keyspace(&self, table_name: &str) -> Result<&Keyspace> {
         let table = match self.tables.get(table_name) {
             Some(table) => table,
@@ -785,7 +776,15 @@ impl Node {
         alter_keyspace: AlterKeyspace,
         request: &[Byte],
     ) -> Result<Vec<u8>> {
-        let mut response: Vec<Byte> = Vec::new();
+        let keyspace_name = alter_keyspace.name.get_name();
+        if !self.keyspaces.contains_key(keyspace_name) && !alter_keyspace.if_exists {
+            return Err(Error::ServerError(format!(
+                "El keyspace {} no existe",
+                keyspace_name
+            )));
+        }
+
+        let mut responses = Vec::new();
         for actual_node in 0..5 {
             let node_id = self.next_node_to_replicate_data(
                 self.id,
@@ -793,7 +792,8 @@ impl Node {
                 START_ID,
                 START_ID + N_NODES,
             );
-            response = if node_id != self.id {
+
+            let response = if node_id != self.id {
                 self.send_message_and_wait_response(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
@@ -801,24 +801,37 @@ impl Node {
                 )?
             } else {
                 self.process_internal_alter_keyspace_statement(&alter_keyspace)?
-            }
+            };
+            responses.push(response);
         }
-        Ok(response)
+        Ok(self.create_result_void())
     }
 
     fn process_internal_alter_keyspace_statement(
         &mut self,
         alter_keyspace: &AlterKeyspace,
     ) -> Result<Vec<u8>> {
-        match DiskHandler::alter_keyspace(alter_keyspace, &self.storage_addr) {
-            Ok(Some(keyspace)) => {
-                self.drop_keyspace(keyspace.get_name())?;
-                self.add_keyspace(keyspace)
+        let keyspace_name = alter_keyspace.name.get_name();
+        match self.keyspaces.get_mut(keyspace_name) {
+            Some(keyspace) => {
+                if let Ok(Some(new_replication)) =
+                    DiskHandler::get_keyspace_replication(alter_keyspace.get_options())
+                {
+                    keyspace.set_replication(new_replication);
+                }
+                Ok(self.create_result_void())
             }
-            Ok(None) => return Ok(self.create_result_void()),
-            Err(err) => return Err(err),
-        };
-        Ok(self.create_result_void())
+            None => {
+                if alter_keyspace.if_exists {
+                    Ok(self.create_result_void())
+                } else {
+                    Err(Error::ServerError(format!(
+                        "El keyspace {} no existe",
+                        keyspace_name
+                    )))
+                }
+            }
+        }
     }
 
     fn create_result_void(&mut self) -> Vec<Byte> {
@@ -926,19 +939,31 @@ impl Node {
         Ok(self.create_result_void())
     }
 
-    fn check_if_has_new_partition_value(&self, insert: &Insert, table: &Table)-> Result<Option<Vec<String>>> {
+    fn check_if_has_new_partition_value(
+        &self,
+        insert: &Insert,
+        table: &Table,
+    ) -> Result<Option<Vec<String>>> {
         let table_name = table.get_name();
-        let mut partition_values: Vec<String> = match self.tables_and_partitions_keys_values.get(table_name){
-            Some(partition_values) => partition_values.clone(),
-            None => return Err(Error::SyntaxError("La tabla solicitada no existe".to_string()))
-        };
+        let mut partition_values: Vec<String> =
+            match self.tables_and_partitions_keys_values.get(table_name) {
+                Some(partition_values) => partition_values.clone(),
+                None => {
+                    return Err(Error::SyntaxError(
+                        "La tabla solicitada no existe".to_string(),
+                    ))
+                }
+            };
         let insert_columns = insert.get_columns_names();
 
-        let position = match insert_columns.iter().position(|x|x == &table.get_partition_key()[0]){
+        let position = match insert_columns
+            .iter()
+            .position(|x| x == &table.get_partition_key()[0])
+        {
             Some(position) => position,
-            None => return Ok(None)
+            None => return Ok(None),
         };
-        if !partition_values.contains(&insert_columns[position]){
+        if !partition_values.contains(&insert_columns[position]) {
             partition_values.push(insert_columns[position].clone());
             return Ok(Some(partition_values));
         };

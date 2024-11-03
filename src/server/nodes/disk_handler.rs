@@ -14,8 +14,7 @@ use crate::{
         primary_key::PrimaryKey,
         statements::{
             ddl_statement::{
-                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-                create_table::CreateTable, option::Options,
+                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
             },
             dml_statement::{
                 if_condition::{Condition, IfCondition},
@@ -84,20 +83,6 @@ impl DiskHandler {
             )),
             Err(e) => Err(e),
         }
-    }
-
-    /// Modifica propiedades del keyspace en el caso que corresponda.
-    pub fn alter_keyspace(
-        statement: &AlterKeyspace,
-        storage_addr: &str,
-    ) -> Result<Option<Keyspace>> {
-        if !statement.if_exists {
-            return Ok(None);
-        }
-        DiskHandler::create_keyspace(
-            &CreateKeyspace::new(false, statement.name.clone(), statement.options.clone()),
-            storage_addr,
-        )
     }
 
     /// Crea una nueva tabla en el caso que corresponda.
@@ -488,7 +473,8 @@ impl DiskHandler {
         }
     }
 
-    fn get_keyspace_replication(options: &[Options]) -> Result<Option<ReplicationStrategy>> {
+    /// Obtiene la estrategia de replicación de un keyspace.
+    pub fn get_keyspace_replication(options: &[Options]) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;
         while i < options.len() {
             match &options[i] {
