@@ -1,7 +1,9 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
 use std::{
-    fs::File, io::{BufRead, BufReader, Read, Result as IOResult, Write}, net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream}
+    fs::File,
+    io::{BufRead, BufReader, Read, Result as IOResult, Write},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
 };
 
 use crate::protocol::{
@@ -110,7 +112,10 @@ pub fn query_from_source(path: &str) -> Result<Vec<String>> {
     let file = match File::open(path) {
         Ok(f) => f,
         Err(file_err) => {
-            return Err(Error::ServerError(format!("Error abriendo el archivo:\n\n{}", file_err)));
+            return Err(Error::ServerError(format!(
+                "Error abriendo el archivo:\n\n{}",
+                file_err
+            )));
         }
     };
     let bufreader = BufReader::new(file);

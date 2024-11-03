@@ -109,7 +109,6 @@ impl NodesGraph {
         let _ = beater.join();
 
         // Corremos los scripts iniciales
-        
 
         self.wait();
         Ok(())

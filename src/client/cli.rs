@@ -121,7 +121,11 @@ impl Client {
                     }
 
                     match self.send_query(&input, &mut tcp_stream) {
-                        Ok(_) => (),
+                        Ok(res) => {
+                            if let ProtocolResult::QueryError(err) = res {
+                                println!("{}", err)
+                            }
+                        }
                         Err(e) => {
                             eprintln!("Error al enviar la query: {}", e);
                             match e {
@@ -130,13 +134,18 @@ impl Client {
                                         Ok(new_stream) => {
                                             let _ = new_stream.set_nonblocking(true);
                                             tcp_stream = new_stream;
-                                            if let Err(retry_err) =
-                                                self.send_query(&input, &mut tcp_stream)
-                                            {
-                                                eprintln!(
-                                                    "Error al reintentar la query: {}",
-                                                    retry_err
-                                                );
+                                            match self.send_query(&input, &mut tcp_stream) {
+                                                Err(retry_err) => {
+                                                    eprintln!(
+                                                        "Error al reintentar la query: {}",
+                                                        retry_err
+                                                    );
+                                                }
+                                                Ok(res) => {
+                                                    if let ProtocolResult::QueryError(err) = res {
+                                                        println!("{}", err)
+                                                    }
+                                                }
                                             }
                                         }
                                         Err(e) => {
