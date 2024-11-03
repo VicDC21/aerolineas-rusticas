@@ -1,8 +1,7 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
 use std::{
-    io::{Read, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    fs::File, io::{BufRead, BufReader, Read, Result as IOResult, Write}, net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream}
 };
 
 use crate::protocol::{
@@ -103,4 +102,23 @@ pub fn divide_range(start: u64, end: u64, n: usize) -> Vec<(u64, u64)> {
             (part_start, part_end)
         })
         .collect()
+}
+
+/// Detecta _queries_ desde un archivo.
+pub fn query_from_source(path: &str) -> Result<Vec<String>> {
+    let mut queries = Vec::<String>::new();
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(file_err) => {
+            return Err(Error::ServerError(format!("Error abriendo el archivo:\n\n{}", file_err)));
+        }
+    };
+    let bufreader = BufReader::new(file);
+
+    // Asumimos que cada línea es una query completa
+    for line in bufreader.lines().map_while(IOResult::ok) {
+        queries.push(line);
+    }
+
+    Ok(queries)
 }
