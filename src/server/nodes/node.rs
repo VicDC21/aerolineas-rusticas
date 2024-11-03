@@ -3,24 +3,47 @@
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
+    fmt,
     hash::{DefaultHasher, Hash, Hasher},
     io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     path::Path,
     sync::mpsc::{Receiver, Sender},
     thread::Builder,
+    vec::IntoIter,
 };
 
+use crate::parser::{
+    data_types::keyspace_name::KeyspaceName,
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable,
+            ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace,
+        },
+        dml_statement::{
+            dml_statement_parser::DmlStatement,
+            main_statements::{
+                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
+            },
+        },
+        statement::Statement,
+    },
+};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
+    headers::{
+        flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
+        version::Version,
+    },
+    messages::responses::result_kinds::ResultKind,
     traits::Byteable,
 };
 use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
     nodes::{
-        disk_handler::DiskHandler,
         graph::NodeHandle,
         port_type::PortType,
         states::{
@@ -30,40 +53,18 @@ use crate::server::{
                 HeartbeatState, {GenType, VerType},
             },
         },
-        utils::{guess_id, send_to_node},
+        utils::{
+            guess_id, hashmap_to_string, hashmap_vec_to_string, send_to_node, string_to_hashmap,
+            string_to_hashmap_vec,
+        },
     },
+    traits::Serializable,
     utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{
-    parser::statements::ddl_statement::alter_keyspace::AlterKeyspace,
-    protocol::headers::{
-        flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
-    },
-};
-use crate::{
-    parser::{
-        data_types::keyspace_name::KeyspaceName,
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::{
-                create_keyspace::CreateKeyspace, create_table::CreateTable,
-                ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace,
-            },
-            dml_statement::{
-                dml_statement_parser::DmlStatement,
-                main_statements::{
-                    delete::Delete, insert::Insert, select::select_operation::Select,
-                    update::Update,
-                },
-            },
-            statement::Statement,
-        },
-    },
-    protocol::{headers::msg_headers::Headers, messages::responses::result_kinds::ResultKind},
-};
 
 use super::{
+    disk_handler::DiskHandler,
     graph::{N_NODES, START_ID},
     keyspace::Keyspace,
     table::Table,
@@ -181,9 +182,9 @@ impl Node {
         }
     }
 
-    /// Consulta el ID del nodo.
-    fn get_id(&self) -> &NodeId {
-        &self.id
+    /// Obtiene una copia del ID del nodo.
+    pub fn get_id(&self) -> NodeId {
+        self.id
     }
 
     /// Consulta el estado del nodo.
@@ -192,7 +193,7 @@ impl Node {
     }
 
     /// Consulta los IDs de los vecinos, incluyendo el propio.
-    fn get_neighbours_ids(&self) -> Vec<NodeId> {
+    pub fn get_neighbours_ids(&self) -> Vec<NodeId> {
         self.neighbours_states.keys().copied().collect()
     }
 
@@ -227,12 +228,17 @@ impl Node {
     }
 
     /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
-    fn send_message(&mut self, bytes: Vec<Byte>, value: String, port_type: PortType) -> Result<()> {
+    pub fn send_message(
+        &mut self,
+        bytes: Vec<Byte>,
+        value: String,
+        port_type: PortType,
+    ) -> Result<()> {
         send_to_node(self.select_node(&value), bytes, port_type)
     }
 
     /// Manda un mensaje en bytes a todos los vecinos del nodo.
-    fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
+    pub fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
         for neighbour_id in self.get_neighbours_ids() {
             if neighbour_id == self.id {
                 continue;
@@ -243,7 +249,7 @@ impl Node {
     }
 
     /// Compara si el _heartbeat_ de un nodo es más nuevo que otro.
-    fn is_newer(&self, other: &Self) -> bool {
+    pub fn is_newer(&self, other: &Self) -> bool {
         self.endpoint_state.is_newer(&other.endpoint_state)
     }
 
@@ -314,7 +320,7 @@ impl Node {
     }
 
     /// Consulta si el nodo todavía esta booteando.
-    fn is_bootstraping(&self) -> bool {
+    pub fn is_bootstraping(&self) -> bool {
         matches!(
             self.endpoint_state.get_appstate().get_status(),
             AppStatus::Bootstrap
@@ -322,7 +328,7 @@ impl Node {
     }
 
     /// Consulta el estado de _heartbeat_.
-    fn get_beat(&mut self) -> (GenType, VerType) {
+    pub fn get_beat(&mut self) -> (GenType, VerType) {
         self.endpoint_state.get_heartbeat().as_tuple()
     }
 
@@ -546,6 +552,14 @@ impl Node {
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
+            }
+            SvAction::StoreMetadata => {
+                if let Err(e) = DiskHandler::store_node_metadata(self.id, &self.serialize()) {
+                    return Err(Error::ServerError(format!(
+                        "Error guardando metadata del nodo {}: {}",
+                        &self.id, e
+                    )));
+                }
             }
         };
         Ok(stop)
@@ -1584,5 +1598,94 @@ impl Node {
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.endpoint_state.eq(&other.endpoint_state)
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Se muestra en formato .csv
+        // id,default_keyspace,keyspaces,tables,tables_and_partitions_keys_values
+        writeln!(
+            f,
+            "{},{},{},{},{}",
+            self.id,
+            self.default_keyspace_name,
+            hashmap_to_string(&self.keyspaces),
+            hashmap_to_string(&self.tables),
+            hashmap_vec_to_string(&self.tables_and_partitions_keys_values),
+        )
+    }
+}
+
+impl Serializable for Node {
+    fn serialize(&self) -> Vec<u8> {
+        self.to_string().into_bytes()
+    }
+
+    fn deserialize(data: &[u8]) -> Result<Self> {
+        let line: String = String::from_utf8(data.to_vec())
+            .map_err(|_| Error::ServerError("No se pudieron deserializar los datos".to_string()))?;
+        let mut parameters: IntoIter<String> = line
+            .split(",")
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>()
+            .into_iter();
+
+        let id: u8 = parameters
+            .next()
+            .ok_or(Error::ServerError(
+                "No se pudo obtener el ID del nodo".to_string(),
+            ))?
+            .parse()
+            .map_err(|_| Error::ServerError("No se pudo parsear el ID del nodo".to_string()))?;
+
+        let default_keyspace_name: String = parameters
+            .next()
+            .ok_or(Error::ServerError(
+                "No se pudo obtener el keyspace por defecto del nodo".to_string(),
+            ))?
+            .parse()
+            .map_err(|_| {
+                Error::ServerError(
+                    "No se pudo parsear el keyspace por defecto del nodo".to_string(),
+                )
+            })?;
+
+        let keyspaces: String = parameters.next().ok_or(Error::ServerError(
+            "No se pudo obtener los keyspaces del nodo".to_string(),
+        ))?;
+        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|_| {
+            Error::ServerError("No se pudieron parsear los keyspaces del nodo".to_string())
+        })?;
+
+        let tables: String = parameters.next().ok_or(Error::ServerError(
+            "No se pudo obtener las tablas del nodo".to_string(),
+        ))?;
+        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|_| {
+            Error::ServerError("No se pudieron parsear las tablas del nodo".to_string())
+        })?;
+
+        let tables_and_partitions_keys_values: String =
+            parameters.next().ok_or(Error::ServerError(
+                "No se pudo obtener las tablas y sus particiones del nodo".to_string(),
+            ))?;
+        let tables_and_partitions_keys_values: HashMap<String, Vec<String>> =
+            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|_| {
+                Error::ServerError(
+                    "No se pudieron parsear las tablas y sus particiones del nodo".to_string(),
+                )
+            })?;
+
+        Ok(Node {
+            id,
+            neighbours_states: HashMap::new(),
+            endpoint_state: EndpointState::with_id(id),
+            storage_addr: DiskHandler::get_node_storage(id),
+            default_keyspace_name,
+            keyspaces,
+            tables,
+            nodes_ranges: divide_range(0, 18446744073709551615, N_NODES as usize),
+            tables_and_partitions_keys_values,
+        })
     }
 }

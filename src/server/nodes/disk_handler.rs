@@ -1,44 +1,42 @@
 //! Módulo para manejo del almacenamiento en disco.
 
+use crate::parser::{
+    assignment::Assignment,
+    data_types::{constant::Constant, term::Term},
+    primary_key::PrimaryKey,
+    statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+        },
+        dml_statement::{
+            if_condition::{Condition, IfCondition},
+            main_statements::{
+                delete::Delete,
+                insert::Insert,
+                select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
+                update::Update,
+            },
+            r#where::{operator::Operator, where_parser::Where},
+        },
+    },
+};
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    messages::responses::result::col_type::ColType,
+    traits::Byteable,
+    utils::encode_string_to_bytes,
+};
+use crate::server::nodes::{graph::NODES_PATH, node::NodeId};
+
 use std::{
     fs::{create_dir, OpenOptions},
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::Path,
+    str::FromStr,
 };
 
 use super::{keyspace::Keyspace, replication_strategy::ReplicationStrategy, table::Table};
-use crate::{
-    parser::{
-        assignment::Assignment,
-        data_types::{constant::Constant, term::Term},
-        primary_key::PrimaryKey,
-        statements::{
-            ddl_statement::{
-                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
-            },
-            dml_statement::{
-                if_condition::{Condition, IfCondition},
-                main_statements::{
-                    delete::Delete,
-                    insert::Insert,
-                    select::{
-                        order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
-                    },
-                    update::Update,
-                },
-                r#where::{operator::Operator, where_parser::Where},
-            },
-        },
-    },
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        messages::responses::result::col_type::ColType,
-        traits::Byteable,
-        utils::encode_string_to_bytes,
-    },
-    server::nodes::node::NodeId,
-};
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
@@ -52,6 +50,64 @@ impl DiskHandler {
         let storage_addr: String = format!("{}/storage_node_{}", main_path, id);
         DiskHandler::create_directory(&storage_addr);
         storage_addr
+    }
+
+    /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
+    pub fn get_node_storage(id: NodeId) -> String {
+        format!("storage/storage_node_{}", id)
+    }
+
+    /// Almacena los metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
+    pub fn store_node_metadata(id: NodeId, metadata: &[u8]) -> Result<()> {
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .read(true)
+            .open(NODES_PATH)
+            .map_err(|e| {
+                Error::ServerError(format!("Error abriendo el archivo de metadata: {}", e))
+            })?;
+        let mut reader = BufReader::new(&file);
+
+        let mut id_exists = false;
+        let mut buf = Vec::new();
+        let mut pos = 0;
+        // Leo línea por línea y verifico si el ID del nodo ya existe
+        while let Some(Ok(line)) = reader.by_ref().lines().next() {
+            if line.starts_with(&id.to_string()) {
+                id_exists = true;
+                break;
+            }
+            pos += line.len() + 1; // Actualizo la posicion a sobreescribir si existe el ID
+            buf.push(line);
+        }
+
+        // Abro el archivo nuevamente para escribir
+        let mut writer = OpenOptions::new()
+            .write(true)
+            .open(NODES_PATH)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        if id_exists {
+            // Si el ID ya existia, sobrescribo la linea
+            writer
+                .seek(SeekFrom::Start(pos as u64))
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+            writer
+                .write_all(metadata)
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+        } else {
+            // Si no existia el ID, escribo al final del archivo
+            writer
+                .seek(SeekFrom::End(0))
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+            writer
+                .write_all(metadata)
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+        }
+
+        Ok(())
     }
 
     /// Crea un nuevo keyspace en el caso que corresponda.
@@ -630,9 +686,9 @@ impl DiskHandler {
     ) -> Result<()> {
         for (key, order) in clustering_order {
             if let Some(j) = clustering_keys_and_order.iter().position(|(k, _)| k == key) {
-                let order = match ProtocolOrdering::ordering_from_str(order) {
-                    Some(order) => order,
-                    None => {
+                let order = match ProtocolOrdering::from_str(order) {
+                    Ok(order) => order,
+                    Err(_) => {
                         return Err(Error::Invalid(format!(
                             "La dirección de ordenación {} no es válida",
                             order
@@ -945,5 +1001,123 @@ impl RowOperations {
         };
 
         Ok(passes_conditions)
+    }
+}
+
+/// Estructura común para manejar paths
+pub struct TablePath {
+    /// Dirección del storage
+    pub storage_addr: String,
+    /// Keyspace de la tabla
+    pub keyspace: String,
+    /// Nombre de la tabla
+    pub table_name: String,
+}
+
+impl TablePath {
+    /// Crea una nueva instancia de `TablePath`.
+    pub fn new(
+        storage_addr: &str,
+        keyspace: Option<String>,
+        table_name: &str,
+        default_keyspace: &str,
+    ) -> Self {
+        let keyspace = keyspace.unwrap_or_else(|| default_keyspace.to_string());
+        Self {
+            storage_addr: storage_addr.to_string(),
+            keyspace,
+            table_name: table_name.to_string(),
+        }
+    }
+
+    /// Devuelve el path completo de la tabla.
+    pub fn full_path(&self) -> String {
+        format!(
+            "{}/{}/{}.csv",
+            self.storage_addr, self.keyspace, self.table_name
+        )
+    }
+}
+
+/// Estructura para manejar operaciones comunes sobre tablas
+pub struct TableOperations {
+    /// Ruta de la tabla
+    pub path: TablePath,
+    /// Columnas de la tabla
+    pub columns: Vec<String>,
+}
+
+impl TableOperations {
+    /// Crea una nueva instancia de `TableOperations`.
+    pub fn new(path: TablePath) -> Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(path.full_path())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let mut reader = BufReader::new(&file);
+        let mut header = String::new();
+        reader
+            .read_line(&mut header)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        if header.trim().is_empty() {
+            return Err(Error::ServerError(format!(
+                "No se pudo leer la tabla con ruta {}",
+                path.full_path()
+            )));
+        }
+
+        let columns = header.trim().split(',').map(|s| s.to_string()).collect();
+
+        Ok(Self { path, columns })
+    }
+
+    /// Valida que las columnas existan en la tabla.
+    pub fn validate_columns(&self, columns: &[String]) -> Result<()> {
+        for col in columns {
+            if !self.columns.contains(col) {
+                return Err(Error::ServerError(format!(
+                    "La tabla con ruta {} no contiene la columna {}",
+                    self.path.full_path(),
+                    col
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Lee las filas de la tabla.
+    pub fn read_rows(&self) -> Result<Vec<Vec<String>>> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(self.path.full_path())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let reader = BufReader::new(file);
+        let mut rows = Vec::new();
+
+        for line in reader.lines().skip(1) {
+            let line = line.map_err(|e| Error::ServerError(e.to_string()))?;
+            if !line.trim().is_empty() {
+                rows.push(line.trim().split(',').map(|s| s.to_string()).collect());
+            }
+        }
+
+        Ok(rows)
+    }
+
+    /// Escribe las filas en la tabla.
+    pub fn write_rows(&self, rows: &[Vec<String>]) -> Result<()> {
+        let mut content = self.columns.join(",");
+        content.push('\n');
+
+        for row in rows {
+            content.push_str(&row.join(","));
+            content.push('\n');
+        }
+
+        std::fs::write(self.path.full_path(), content)
+            .map_err(|e| Error::ServerError(e.to_string()))
     }
 }
