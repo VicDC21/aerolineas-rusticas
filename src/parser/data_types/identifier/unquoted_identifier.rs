@@ -1,6 +1,6 @@
 /// re('[a-zA-Z][link:[a-zA-Z0-9]]*')
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct UnquotedIdentifier {
     text: String,
 }

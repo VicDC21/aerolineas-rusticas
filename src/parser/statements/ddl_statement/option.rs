@@ -9,7 +9,7 @@ use crate::{
 /// option::= identifier '=' ( identifier
 ///     | constant
 ///     | map_literal )
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Options {
     /// Representa un identificador.
     /// Ejemplo: `keyspace_name = 'keyspace'`

@@ -11,9 +11,6 @@ use std::{
     thread::Builder,
 };
 
-use crate::protocol::headers::{
-    flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
-};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -38,6 +35,12 @@ use crate::server::{
     utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
+use crate::{
+    parser::statements::ddl_statement::alter_keyspace::AlterKeyspace,
+    protocol::headers::{
+        flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+    },
+};
 use crate::{
     parser::{
         data_types::keyspace_name::KeyspaceName,
@@ -146,6 +149,15 @@ impl Node {
     fn add_keyspace(&mut self, keyspace: Keyspace) {
         self.keyspaces
             .insert(keyspace.get_name().to_string(), keyspace);
+    }
+
+    fn drop_keyspace(&mut self, keyspace_name: &str) -> Result<()> {
+        match self.keyspaces.remove(keyspace_name) {
+            Some(_) => Ok(()),
+            None => Err(Error::ServerError(
+                "El keyspace solicitado no existe".to_string(),
+            )),
+        }
     }
 
     fn get_keyspace(&self, table_name: &str) -> Result<&Keyspace> {
@@ -669,7 +681,9 @@ impl Node {
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
                 self.process_internal_create_keyspace_statement(&create_keyspace)
             }
-            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => todo!(),
+            DdlStatement::AlterKeyspaceStatement(alter_keyspace) => {
+                self.process_internal_alter_keyspace_statement(&alter_keyspace)
+            }
             DdlStatement::DropKeyspaceStatement(_drop_keyspace) => todo!(),
             DdlStatement::CreateTableStatement(create_table) => {
                 self.process_internal_create_table_statement(&create_table)
@@ -678,6 +692,12 @@ impl Node {
             DdlStatement::DropTableStatement(_drop_table) => todo!(),
             DdlStatement::TruncateStatement(_truncate) => todo!(),
         }
+    }
+
+    fn check_if_keyspace_exists(&self, keyspace_name: &KeyspaceName) -> bool {
+        let keyspace_addr = format!("{}/{}", self.storage_addr, keyspace_name.get_name());
+        let path_folder = Path::new(&keyspace_addr);
+        path_folder.exists() && path_folder.is_dir()
     }
 
     fn process_use_statement(
@@ -722,24 +742,6 @@ impl Node {
         }
     }
 
-    fn check_if_keyspace_exists(&self, keyspace_name: &KeyspaceName) -> bool {
-        let keyspace_addr = format!("{}/{}", self.storage_addr, keyspace_name.get_name());
-        let path_folder = Path::new(&keyspace_addr);
-        path_folder.exists() && path_folder.is_dir()
-    }
-
-    fn process_internal_create_keyspace_statement(
-        &mut self,
-        create_keyspace: &CreateKeyspace,
-    ) -> Result<Vec<u8>> {
-        match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
-            Ok(Some(keyspace)) => self.add_keyspace(keyspace),
-            Ok(None) => return Ok(self.create_result_void()),
-            Err(err) => return Err(err),
-        };
-        Ok(self.create_result_void())
-    }
-
     fn process_create_keyspace_statement(
         &mut self,
         create_keyspace: CreateKeyspace,
@@ -764,6 +766,59 @@ impl Node {
             }
         }
         Ok(response)
+    }
+
+    fn process_internal_create_keyspace_statement(
+        &mut self,
+        create_keyspace: &CreateKeyspace,
+    ) -> Result<Vec<u8>> {
+        match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
+            Ok(Some(keyspace)) => self.add_keyspace(keyspace),
+            Ok(None) => return Ok(self.create_result_void()),
+            Err(err) => return Err(err),
+        };
+        Ok(self.create_result_void())
+    }
+
+    fn process_alter_statement(
+        &mut self,
+        alter_keyspace: AlterKeyspace,
+        request: &[Byte],
+    ) -> Result<Vec<u8>> {
+        let mut response: Vec<Byte> = Vec::new();
+        for actual_node in 0..5 {
+            let node_id = self.next_node_to_replicate_data(
+                self.id,
+                actual_node as u8,
+                START_ID,
+                START_ID + N_NODES,
+            );
+            response = if node_id != self.id {
+                self.send_message_and_wait_response(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    node_id,
+                    PortType::Priv,
+                )?
+            } else {
+                self.process_internal_alter_keyspace_statement(&alter_keyspace)?
+            }
+        }
+        Ok(response)
+    }
+
+    fn process_internal_alter_keyspace_statement(
+        &mut self,
+        alter_keyspace: &AlterKeyspace,
+    ) -> Result<Vec<u8>> {
+        match DiskHandler::alter_keyspace(alter_keyspace, &self.storage_addr) {
+            Ok(Some(keyspace)) => {
+                self.drop_keyspace(keyspace.get_name())?;
+                self.add_keyspace(keyspace)
+            }
+            Ok(None) => return Ok(self.create_result_void()),
+            Err(err) => return Err(err),
+        };
+        Ok(self.create_result_void())
     }
 
     fn create_result_void(&mut self) -> Vec<Byte> {
@@ -904,8 +959,8 @@ impl Node {
             DdlStatement::CreateKeyspaceStatement(create_keyspace) => {
                 self.process_create_keyspace_statement(create_keyspace, request)
             }
-            DdlStatement::AlterKeyspaceStatement(_alter_keyspace) => {
-                todo!()
+            DdlStatement::AlterKeyspaceStatement(alter_keyspace) => {
+                self.process_alter_statement(alter_keyspace, request)
             }
             DdlStatement::DropKeyspaceStatement(_drop_keyspace) => {
                 todo!()

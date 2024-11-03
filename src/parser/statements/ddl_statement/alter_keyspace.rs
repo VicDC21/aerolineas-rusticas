@@ -5,7 +5,7 @@ use super::option::Options;
 /// alter_keyspace_statement::= ALTER KEYSPACE [ IF EXISTS ] keyspace_name
 /// WITH options
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AlterKeyspace {
     /// Indica si se debe verificar la existencia del keyspace.
     pub if_exists: bool,
@@ -23,5 +23,10 @@ impl AlterKeyspace {
             name,
             options,
         }
+    }
+
+    /// Devuelve las opciones del keyspace.
+    pub fn get_options(&self) -> &Vec<Options> {
+        &self.options
     }
 }

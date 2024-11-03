@@ -14,7 +14,8 @@ use crate::{
         primary_key::PrimaryKey,
         statements::{
             ddl_statement::{
-                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+                create_table::CreateTable, option::Options,
             },
             dml_statement::{
                 if_condition::{Condition, IfCondition},
@@ -85,6 +86,20 @@ impl DiskHandler {
         }
     }
 
+    /// Modifica propiedades del keyspace en el caso que corresponda.
+    pub fn alter_keyspace(
+        statement: &AlterKeyspace,
+        storage_addr: &str,
+    ) -> Result<Option<Keyspace>> {
+        if !statement.if_exists {
+            return Ok(None);
+        }
+        DiskHandler::create_keyspace(
+            &CreateKeyspace::new(false, statement.name.clone(), statement.options.clone()),
+            storage_addr,
+        )
+    }
+
     /// Crea una nueva tabla en el caso que corresponda.
     pub fn create_table(
         statement: &CreateTable,
@@ -120,8 +135,14 @@ impl DiskHandler {
         table: &Table,
         default_keyspace: &str,
     ) -> Result<Vec<String>> {
-        let table_ops =
-            DiskHandler::initialize_table_operations(storage_addr, statement, default_keyspace)?;
+        let path = TablePath::new(
+            storage_addr,
+            statement.table.get_keyspace(),
+            &statement.table.get_name(),
+            default_keyspace,
+        );
+
+        let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
 
         let mut rows = table_ops.read_rows()?;
@@ -252,9 +273,7 @@ impl DiskHandler {
         }
 
         if should_write {
-            let order_by = Self::get_table_ordering(table);
-            order_by.order(&mut modified_rows, &table_ops.columns);
-            table_ops.write_rows(&modified_rows)?;
+            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
         }
 
         Ok(updated_rows.iter().map(|row| row.join(",")).collect())
@@ -290,27 +309,11 @@ impl DiskHandler {
         let (modified_rows, deleted_data) = result;
 
         if !deleted_data.is_empty() || modified_rows.is_empty() {
-            let order_by = DiskHandler::get_table_ordering(table);
             let mut rows_to_write = modified_rows.clone();
-            order_by.order(&mut rows_to_write, &table_ops.columns);
-            table_ops.write_rows(&rows_to_write)?;
+            DiskHandler::order_and_save_rows(&table_ops, &mut rows_to_write, table)?;
         }
 
         Ok(deleted_data)
-    }
-
-    fn initialize_table_operations(
-        storage_addr: &str,
-        statement: &Insert,
-        default_keyspace: &str,
-    ) -> Result<TableOperations> {
-        let path = TablePath::new(
-            storage_addr,
-            statement.table.get_keyspace(),
-            &statement.table.get_name(),
-            default_keyspace,
-        );
-        TableOperations::new(path)
     }
 
     fn find_existing_row(rows: &[Vec<String>], values: &[String]) -> Option<usize> {

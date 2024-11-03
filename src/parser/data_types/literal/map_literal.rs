@@ -8,7 +8,7 @@ use super::super::term::Term;
 #[allow(dead_code)]
 /// TODO: Desc básica
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct MapLiteral {
     /// TODO: Desc básica
     pub values: Vec<(Term, Term)>,
