@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS vuelos (orig TEXT, dest TEXT, take_off TIMESTAMP);

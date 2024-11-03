@@ -108,6 +108,9 @@ impl NodesGraph {
         let _ = beat_stopper.send(true);
         let _ = beater.join();
 
+        // Corremos los scripts iniciales
+        
+
         self.wait();
         Ok(())
     }
