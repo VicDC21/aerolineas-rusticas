@@ -836,12 +836,21 @@ impl Node {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
-        DiskHandler::do_select(
+        let mut res = DiskHandler::do_select(
             select,
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
-        )
+        )?;
+        let mut response: Vec<Byte> = Vec::new();
+        response.append(&mut Version::ResponseV5.as_bytes());
+        response.append(&mut Flag::Default.as_bytes());
+        response.append(&mut Stream::new(0).as_bytes());
+        response.append(&mut Opcode::Result.as_bytes());
+        response.append(&mut Length::new(res.len() as u32).as_bytes());
+        response.append(&mut res);
+        Ok(response)
+
     }
 
     fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>> {
@@ -1039,7 +1048,7 @@ impl Node {
         min: u8,
         max: u8,
     ) -> u8 {
-        let nodes_range = max - min + 1;
+        let nodes_range = max - min;
         min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
     }
 
@@ -1060,7 +1069,7 @@ impl Node {
                     let res = self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
-                        PortType::Priv,
+                        PortType::Priv, 
                     )?;
                     match Opcode::try_from(res[4])? {
                         Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
