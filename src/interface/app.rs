@@ -62,6 +62,9 @@ pub struct AerolineasApp {
 
     /// Los vuelos actualmente en memoria.
     current_flights: Arc<Vec<Flight>>,
+
+    /// Decide si mostrar ciertos detalles o no.
+    show_details: bool,
 }
 
 impl AerolineasApp {
@@ -85,6 +88,7 @@ impl AerolineasApp {
             extra_airport: None,
             datetime: Local::now(),
             current_flights: Arc::new(Vec::new()),
+            show_details: false,
         }
     }
 }
@@ -168,10 +172,11 @@ impl App for AerolineasApp {
         if let Some(valid_time) = clock_selector(ctx, &mut self.datetime) {
             self.datetime = valid_time;
         }
-        cur_airport_info(
+        self.show_details = cur_airport_info(
             ctx,
             &self.selected_airport,
             Arc::clone(&self.current_flights),
+            &self.show_details,
         );
         extra_airport_info(
             ctx,

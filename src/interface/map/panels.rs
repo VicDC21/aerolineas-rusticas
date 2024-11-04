@@ -11,7 +11,14 @@ use crate::{
 };
 
 /// Muestra por un panel lateral los detalles del aeropuerto actualmente seleccionado.
-pub fn cur_airport_info(ctx: &Context, cur_airport: &Option<Airport>, flights: Arc<Vec<Flight>>) {
+pub fn cur_airport_info(
+    ctx: &Context,
+    cur_airport: &Option<Airport>,
+    flights: Arc<Vec<Flight>>,
+    show_details: &bool,
+) -> bool {
+    let mut must_show = *show_details;
+
     let panel_frame = Frame {
         fill: Color32::from_rgba_unmultiplied(66, 66, 66, 200),
         inner_margin: Margin::ZERO,
@@ -27,8 +34,7 @@ pub fn cur_airport_info(ctx: &Context, cur_airport: &Option<Airport>, flights: A
         ui.separator();
 
         let button = Button::new(RichText::new("Mostrar Vuelos").heading());
-        if ui.add(button).clicked() {
-            println!("Mostrando vuelos...");
+        if *show_details {
             ScrollArea::vertical()
                 .max_height(50.0)
                 .show(ui, |scroll_ui| {
@@ -41,11 +47,21 @@ pub fn cur_airport_info(ctx: &Context, cur_airport: &Option<Airport>, flights: A
                             "Id: {}\nOrigen: {}\nDestino: {}\nFecha: {}\n\n",
                             flight.id, flight.orig, flight.dest, potential_date,
                         );
-                        scroll_ui.label(RichText::new(info).italics());
+                        scroll_ui.label(RichText::new(info).italics().color(Color32::from_rgb(255, 255, 255)));
                     }
                 });
         }
+        if ui.add(button).clicked() {
+            if *show_details {
+                println!("Mostrando vuelos...");
+                must_show = false;
+            } else {
+                println!("Ocultando vuelos...");
+                must_show = true;
+            }
+        }
     });
+    must_show
 }
 
 /// Muestra por un panel lateral los detalles del aeropuerto extra.

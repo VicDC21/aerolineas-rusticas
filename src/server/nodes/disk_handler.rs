@@ -794,7 +794,6 @@ impl DiskHandler {
                 }
             }
         }
-        new_row.push("\n".to_string());
         new_row
     }
 

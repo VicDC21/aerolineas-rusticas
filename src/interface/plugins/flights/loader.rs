@@ -145,9 +145,9 @@ impl FlightsLoader {
         let mut tcp_stream = client.connect()?;
         let protocol_result = client.send_query(
             format!(
-                "SELECT * FROM vuelos WHERE timestamp < {} AND timestamp > {};",
-                timestamp + (DAY_IN_SECONDS / 2),
-                timestamp - (DAY_IN_SECONDS / 2),
+                "SELECT * FROM vuelos;", // WHERE timestamp < {} AND timestamp > {};",
+                                         // timestamp + (DAY_IN_SECONDS / 2),
+                                         // timestamp - (DAY_IN_SECONDS / 2),
             )
             .as_str(),
             &mut tcp_stream,
@@ -166,12 +166,14 @@ impl FlightsLoader {
                     // 2. Destino.
                     if let ColData::String(dest) = &row[1] {
                         // 3. Fecha.
-                        if let ColData::Timestamp(timestamp) = &row[2] {
+                        if let ColData::String(timestamp) = &row[2] {
+                            let id = timestamp.parse::<i32>().unwrap_or(0);
+                            let true_timestamp = timestamp.parse::<Long>().unwrap_or(0);
                             flights.push(Flight::new(
-                                *timestamp as i32,
+                                id,
                                 orig.to_string(),
                                 dest.to_string(),
-                                *timestamp,
+                                true_timestamp,
                             ));
                         }
                     }
