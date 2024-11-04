@@ -20,3 +20,4 @@ Cargo.lock
 
 # Storage in nodes
 storage/
+nodes.csv

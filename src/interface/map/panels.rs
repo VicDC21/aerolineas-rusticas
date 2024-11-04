@@ -5,7 +5,7 @@ use std::sync::Arc;
 use eframe::egui::{Button, Color32, Context, Frame, Margin, RichText, ScrollArea, SidePanel, Ui};
 
 use crate::{
-    client::cli::Client,
+    client::{cli::Client, protocol_result::ProtocolResult},
     data::{airports::Airport, flights::Flight},
     protocol::aliases::{results::Result, types::Long},
 };
@@ -129,14 +129,18 @@ fn insert_flight(
     ex_airport: &Airport,
 ) -> Result<()> {
     let mut tcp_stream = client.connect()?;
-    let _protocol_result = client.send_query(
+    let protocol_result = client.send_query(
         format!(
-            "INSERT INTO flights (orig, dest, take_off) VALUES ('{}', '{}', {})",
+            "INSERT INTO vuelos (orig, dest, take_off) VALUES ('{}', '{}', {});",
             cur_airport.ident, ex_airport.ident, timestamp
         )
         .as_str(),
         &mut tcp_stream,
     )?;
+
+    if let ProtocolResult::QueryError(err) = protocol_result {
+        println!("{}", err);
+    }
 
     Ok(())
 }

@@ -263,7 +263,6 @@ impl Client {
                 "No se cumple el protocolo del header".to_string(),
             ));
         };
-        println!("Server response: {:?}", request);
         let _version = Version::try_from(request[0])?;
         let _flags = Flag::try_from(request[1])?;
         let _stream = Stream::try_from(request[2..4].to_vec())?;

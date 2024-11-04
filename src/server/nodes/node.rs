@@ -18,8 +18,9 @@ use crate::parser::{
     main_parser::make_parse,
     statements::{
         ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable,
-            ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace,
+            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+            create_table::CreateTable, ddl_statement_parser::DdlStatement,
+            drop_keyspace::DropKeyspace,
         },
         dml_statement::{
             dml_statement_parser::DmlStatement,

@@ -1,1 +1,1 @@
-CREATE TABLE IF NOT EXISTS vuelos (orig TEXT, dest TEXT, take_off TIMESTAMP);
+CREATE TABLE IF NOT EXISTS vuelos (orig text, dest text, take_off timestamp, PRIMARY KEY (take_off));
