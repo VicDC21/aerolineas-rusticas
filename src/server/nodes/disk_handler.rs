@@ -211,7 +211,7 @@ impl DiskHandler {
         if !rows.contains(&new_row) {
             rows.push(new_row.clone());
             DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
-            return Ok(new_row)
+            return Ok(new_row);
         }
         Ok(Vec::new())
     }
