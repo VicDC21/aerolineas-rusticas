@@ -1,5 +1,4 @@
 //! Módulo para manejo del almacenamiento en disco.
-
 use crate::parser::{
     assignment::Assignment,
     data_types::{constant::Constant, term::Term},
@@ -30,6 +29,7 @@ use crate::protocol::{
 use crate::server::nodes::{graph::NODES_PATH, node::NodeId};
 
 use std::{
+    collections::HashMap,
     fs::{create_dir, OpenOptions},
     io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::Path,
@@ -210,7 +210,12 @@ impl DiskHandler {
         let mut rows = table_ops.read_rows()?;
         let values = statement.get_values();
 
-        if let Some(existing_row_position) = DiskHandler::find_existing_row(&rows, &values) {
+        if let Some(existing_row_position) = DiskHandler::find_existing_row(
+            &rows,
+            &values,
+            &table.partition_key,
+            &statement.get_columns_names(),
+        ) {
             if statement.if_not_exists {
                 return Ok(Vec::new());
             }
@@ -378,8 +383,34 @@ impl DiskHandler {
         Ok(deleted_data)
     }
 
-    fn find_existing_row(rows: &[Vec<String>], values: &[String]) -> Option<usize> {
-        rows.iter().position(|row| row[0] == values[0])
+    fn find_existing_row(
+        rows: &[Vec<String>],
+        values: &[String],
+        partition_key: &[String],
+        column_names: &[String],
+    ) -> Option<usize> {
+        let column_indices: HashMap<&String, usize> = column_names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| (name, i))
+            .collect();
+
+        let new_values: HashMap<&String, &String> = partition_key
+            .iter()
+            .filter_map(|key| column_indices.get(key).map(|&idx| (key, &values[idx])))
+            .collect();
+
+        rows.iter().position(|row| {
+            partition_key.iter().all(|key| {
+                if let (Some(&value_idx), Some(new_value)) =
+                    (column_indices.get(key), new_values.get(key))
+                {
+                    &row[value_idx] == *new_value
+                } else {
+                    false
+                }
+            })
+        })
     }
 
     fn generate_row_values(
