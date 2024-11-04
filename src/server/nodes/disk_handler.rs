@@ -1,5 +1,4 @@
 //! Módulo para manejo del almacenamiento en disco.
-
 use crate::parser::{
     assignment::Assignment,
     data_types::{constant::Constant, term::Term},
@@ -206,24 +205,15 @@ impl DiskHandler {
 
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
-
         let mut rows = table_ops.read_rows()?;
         let values = statement.get_values();
-
-        if let Some(existing_row_position) = DiskHandler::find_existing_row(&rows, &values) {
-            if statement.if_not_exists {
-                return Ok(Vec::new());
-            }
-
-            let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
-            rows[existing_row_position] = new_row.clone();
+        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
+        if !rows.contains(&new_row) {
+            rows.push(new_row.clone());
             DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
             return Ok(new_row);
         }
-        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
-        rows.push(new_row.clone());
-        DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
-        Ok(new_row)
+        Ok(Vec::new())
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
@@ -376,10 +366,6 @@ impl DiskHandler {
         }
 
         Ok(deleted_data)
-    }
-
-    fn find_existing_row(rows: &[Vec<String>], values: &[String]) -> Option<usize> {
-        rows.iter().position(|row| row[0] == values[0])
     }
 
     fn generate_row_values(
