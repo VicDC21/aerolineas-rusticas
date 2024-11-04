@@ -1430,7 +1430,7 @@ impl Node {
 
     fn get_columns_metadata_length(&self, results_from_another_nodes: &mut [u8]) -> usize {
         let mut total_length_from_metadata: usize = 13;
-        let column_quantity = &results_from_another_nodes[13..17];
+        let column_quantity = &results_from_another_nodes[17..21];
         let column_quantity = i32::from_be_bytes([
             column_quantity[0],
             column_quantity[1],

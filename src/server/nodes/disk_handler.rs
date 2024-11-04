@@ -749,11 +749,10 @@ impl DiskHandler {
         metadata.append(&mut flags.to_be_bytes().to_vec());
 
         if query_cols[0] == "*" {
-            metadata.append(&mut table_cols.len().to_be_bytes().to_vec())
+            metadata.append(&mut (table_cols.len() as i32).to_be_bytes().to_vec())
         } else {
-            metadata.append(&mut query_cols.len().to_be_bytes().to_vec())
+            metadata.append(&mut (query_cols.len() as i32).to_be_bytes().to_vec())
         }
-
         let cols_name_and_type = table.get_columns_name_and_data_type();
         for (col_name, data_type) in cols_name_and_type {
             let col_type = ColType::from(data_type);
@@ -774,7 +773,6 @@ impl DiskHandler {
         res.append(&mut metadata);
         res.append(&mut rows_count.to_be_bytes().to_vec());
         res.append(&mut rows_content);
-
         res
     }
 
