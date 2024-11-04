@@ -106,11 +106,11 @@ impl NodesGraph {
         self.handlers.extend(nodes);
 
         // Paramos los handlers especiales primero
-        let _ = beater.join();
         let _ = beat_stopper.send(true);
+        let _ = beater.join();
 
-        let _ = gossiper.join();
         let _ = gossip_stopper.send(true);
+        let _ = gossiper.join();
 
         // Corremos los scripts iniciales
 

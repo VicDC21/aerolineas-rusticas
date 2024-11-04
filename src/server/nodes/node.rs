@@ -1135,7 +1135,9 @@ impl Node {
                     node_to_replicate,
                     PortType::Priv,
                 )?;
-                match self.check_if_has_new_partition_value(&insert, self.get_table(&table_name)?)? {
+                match self
+                    .check_if_has_new_partition_value(&insert, self.get_table(&table_name)?)?
+                {
                     Some(new_partition_values) => self
                         .tables_and_partitions_keys_values
                         .insert(insert.table.get_name().to_string(), new_partition_values),
@@ -1406,13 +1408,11 @@ impl Node {
         let total_length_from_metadata =
             self.get_columns_metadata_length(&mut result_from_actual_node);
 
-        let new_size_without_metadata = size.len + new_size.len - (total_length_from_metadata as u32);
+        let new_size_without_metadata =
+            size.len + new_size.len - (total_length_from_metadata as u32);
         results_from_another_nodes[5..9].copy_from_slice(&new_size_without_metadata.to_be_bytes());
-        let mut new_res =
-        result_from_actual_node[total_length_from_metadata..].to_vec();
+        let mut new_res = result_from_actual_node[total_length_from_metadata..].to_vec();
         results_from_another_nodes.append(&mut new_res);
-
-
 
         // No funciona, las filas no son un string largo, el formato es [largo del string][string], entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
         // let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
