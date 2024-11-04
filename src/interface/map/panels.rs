@@ -47,7 +47,11 @@ pub fn cur_airport_info(
                             "Id: {}\nOrigen: {}\nDestino: {}\nFecha: {}\n\n",
                             flight.id, flight.orig, flight.dest, potential_date,
                         );
-                        scroll_ui.label(RichText::new(info).italics().color(Color32::from_rgb(255, 255, 255)));
+                        scroll_ui.label(
+                            RichText::new(info)
+                                .italics()
+                                .color(Color32::from_rgb(255, 255, 255)),
+                        );
                     }
                 });
         }
