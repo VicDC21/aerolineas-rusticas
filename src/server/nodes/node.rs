@@ -1015,6 +1015,7 @@ impl Node {
                 }
             };
         let insert_columns = insert.get_columns_names();
+        let insert_column_values = insert.get_values();
 
         let position = match insert_columns
             .iter()
@@ -1023,8 +1024,8 @@ impl Node {
             Some(position) => position,
             None => return Ok(None),
         };
-        if !partition_values.contains(&insert_columns[position]) {
-            partition_values.push(insert_columns[position].clone());
+        if !partition_values.contains(&insert_column_values[position]) {
+            partition_values.push(insert_column_values[position].clone());
             return Ok(Some(partition_values));
         };
         Ok(None)
@@ -1115,11 +1116,18 @@ impl Node {
             let node_to_replicate =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
             response = if node_to_replicate != self.id {
-                self.send_message_and_wait_response(
+                let res = self.send_message_and_wait_response(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_to_replicate,
                     PortType::Priv,
-                )?
+                )?;
+                match self.check_if_has_new_partition_value(&insert, self.get_table(&table_name)?)? {
+                    Some(new_partition_values) => self
+                        .tables_and_partitions_keys_values
+                        .insert(insert.table.get_name().to_string(), new_partition_values),
+                    None => None,
+                };
+                res
             } else {
                 self.process_insert(&insert)?
             }
@@ -1238,10 +1246,10 @@ impl Node {
     fn select_with_other_nodes(&mut self, select: Select, request: &[Byte]) -> Result<Vec<Byte>> {
         let mut results_from_another_nodes: Vec<u8> = Vec::new();
         let partitions_keys_to_nodes = self.get_partition_keys_values(&select.from.get_name())?;
-        let mut consulted_nodes: Vec<String> = Vec::new();
+        let mut consulted_nodes: Vec<u8> = Vec::new();
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(partition_key_value);
-            if !consulted_nodes.contains(partition_key_value) {
+            if !consulted_nodes.contains(&node_id) {
                 if node_id == self.id {
                     self.handle_result_from_node(
                         &mut results_from_another_nodes,
@@ -1267,7 +1275,7 @@ impl Node {
                             ))
                         }
                     };
-                    consulted_nodes.push(partition_key_value.to_string());
+                    consulted_nodes.push(node_id);
                 }
             }
         }
