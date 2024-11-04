@@ -29,7 +29,6 @@ use crate::protocol::{
 use crate::server::nodes::{graph::NODES_PATH, node::NodeId};
 
 use std::{
-    collections::HashMap,
     fs::{create_dir, OpenOptions},
     io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
     path::Path,
@@ -206,29 +205,15 @@ impl DiskHandler {
 
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
-
         let mut rows = table_ops.read_rows()?;
         let values = statement.get_values();
-
-        if let Some(existing_row_position) = DiskHandler::find_existing_row(
-            &rows,
-            &values,
-            &table.partition_key,
-            &statement.get_columns_names(),
-        ) {
-            if statement.if_not_exists {
-                return Ok(Vec::new());
-            }
-
-            let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
-            rows[existing_row_position] = new_row.clone();
-            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
-            return Ok(new_row);
-        }
         let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
-        rows.push(new_row.clone());
-        DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
-        Ok(new_row)
+        if !rows.contains(&new_row) {
+            rows.push(new_row.clone());
+            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
+            return Ok(new_row)
+        }
+        Ok(Vec::new())
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
@@ -381,36 +366,6 @@ impl DiskHandler {
         }
 
         Ok(deleted_data)
-    }
-
-    fn find_existing_row(
-        rows: &[Vec<String>],
-        values: &[String],
-        partition_key: &[String],
-        column_names: &[String],
-    ) -> Option<usize> {
-        let column_indices: HashMap<&String, usize> = column_names
-            .iter()
-            .enumerate()
-            .map(|(i, name)| (name, i))
-            .collect();
-
-        let new_values: HashMap<&String, &String> = partition_key
-            .iter()
-            .filter_map(|key| column_indices.get(key).map(|&idx| (key, &values[idx])))
-            .collect();
-
-        rows.iter().position(|row| {
-            partition_key.iter().all(|key| {
-                if let (Some(&value_idx), Some(new_value)) =
-                    (column_indices.get(key), new_values.get(key))
-                {
-                    &row[value_idx] == *new_value
-                } else {
-                    false
-                }
-            })
-        })
     }
 
     fn generate_row_values(
