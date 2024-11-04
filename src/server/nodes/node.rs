@@ -998,7 +998,6 @@ impl Node {
         };
         Ok(self.create_result_void())
     }
-
     fn check_if_has_new_partition_value(
         &self,
         insert: &Insert,
@@ -1386,30 +1385,36 @@ impl Node {
             results_from_another_nodes.append(&mut result_from_actual_node);
             return Ok(());
         }
-        let size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
+        let size = Length::try_from(results_from_another_nodes[5..9].to_vec())?;
+        let new_size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
 
         let total_length_from_metadata =
-            self.get_columns_metadata_length(results_from_another_nodes);
+            self.get_columns_metadata_length(&mut result_from_actual_node);
 
+        let new_size_without_metadata = size.len + new_size.len - (total_length_from_metadata as u32);
+        results_from_another_nodes[5..9].copy_from_slice(&new_size_without_metadata.to_be_bytes());
         let mut new_res =
-            results_from_another_nodes[total_length_from_metadata..size.len as usize].to_vec();
+        result_from_actual_node[total_length_from_metadata..].to_vec();
         results_from_another_nodes.append(&mut new_res);
 
-        let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
-            results_from_another_nodes,
-            total_length_from_metadata,
-            select,
-        )?;
+
+
+        // No funciona, las filas no son un string largo, el formato es [largo del string][string], entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
+        // let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
+        //     results_from_another_nodes,
+        //     total_length_from_metadata,
+        //     select,
+        // )?;
 
         // le agrego el body de las filas a las que ya tenia
-        results_from_another_nodes.truncate(total_length_from_metadata);
-        results_from_another_nodes.append(&mut new_ordered_res_bytes);
+        // results_from_another_nodes.truncate(total_length_from_metadata);
+        // results_from_another_nodes.append(&mut new_ordered_res_bytes);
 
         Ok(())
     }
 
     fn get_columns_metadata_length(&self, results_from_another_nodes: &mut [u8]) -> usize {
-        let mut total_length_from_metadata: usize = 12;
+        let mut total_length_from_metadata: usize = 13;
         let column_quantity = &results_from_another_nodes[13..17];
         let column_quantity = i32::from_be_bytes([
             column_quantity[0],
@@ -1421,7 +1426,7 @@ impl Node {
             let name_length = &results_from_another_nodes
                 [total_length_from_metadata..(total_length_from_metadata + 2)]; // Consigo el largo del [String]
             let name_length = u16::from_be_bytes([name_length[0], name_length[1]]); // Lo casteo para sumarlo al total
-            total_length_from_metadata += (name_length as usize) + 2 + 2; // Sumamos el largo del <col_spec_i>
+            total_length_from_metadata += (name_length as usize) + 2 + 2; // Esto es [String] + [Option]
         }
         total_length_from_metadata
     }
