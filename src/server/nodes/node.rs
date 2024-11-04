@@ -18,8 +18,9 @@ use crate::parser::{
     main_parser::make_parse,
     statements::{
         ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable,
-            ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace,
+            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+            create_table::CreateTable, ddl_statement_parser::DdlStatement,
+            drop_keyspace::DropKeyspace,
         },
         dml_statement::{
             dml_statement_parser::DmlStatement,
@@ -1134,7 +1135,9 @@ impl Node {
                     node_to_replicate,
                     PortType::Priv,
                 )?;
-                match self.check_if_has_new_partition_value(&insert, self.get_table(&table_name)?)? {
+                match self
+                    .check_if_has_new_partition_value(&insert, self.get_table(&table_name)?)?
+                {
                     Some(new_partition_values) => self
                         .tables_and_partitions_keys_values
                         .insert(insert.table.get_name().to_string(), new_partition_values),
@@ -1405,13 +1408,11 @@ impl Node {
         let total_length_from_metadata =
             self.get_columns_metadata_length(&mut result_from_actual_node);
 
-        let new_size_without_metadata = size.len + new_size.len - (total_length_from_metadata as u32);
+        let new_size_without_metadata =
+            size.len + new_size.len - (total_length_from_metadata as u32);
         results_from_another_nodes[5..9].copy_from_slice(&new_size_without_metadata.to_be_bytes());
-        let mut new_res =
-        result_from_actual_node[total_length_from_metadata..].to_vec();
+        let mut new_res = result_from_actual_node[total_length_from_metadata..].to_vec();
         results_from_another_nodes.append(&mut new_res);
-
-
 
         // No funciona, las filas no son un string largo, el formato es [largo del string][string], entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
         // let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
@@ -1429,7 +1430,7 @@ impl Node {
 
     fn get_columns_metadata_length(&self, results_from_another_nodes: &mut [u8]) -> usize {
         let mut total_length_from_metadata: usize = 13;
-        let column_quantity = &results_from_another_nodes[13..17];
+        let column_quantity = &results_from_another_nodes[17..21];
         let column_quantity = i32::from_be_bytes([
             column_quantity[0],
             column_quantity[1],

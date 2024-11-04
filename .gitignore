@@ -17,3 +17,7 @@ Cargo.lock
 .cache/
 
 .vscode/
+
+# Storage in nodes
+storage/
+nodes.csv

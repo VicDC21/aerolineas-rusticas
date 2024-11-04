@@ -145,39 +145,42 @@ impl FlightsLoader {
         let mut tcp_stream = client.connect()?;
         let protocol_result = client.send_query(
             format!(
-                "SELECT * FROM flights WHERE timestamp < {} AND timestamp > {}",
-                timestamp + DAY_IN_SECONDS,
-                timestamp,
+                "SELECT * FROM vuelos;", // WHERE timestamp < {} AND timestamp > {};",
+                                         // timestamp + (DAY_IN_SECONDS / 2),
+                                         // timestamp - (DAY_IN_SECONDS / 2),
             )
             .as_str(),
             &mut tcp_stream,
         )?;
 
+        println!("{:?}", protocol_result);
+
         if let ProtocolResult::Rows(rows) = protocol_result {
             for row in rows {
-                if row.len() != 4 {
+                if row.len() != 3 {
                     continue;
                 }
 
-                // 1. El ID.
-                if let ColData::Int(id) = &row[0] {
-                    // 2. Origen.
-                    if let ColData::String(orig) = &row[1] {
-                        // 3. Destino.
-                        if let ColData::String(dest) = &row[2] {
-                            // 4. Fecha.
-                            if let ColData::Timestamp(timestamp) = &row[3] {
-                                flights.push(Flight::new(
-                                    *id,
-                                    orig.to_string(),
-                                    dest.to_string(),
-                                    *timestamp,
-                                ));
-                            }
+                // 1. Origen.
+                if let ColData::String(orig) = &row[0] {
+                    // 2. Destino.
+                    if let ColData::String(dest) = &row[1] {
+                        // 3. Fecha.
+                        if let ColData::String(timestamp) = &row[2] {
+                            let id = timestamp.parse::<i32>().unwrap_or(0);
+                            let true_timestamp = timestamp.parse::<Long>().unwrap_or(0);
+                            flights.push(Flight::new(
+                                id,
+                                orig.to_string(),
+                                dest.to_string(),
+                                true_timestamp,
+                            ));
                         }
                     }
                 }
             }
+        } else if let ProtocolResult::QueryError(err) = protocol_result {
+            println!("{}", err);
         }
 
         Ok(flights)

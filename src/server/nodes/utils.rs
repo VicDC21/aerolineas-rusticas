@@ -140,6 +140,7 @@ pub fn hashmap_to_string<T: ToString>(map: &HashMap<String, T>) -> String {
         res.push_str(&value.to_string());
         res.push(';');
     }
+    res.pop();
 
     res
 }
@@ -187,6 +188,7 @@ pub fn hashmap_vec_to_string<T: ToString>(map: &HashMap<String, Vec<T>>) -> Stri
         );
         res.push(';');
     }
+    res.pop();
 
     res
 }

@@ -749,11 +749,10 @@ impl DiskHandler {
         metadata.append(&mut flags.to_be_bytes().to_vec());
 
         if query_cols[0] == "*" {
-            metadata.append(&mut table_cols.len().to_be_bytes().to_vec())
+            metadata.append(&mut (table_cols.len() as i32).to_be_bytes().to_vec())
         } else {
-            metadata.append(&mut query_cols.len().to_be_bytes().to_vec())
+            metadata.append(&mut (query_cols.len() as i32).to_be_bytes().to_vec())
         }
-
         let cols_name_and_type = table.get_columns_name_and_data_type();
         for (col_name, data_type) in cols_name_and_type {
             let col_type = ColType::from(data_type);
@@ -774,7 +773,6 @@ impl DiskHandler {
         res.append(&mut metadata);
         res.append(&mut rows_count.to_be_bytes().to_vec());
         res.append(&mut rows_content);
-
         res
     }
 
@@ -796,7 +794,6 @@ impl DiskHandler {
                 }
             }
         }
-        new_row.push("\n".to_string());
         new_row
     }
 
@@ -858,111 +855,6 @@ impl DiskHandler {
             }
         }
         Ok(())
-    }
-}
-
-struct TablePath {
-    storage_addr: String,
-    keyspace: String,
-    table_name: String,
-}
-
-impl TablePath {
-    fn new(
-        storage_addr: &str,
-        keyspace: Option<String>,
-        table_name: &str,
-        default_keyspace: &str,
-    ) -> Self {
-        let keyspace = keyspace.unwrap_or_else(|| default_keyspace.to_string());
-        Self {
-            storage_addr: storage_addr.to_string(),
-            keyspace,
-            table_name: table_name.to_string(),
-        }
-    }
-
-    fn full_path(&self) -> String {
-        format!(
-            "{}/{}/{}.csv",
-            self.storage_addr, self.keyspace, self.table_name
-        )
-    }
-}
-
-struct TableOperations {
-    path: TablePath,
-    columns: Vec<String>,
-}
-
-impl TableOperations {
-    fn new(path: TablePath) -> Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open(path.full_path())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        let mut reader = BufReader::new(&file);
-        let mut header = String::new();
-        reader
-            .read_line(&mut header)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        if header.trim().is_empty() {
-            return Err(Error::ServerError(format!(
-                "No se pudo leer la tabla con ruta {}",
-                path.full_path()
-            )));
-        }
-
-        let columns = header.trim().split(',').map(|s| s.to_string()).collect();
-
-        Ok(Self { path, columns })
-    }
-
-    fn validate_columns(&self, columns: &[String]) -> Result<()> {
-        for col in columns {
-            if !self.columns.contains(col) {
-                return Err(Error::ServerError(format!(
-                    "La tabla con ruta {} no contiene la columna {}",
-                    self.path.full_path(),
-                    col
-                )));
-            }
-        }
-        Ok(())
-    }
-
-    fn read_rows(&self) -> Result<Vec<Vec<String>>> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open(self.path.full_path())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        let reader = BufReader::new(file);
-        let mut rows = Vec::new();
-
-        for line in reader.lines().skip(1) {
-            let line = line.map_err(|e| Error::ServerError(e.to_string()))?;
-            if !line.trim().is_empty() {
-                rows.push(line.trim().split(',').map(|s| s.to_string()).collect());
-            }
-        }
-
-        Ok(rows)
-    }
-
-    fn write_rows(&self, rows: &[Vec<String>]) -> Result<()> {
-        let mut content = self.columns.join(",");
-        content.push('\n');
-
-        for row in rows {
-            content.push_str(&row.join(","));
-            content.push('\n');
-        }
-
-        std::fs::write(self.path.full_path(), content)
-            .map_err(|e| Error::ServerError(e.to_string()))
     }
 }
 
