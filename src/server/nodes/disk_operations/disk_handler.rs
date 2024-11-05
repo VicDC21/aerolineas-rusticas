@@ -26,7 +26,12 @@ use crate::protocol::{
     traits::Byteable,
     utils::encode_string_to_bytes,
 };
-use crate::server::nodes::{graph::NODES_PATH, node::NodeId};
+use crate::server::nodes::{
+    graph::NODES_PATH,
+    keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
+    node::NodeId,
+    table_metadata::table::Table,
+};
 
 use std::{
     fs::{create_dir, OpenOptions},
@@ -34,8 +39,6 @@ use std::{
     path::Path,
     str::FromStr,
 };
-
-use super::{keyspace::Keyspace, replication_strategy::ReplicationStrategy, table::Table};
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;

@@ -65,10 +65,10 @@ use crate::server::{
 use crate::tokenizer::tokenizer::tokenize_query;
 
 use super::{
-    disk_handler::DiskHandler,
+    disk_operations::disk_handler::DiskHandler,
     graph::{N_NODES, START_ID},
-    keyspace::Keyspace,
-    table::Table,
+    keyspace_metadata::keyspace::Keyspace,
+    table_metadata::table::Table,
     utils::{divide_range, send_to_node_and_wait_response},
 };
 

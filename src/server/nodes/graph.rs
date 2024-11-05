@@ -132,6 +132,7 @@ impl NodesGraph {
     fn send_init_queries(&self) -> Result<()> {
         let node_id = self.node_ids[0]; // idealmente sería el primero que no esté caído
         let queries = load_init_queries();
+        println!("Queries iniciales:\n{:?}", queries);
 
         for (i, query) in queries.iter().enumerate() {
             let stream_id = format!("{}{}", node_id, i)
