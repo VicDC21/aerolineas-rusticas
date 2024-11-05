@@ -148,7 +148,6 @@ pub fn load_init_queries() -> Vec<String> {
                 if !path.exists() || path.is_dir() {
                     continue;
                 }
-                println!("viendo:\t'{}'", path.display());
 
                 if let Some(ext) = path.extension() {
                     if ext.eq_ignore_ascii_case(QUERY_EXT) {
