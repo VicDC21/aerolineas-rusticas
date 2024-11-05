@@ -1,11 +1,7 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
 use std::{
-    collections::HashMap,
-    fs::{read_dir, File},
-    io::{BufRead, BufReader, Read, Result as IOResult, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
-    str::FromStr,
+    collections::HashMap, fs::{read_dir, File}, io::{BufRead, BufReader, Read, Result as IOResult, Write}, net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream}, path::PathBuf, str::FromStr
 };
 
 use crate::protocol::{
@@ -138,6 +134,8 @@ pub fn queries_from_source(path: &str) -> Result<Vec<String>> {
 /// Carga todas las _queries_ iniciales de la carpeta correspondiente.
 pub fn load_init_queries() -> Vec<String> {
     let mut queries = Vec::<String>::new();
+    let mut queries_paths = Vec::<PathBuf>::new();
+
     match read_dir(INIT_QUERIES_PATH) {
         Err(err) => {
             println!("Ocurrió un error al buscar las queries iniciales:\n\n{}\nSe utilizará un vector vacío.", err);
@@ -151,29 +149,36 @@ pub fn load_init_queries() -> Vec<String> {
 
                 if let Some(ext) = path.extension() {
                     if ext.eq_ignore_ascii_case(QUERY_EXT) {
-                        let path_str = match path.to_str() {
-                            Some(utf_8_valid) => utf_8_valid,
-                            None => {
-                                // El nombre contiene caracteres no encodificables en UTF-8
-                                continue;
-                            }
-                        };
-                        let mut cur_queries = match queries_from_source(path_str) {
-                            Ok(valid_ones) => valid_ones,
-                            Err(err) => {
-                                println!(
-                                    "No se pudo agregar las queries en '{}':\n\n{}",
-                                    path_str, err
-                                );
-                                continue;
-                            }
-                        };
-                        queries.append(&mut cur_queries);
+                        queries_paths.push(path);
                     }
                 }
             }
         }
     };
+
+    // para asegurar el orden
+    queries_paths.sort();
+
+    for path in queries_paths {
+        let path_str = match path.to_str() {
+            Some(utf_8_valid) => utf_8_valid,
+            None => {
+                // El nombre contiene caracteres no encodificables en UTF-8
+                continue;
+            }
+        };
+        let mut cur_queries = match queries_from_source(path_str) {
+            Ok(valid_ones) => valid_ones,
+            Err(err) => {
+                println!(
+                    "No se pudo agregar las queries en '{}':\n\n{}",
+                    path_str, err
+                );
+                continue;
+            }
+        };
+        queries.append(&mut cur_queries);
+    }
 
     queries
 }
