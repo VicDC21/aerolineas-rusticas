@@ -2,7 +2,7 @@
 
 use std::{
     collections::HashMap,
-    fs::File,
+    fs::{read_dir, File},
     io::{BufRead, BufReader, Read, Result as IOResult, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
     str::FromStr,
@@ -13,6 +13,11 @@ use crate::protocol::{
     errors::error::Error,
 };
 use crate::server::nodes::{node::NodeId, port_type::PortType};
+
+/// La ruta de _queries_ iniciales.
+const INIT_QUERIES_PATH: &str = "scripts/init";
+/// Extensión preferida para _queries_ de CQL, sin el punto de prefijo.
+const QUERY_EXT: &str = "cql";
 
 /// Genera una dirección de socket a partir de un ID.
 pub fn guess_socket(id: NodeId, port_type: PortType) -> SocketAddr {
@@ -128,6 +133,50 @@ pub fn queries_from_source(path: &str) -> Result<Vec<String>> {
     }
 
     Ok(queries)
+}
+
+/// Carga todas las _queries_ iniciales de la carpeta correspondiente.
+pub fn load_init_queries() -> Vec<String> {
+    let mut queries = Vec::<String>::new();
+    match read_dir(INIT_QUERIES_PATH) {
+        Err(err) => {
+            println!("Ocurrió un error al buscar las queries iniciales:\n\n{}\nSe utilizará un vector vacío.", err);
+        }
+        Ok(paths) => {
+            for dir_entry in paths.map_while(IOResult::ok) {
+                let path = dir_entry.path();
+                if !path.exists() || path.is_dir() {
+                    continue;
+                }
+                println!("viendo:\t'{}'", path.display());
+
+                if let Some(ext) = path.extension() {
+                    if ext.eq_ignore_ascii_case(QUERY_EXT) {
+                        let path_str = match path.to_str() {
+                            Some(utf_8_valid) => utf_8_valid,
+                            None => {
+                                // El nombre contiene caracteres no encodificables en UTF-8
+                                continue;
+                            }
+                        };
+                        let mut cur_queries = match queries_from_source(path_str) {
+                            Ok(valid_ones) => valid_ones,
+                            Err(err) => {
+                                println!(
+                                    "No se pudo agregar las queries en '{}':\n\n{}",
+                                    path_str, err
+                                );
+                                continue;
+                            }
+                        };
+                        queries.append(&mut cur_queries);
+                    }
+                }
+            }
+        }
+    };
+
+    queries
 }
 
 /// Convierte un hashmap a un string.

@@ -19,7 +19,7 @@ use crate::server::{
     nodes::{
         node::{Node, NodeId},
         port_type::PortType,
-        utils::{queries_from_source, send_to_node},
+        utils::{load_init_queries, send_to_node},
     },
     utils::load_serializable,
 };
@@ -47,11 +47,6 @@ const HANDSHAKE_NEIGHBOURS: u8 = 3;
 const SIMULTANEOUS_GOSSIPERS: u8 = 3;
 /// El archivo donde se guardan los nodos.
 pub const NODES_PATH: &str = "nodes.csv";
-
-/// Las _queries_ iniciales de _keyspaces_.
-const KS_QUERIES_PATH: &str = "scripts/init/ks.cql";
-/// Las _queries_ iniciales de tablas.
-const TABLE_QUERIES_PATH: &str = "scripts/init/tables.cql";
 
 /// Un grafo es una colección de nodos.
 ///
@@ -136,8 +131,7 @@ impl NodesGraph {
     /// Dichas _queries_ normalmente vienen en forma de scripts, donde cada línea es una _query_.
     fn send_init_queries(&self) -> Result<()> {
         let node_id = self.node_ids[0]; // idealmente sería el primero que no esté caído
-        let mut queries = queries_from_source(KS_QUERIES_PATH)?;
-        queries.append(&mut queries_from_source(TABLE_QUERIES_PATH)?);
+        let queries = load_init_queries();
 
         for (i, query) in queries.iter().enumerate() {
             let stream_id = format!("{}{}", node_id, i)
