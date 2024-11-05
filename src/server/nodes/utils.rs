@@ -109,7 +109,7 @@ pub fn divide_range(start: u64, end: u64, n: usize) -> Vec<(u64, u64)> {
 }
 
 /// Detecta _queries_ desde un archivo.
-pub fn query_from_source(path: &str) -> Result<Vec<String>> {
+pub fn queries_from_source(path: &str) -> Result<Vec<String>> {
     let mut queries = Vec::<String>::new();
     let file = match File::open(path) {
         Ok(f) => f,

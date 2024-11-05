@@ -13,20 +13,25 @@ use std::{
     time::Duration,
 };
 
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    traits::Byteable,
-};
 use crate::server::{
     actions::opcode::SvAction,
     modes::ConnectionMode,
     nodes::{
         node::{Node, NodeId},
         port_type::PortType,
-        utils::send_to_node,
+        utils::{queries_from_source, send_to_node},
     },
     utils::load_serializable,
+};
+use crate::{
+    client::frame::Frame,
+    parser::{main_parser::make_parse, statements::statement::Statement},
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        traits::Byteable,
+    },
+    tokenizer::tokenizer::tokenize_query,
 };
 
 /// El handle donde vive una operación de nodo.
@@ -42,6 +47,11 @@ const HANDSHAKE_NEIGHBOURS: u8 = 3;
 const SIMULTANEOUS_GOSSIPERS: u8 = 3;
 /// El archivo donde se guardan los nodos.
 pub const NODES_PATH: &str = "nodes.csv";
+
+/// Las _queries_ iniciales de _keyspaces_.
+const KS_QUERIES_PATH: &str = "scripts/ks.cql";
+/// Las _queries_ iniciales de tablas.
+const TABLE_QUERIES_PATH: &str = "scripts/tables.cql";
 
 /// Un grafo es una colección de nodos.
 ///
@@ -113,8 +123,49 @@ impl NodesGraph {
         let _ = gossiper.join();
 
         // Corremos los scripts iniciales
+        if let Err(err) = self.send_init_queries() {
+            println!("Error en las queries iniciales:\n{}", err);
+        }
 
         self.wait();
+        Ok(())
+    }
+
+    /// Manda todas las _queries_ iniciales.
+    ///
+    /// Dichas _queries_ normalmente vienen en forma de scripts, donde cada línea es una _query_.
+    fn send_init_queries(&self) -> Result<()> {
+        let node_id = self.node_ids[0]; // idealmente sería el primero que no esté caído
+        let mut queries = queries_from_source(KS_QUERIES_PATH)?;
+        queries.append(&mut queries_from_source(TABLE_QUERIES_PATH)?);
+
+        for (i, query) in queries.iter().enumerate() {
+            let stream_id = format!("{}{}", node_id, i)
+                .parse::<i16>()
+                .unwrap_or(node_id as i16 + i as i16);
+            match make_parse(&mut tokenize_query(query)) {
+                Ok(statement) => {
+                    let frame = match statement {
+                        Statement::DmlStatement(_) => Frame::query(stream_id, query.to_string()),
+                        Statement::DdlStatement(_) => Frame::ddl(stream_id, query.to_string()),
+                        Statement::UdtStatement(_) => {
+                            return Err(Error::ServerError(format!(
+                                "UDT statements no soportados para la query:\n{}",
+                                query
+                            )));
+                        }
+                    };
+                    send_to_node(node_id, frame.as_bytes(), PortType::Priv)?;
+                }
+                Err(err) => {
+                    println!(
+                        "Ocurrió un error al crear el frame para una request inicial:\n\n{}",
+                        err
+                    );
+                }
+            }
+        }
+
         Ok(())
     }
 
