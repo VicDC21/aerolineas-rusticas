@@ -26,7 +26,7 @@ type DateChild = (Option<ChildHandle>, Sender<(Client, Long)>);
 const FLIGHTS_INTERVAL_SECS: u64 = 5;
 
 /// Un día en segundos.
-const DAY_IN_SECONDS: i64 = 86400;
+const _DAY_IN_SECONDS: i64 = 86400;
 
 /// Cargador de vuelos.
 pub struct FlightsLoader {
@@ -140,16 +140,17 @@ impl FlightsLoader {
     }
 
     /// Carga los vuelos con una _query_.
-    fn load_flights(mut client: Client, timestamp: Long) -> Result<Vec<Flight>> {
+    fn load_flights(mut client: Client, _timestamp: Long) -> Result<Vec<Flight>> {
         let mut flights = Vec::<Flight>::new();
         let mut tcp_stream = client.connect()?;
         let protocol_result = client.send_query(
-            format!(
-                "SELECT * FROM vuelos;", // WHERE timestamp < {} AND timestamp > {};",
-                                         // timestamp + (DAY_IN_SECONDS / 2),
-                                         // timestamp - (DAY_IN_SECONDS / 2),
-            )
-            .as_str(),
+            // format!(
+            //     "SELECT * FROM vuelos; WHERE timestamp < {} AND timestamp > {};",
+            //     timestamp + (DAY_IN_SECONDS / 2),
+            //     timestamp - (DAY_IN_SECONDS / 2),
+            // )
+            // .as_str(),
+            "SELECT * FROM vuelos;",
             &mut tcp_stream,
         )?;
 
