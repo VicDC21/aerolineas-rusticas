@@ -49,9 +49,9 @@ const SIMULTANEOUS_GOSSIPERS: u8 = 3;
 pub const NODES_PATH: &str = "nodes.csv";
 
 /// Las _queries_ iniciales de _keyspaces_.
-const KS_QUERIES_PATH: &str = "scripts/ks.cql";
+const KS_QUERIES_PATH: &str = "scripts/init/ks.cql";
 /// Las _queries_ iniciales de tablas.
-const TABLE_QUERIES_PATH: &str = "scripts/tables.cql";
+const TABLE_QUERIES_PATH: &str = "scripts/init/tables.cql";
 
 /// Un grafo es una colección de nodos.
 ///
