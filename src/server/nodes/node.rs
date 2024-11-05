@@ -1396,7 +1396,7 @@ impl Node {
         &self,
         results_from_another_nodes: &mut Vec<u8>,
         mut result_from_actual_node: Vec<u8>,
-        select: &Select,
+        _select: &Select,
     ) -> Result<()> {
         if results_from_another_nodes.is_empty() {
             results_from_another_nodes.append(&mut result_from_actual_node);
@@ -1446,7 +1446,7 @@ impl Node {
         total_length_from_metadata
     }
 
-    fn get_ordered_new_res_bytes(
+    fn _get_ordered_new_res_bytes(
         &self,
         results_from_another_nodes: &[Byte],
         total_length_from_metadata: usize,
