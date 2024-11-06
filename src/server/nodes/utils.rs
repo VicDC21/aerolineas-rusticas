@@ -1,7 +1,12 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
 use std::{
-    collections::HashMap, fs::{read_dir, File}, io::{BufRead, BufReader, Read, Result as IOResult, Write}, net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream}, path::PathBuf, str::FromStr
+    collections::HashMap,
+    fs::{read_dir, File},
+    io::{BufRead, BufReader, Read, Result as IOResult, Write},
+    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    path::PathBuf,
+    str::FromStr,
 };
 
 use crate::protocol::{
