@@ -1,5 +1,6 @@
 //! Paquete para estructuras de nodos.
 
+pub mod addr;
 pub mod disk_operations;
 pub mod graph;
 pub mod keyspace_metadata;
