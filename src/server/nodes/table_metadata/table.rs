@@ -6,6 +6,7 @@ use crate::parser::statements::dml_statement::main_statements::select::ordering:
 use crate::protocol::{aliases::results::Result, errors::error::Error};
 
 use super::{column_config::ColumnConfig, column_data_type::ColumnDataType};
+
 /// Representa una tabla en CQL.
 pub struct Table {
     /// Nombre de la tabla.
