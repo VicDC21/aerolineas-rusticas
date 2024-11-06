@@ -55,16 +55,16 @@ use crate::server::{
             },
         },
         utils::{
-            guess_id, hashmap_to_string, hashmap_vec_to_string, send_to_node, string_to_hashmap,
+            hashmap_to_string, hashmap_vec_to_string, send_to_node, string_to_hashmap,
             string_to_hashmap_vec,
         },
     },
     traits::Serializable,
-    utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 
 use super::{
+    addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
     graph::{N_NODES, START_ID},
     keyspace_metadata::keyspace::Keyspace,
@@ -282,16 +282,28 @@ impl Node {
     ///
     /// No compara los estados en profundidad, sólo verifica si se tiene un estado
     /// con la misma IP.
-    fn has_endpoint_state(&self, state: &EndpointState) -> bool {
-        self.neighbours_states
-            .contains_key(&guess_id(state.get_addr()))
+    fn _has_endpoint_state(&self, state: &EndpointState) -> bool {
+        let guessed_id = match AddrLoader::default_loaded().get_id(state.get_addr()) {
+            Ok(guessed_right) => guessed_right,
+            Err(_) => return false,
+        };
+        self.has_endpoint_state_by_id(&guessed_id)
     }
 
-    fn add_neighbour_state(&mut self, state: EndpointState) {
-        if !self.has_endpoint_state(&state) {
-            self.neighbours_states
-                .insert(guess_id(state.get_addr()), state);
+    /// Consulta si ya se tiene un [EndpointState] por ID de nodo.
+    ///
+    /// No compara los estados en profundidad, sólo verifica si se tiene un estado
+    /// con la misma IP.
+    fn has_endpoint_state_by_id(&self, node_id: &NodeId) -> bool {
+        self.neighbours_states.contains_key(node_id)
+    }
+
+    fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
+        let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
+        if !self.has_endpoint_state_by_id(&guessed_id) {
+            self.neighbours_states.insert(guessed_id, state);
         }
+        Ok(())
     }
 
     /// Actualiza la información de vecinos con otro mapa dado.
@@ -466,9 +478,10 @@ impl Node {
         port_type: PortType,
     ) -> Result<()> {
         let listener = Node::bind_with_socket(socket)?;
+        let addr_loader = AddrLoader::default_loaded();
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
-                Err(_) => return Node::tcp_stream_error(&port_type, &socket),
+                Err(_) => return Node::tcp_stream_error(&port_type, &socket, &addr_loader),
                 Ok(tcp_stream) => {
                     let buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
                     let mut bufreader = BufReader::new(buffered_stream);
@@ -534,18 +547,10 @@ impl Node {
                 self.ack2(nodes_map)?;
             }
             SvAction::NewNeighbour(state) => {
-                self.add_neighbour_state(state);
+                self.add_neighbour_state(state)?;
             }
             SvAction::SendEndpointState(id) => {
                 self.send_endpoint_state(id);
-            }
-            SvAction::Shutdown => {
-                for socket in get_available_sockets() {
-                    let node_id = guess_id(&socket.ip());
-                    send_to_node(node_id, SvAction::Exit(false).as_bytes(), PortType::Cli)?;
-                    send_to_node(node_id, SvAction::Exit(true).as_bytes(), PortType::Priv)?;
-                }
-                // no interrumpe el nodo porque es el trabajo de EXIT
             }
             SvAction::InternalQuery(bytes) => {
                 let response = self.handle_request(&bytes, true);
@@ -1520,7 +1525,11 @@ impl Node {
         }
     }
 
-    fn tcp_stream_error(port_type: &PortType, socket: &SocketAddr) -> Result<()> {
+    fn tcp_stream_error(
+        port_type: &PortType,
+        socket: &SocketAddr,
+        addr_loader: &AddrLoader,
+    ) -> Result<()> {
         let falla = match port_type {
             PortType::Cli => "cliente",
             PortType::Priv => "nodo o estructura interna",
@@ -1528,7 +1537,7 @@ impl Node {
         Err(Error::ServerError(format!(
             "Un {} no pudo conectarse al nodo con ID {}",
             falla,
-            guess_id(&socket.ip())
+            addr_loader.get_id(&socket.ip())?,
         )))
     }
 

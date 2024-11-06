@@ -45,6 +45,11 @@ use super::{
     row_operations::RowOperations, table_operations::TableOperations, table_path::TablePath,
 };
 
+/// La ruta para el almacenamiento de los nodos.
+pub const STORAGE_PATH: &str = "storage";
+/// El nombre individual del directorio de un nodo.
+pub const STORAGE_NODE_PATH: &str = "storage_node";
+
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
 
@@ -52,16 +57,15 @@ impl DiskHandler {
     /// Crea una carpeta de almacenamiento para el nodo.
     /// Devuelve la ruta a dicho almacenamiento.
     pub fn new_node_storage(id: NodeId) -> String {
-        let main_path = "storage";
-        DiskHandler::create_directory(main_path);
-        let storage_addr: String = format!("{}/storage_node_{}", main_path, id);
+        DiskHandler::create_directory(STORAGE_PATH);
+        let storage_addr: String = Self::get_node_storage(id);
         DiskHandler::create_directory(&storage_addr);
         storage_addr
     }
 
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
     pub fn get_node_storage(id: NodeId) -> String {
-        format!("storage/storage_node_{}", id)
+        format!("{}/{}_{}", STORAGE_PATH, STORAGE_NODE_PATH, id)
     }
 
     /// Almacena los metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
