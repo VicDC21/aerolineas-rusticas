@@ -21,8 +21,11 @@ use crate::{
         utils::parse_bytes_to_string,
     },
     server::{
-        actions::opcode::SvAction, nodes::table_metadata::column_data_type::ColumnDataType,
-        utils::get_available_sockets,
+        actions::opcode::SvAction,
+        nodes::{
+            addr::loader::AddrLoader, port_type::PortType,
+            table_metadata::column_data_type::ColumnDataType,
+        },
     },
     tokenizer::tokenizer::tokenize_query,
 };
@@ -57,23 +60,25 @@ pub enum QueryFlags {
 /// Estructura principal de un cliente.
 #[derive(Clone)]
 pub struct Client {
-    /// La dirección del _socket_ al que conectarse al mandar cosas.
-    addrs: Vec<SocketAddr>,
+    /// El cargador de las direcciones disponibles.
+    addr_loader: AddrLoader,
+
+    /// Un contador interno para llevar la cuenta de IDs de conexiones.
     requests_stream: HashSet<i16>,
 }
 
 impl Client {
     /// Crea una nueva instancia de cliente.
-    pub fn new(addrs: Vec<SocketAddr>, requests_stream: HashSet<i16>) -> Self {
+    pub fn new(addr_loader: AddrLoader, requests_stream: HashSet<i16>) -> Self {
         Self {
-            addrs,
+            addr_loader,
             requests_stream,
         }
     }
 
     /// Conecta con alguno de los _sockets_ guardados.
     pub fn connect(&self) -> Result<TcpStream> {
-        Self::connect_to(&self.addrs[..])
+        Self::connect_to(&self.addr_loader.get_sockets_cli()[..])
     }
 
     /// Conecta con alguno de los _sockets_ dados.
@@ -116,7 +121,7 @@ impl Client {
                         break;
                     }
                     if input.eq_ignore_ascii_case("shutdown") {
-                        let _ = tcp_stream.write_all(&SvAction::Shutdown.as_bytes());
+                        self.send_shutdown()?;
                         return Ok(());
                     }
 
@@ -429,10 +434,45 @@ impl Client {
         String::from_utf8(request[*actual_position..right_position].to_vec())
             .map_err(|_| Error::TruncateError("Error al transformar bytes a utf8".to_string()))
     }
+
+    /// Manda un mensaje aislado a una cierta dirección.
+    fn send_message(socket: SocketAddr, bytes: &[Byte]) -> Result<()> {
+        let mut tcp_stream = Self::connect_to(&[socket])?;
+        let _ = tcp_stream.set_nonblocking(true);
+
+        if let Err(err) = tcp_stream.write_all(bytes) {
+            return Err(Error::ServerError(format!(
+                "Error mandando mensaje aislado a {}:\n\n{}",
+                socket, err
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// Manda a cada nodo un mensaje para que se [apague](crate::server::actions::opcode::SvAction::Exit).
+    pub fn send_shutdown(&self) -> Result<()> {
+        for addr in self.addr_loader.get_ips() {
+            if let Err(err) = Self::send_message(
+                AddrLoader::ip_to_socket(&addr, &PortType::Cli),
+                &SvAction::Exit(false).as_bytes()[..],
+            ) {
+                println!("{}", err);
+            }
+            if let Err(err) = Self::send_message(
+                AddrLoader::ip_to_socket(&addr, &PortType::Priv),
+                &SvAction::Exit(true).as_bytes()[..],
+            ) {
+                println!("{}", err);
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Default for Client {
     fn default() -> Self {
-        Self::new(get_available_sockets(), HashSet::<i16>::new())
+        Self::new(AddrLoader::default_loaded(), HashSet::<i16>::new())
     }
 }

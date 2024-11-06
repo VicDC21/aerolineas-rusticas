@@ -60,7 +60,6 @@ use crate::server::{
         },
     },
     traits::Serializable,
-    utils::get_available_sockets,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 
@@ -538,14 +537,6 @@ impl Node {
             }
             SvAction::SendEndpointState(id) => {
                 self.send_endpoint_state(id);
-            }
-            SvAction::Shutdown => {
-                for socket in get_available_sockets() {
-                    let node_id = guess_id(&socket.ip());
-                    send_to_node(node_id, SvAction::Exit(false).as_bytes(), PortType::Cli)?;
-                    send_to_node(node_id, SvAction::Exit(true).as_bytes(), PortType::Priv)?;
-                }
-                // no interrumpe el nodo porque es el trabajo de EXIT
             }
             SvAction::InternalQuery(bytes) => {
                 let response = self.handle_request(&bytes, true);

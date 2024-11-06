@@ -47,7 +47,7 @@ impl AddrLoader {
     }
 
     /// Crea una nueva instancia del cargador, tratando de cargar la info al menos una vez.
-    /// 
+    ///
     /// Utiliza la ruta predeterminada.
     pub fn default_loaded() -> Self {
         Self::loaded(ADDR_FILE)
@@ -170,15 +170,19 @@ impl AddrLoader {
 
         if let Some(node_ips) = &self.node_ips {
             for ip in node_ips.values() {
-                let socket = match ip {
-                    IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(*ipv4, port_type.to_num())),
-                    IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(*ipv6, port_type.to_num(), 0, 0))
-                };
-                sockets.push(socket);
+                sockets.push(Self::ip_to_socket(ip, port_type));
             }
         }
 
         sockets
+    }
+
+    /// Convierte un [IpAddr] a un [SocketAddr] según un [tipo](PortType) de puerto dado.
+    pub fn ip_to_socket(ip: &IpAddr, port_type: &PortType) -> SocketAddr {
+        match ip {
+            IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(*ipv4, port_type.to_num())),
+            IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(*ipv6, port_type.to_num(), 0, 0)),
+        }
     }
 }
 

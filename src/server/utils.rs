@@ -1,31 +1,10 @@
 //! Módulo para funciones auxiliares del servidor.
 
-use std::{
-    fs::{read, write},
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-};
+use std::fs::{read, write};
 
 use crate::protocol::{aliases::results::Result, errors::error::Error};
-use crate::server::nodes::{
-    graph::{N_NODES, START_ID},
-    port_type::PortType,
-};
 
 use super::traits::Serializable;
-
-/// Consigue las direcciones a las que intentará conectarse.
-///
-/// ~~_(Medio hardcodeado pero sirve por ahora)_~~
-pub fn get_available_sockets() -> Vec<SocketAddr> {
-    let mut sockets = Vec::<SocketAddr>::new();
-    for i in 0..N_NODES {
-        sockets.push(SocketAddr::V4(SocketAddrV4::new(
-            Ipv4Addr::new(127, 0, 0, START_ID + i),
-            PortType::Cli.to_num(),
-        )));
-    }
-    sockets
-}
 
 /// Toma un vector con elementos de tipo genérico T, que pueden serializarse,
 /// y crea un nuevo vector con cada elemento serializado. Cada elemento
