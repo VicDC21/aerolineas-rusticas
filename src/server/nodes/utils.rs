@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     fs::{read_dir, File},
     io::{BufRead, BufReader, Read, Result as IOResult, Write},
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream},
+    net::{IpAddr, TcpStream},
     path::PathBuf,
     str::FromStr,
 };
@@ -15,22 +15,16 @@ use crate::protocol::{
 };
 use crate::server::nodes::{node::NodeId, port_type::PortType};
 
+use super::addr::loader::AddrLoader;
+
 /// La ruta de _queries_ iniciales.
 const INIT_QUERIES_PATH: &str = "scripts/init";
 /// Extensión preferida para _queries_ de CQL, sin el punto de prefijo.
 const QUERY_EXT: &str = "cql";
 
-/// Genera una dirección de socket a partir de un ID.
-pub fn guess_socket(id: NodeId, port_type: PortType) -> SocketAddr {
-    SocketAddr::V4(SocketAddrV4::new(
-        Ipv4Addr::new(127, 0, 0, id),
-        port_type.to_num(),
-    ))
-}
-
 /// Manda un mensaje a un nodo específico.
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
-    let addr = guess_socket(id, port_type);
+    let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
         Err(_) => {
@@ -55,7 +49,7 @@ pub fn send_to_node_and_wait_response(
     bytes: Vec<Byte>,
     port_type: PortType,
 ) -> Result<Vec<u8>> {
-    let addr = guess_socket(id, port_type);
+    let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
         Err(_) => {

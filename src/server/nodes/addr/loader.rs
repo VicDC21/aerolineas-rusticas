@@ -184,6 +184,43 @@ impl AddrLoader {
             IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(*ipv6, port_type.to_num(), 0, 0)),
         }
     }
+
+    /// Trata de buscar el ID asociado a una dirección IP.
+    pub fn get_id(&self, ip_addr: &IpAddr) -> Result<NodeId> {
+        if let Some(node_ips) = &self.node_ips {
+            for (node_id_opt, ip) in node_ips {
+                if ip == ip_addr {
+                    if let Some(node_id) = node_id_opt {
+                        return Ok(*node_id);
+                    }
+                }
+            }
+        }
+
+        Err(Error::ServerError(format!(
+            "No se encontró un ID de nodo que coincida con la IP {}.",
+            ip_addr
+        )))
+    }
+
+    /// Si existe una dirección IP con un [ID de nodo](NodeId) dado, se devuelve un _socket_ con un [tipo](PortType)
+    /// de puerto, también dado.
+    pub fn get_socket(&self, node_id: &NodeId, port_type: &PortType) -> Result<SocketAddr> {
+        if let Some(node_ips) = &self.node_ips {
+            for (node_id_opt, ip) in node_ips {
+                if let Some(id) = node_id_opt {
+                    if id == node_id {
+                        return Ok(Self::ip_to_socket(ip, port_type));
+                    }
+                }
+            }
+        }
+
+        Err(Error::ServerError(format!(
+            "No se encontró un socket de nodo que coincida con el ID de nodo {}.",
+            node_id
+        )))
+    }
 }
 
 impl Default for AddrLoader {
