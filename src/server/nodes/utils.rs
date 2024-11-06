@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     fs::{read_dir, File},
     io::{BufRead, BufReader, Read, Result as IOResult, Write},
-    net::{IpAddr, TcpStream},
+    net::TcpStream,
     path::PathBuf,
     str::FromStr,
 };
@@ -13,9 +13,7 @@ use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
 };
-use crate::server::nodes::{node::NodeId, port_type::PortType};
-
-use super::addr::loader::AddrLoader;
+use crate::server::nodes::{addr::loader::AddrLoader, node::NodeId, port_type::PortType};
 
 /// La ruta de _queries_ iniciales.
 const INIT_QUERIES_PATH: &str = "scripts/init";
@@ -77,20 +75,6 @@ pub fn send_to_node_and_wait_response(
         }
     }
     Ok(buf)
-}
-
-/// Adivina el ID del nodo a partir de una IP.
-pub fn guess_id(ipaddr: &IpAddr) -> NodeId {
-    match ipaddr {
-        IpAddr::V4(ipv4) => {
-            let [_, _, _, id] = ipv4.octets();
-            id
-        }
-        IpAddr::V6(ipv6) => {
-            let [_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, id] = ipv6.octets();
-            id
-        }
-    }
 }
 
 /// Divide un rango en `n` partes iguales.
