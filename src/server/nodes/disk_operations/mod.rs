@@ -1,4 +1,4 @@
-//! Módulo que detalla las operaciones de disco
+//! Paquete para las operaciones de disco.
 
 pub mod disk_handler;
 pub mod row_operations;

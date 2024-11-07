@@ -24,7 +24,7 @@ use crate::server::{
     utils::load_serializable,
 };
 use crate::{
-    client::frame::Frame,
+    client::cql_frame::frame::Frame,
     parser::{main_parser::make_parse, statements::statement::Statement},
     protocol::{
         aliases::{results::Result, types::Byte},
