@@ -273,7 +273,7 @@ pub fn parse_bytes_to_string(bytes_vec: &[Byte], i: &mut usize) -> Result<String
 /// assert!(res_1.is_ok());
 /// if let Ok(str_1) = res_1 {
 ///     assert_eq!(str_1, string);
-///     assert_eq!(i_1, 8);
+///     assert_eq!(i_1, 10);
 /// }
 ///
 /// // Debería funcionar igual si el slice de bytes es más largo
@@ -282,11 +282,11 @@ pub fn parse_bytes_to_string(bytes_vec: &[Byte], i: &mut usize) -> Result<String
 /// assert!(res_2.is_ok());
 /// if let Ok(str_2) = res_2 {
 ///     assert_eq!(str_2, string);
-///     assert_eq!(i_2, 8);
+///     assert_eq!(i_2, 10);
 /// }
 /// ```
 pub fn parse_bytes_to_long_string(bytes_vec: &[Byte], i: &mut usize) -> Result<String> {
-    let int_len: usize = 4; // los bytes de un Short
+    let int_len: usize = 4; // los bytes de un Int
     if bytes_vec.len() < int_len {
         return Err(Error::SyntaxError(
             "Se esperaban 4 bytes que indiquen el tamaño del string a formar".to_string(),
