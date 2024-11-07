@@ -5,8 +5,6 @@ use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 
 /// Nivela los modos de consistencia para los _read request_.
-///
-/// TODO: dejar mejores descripciones.
 #[derive(Debug, Clone, Copy)]
 pub enum Consistency {
     /// Buscar cualquier nodo
@@ -21,25 +19,25 @@ pub enum Consistency {
     /// Buscar tres nodos
     Three,
 
-    /// Decidir por mayoría
+    /// Decidir por mayoría, la mitad + 1 (51%)
     Quorum,
 
     /// Buscar TODOS los nodos disponibles
     All,
 
-    /// Decidir por mayoría local
+    /// Decidir por mayoría, en el data center local únicamente
     LocalQuorum,
 
-    /// Decidir por mayoría _#NoTengoNiIdeaDeLaDiferencia_
+    /// Decidir por mayoría, en cada data center
     EachQuorum,
 
-    /// SERIAL Variant
+    /// Bloquea la escritura hasta que la escritura se haya propagado a todos los nodos réplica
     Serial,
 
-    /// LOCAL_SERIAL Variant
+    /// Bloquea la escritura hasta que la escritura se haya propagado a todos los nodos réplica, en el data center local únicamente
     LocalSerial,
 
-    /// LOCAL_ONE Variant
+    /// Buscar un único nodo, en el data center local únicamente
     LocalOne,
 }
 
