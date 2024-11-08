@@ -4,6 +4,7 @@ use std::{
     collections::HashSet,
     io::{stdin, BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
+    str::FromStr,
     time::Duration,
 };
 
@@ -18,6 +19,7 @@ use crate::{
             result::{col_type::ColType, rows_flags::RowsFlag},
             result_kinds::ResultKind,
         },
+        notations::consistency::Consistency,
         traits::Byteable,
         utils::parse_bytes_to_string,
     },
@@ -41,14 +43,20 @@ pub struct Client {
 
     /// Un contador interno para llevar la cuenta de IDs de conexiones.
     requests_stream: HashSet<i16>,
+
+    /// El _Consistency Level_ de las queries.
+    consistency_level: Consistency,
 }
 
 impl Client {
     /// Crea una nueva instancia de cliente.
+    ///
+    /// El _Consistency Level_ será `Quorum` por defecto.
     pub fn new(addr_loader: AddrLoader, requests_stream: HashSet<i16>) -> Self {
         Self {
             addr_loader,
             requests_stream,
+            consistency_level: Consistency::Quorum,
         }
     }
 
@@ -67,6 +75,30 @@ impl Client {
         }
     }
 
+    /// Modifica el _Consistency Level_ de las queries.
+    ///
+    /// Tipos de _Consistency Level_ reconocidos:
+    /// - `Any` (sin uso)
+    /// - `One`
+    /// - `Two`
+    /// - `Three`
+    /// - `Quorum`
+    /// - `All`
+    /// - `LocalQuorum` (TODO)
+    /// - `EachQuorum` (TODO)
+    /// - `Serial` (sin uso)
+    /// - `LocalSerial` (sin uso)
+    /// - `LocalOne` (TODO)
+    pub fn set_consistency_level(&mut self, s: &str) -> Result<()> {
+        match Consistency::from_str(s) {
+            Ok(consistency) => {
+                self.consistency_level = consistency;
+                Ok(())
+            }
+            Err(e) => Err(Error::ConfigError(e.to_string())),
+        }
+    }
+
     /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
     ///
     /// <div class="warning">
@@ -74,7 +106,6 @@ impl Client {
     /// **Esto genera un loop infinito** hasta que el usuario ingrese `q` para salir.
     ///
     /// </div>
-
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
         let _ = tcp_stream.set_nonblocking(true);
@@ -151,6 +182,8 @@ impl Client {
     }
 
     /// Envía una query al servidor y devuelve la respuesta del mismo.
+    ///
+    /// La query será enviada con el _Consistency Level_ actual.
     pub fn send_query(
         &mut self,
         query: &str,
@@ -165,8 +198,9 @@ impl Client {
         match make_parse(&mut tokenize_query(query)) {
             Ok(statement) => {
                 let frame = match statement {
-                    Statement::DmlStatement(_) => Frame::query(stream_id, query.to_string()),
-                    Statement::DdlStatement(_) => Frame::ddl(stream_id, query.to_string()),
+                    Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
+                        Frame::new(stream_id, query, self.consistency_level)
+                    }
                     Statement::UdtStatement(_) => {
                         return Err(Error::ServerError("UDT statements no soportados".into()))
                     }
@@ -228,7 +262,7 @@ impl Client {
         }
     }
 
-    fn is_response_complete(response: &[u8]) -> bool {
+    fn is_response_complete(response: &[Byte]) -> bool {
         if response.len() < 9 {
             return false;
         }
@@ -385,7 +419,7 @@ impl Client {
         ])
     }
 
-    fn parse_column_value<T>(&self, request: &[u8], actual_position: &mut usize) -> Result<T>
+    fn parse_column_value<T>(&self, request: &[Byte], actual_position: &mut usize) -> Result<T>
     where
         T: std::str::FromStr,
         T::Err: std::fmt::Display,
@@ -402,7 +436,7 @@ impl Client {
             .map_err(|e| Error::TruncateError(format!("Error al parsear string: {}", e)))
     }
 
-    fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {
+    fn parse_string(&self, request: &[Byte], actual_position: &mut usize) -> Result<String> {
         let string_len = self.get_lenght(request, *actual_position);
         *actual_position += 4;
         let right_position = *actual_position + string_len as usize;

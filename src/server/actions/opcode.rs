@@ -25,7 +25,7 @@ pub type EndpointsVec = Vec<EndpointState>;
 /// Contiene los metadatos mínimos para comparar versiones de nodos.
 pub type GossipInfo = HashMap<NodeId, HeartbeatState>;
 
-const ACTION_MASK: u8 = 0xF0;
+const ACTION_MASK: Byte = 0xF0;
 
 /// Una "acción" de servidor es un mensaje especial que no entra en ninguna especificaión
 /// del protocolo de Cassandra, y en su lugar es usado para acciones especiales fuera

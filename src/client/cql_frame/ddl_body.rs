@@ -1,5 +1,6 @@
 use crate::protocol::{
-    notations::consistency::Consistency, traits::Byteable, utils::encode_string_to_bytes,
+    aliases::types::Byte, notations::consistency::Consistency, traits::Byteable,
+    utils::encode_string_to_bytes,
 };
 
 use super::flags::{
@@ -48,7 +49,7 @@ impl DdlBody {
 }
 
 impl Byteable for DdlBody {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         let mut bytes = Vec::new();
 
         // Statement string

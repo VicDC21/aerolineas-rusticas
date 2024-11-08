@@ -13,16 +13,6 @@ use std::{
     time::Duration,
 };
 
-use crate::server::{
-    actions::opcode::SvAction,
-    modes::ConnectionMode,
-    nodes::{
-        node::{Node, NodeId},
-        port_type::PortType,
-        utils::{load_init_queries, send_to_node},
-    },
-    utils::load_serializable,
-};
 use crate::{
     client::cql_frame::frame::Frame,
     parser::{main_parser::make_parse, statements::statement::Statement},
@@ -33,18 +23,31 @@ use crate::{
     },
     tokenizer::tokenizer::tokenize_query,
 };
+use crate::{
+    protocol::notations::consistency::Consistency,
+    server::{
+        actions::opcode::SvAction,
+        modes::ConnectionMode,
+        nodes::{
+            node::{Node, NodeId},
+            port_type::PortType,
+            utils::{load_init_queries, send_to_node},
+        },
+        utils::load_serializable,
+    },
+};
 
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
 
 /// Cantidad de nodos fija en cualquier momento.
-pub const N_NODES: u8 = 5;
+pub const N_NODES: Byte = 5;
 /// El ID con el que comenzar a contar los nodos.
 pub const START_ID: NodeId = 10;
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
-const HANDSHAKE_NEIGHBOURS: u8 = 3;
+const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// La cantidad de nodos que comenzarán su intercambio de _gossip_ con otros [n](crate::server::nodes::graph::HANDSHAKE_NEIGHBOURS) nodos.
-const SIMULTANEOUS_GOSSIPERS: u8 = 3;
+const SIMULTANEOUS_GOSSIPERS: Byte = 3;
 /// El archivo donde se guardan los nodos.
 pub const NODES_PATH: &str = "nodes.csv";
 
@@ -132,7 +135,6 @@ impl NodesGraph {
     fn send_init_queries(&self) -> Result<()> {
         let node_id = self.node_ids[0]; // idealmente sería el primero que no esté caído
         let queries = load_init_queries();
-        println!("Queries iniciales:\n{:?}", queries);
 
         for (i, query) in queries.iter().enumerate() {
             let stream_id = format!("{}{}", node_id, i)
@@ -141,13 +143,11 @@ impl NodesGraph {
             match make_parse(&mut tokenize_query(query)) {
                 Ok(statement) => {
                     let frame = match statement {
-                        Statement::DmlStatement(_) => Frame::query(stream_id, query.to_string()),
-                        Statement::DdlStatement(_) => Frame::ddl(stream_id, query.to_string()),
+                        Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
+                            Frame::new(stream_id, query, Consistency::One)
+                        } // Valor arbitrario por ahora
                         Statement::UdtStatement(_) => {
-                            return Err(Error::ServerError(format!(
-                                "UDT statements no soportados para la query:\n{}",
-                                query
-                            )));
+                            return Err(Error::ServerError("UDT statements no soportados".into()))
                         }
                     };
                     send_to_node(node_id, frame.as_bytes(), PortType::Priv)?;
@@ -177,7 +177,7 @@ impl NodesGraph {
     /// "Inicia" los nodos del grafo en sus propios hilos.
     ///
     /// * `n` es la cantidad de nodos a crear en el proceso.
-    fn bootup_nodes(&mut self, n: u8) -> Result<Vec<Option<NodeHandle>>> {
+    fn bootup_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_path = Path::new(NODES_PATH);
         if nodes_path.exists() {
             self.bootup_existing_nodes()
@@ -187,7 +187,7 @@ impl NodesGraph {
     }
 
     /// Inicializa nodos nuevos.
-    fn bootup_new_nodes(&mut self, n: u8) -> Result<Vec<Option<NodeHandle>>> {
+    fn bootup_new_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
         self.node_weights = vec![1; n as usize];
         self.node_weights[0] *= 3; // El primer nodo tiene el triple de probabilidades de ser elegido.
 
@@ -262,7 +262,7 @@ impl NodesGraph {
                 cli_socket,
                 cli_sender,
                 &mut node_listeners,
-                i as u8,
+                i as Byte,
                 priv_socket,
                 priv_sender,
             )?;
@@ -360,13 +360,13 @@ impl NodesGraph {
 }
 
 fn create_client_and_private_conexion(
-    current_id: u8,
+    current_id: Byte,
     cli_socket: std::net::SocketAddr,
-    cli_sender: Sender<(TcpStream, Vec<u8>)>,
+    cli_sender: Sender<(TcpStream, Vec<Byte>)>,
     node_listeners: &mut Vec<JoinHandle<Result<()>>>,
-    i: u8,
+    i: Byte,
     priv_socket: std::net::SocketAddr,
-    priv_sender: Sender<(TcpStream, Vec<u8>)>,
+    priv_sender: Sender<(TcpStream, Vec<Byte>)>,
 ) -> Result<()> {
     let cli_builder = Builder::new().name(format!("{}_cli", current_id));
     let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_sender));
@@ -395,7 +395,7 @@ fn create_client_and_private_conexion(
 
 fn increase_heartbeat_and_store_nodes(
     receiver: std::sync::mpsc::Receiver<bool>,
-    ids: Vec<u8>,
+    ids: Vec<Byte>,
 ) -> std::result::Result<(), Error> {
     loop {
         sleep(Duration::from_secs(1));

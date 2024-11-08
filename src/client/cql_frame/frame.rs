@@ -2,12 +2,15 @@ use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
     headers::msg_headers::Headers,
+    notations::consistency::Consistency,
     traits::Byteable,
 };
 
 use crate::protocol::headers::{
     flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
 };
+
+use super::query_body::QueryBody;
 
 /// Representa un frame del protocolo CQL, tanto para requests como responses
 pub struct Frame {
@@ -16,7 +19,21 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Crea un nuevo frame
+    /// Crea un nuevo frame dada la query y el _Consistency Level_.
+    pub fn new(stream_id: i16, query: &str, consistency: Consistency) -> Self {
+        let body = QueryBody::new(query.to_string(), consistency).as_bytes();
+        let headers = Headers::new(
+            Version::RequestV5,
+            vec![Flag::Default],
+            Stream::new(stream_id),
+            Opcode::Query,
+            Length::new(body.len() as u32),
+        );
+
+        Self { headers, body }
+    }
+
+    /* /// Crea un nuevo frame
     pub fn new(headers: Headers, body: Vec<Byte>) -> Self {
         Self { headers, body }
     }
@@ -45,7 +62,7 @@ impl Frame {
             Length::new(body.len() as u32),
         );
         Self::new(headers, body)
-    }
+    }*/
 
     /* Crea un frame para un batch
     pub fn batch(stream_id: i16, queries: Vec<DmlStatement>) -> Self {
@@ -59,9 +76,20 @@ impl Frame {
         );
         Self::new(headers, body)
     }*/
+}
 
-    /// Parsea bytes a un Frame
-    pub fn from_bytes(bytes: &[Byte]) -> Result<Self> {
+impl Byteable for Frame {
+    fn as_bytes(&self) -> Vec<Byte> {
+        let mut bytes = self.headers.as_bytes();
+        bytes.extend(&self.body);
+        bytes
+    }
+}
+
+impl TryFrom<&[Byte]> for Frame {
+    type Error = Error;
+
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         if bytes.len() < 9 {
             return Err(Error::ProtocolError("Header incompleto".to_string()));
         }
@@ -75,15 +103,7 @@ impl Frame {
         let headers = Headers::new(version, vec![flags], stream, opcode, length);
         let body = bytes[9..].to_vec();
 
-        Ok(Self::new(headers, body))
-    }
-}
-
-impl Byteable for Frame {
-    fn as_bytes(&self) -> Vec<Byte> {
-        let mut bytes = self.headers.as_bytes();
-        bytes.extend(&self.body);
-        bytes
+        Ok(Self { headers, body })
     }
 }
 
@@ -108,7 +128,7 @@ impl BatchBody {
 }
 
 impl Byteable for BatchBody {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         let mut bytes = Vec::new();
 
         // Batch type (0 = LOGGED)
@@ -134,7 +154,7 @@ impl Byteable for BatchBody {
         bytes.extend((self.consistency as u16).to_be_bytes());
 
         // Flags
-        let flags_byte = self.flags.iter().fold(0u8, |acc, flag| acc | *flag as u8);
+        let flags_byte = self.flags.iter().fold(0Byte, |acc, flag| acc | *flag as Byte);
         bytes.push(flags_byte);
 
         // Timestamp if present

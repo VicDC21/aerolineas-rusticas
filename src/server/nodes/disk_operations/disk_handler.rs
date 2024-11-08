@@ -69,7 +69,7 @@ impl DiskHandler {
     }
 
     /// Almacena los metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
-    pub fn store_node_metadata(id: NodeId, metadata: &[u8]) -> Result<()> {
+    pub fn store_node_metadata(id: NodeId, metadata: &[Byte]) -> Result<()> {
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -741,9 +741,9 @@ impl DiskHandler {
         query_cols: &[String],
         table_cols: &[String],
         table: &Table,
-    ) -> Vec<u8> {
-        let mut res: Vec<u8> = vec![0x0, 0x0, 0x0, 0x2];
-        let mut metadata: Vec<u8> = Vec::new();
+    ) -> Vec<Byte> {
+        let mut res: Vec<Byte> = vec![0x0, 0x0, 0x0, 0x2];
+        let mut metadata: Vec<Byte> = Vec::new();
         let flags: i32 = 0;
         metadata.append(&mut flags.to_be_bytes().to_vec());
 
@@ -761,7 +761,7 @@ impl DiskHandler {
 
         let rows_count = result.len() as i32;
 
-        let mut rows_content: Vec<u8> = Vec::new();
+        let mut rows_content: Vec<Byte> = Vec::new();
         for row in result {
             for value in row {
                 let value_lenght = value.len() as i32;

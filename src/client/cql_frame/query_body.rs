@@ -1,5 +1,5 @@
 use crate::protocol::{
-    aliases::results::Result,
+    aliases::{results::Result, types::Byte},
     errors::error::Error,
     notations::consistency::Consistency,
     traits::Byteable,
@@ -13,9 +13,9 @@ pub struct QueryBody {
     query: String,
     consistency: Consistency,
     flags: Vec<QueryFlags>,
-    values: Option<Vec<Vec<u8>>>,
+    values: Option<Vec<Vec<Byte>>>,
     page_size: Option<i32>,
-    paging_state: Option<Vec<u8>>,
+    paging_state: Option<Vec<Byte>>,
     serial_consistency: Option<Consistency>,
     timestamp: Option<i64>,
 }
@@ -34,10 +34,20 @@ impl QueryBody {
             timestamp: None,
         }
     }
+
+    /// Devuelve la query del body
+    pub fn get_query(&self) -> &str {
+        &self.query
+    }
+
+    /// Devuelve el _Consistency Level_ del body
+    pub fn get_consistency_level(&self) -> &Consistency {
+        &self.consistency
+    }
 }
 
 impl Byteable for QueryBody {
-    fn as_bytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<Byte> {
         let mut bytes = Vec::new();
 
         // Query string
@@ -49,7 +59,7 @@ impl Byteable for QueryBody {
         bytes.extend(self.consistency.as_bytes());
 
         // Flags
-        let flags_byte = self.flags.iter().fold(0u8, |acc, flag| acc | *flag as u8);
+        let flags_byte = self.flags.iter().fold(0u8, |acc, flag| acc | *flag as Byte);
         bytes.push(flags_byte);
 
         // Optional values based on flags
@@ -92,12 +102,12 @@ impl Byteable for QueryBody {
     }
 }
 
-impl TryFrom<Vec<u8>> for QueryBody {
+impl TryFrom<&[Byte]> for QueryBody {
     type Error = Error;
 
-    fn try_from(bytes: Vec<u8>) -> Result<Self> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         let mut query_lenght: usize = 0;
-        let query = parse_bytes_to_long_string(&bytes, &mut query_lenght)?;
+        let query = parse_bytes_to_long_string(bytes, &mut query_lenght)?;
         let consistency = Consistency::try_from(&bytes[query_lenght..(query_lenght + 2)])?;
         Ok(QueryBody {
             query,

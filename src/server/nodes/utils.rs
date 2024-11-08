@@ -46,7 +46,7 @@ pub fn send_to_node_and_wait_response(
     id: NodeId,
     bytes: Vec<Byte>,
     port_type: PortType,
-) -> Result<Vec<u8>> {
+) -> Result<Vec<Byte>> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,

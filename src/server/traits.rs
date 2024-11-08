@@ -2,15 +2,18 @@
 
 use std::str::Lines;
 
-use crate::protocol::{aliases::results::Result, errors::error::Error};
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+};
 
 /// Serializa o deserializa un objeto en bytes para escribirlo o leerlo en un archivo `.csv`.
 pub trait Serializable {
     /// Serializa el objeto en bytes para que sea compatible escribirlo en un archivo `.csv`.
-    fn serialize(&self) -> Vec<u8>;
+    fn serialize(&self) -> Vec<Byte>;
 
     /// Deserializa los bytes en un objeto del tipo deseado desde un archivo `.csv`.
-    fn deserialize(data: &[u8]) -> Result<Self>
+    fn deserialize(data: &[Byte]) -> Result<Self>
     where
         Self: Sized;
 }
@@ -18,8 +21,8 @@ pub trait Serializable {
 impl<T: Serializable> Serializable for Vec<T> {
     /// Toma un vector de elementos que pueden serializarse.
     /// Cada elemento del vector termina siendo una linea de un archivo csv.
-    fn serialize(&self) -> Vec<u8> {
-        let mut data: Vec<u8> = Vec::new();
+    fn serialize(&self) -> Vec<Byte> {
+        let mut data: Vec<Byte> = Vec::new();
 
         for elemento in self {
             data.extend(elemento.serialize());
@@ -32,7 +35,7 @@ impl<T: Serializable> Serializable for Vec<T> {
     /// Toma un conjunto de bytes, lo convierte a un string, se toma cada
     /// linea en formato csv, se deserializa la linea obteniendo un elemento
     /// de tipo genérico, y ese elemento se añade a un vector.
-    fn deserialize(data: &[u8]) -> Result<Self>
+    fn deserialize(data: &[Byte]) -> Result<Self>
     where
         Self: Sized,
     {
@@ -47,7 +50,7 @@ impl<T: Serializable> Serializable for Vec<T> {
                 continue;
             }
 
-            let bytes: &[u8] = line.as_bytes();
+            let bytes: &[Byte] = line.as_bytes();
             let elem: T = T::deserialize(bytes)?;
             res.push(elem);
         }
