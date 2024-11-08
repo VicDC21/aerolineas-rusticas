@@ -78,6 +78,11 @@ pub type NodeId = u8;
 
 /// Mapea todos los estados de los vecinos y de sí mismo.
 pub type NodesMap = HashMap<NodeId, EndpointState>;
+/// Mapea todas las conexiones actualmente abiertas.
+pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
+
+/// El límite posible para los rangos de los nodos.
+const NODES_RANGE_END: u64 = u64::pow(2, 64);
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
@@ -111,13 +116,16 @@ pub struct Node {
 
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
     tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
+
+    /// Mapa de conexiones abiertas entre el nodo y otros clientes.
+    open_connections: OpenConnectionsMap,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Self {
         let storage_addr = DiskHandler::new_node_storage(id);
-        let nodes_ranges = divide_range(0, 18446744073709551615, N_NODES as usize);
+        let nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
         Self {
             id,
             neighbours_states: NodesMap::new(),
@@ -128,6 +136,7 @@ impl Node {
             tables: HashMap::new(),
             nodes_ranges,
             tables_and_partitions_keys_values: HashMap::new(),
+            open_connections: OpenConnectionsMap::new(),
         }
     }
 
@@ -451,8 +460,24 @@ impl Node {
         self.update_neighbours(nodes_map)
     }
 
-    /// Escucha por los eventos que recibe del cliente.
+    /// Limpia las conexiones cerradas.
+    ///
+    /// Devuelve las conexiones que logró cerrar.
+    pub fn clean_closed_connections(&mut self) -> usize {
+        let mut closed_count = 0;
 
+        self.open_connections.retain(|_, tcp_stream| {
+            if !tcp_stream.peer_addr().is_err() {
+                return true;
+            }
+            closed_count += 1;
+            false
+        });
+
+        closed_count
+    }
+
+    /// Escucha por los eventos que recibe del cliente.
     pub fn cli_listen(
         socket: SocketAddr,
         proc_sender: Sender<(TcpStream, Vec<Byte>)>,
@@ -461,7 +486,6 @@ impl Node {
     }
 
     /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-
     pub fn priv_listen(
         socket: SocketAddr,
         proc_sender: Sender<(TcpStream, Vec<Byte>)>,
@@ -1709,6 +1733,7 @@ impl Serializable for Node {
             tables,
             nodes_ranges: divide_range(0, 18446744073709551615, N_NODES as usize),
             tables_and_partitions_keys_values,
+            open_connections: OpenConnectionsMap::new(),
         })
     }
 }

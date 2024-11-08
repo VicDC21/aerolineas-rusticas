@@ -167,7 +167,7 @@ pub fn load_init_queries() -> Vec<String> {
 }
 
 /// Convierte un hashmap a un string.
-pub fn hashmap_to_string<T: ToString>(map: &HashMap<String, T>) -> String {
+pub fn hashmap_to_string<T: ToString, R: ToString>(map: &HashMap<T, R>) -> String {
     let mut res = String::new();
 
     for (key, value) in map {
