@@ -57,8 +57,8 @@ impl TableOperations {
         Ok(())
     }
 
-    /// Lee las filas de la tabla.
-    pub fn read_rows(&self) -> Result<Vec<Vec<String>>> {
+    /// Lee las filas de la tabla, sin contar la columna extra del timestamp.
+    pub fn read_rows(&self, without_timestamp: bool) -> Result<Vec<Vec<String>>> {
         let file = OpenOptions::new()
             .read(true)
             .open(self.path.full_path())
@@ -70,9 +70,14 @@ impl TableOperations {
         for line in reader.lines().skip(1) {
             let line = line.map_err(|e| Error::ServerError(e.to_string()))?;
             if !line.trim().is_empty() {
-                rows.push(line.trim().split(',').map(|s| s.to_string()).collect());
+                let mut line_separated: Vec<String> = line.trim().split(',').map(|s| s.to_string()).collect();
+                if without_timestamp{
+                    line_separated.pop(); // saco la columna del timestamp
+                }
+                rows.push(line_separated);
             }
         }
+        
 
         Ok(rows)
     }

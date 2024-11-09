@@ -13,6 +13,8 @@ use std::{
     vec::IntoIter,
 };
 
+use chrono::Utc;
+
 use crate::client::cql_frame::query_body::QueryBody;
 use crate::parser::{
     data_types::keyspace_name::KeyspaceName,
@@ -985,9 +987,10 @@ impl Node {
     }
     /// Maneja una declaración DML.
     fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement) -> Result<Vec<Byte>> {
+        let timestamp = Utc::now().timestamp(); // CAMBIAR DESPUES, ESTA PARA QUE NO ROMPA
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select),
-            DmlStatement::InsertStatement(insert) => self.process_insert(&insert),
+            DmlStatement::InsertStatement(insert) => self.process_insert(&insert, timestamp),
             DmlStatement::UpdateStatement(update) => self.process_update(&update),
             DmlStatement::DeleteStatement(delete) => self.process_delete(&delete),
             DmlStatement::BatchStatement(_batch) => todo!(),
@@ -1016,7 +1019,7 @@ impl Node {
         Ok(response)
     }
 
-    fn process_insert(&mut self, insert: &Insert) -> Result<Vec<Byte>> {
+    fn process_insert(&mut self, insert: &Insert, timestamp: i64) -> Result<Vec<Byte>> {
         let table = match self.get_table(&insert.table.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
@@ -1026,6 +1029,7 @@ impl Node {
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
+            timestamp
         )?;
         match self.check_if_has_new_partition_value(insert, table)? {
             Some(new_partition_values) => self
@@ -1161,6 +1165,7 @@ impl Node {
         request: &[Byte],
         consistency_level: &Consistency,
     ) -> Result<Vec<Byte>> {
+        let timestamp = Utc::now().timestamp();
         let table_name: String = insert.table.get_name();
         // let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut response: Vec<Byte> = Vec::new();
@@ -1193,7 +1198,7 @@ impl Node {
                 };
                 res
             } else {
-                self.process_insert(&insert)?
+                self.process_insert(&insert, timestamp)?
             };
 
             if consistency_counter >= consistency_number {

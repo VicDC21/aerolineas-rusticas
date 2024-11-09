@@ -19,7 +19,7 @@ use crate::{parser::{
             r#where::operator::Operator,
         },
     },
-}, server::nodes::node::Node};
+}, protocol::notations::value::Value, server::nodes::node::Node};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -207,6 +207,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        timestamp: i64
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
@@ -214,18 +215,37 @@ impl DiskHandler {
             &statement.table.get_name(),
             default_keyspace,
         );
-
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
-        let mut rows = table_ops.read_rows()?;
+        let mut rows = table_ops.read_rows(true)?;
         let values = statement.get_values();
-        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
+        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values, timestamp);
         if !rows.contains(&new_row) {
             rows.push(new_row.clone());
             DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
             return Ok(new_row);
         }
         Ok(Vec::new())
+    }
+
+    /// Devuelve las filas de la tabla como un string
+    pub fn get_rows_with_timestamp_as_string(storage_addr: &str, table: &Table, default_keyspace: &str, node: &Node, statement: &Select) -> Result<String>{
+        let path = TablePath::new(
+            storage_addr,
+            statement.from.get_keyspace(),
+            &statement.from.get_name(),
+            default_keyspace,
+        );
+        let table_ops = TableOperations::new(path)?;
+        let mut rows = table_ops.read_rows(false)?;
+        DiskHandler::filter_replicas_from_other_nodes(node, &mut rows, table.get_position_of_partition_key()?)?;
+        let rows_as_string = rows
+            .iter()
+            .map(|row| row.join(",")) 
+            .collect::<Vec<String>>()
+            .join("\n");
+
+        Ok(rows_as_string)
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
@@ -251,13 +271,13 @@ impl DiskHandler {
         }
 
         let mut result = Vec::new();
-        if query_cols.len() == 1 && query_cols[0] == "*" {
-            result.push(table_ops.columns.clone());
-        } else {
-            result.push(query_cols.clone());
-        }
+        // if query_cols.len() == 1 && query_cols[0] == "*" {
+        //     result.push(table_ops.columns.clone());
+        // } else {
+        //     result.push(query_cols.clone());
+        // }
 
-        let mut rows = table_ops.read_rows()?;
+        let mut rows = table_ops.read_rows(true)?;
         DiskHandler::filter_replicas_from_other_nodes(node, &mut rows, table.get_position_of_partition_key()?)?;
         if let Some(the_where) = &statement.options.the_where {
             rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
@@ -299,7 +319,6 @@ impl DiskHandler {
 
     }
 
-
     /// Actualiza filas en una tabla en el caso que corresponda.
     pub fn do_update(
         statement: &Update,
@@ -316,7 +335,7 @@ impl DiskHandler {
 
         let table_ops = TableOperations::new(path)?;
         Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
-        let mut rows = table_ops.read_rows()?;
+        let mut rows = table_ops.read_rows(true)?;
 
         if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
             return Ok(Vec::new());
@@ -377,7 +396,7 @@ impl DiskHandler {
         );
 
         let table_ops = TableOperations::new(path)?;
-        let rows = table_ops.read_rows()?;
+        let rows = table_ops.read_rows(true)?;
 
         if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
             return Ok(Vec::new());
@@ -403,10 +422,11 @@ impl DiskHandler {
         statement: &Insert,
         table_ops: &TableOperations,
         values: &[String],
+        timestamp: i64
     ) -> Vec<String> {
         let table_columns: Vec<&str> = table_ops.columns.iter().map(|s| s.as_str()).collect();
 
-        Self::generate_row_to_insert(values, &statement.get_columns_names(), &table_columns)
+        Self::generate_row_to_insert(values, &statement.get_columns_names(), &table_columns, timestamp)
             .trim()
             .split(',')
             .map(|s| s.to_string())
@@ -654,9 +674,8 @@ impl DiskHandler {
             .write_all(columns_names.join(",").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
         writer
-            .write_all("\n".as_bytes())
+            .write_all((",row_timestamp\n").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
-
         Ok(())
     }
 
@@ -743,6 +762,7 @@ impl DiskHandler {
         values: &[String],
         query_cols: &[String],
         table_cols: &[&str],
+        timestamp: i64
     ) -> String {
         let mut values_to_insert: Vec<&str> = vec![""; table_cols.len()];
 
@@ -751,6 +771,9 @@ impl DiskHandler {
                 values_to_insert[j] = values[i].as_str();
             }
         }
+        let timestamp_reference = &timestamp.to_string();
+        values_to_insert.push(timestamp_reference);
+
 
         values_to_insert.join(",") + "\n"
     }
