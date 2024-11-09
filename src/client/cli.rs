@@ -400,7 +400,7 @@ impl Client {
         }
     }
 
-    fn get_lenght(&self, request: &[Byte], actual_position: usize) -> i32 {
+    fn get_length(&self, request: &[Byte], actual_position: usize) -> i32 {
         i32::from_be_bytes([
             request[actual_position],
             request[actual_position + 1],
@@ -414,7 +414,7 @@ impl Client {
         T: std::str::FromStr,
         T::Err: std::fmt::Display,
     {
-        let value_len = self.get_lenght(request, *actual_position);
+        let value_len = self.get_length(request, *actual_position);
         *actual_position += 4;
         let right_position = *actual_position + value_len as usize;
 
@@ -427,7 +427,7 @@ impl Client {
     }
 
     fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {
-        let string_len = self.get_lenght(request, *actual_position);
+        let string_len = self.get_length(request, *actual_position);
         *actual_position += 4;
         let right_position = *actual_position + string_len as usize;
 

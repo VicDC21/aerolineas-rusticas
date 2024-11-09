@@ -747,30 +747,38 @@ impl DiskHandler {
         let flags: i32 = 0;
         metadata.append(&mut flags.to_be_bytes().to_vec());
 
-        if query_cols[0] == "*" {
-            metadata.append(&mut (table_cols.len() as i32).to_be_bytes().to_vec())
+        let selected_cols = if query_cols[0] == "*" {
+            table_cols
         } else {
-            metadata.append(&mut (query_cols.len() as i32).to_be_bytes().to_vec())
-        }
+            query_cols
+        };
+
+        metadata.append(&mut (selected_cols.len() as i32).to_be_bytes().to_vec());
+
         let cols_name_and_type = table.get_columns_name_and_data_type();
-        for (col_name, data_type) in cols_name_and_type {
-            let col_type = ColType::from(data_type);
-            metadata.append(&mut encode_string_to_bytes(&col_name));
-            metadata.append(&mut col_type.as_bytes())
+        for col_name in selected_cols {
+            if let Some((_, data_type)) =
+                cols_name_and_type.iter().find(|(name, _)| name == col_name)
+            {
+                let col_type = ColType::from(data_type.clone());
+                metadata.append(&mut encode_string_to_bytes(col_name));
+                metadata.append(&mut col_type.as_bytes());
+            }
         }
 
         let rows_count = result.len() as i32;
+        metadata.append(&mut rows_count.to_be_bytes().to_vec());
 
         let mut rows_content: Vec<u8> = Vec::new();
         for row in result {
             for value in row {
-                let value_lenght = value.len() as i32;
-                rows_content.append(&mut value_lenght.to_be_bytes().to_vec());
+                let value_length = value.len() as i32;
+                rows_content.append(&mut value_length.to_be_bytes().to_vec());
                 rows_content.append(&mut value.as_bytes().to_vec());
             }
         }
+
         res.append(&mut metadata);
-        res.append(&mut rows_count.to_be_bytes().to_vec());
         res.append(&mut rows_content);
         res
     }
