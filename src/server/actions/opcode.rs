@@ -74,6 +74,12 @@ pub enum SvAction {
 
     /// Guardar metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
     StoreMetadata,
+
+    /// Obtiene unicamente las filas de la tabla solicitada, pero con sus timestamps.
+    GetTableWithTimestampOfRows,
+
+    /// Pide unicamente el valor hasheado de una query normal.
+    GetResponseHashed(Vec<Byte>),
 }
 
 impl SvAction {
@@ -213,6 +219,12 @@ impl Byteable for SvAction {
                 bytes
             }
             Self::StoreMetadata => vec![0xF9],
+            Self::GetTableWithTimestampOfRows => vec![0xFA],
+            Self::GetResponseHashed(query_bytes) => {
+                let mut bytes = vec![0xF8];
+                bytes.extend(query_bytes);
+                bytes
+            }
         }
     }
 }

@@ -19,7 +19,7 @@ use crate::{parser::{
             r#where::operator::Operator,
         },
     },
-}, protocol::notations::value::Value, server::nodes::node::Node};
+}, server::nodes::node::Node};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -244,7 +244,6 @@ impl DiskHandler {
             .map(|row| row.join(",")) 
             .collect::<Vec<String>>()
             .join("\n");
-
         Ok(rows_as_string)
     }
 

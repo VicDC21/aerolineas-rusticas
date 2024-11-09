@@ -572,6 +572,18 @@ impl Node {
                     )));
                 }
             }
+            SvAction::GetTableWithTimestampOfRows => {
+                // let res = DiskHandler::get_rows_with_timestamp_as_string(storage_addr, table, default_keyspace, node, statement)?;
+                let _ = tcp_stream.write_all("res".as_bytes());
+            }
+            SvAction::GetResponseHashed(bytes) => {
+                let response = self.handle_request(&bytes, true);
+                self.hash_vec_of_bytes(&response);
+                let _ = tcp_stream.write_all(&response[..]);
+                if let Err(err) = tcp_stream.flush() {
+                    return Err(Error::ServerError(err.to_string()));
+                };
+            }
         };
         Ok(stop)
     }
@@ -1372,12 +1384,12 @@ impl Node {
         let mut results_from_another_nodes: Vec<Byte> = Vec::new();
         let partitions_keys_to_nodes = self.get_partition_keys_values(&select.from.get_name())?;
         let mut consulted_nodes: Vec<Byte> = Vec::new();
-        let mut consistency_counter = 0;
-        let mut wait_response = true;
+        let wait_response = true;
         let consistency_number = consistency_level.as_usize(N_NODES as usize);
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(partition_key_value);
             if !consulted_nodes.contains(&node_id) {
+                let mut consistency_counter = 0;
                 let res = if node_id == self.id {
                     self.process_select(&select)?
                 } else {
@@ -1401,15 +1413,16 @@ impl Node {
                     //     }
                     // };
                 };
-                self.handle_result_from_node(&mut results_from_another_nodes, res, &select)?;
+                self.handle_result_from_node(&mut results_from_another_nodes, &res, &select)?;
                 consulted_nodes.push(node_id);
-
+                consistency_counter += 1;
                 // TODO: Terminar logica de Read-Repair
                 if !self.consult_replica_nodes(
                     node_id,
                     request,
                     &mut consistency_counter,
                     consistency_number,
+                    &res
                 )? {
                     return Err(Error::ServerError(format!(
                         "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
@@ -1425,21 +1438,61 @@ impl Node {
         &self,
         node_id: u8,
         request: &[Byte],
-        consistency_counter: &mut i32,
+        _consistency_counter: &mut i32,
         consistency_number: usize,
+        response_from_first_replica: &[Byte]
     ) -> Result<bool> {
+        if consistency_number == 1{
+            return Ok(true)
+        }
+        let valor_hasheado = self.hash_vec_of_bytes(response_from_first_replica);
+        let mut responses: Vec<Vec<Byte>> = Vec::new();
         for i in 0..consistency_number {
             let node_to_consult =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
             let res = self.send_message_and_wait_response(
-                request.to_vec(),
+                SvAction::GetResponseHashed(request.to_vec()).as_bytes(),
                 node_to_consult,
                 PortType::Priv,
                 true,
-            );
+            )?;
+            responses.push(res);
         }
+        // let mut hasher = DefaultHasher::new();
+        // value.hash(&mut hasher);
+        // hasher.finish()
+
+        let mut exec_read_repair = false;
+        for response in responses{
+            if response.len() < 8{
+                exec_read_repair = true;
+            }
+            let mut array = [0u8; 8];
+            array.copy_from_slice(&response[0..8]);
+            let hashed_value_of_response = i64::from_be_bytes(array);
+            // let hashed_value = 
+            if valor_hasheado != hashed_value_of_response{
+                exec_read_repair = true;
+            }
+        }
+
+        if exec_read_repair{
+            self.exec_read_repair()
+        }
+
+
         Ok(true)
     }
+
+    fn exec_read_repair(&self){
+        todo!()
+    }
+
+
+    fn hash_vec_of_bytes(&self, _res: &[Byte]) -> i64{
+        todo!()
+    }
+
 
     fn process_delete(&mut self, delete: &Delete) -> Result<Vec<Byte>> {
         let table = match self.get_table(&delete.from.get_name()) {
@@ -1561,18 +1614,19 @@ impl Node {
     fn handle_result_from_node(
         &self,
         results_from_another_nodes: &mut Vec<Byte>,
-        mut result_from_actual_node: Vec<Byte>,
+        result_from_actual_node: &[Byte],
         _select: &Select,
     ) -> Result<()> {
+        let mut res = result_from_actual_node.to_vec();
         if results_from_another_nodes.is_empty() {
-            results_from_another_nodes.append(&mut result_from_actual_node);
+            results_from_another_nodes.append(&mut res);
             return Ok(());
         }
         let size = Length::try_from(results_from_another_nodes[5..9].to_vec())?;
         let new_size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
 
         let total_length_from_metadata =
-            self.get_columns_metadata_length(&mut result_from_actual_node);
+            self.get_columns_metadata_length(&mut res);
 
         let new_size_without_metadata =
             size.len + new_size.len - (total_length_from_metadata as u32);
