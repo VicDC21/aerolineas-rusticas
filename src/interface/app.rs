@@ -1,7 +1,5 @@
 //! Módulo para la estructura de la aplicación en sí.
 
-use std::sync::Arc;
-
 use chrono::{DateTime, Local};
 use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
@@ -9,15 +7,17 @@ use egui_extras::install_image_loaders;
 use walkers::{Map, MapMemory, Position};
 
 use crate::client::cli::Client;
-use crate::data::{airports::Airport, flights::Flight};
-use crate::interface::map::{
-    panels::{cur_airport_info, extra_airport_info},
-    providers::{Provider, ProvidersMap},
-    windows::{clock_selector, controls, date_selector, go_to_my_position, zoom},
-};
-use crate::interface::plugins::{
-    airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
-    flights::loader::FlightsLoader,
+use crate::interface::{
+    data::airports_details::AirportsDetails,
+    map::{
+        panels::{cur_airport_info, extra_airport_info},
+        providers::{Provider, ProvidersMap},
+        windows::{clock_selector, controls, date_selector, go_to_my_position, zoom},
+    },
+    plugins::{
+        airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
+        flights::loader::FlightsLoader,
+    },
 };
 
 /// Latitud de la coordenada de origen de nuestro mapa.
@@ -51,20 +51,11 @@ pub struct AerolineasApp {
     /// El cargador de vuelos.
     flights_loader: FlightsLoader,
 
-    /// El puerto seleccionado actualmente.
-    selected_airport: Option<Airport>,
-
-    /// Un aeropuerto extra, para acciones especiales.
-    extra_airport: Option<Airport>,
-
     /// La fecha actual.
     datetime: DateTime<Local>,
 
-    /// Los vuelos actualmente en memoria.
-    current_flights: Arc<Vec<Flight>>,
-
-    /// Decide si mostrar ciertos detalles o no.
-    show_details: bool,
+    /// Los detalles de lso aeropuertos.
+    airports_details: AirportsDetails,
 }
 
 impl AerolineasApp {
@@ -84,11 +75,8 @@ impl AerolineasApp {
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
             flights_loader: FlightsLoader::default(),
-            selected_airport: None,
-            extra_airport: None,
             datetime: Local::now(),
-            current_flights: Arc::new(Vec::new()),
-            show_details: false,
+            airports_details: AirportsDetails::default(),
         }
     }
 }
@@ -110,17 +98,16 @@ impl App for AerolineasApp {
             );
 
             // Añadimos los plugins.
-            let cur_airports = Arc::new(self.airports_loader.take_airports());
-            let cur_flights = self.flights_loader.take_flights();
-            if !cur_flights.is_empty() {
-                self.current_flights = Arc::new(cur_flights);
-            }
+            self.airports_details
+                .set_airports(self.airports_loader.take_airports());
+            self.airports_details
+                .set_flights(self.flights_loader.take_flights());
 
             self.airports_drawer
-                .sync_airports(Arc::clone(&cur_airports))
+                .sync_airports(self.airports_details.get_airports())
                 .sync_zoom(zoom_lvl);
             self.screen_clicker
-                .sync_airports(Arc::clone(&cur_airports))
+                .sync_airports(self.airports_details.get_airports())
                 .sync_zoom(zoom_lvl);
             self.flights_loader
                 .sync_date(self.datetime)
@@ -128,25 +115,10 @@ impl App for AerolineasApp {
 
             // necesariamente antes de agregar al mapa
             if let Some(cur_airport) = self.screen_clicker.take_cur_airport() {
-                self.selected_airport = cur_airport;
+                self.airports_details.set_selected_airport(cur_airport);
             }
             if let Some(ex_airport) = self.screen_clicker.take_extra_airport() {
-                self.extra_airport = ex_airport;
-            }
-
-            match &self.selected_airport {
-                Some(cur_airport) => {
-                    if let Some(ex_airport) = &self.extra_airport {
-                        if cur_airport == ex_airport {
-                            // Si los aeropuertos son iguales, anular la selección.
-                            self.extra_airport = None;
-                        }
-                    }
-                }
-                None => {
-                    // Y si no hay aeropuerto seleccionado también
-                    self.extra_airport = None;
-                }
+                self.airports_details.set_extra_airport(ex_airport);
             }
 
             let map = map
@@ -172,16 +144,17 @@ impl App for AerolineasApp {
         if let Some(valid_time) = clock_selector(ctx, &mut self.datetime) {
             self.datetime = valid_time;
         }
-        self.show_details = cur_airport_info(
-            ctx,
-            &self.selected_airport,
-            Arc::clone(&self.current_flights),
-            &self.show_details,
-        );
+        self.airports_details
+            .set_show_airports_list(cur_airport_info(
+                ctx,
+                self.airports_details.get_selected_airport(),
+                self.airports_details.get_flights(),
+                self.airports_details.get_show_airports_list(),
+            ));
         extra_airport_info(
             ctx,
-            &self.selected_airport,
-            &self.extra_airport,
+            self.airports_details.get_selected_airport(),
+            self.airports_details.get_extra_airport(),
             self.client.clone(),
             self.datetime.timestamp(),
         );
