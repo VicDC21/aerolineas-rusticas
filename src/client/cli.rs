@@ -101,7 +101,17 @@ impl Client {
 
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
-        let _ = tcp_stream.set_nonblocking(true);
+        tcp_stream
+            .set_nonblocking(true)
+            .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {}", e)))?;
+
+        // Configurar timeouts explícitos
+        tcp_stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| Error::ServerError(format!("Error al configurar read timeout: {}", e)))?;
+        tcp_stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
 
         println!(
             "ECHO MODE:\n \
@@ -133,24 +143,19 @@ impl Client {
                         }
                         Err(e) => {
                             eprintln!("Error al enviar la query: {}", e);
-                            match e {
-                                Error::ServerError(msg) if msg.contains("conexión") => {
-                                    match self.connect() {
-                                        Ok(new_stream) => {
-                                            let _ = new_stream.set_nonblocking(true);
-                                            tcp_stream = new_stream;
-                                            match self.send_query(&input, &mut tcp_stream) {
-                                                Err(retry_err) => {
-                                                    eprintln!(
-                                                        "Error al reintentar la query: {}",
-                                                        retry_err
-                                                    );
-                                                }
-                                                Ok(res) => {
-                                                    if let ProtocolResult::QueryError(err) = res {
-                                                        println!("{}", err)
-                                                    }
-                                                }
+                            // Intentar reconectar si es necesario
+                            if let Error::ServerError(msg) = &e {
+                                if msg.contains("conexión") {
+                                    match self.reconnect(&mut tcp_stream) {
+                                        Ok(_) => {
+                                            // Reintentar la query después de reconectar
+                                            if let Err(retry_err) =
+                                                self.send_query(&input, &mut tcp_stream)
+                                            {
+                                                eprintln!(
+                                                    "Error al reintentar la query: {}",
+                                                    retry_err
+                                                );
                                             }
                                         }
                                         Err(e) => {
@@ -158,8 +163,9 @@ impl Client {
                                             break;
                                         }
                                     }
+                                } else {
+                                    eprintln!("Error en la query: {}", e);
                                 }
-                                _ => eprintln!("Error en la query: {}", e),
                             }
                         }
                     }
@@ -186,80 +192,158 @@ impl Client {
         }
         self.requests_stream.insert(stream_id);
 
-        match make_parse(&mut tokenize_query(query)) {
+        let result = match make_parse(&mut tokenize_query(query)) {
             Ok(statement) => {
                 let frame = match statement {
                     Statement::DmlStatement(_) => Frame::query(stream_id, query.to_string()),
                     Statement::DdlStatement(_) => Frame::ddl(stream_id, query.to_string()),
                     Statement::UdtStatement(_) => {
-                        return Err(Error::ServerError("UDT statements no soportados".into()))
+                        self.requests_stream.remove(&stream_id);
+                        return Err(Error::ServerError("UDT statements no soportados".into()));
                     }
                 };
 
-                tcp_stream
-                    .write_all(&frame.as_bytes())
-                    .map_err(|e| Error::ServerError(e.to_string()))?;
-                tcp_stream
-                    .flush()
-                    .map_err(|e| Error::ServerError(e.to_string()))?;
+                const MAX_RETRIES: u32 = 2;
+                let mut last_error = None;
 
-                let mut response = Vec::new();
-                let mut buffer = [0; 1024];
-                let mut timeout_count = 0;
-                const MAX_TIMEOUT: u32 = 50;
+                for retry in 0..=MAX_RETRIES {
+                    if retry > 0 {
+                        match self.reconnect(tcp_stream) {
+                            Ok(_) => (),
+                            Err(e) => {
+                                last_error = Some(e);
+                                continue;
+                            }
+                        }
+                    }
 
-                loop {
-                    match tcp_stream.read(&mut buffer) {
-                        Ok(0) => {
-                            if response.is_empty() {
-                                self.requests_stream.remove(&stream_id);
-                                return Err(Error::ServerError(
-                                    "Conexión cerrada por el servidor sin recibir datos".into(),
-                                ));
+                    match tcp_stream.write_all(&frame.as_bytes()) {
+                        Ok(_) => match tcp_stream.flush() {
+                            Ok(_) => match self.read_complete_response(tcp_stream) {
+                                Ok(response) => return Ok(response),
+                                Err(e) => last_error = Some(e),
+                            },
+                            Err(e) => {
+                                last_error =
+                                    Some(Error::ServerError(format!("Error al flush: {}", e)))
                             }
-                            break;
-                        }
-                        Ok(n) => {
-                            response.extend_from_slice(&buffer[..n]);
-                            if !response.is_empty() && Self::is_response_complete(&response) {
-                                return self.handle_response(&response);
-                            }
-                        }
-                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            std::thread::sleep(Duration::from_millis(100));
-                            timeout_count += 1;
-                            if timeout_count >= MAX_TIMEOUT {
-                                self.requests_stream.remove(&stream_id);
-                                return Err(Error::ServerError(
-                                    "Timeout esperando respuesta".into(),
-                                ));
-                            }
-                            continue;
-                        }
+                        },
                         Err(e) => {
-                            self.requests_stream.remove(&stream_id);
-                            return Err(Error::ServerError(e.to_string()));
+                            last_error =
+                                Some(Error::ServerError(format!("Error al escribir: {}", e)))
                         }
                     }
                 }
-                self.requests_stream.remove(&stream_id);
-                Ok(ProtocolResult::Void)
+
+                Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
             }
-            Err(err) => {
-                self.requests_stream.remove(&stream_id);
-                Err(Error::ServerError(err.to_string()))
+            Err(err) => Err(Error::ServerError(err.to_string())),
+        };
+
+        self.requests_stream.remove(&stream_id);
+        result
+    }
+
+    fn reconnect(&mut self, tcp_stream: &mut TcpStream) -> Result<()> {
+        // Cerrar explícitamente la conexión anterior
+        let _ = tcp_stream.shutdown(std::net::Shutdown::Both);
+        std::thread::sleep(Duration::from_millis(100));
+
+        match self.connect() {
+            Ok(new_stream) => {
+                *tcp_stream = new_stream;
+                tcp_stream.set_nonblocking(true).map_err(|e| {
+                    Error::ServerError(format!("Error al configurar non-blocking: {}", e))
+                })?;
+
+                tcp_stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .map_err(|e| {
+                        Error::ServerError(format!("Error al configurar read timeout: {}", e))
+                    })?;
+
+                tcp_stream
+                    .set_write_timeout(Some(Duration::from_secs(5)))
+                    .map_err(|e| {
+                        Error::ServerError(format!("Error al configurar write timeout: {}", e))
+                    })?;
+
+                Ok(())
             }
+            Err(e) => Err(e),
         }
     }
 
-    fn is_response_complete(response: &[u8]) -> bool {
-        if response.len() < 9 {
-            return false;
-        }
-        let body_length =
-            u32::from_be_bytes([response[5], response[6], response[7], response[8]]) as usize;
+    fn read_complete_response(&mut self, tcp_stream: &mut TcpStream) -> Result<ProtocolResult> {
+        let mut response = Vec::new();
+        let mut buffer = vec![0; 8192];
+        const HEADER_SIZE: usize = 9;
 
-        response.len() >= 9 + body_length
+        // Establecer un deadline absoluto
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+
+        // Primero leer el header completo
+        while response.len() < HEADER_SIZE {
+            if std::time::Instant::now() > deadline {
+                return Err(Error::ServerError("Timeout al leer header".into()));
+            }
+
+            match tcp_stream.read(&mut buffer) {
+                Ok(0) => {
+                    if response.is_empty() {
+                        return Err(Error::ServerError(
+                            "Conexión cerrada por el servidor".into(),
+                        ));
+                    }
+                    break;
+                }
+                Ok(n) => {
+                    response.extend_from_slice(&buffer[..n]);
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+                Err(e) => return Err(Error::ServerError(format!("Error de lectura: {}", e))),
+            }
+        }
+
+        // Leer el cuerpo si hay header
+        if response.len() >= HEADER_SIZE {
+            let body_length = self.get_body_length(&response)?;
+            let total_expected_length = HEADER_SIZE + body_length;
+
+            while response.len() < total_expected_length {
+                if std::time::Instant::now() > deadline {
+                    return Err(Error::ServerError("Timeout al leer cuerpo".into()));
+                }
+
+                match tcp_stream.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        response.extend_from_slice(&buffer[..n]);
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(50));
+                        continue;
+                    }
+                    Err(e) => return Err(Error::ServerError(format!("Error de lectura: {}", e))),
+                }
+            }
+
+            return self.handle_response(&response[..total_expected_length]);
+        }
+
+        Err(Error::ServerError("Respuesta incompleta".into()))
+    }
+
+    fn get_body_length(&self, response: &[u8]) -> Result<usize> {
+        if response.len() < 9 {
+            return Err(Error::ServerError("Respuesta incompleta".into()));
+        }
+
+        let length_bytes = [response[5], response[6], response[7], response[8]];
+        Ok(u32::from_be_bytes(length_bytes) as usize)
     }
 
     fn handle_response(&mut self, request: &[Byte]) -> Result<ProtocolResult> {
