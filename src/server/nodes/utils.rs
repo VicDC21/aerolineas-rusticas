@@ -71,7 +71,11 @@ pub fn send_to_node_and_wait_response(
     match stream.read_to_end(&mut buf) {
         Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
         Ok(i) => {
-            println!("Nodo {} recibió {} bytes - {:?}", id, i, buf);
+            print!("Nodo [{}] recibió {} bytes: [ ", id, i);
+            for byte in &buf[..] {
+                print!("{:#X} ", byte);
+            }
+            println!("]");
         }
     }
     Ok(buf)
@@ -167,7 +171,7 @@ pub fn load_init_queries() -> Vec<String> {
 }
 
 /// Convierte un hashmap a un string.
-pub fn hashmap_to_string<T: ToString>(map: &HashMap<String, T>) -> String {
+pub fn hashmap_to_string<T: ToString, R: ToString>(map: &HashMap<T, R>) -> String {
     let mut res = String::new();
 
     for (key, value) in map {

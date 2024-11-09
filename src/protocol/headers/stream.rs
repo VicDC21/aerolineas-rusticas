@@ -1,10 +1,13 @@
 //! Módulo para un header de stream.
 
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
 use crate::protocol::aliases::types::Byte;
 use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 
 /// Cada frame tiene un stream id para hacer coincidir el IDs entre las requests y responses.
+#[derive(Eq, Clone, Hash, PartialEq)]
 pub struct Stream {
     /// El ID del stream.
     id: i16,
@@ -36,6 +39,12 @@ impl TryFrom<Vec<Byte>> for Stream {
         };
         let value = i16::from_be_bytes(bytes_array);
         Ok(Stream::new(value))
+    }
+}
+
+impl Display for Stream {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        writeln!(f, "{}", self.id)
     }
 }
 

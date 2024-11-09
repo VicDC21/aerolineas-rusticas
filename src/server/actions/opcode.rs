@@ -32,9 +32,7 @@ const ACTION_MASK: u8 = 0xF0;
 /// del parseo de _queries_.
 pub enum SvAction {
     /// Finalizar la conexión actual.
-    ///
-    /// Lo acompaña un [bool] indicando si también terminar las estructuras internas.
-    Exit(bool),
+    Exit,
 
     /// Aumentar en el tiempo los estados de los nodos.
     Beat,
@@ -177,7 +175,7 @@ impl SvAction {
 impl Byteable for SvAction {
     fn as_bytes(&self) -> Vec<Byte> {
         match self {
-            Self::Exit(proc_stop) => vec![0xF0, (if *proc_stop { 0xF1 } else { 0xF0 })],
+            Self::Exit => vec![0xF0],
             Self::Beat => vec![0xF1],
             Self::Gossip(neighbours) => {
                 let mut bytes_vec = vec![0xF2];
@@ -236,7 +234,7 @@ impl TryFrom<&[Byte]> for SvAction {
         }
 
         match first {
-            0xF0 => Ok(Self::Exit(bytes[i + 1] != 0x0)),
+            0xF0 => Ok(Self::Exit),
             0xF1 => Ok(Self::Beat),
             0xF2 => {
                 i += 1;
