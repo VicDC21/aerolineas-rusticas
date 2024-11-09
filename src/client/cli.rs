@@ -455,13 +455,13 @@ impl Client {
         for addr in self.addr_loader.get_ips() {
             if let Err(err) = Self::send_message(
                 AddrLoader::ip_to_socket(&addr, &PortType::Cli),
-                &SvAction::Exit(false).as_bytes()[..],
+                &SvAction::Exit.as_bytes()[..],
             ) {
                 println!("{}", err);
             }
             if let Err(err) = Self::send_message(
                 AddrLoader::ip_to_socket(&addr, &PortType::Priv),
-                &SvAction::Exit(true).as_bytes()[..],
+                &SvAction::Exit.as_bytes()[..],
             ) {
                 println!("{}", err);
             }

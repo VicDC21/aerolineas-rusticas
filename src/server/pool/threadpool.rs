@@ -26,7 +26,8 @@ impl ThreadPool {
 
     /// Intenta construir una instancia de _ThreadPool_, con la cantidad de hilos indicada.
     pub fn build(n_threads: usize) -> Result<Self> {
-        if n_threads <= 0 {
+        if n_threads == 0 {
+            // Un usize no puede ser negativo
             return Err(Error::ServerError(format!(
                 "{} no es un número de hilos válidos para el ThreadPool.",
                 n_threads
@@ -63,11 +64,8 @@ impl ThreadPool {
 impl Drop for ThreadPool {
     fn drop(&mut self) {
         for _ in 0..self.workers.len() {
-            self.sender.send(JobType::Exit);
+            let _ = self.sender.send(JobType::Exit);
         }
-
-        for worker in &mut self.workers {
-            drop(worker);
-        }
+        // Los workers se dropean solos al salir de scope.
     }
 }

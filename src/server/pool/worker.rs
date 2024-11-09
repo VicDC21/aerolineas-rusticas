@@ -69,6 +69,11 @@ impl Worker {
 
         Ok(Self::new(id, Some(thread)))
     }
+
+    /// Consigue el ID del _worker_.
+    pub fn get_id(&self) -> usize {
+        self.id
+    }
 }
 
 impl Drop for Worker {

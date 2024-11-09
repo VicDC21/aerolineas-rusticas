@@ -8,29 +8,10 @@ use std::{
     io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     path::Path,
-    sync::mpsc::{Receiver, Sender},
-    thread::Builder,
+    sync::{Arc, Mutex},
     vec::IntoIter,
 };
 
-use crate::parser::{
-    data_types::keyspace_name::KeyspaceName,
-    main_parser::make_parse,
-    statements::{
-        ddl_statement::{
-            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-            create_table::CreateTable, ddl_statement_parser::DdlStatement,
-            drop_keyspace::DropKeyspace,
-        },
-        dml_statement::{
-            dml_statement_parser::DmlStatement,
-            main_statements::{
-                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
-            },
-        },
-        statement::Statement,
-    },
-};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -45,7 +26,6 @@ use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
     nodes::{
-        graph::NodeHandle,
         port_type::PortType,
         states::{
             appstatus::AppStatus,
@@ -62,6 +42,28 @@ use crate::server::{
     traits::Serializable,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
+use crate::{
+    parser::{
+        data_types::keyspace_name::KeyspaceName,
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::{
+                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+                create_table::CreateTable, ddl_statement_parser::DdlStatement,
+                drop_keyspace::DropKeyspace,
+            },
+            dml_statement::{
+                dml_statement_parser::DmlStatement,
+                main_statements::{
+                    delete::Delete, insert::Insert, select::select_operation::Select,
+                    update::Update,
+                },
+            },
+            statement::Statement,
+        },
+    },
+    server::pool::threadpool::ThreadPool,
+};
 
 use super::{
     addr::loader::AddrLoader,
@@ -82,7 +84,9 @@ pub type NodesMap = HashMap<NodeId, EndpointState>;
 pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 
 /// El límite posible para los rangos de los nodos.
-const NODES_RANGE_END: u64 = u64::pow(2, 64);
+const NODES_RANGE_END: u64 = 18446744073709551615;
+/// El número de hilos para el [ThreadPool].
+const N_THREADS: usize = 6;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
@@ -117,6 +121,9 @@ pub struct Node {
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
     tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 
+    /// El [ThreadPool] de tareas disponibles.
+    pub pool: ThreadPool,
+
     /// Mapa de conexiones abiertas entre el nodo y otros clientes.
     open_connections: OpenConnectionsMap,
 }
@@ -136,6 +143,7 @@ impl Node {
             tables: HashMap::new(),
             nodes_ranges,
             tables_and_partitions_keys_values: HashMap::new(),
+            pool: ThreadPool::build(N_THREADS).unwrap(),
             open_connections: OpenConnectionsMap::new(),
         }
     }
@@ -266,7 +274,7 @@ impl Node {
     /// Verifica rápidamente si un mensaje es de tipo [EXIT](SvAction::Exit).
     fn is_exit(bytes: &[Byte]) -> bool {
         if let Some(action) = SvAction::get_action(bytes) {
-            if matches!(action, SvAction::Exit(_)) {
+            if matches!(action, SvAction::Exit) {
                 return true;
             }
         }
@@ -376,25 +384,6 @@ impl Node {
         Ok(())
     }
 
-    /// Crea el hilo que procesa _requests_.
-    ///
-    /// Dicho hilo toma _ownership_ del nodo, por lo que ya no es accesible después
-    /// sino es con mensajes al puerto de escucha.
-    pub fn request_processor(
-        mut self,
-        receiver: Receiver<(TcpStream, Vec<Byte>)>,
-        listeners: Vec<NodeHandle>,
-    ) -> Result<NodeHandle> {
-        let builder = Builder::new().name("processor".to_string());
-        match builder.spawn(move || self.thread_request(receiver, listeners)) {
-            Ok(proc_handler) => Ok(proc_handler),
-            Err(err) => Err(Error::ServerError(format!(
-                "Error en el hilo procesador:\n\n{}",
-                err
-            ))),
-        }
-    }
-
     /// Se recibe un mensaje [SYN](crate::server::actions::opcode::SvAction::Syn).
     fn syn(&mut self, emissor_id: NodeId, gossip_info: GossipInfo) -> Result<()> {
         let mut own_gossip = GossipInfo::new(); // quiero info de estos nodos
@@ -467,7 +456,7 @@ impl Node {
         let mut closed_count = 0;
 
         self.open_connections.retain(|_, tcp_stream| {
-            if !tcp_stream.peer_addr().is_err() {
+            if tcp_stream.peer_addr().is_ok() {
                 return true;
             }
             closed_count += 1;
@@ -478,29 +467,19 @@ impl Node {
     }
 
     /// Escucha por los eventos que recibe del cliente.
-    pub fn cli_listen(
-        socket: SocketAddr,
-        proc_sender: Sender<(TcpStream, Vec<Byte>)>,
-    ) -> Result<()> {
-        Self::listen(socket, proc_sender, PortType::Cli)
+    pub fn cli_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
+        Self::listen(socket, PortType::Cli, node)
     }
 
     /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-    pub fn priv_listen(
-        socket: SocketAddr,
-        proc_sender: Sender<(TcpStream, Vec<Byte>)>,
-    ) -> Result<()> {
-        Self::listen(socket, proc_sender, PortType::Priv)
+    pub fn priv_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
+        Self::listen(socket, PortType::Priv, node)
     }
 
     /// El escuchador de verdad.
     ///
     /// Las otras funciones son wrappers para no repetir código.
-    fn listen(
-        socket: SocketAddr,
-        proc_sender: Sender<(TcpStream, Vec<Byte>)>,
-        port_type: PortType,
-    ) -> Result<()> {
+    fn listen(socket: SocketAddr, port_type: PortType, node: Arc<Mutex<Node>>) -> Result<()> {
         let listener = Node::bind_with_socket(socket)?;
         let addr_loader = AddrLoader::default_loaded();
         for tcp_stream_res in listener.incoming() {
@@ -512,14 +491,16 @@ impl Node {
                     let bytes_vec = Node::write_bytes_in_buffer(&mut bufreader)?;
                     // consumimos los bytes del stream para no mandarlos de vuelta en la response
                     bufreader.consume(bytes_vec.len());
-                    let can_exit = Self::is_exit(&bytes_vec[..]);
-                    if let Err(err) = proc_sender.send((tcp_stream, bytes_vec)) {
-                        println!("Error mandando bytes al procesador:\n\n{}", err);
-                    }
-                    // El procesamiento del stream ocurre en otro hilo, así que necesitamos
-                    // verificar si salimos aparte.
-                    if can_exit {
+                    if Self::is_exit(&bytes_vec[..]) {
                         break;
+                    }
+                    match node.lock() {
+                        Ok(mut locked_in) => {
+                            locked_in.process_tcp(tcp_stream, bytes_vec)?;
+                        }
+                        Err(poison_err) => {
+                            println!("Error de lock envenenado:\n\n{}", poison_err);
+                        }
                     }
                 }
             }
@@ -530,31 +511,28 @@ impl Node {
 
     /// Procesa una _request_ en forma de [Byte]s.
     /// También devuelve un [bool] indicando si se debe parar el hilo.
-    ///
-    /// Esta función no debería ser llamada en los listeners, y está más pensada para el hilo
-    /// procesador del nodo.
-
-    pub fn process_tcp(&mut self, tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<bool> {
+    pub fn process_tcp(&mut self, tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<()> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
         match SvAction::get_action(&bytes[..]) {
-            Some(action) => match self.handle_sv_action(action, tcp_stream) {
-                Ok(stop_loop) => Ok(stop_loop),
-                Err(err) => {
+            Some(action) => {
+                if let Err(err) = self.handle_sv_action(action, tcp_stream) {
                     println!(
                         "[{} - ACTION] Error en la acción del servidor: {}",
                         self.id, err
                     );
-                    Ok(false)
                 }
-            },
+                Ok(())
+            }
             None => self.match_kind_of_conection_mode(bytes, tcp_stream),
         }
     }
 
     /// Maneja una acción de servidor.
-    fn handle_sv_action(&mut self, action: SvAction, mut tcp_stream: TcpStream) -> Result<bool> {
-        let mut stop = false;
+    fn handle_sv_action(&mut self, action: SvAction, mut tcp_stream: TcpStream) -> Result<()> {
         match action {
-            SvAction::Exit(proc_stop) => stop = proc_stop,
+            SvAction::Exit => {} // La comparación para salir ocurre en otro lado
             SvAction::Beat => {
                 self.beat();
             }
@@ -592,7 +570,7 @@ impl Node {
                 }
             }
         };
-        Ok(stop)
+        Ok(())
     }
 
     /// Maneja una request.
@@ -1506,39 +1484,6 @@ impl Node {
         Ok(new_ordered_res.as_bytes().to_vec())
     }
 
-    fn thread_request(
-        &mut self,
-        receiver: Receiver<(TcpStream, Vec<Byte>)>,
-        listeners: Vec<NodeHandle>,
-    ) -> Result<()> {
-        loop {
-            match receiver.recv() {
-                Err(err) => {
-                    println!("Error recibiendo request en hilo procesador:\n\n{}", err);
-                    break;
-                }
-
-                Ok((tcp_stream, bytes)) => match self.process_tcp(tcp_stream, bytes) {
-                    Ok(stop) => {
-                        if stop {
-                            break;
-                        }
-                    }
-                    Err(err) => {
-                        println!("Error procesando request en hilo procesador:\n\n{}", err);
-                    }
-                },
-            }
-        }
-        // Esperamos primero a que todos los hilos relacionados mueran primero.
-        for listener in listeners {
-            if listener.join().is_err() {
-                println!("Ocurrió un error mientras se esperaba a que termine un escuchador.");
-            }
-        }
-        Ok(())
-    }
-
     fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
         match TcpListener::bind(socket) {
             Ok(tcp_listener) => Ok(tcp_listener),
@@ -1614,7 +1559,7 @@ impl Node {
         &mut self,
         bytes: Vec<u8>,
         mut tcp_stream: TcpStream,
-    ) -> Result<bool> {
+    ) -> Result<()> {
         match self.mode() {
             ConnectionMode::Echo => {
                 let printable_bytes = bytes
@@ -1628,7 +1573,6 @@ impl Node {
                 if let Err(err) = tcp_stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);
                 }
-                Ok(false)
             }
             ConnectionMode::Parsing => {
                 let res = self.handle_request(&bytes[..], false);
@@ -1636,9 +1580,9 @@ impl Node {
                 if let Err(err) = tcp_stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);
                 }
-                Ok(false)
             }
         }
+        Ok(())
     }
 }
 
@@ -1733,6 +1677,7 @@ impl Serializable for Node {
             tables,
             nodes_ranges: divide_range(0, 18446744073709551615, N_NODES as usize),
             tables_and_partitions_keys_values,
+            pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
         })
     }
