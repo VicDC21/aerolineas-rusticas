@@ -13,7 +13,7 @@ use std::{
     vec::IntoIter,
 };
 
-use crate::{client::cql_frame::query_body::QueryBody, protocol::notations::consistency};
+use crate::client::cql_frame::query_body::QueryBody;
 use crate::parser::{
     data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
@@ -226,7 +226,7 @@ impl Node {
         bytes: Vec<Byte>,
         node_id: Byte,
         port_type: PortType,
-        wait_response: bool
+        wait_response: bool,
     ) -> Result<Vec<Byte>> {
         send_to_node_and_wait_response(node_id, bytes, port_type, wait_response)
     }
@@ -739,7 +739,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false
+                    false,
                 )?
             } else {
                 self.process_internal_use_statement(&keyspace_name)?
@@ -785,7 +785,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false
+                    false,
                 )?
             } else {
                 self.process_internal_create_keyspace_statement(&create_keyspace)?
@@ -833,7 +833,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false
+                    false,
                 )?
             } else {
                 self.process_internal_alter_keyspace_statement(&alter_keyspace)?
@@ -897,7 +897,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false
+                    false,
                 )?
             } else {
                 self.process_internal_drop_keyspace_statement(&drop_keyspace)?
@@ -975,7 +975,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false
+                    false,
                 )?
             } else {
                 self.process_internal_create_table_statement(&create_table)?
@@ -1170,6 +1170,7 @@ impl Node {
         let consistency_number = consistency_level.as_usize(N_NODES as usize);
         let mut consistency_counter = 0;
         let mut wait_response = true;
+
         for i in 0..replication_factor {
             let node_to_replicate =
                 self.next_node_to_replicate_data(node_id, i as Byte, START_ID, START_ID + N_NODES);
@@ -1179,7 +1180,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_to_replicate,
                     PortType::Priv,
-                    wait_response
+                    wait_response,
                 )?;
                 match self
                     .check_if_has_new_partition_value(&insert, self.get_table(&table_name)?)?
@@ -1193,26 +1194,35 @@ impl Node {
             } else {
                 self.process_insert(&insert)?
             };
+
             if consistency_counter >= consistency_number {
                 wait_response = false;
             } else if self.verify_succesful_response(&response) {
                 consistency_counter += 1;
             }
         }
-        Ok(response)
+
+        if consistency_counter < consistency_number {
+            Err(Error::ServerError(format!(
+                "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
+                consistency_level, consistency_counter, consistency_number,
+            )))
+        } else {
+            Ok(response)
+        }
     }
 
-    fn verify_succesful_response(&self, response: &[Byte]) -> bool{
-        let opcode = match Opcode::try_from(response[4]){
+    fn verify_succesful_response(&self, response: &[Byte]) -> bool {
+        let opcode = match Opcode::try_from(response[4]) {
             Ok(opcode) => opcode,
-            Err(_err) => Opcode::RequestError
+            Err(_err) => Opcode::RequestError,
         };
-        if response.len() < 9{
-            return false
+        if response.len() < 9 {
+            return false;
         };
-        match opcode{
+        match opcode {
             Opcode::Result => true, // Si la response tiene el opcode Result entonces es valida
-            _ => false
+            _ => false,
         }
     }
 
@@ -1251,6 +1261,9 @@ impl Node {
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut results_from_nodes: Vec<Byte> = Vec::new();
         let mut consulted_nodes: Vec<String> = Vec::new();
+        let consistency_number = consistency_level.as_usize(N_NODES as usize);
+        let mut consistency_counter = 0;
+        let mut wait_response = true;
 
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(&partition_key_value);
@@ -1263,7 +1276,7 @@ impl Node {
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
                         PortType::Priv,
-                        false,  // LO PUSE PARA QUE NO ROMPA, REVISAR DESPUES
+                        wait_response,
                     )?;
                     match Opcode::try_from(res[4])? {
                         Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
@@ -1280,10 +1293,23 @@ impl Node {
                 consulted_nodes.push(partition_key_value.clone());
                 let replication_factor = self.get_replicas_from_table_name(&table_name)?;
                 self.replicate_update_in_other_nodes(replication_factor, node_id, request)?;
+
+                if consistency_counter >= consistency_number {
+                    wait_response = false;
+                } else if self.verify_succesful_response(&current_response) {
+                    consistency_counter += 1;
+                }
             }
         }
 
-        Ok(results_from_nodes)
+        if consistency_counter < consistency_number {
+            Err(Error::ServerError(format!(
+                "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
+                consistency_level, consistency_counter, consistency_number,
+            )))
+        } else {
+            Ok(results_from_nodes)
+        }
     }
 
     fn replicate_update_in_other_nodes(
@@ -1301,7 +1327,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_to_replicate,
                     PortType::Priv,
-                    false // LO PUSE PARA QUE NO ROMPA, REVISAR DESPUES
+                    false,
                 )?;
 
                 match Opcode::try_from(replica_response[4])? {
@@ -1346,15 +1372,14 @@ impl Node {
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(partition_key_value);
             if !consulted_nodes.contains(&node_id) {
-                let res = 
-                if node_id == self.id {
+                let res = if node_id == self.id {
                     self.process_select(&select)?
                 } else {
                     self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
                         PortType::Priv,
-                        false,  // LO PUSE PARA QUE NO ROMPA, REVISAR DESPUES
+                        wait_response,
                     )?
                     // match Opcode::try_from(res[4])? {
                     //     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
@@ -1370,29 +1395,45 @@ impl Node {
                     //     }
                     // };
                 };
-                self.handle_result_from_node(
-                    &mut results_from_another_nodes,
-                    res,
-                    &select,
-                )?;
+                self.handle_result_from_node(&mut results_from_another_nodes, res, &select)?;
                 consulted_nodes.push(node_id);
-                if !self.consult_replica_nodes(node_id, request, &mut consistency_counter, consistency_number)?{
-                    return Err(Error::ServerError("No se cumplio la consistencia dentro del server".to_string()))
+
+                // TODO: Terminar logica de Read-Repair
+                if !self.consult_replica_nodes(
+                    node_id,
+                    request,
+                    &mut consistency_counter,
+                    consistency_number,
+                )? {
+                    return Err(Error::ServerError(format!(
+                        "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
+                        consistency_level, consistency_counter, consistency_number,
+                    )));
                 };
             }
         }
         Ok(results_from_another_nodes)
     }
 
-    fn consult_replica_nodes(&self, node_id: u8, request: &[Byte], consistency_counter: &mut i32, consistency_number: usize) -> Result<bool>{
-        for i in 0..consistency_number{
-            let node_to_consult = self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
-            let res = self.send_message_and_wait_response(request.to_vec(), node_to_consult, PortType::Priv, true);
-            
+    fn consult_replica_nodes(
+        &self,
+        node_id: u8,
+        request: &[Byte],
+        consistency_counter: &mut i32,
+        consistency_number: usize,
+    ) -> Result<bool> {
+        for i in 0..consistency_number {
+            let node_to_consult =
+                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+            let res = self.send_message_and_wait_response(
+                request.to_vec(),
+                node_to_consult,
+                PortType::Priv,
+                true,
+            );
         }
         Ok(true)
     }
-
 
     fn process_delete(&mut self, delete: &Delete) -> Result<Vec<Byte>> {
         let table = match self.get_table(&delete.from.get_name()) {
@@ -1420,6 +1461,9 @@ impl Node {
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut results_from_nodes: Vec<Byte> = Vec::new();
         let mut consulted_nodes: Vec<String> = Vec::new();
+        let consistency_number = consistency_level.as_usize(N_NODES as usize);
+        let mut consistency_counter = 0;
+        let mut wait_response = true;
 
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(&partition_key_value);
@@ -1432,7 +1476,7 @@ impl Node {
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
                         PortType::Priv,
-                        false,  // LO PUSE PARA QUE NO ROMPA, REVISAR DESPUES
+                        wait_response,
                     )?;
                     match Opcode::try_from(res[4])? {
                         Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
@@ -1449,10 +1493,23 @@ impl Node {
                 consulted_nodes.push(partition_key_value.clone());
                 let replication_factor = self.get_replicas_from_table_name(&table_name)?;
                 self.replicate_delete_in_other_nodes(replication_factor, node_id, request)?;
+
+                if consistency_counter >= consistency_number {
+                    wait_response = false;
+                } else if self.verify_succesful_response(&current_response) {
+                    consistency_counter += 1;
+                }
             }
         }
 
-        Ok(results_from_nodes)
+        if consistency_counter < consistency_number {
+            Err(Error::ServerError(format!(
+                "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
+                consistency_level, consistency_counter, consistency_number,
+            )))
+        } else {
+            Ok(results_from_nodes)
+        }
     }
 
     // Función auxiliar para replicar el delete en otros nodos
@@ -1471,7 +1528,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_to_replicate,
                     PortType::Priv,
-                    false,  // LO PUSE PARA QUE NO ROMPA, REVISAR DESPUES
+                    false,
                 )?;
             }
         }

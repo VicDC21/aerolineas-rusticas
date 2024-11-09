@@ -1,6 +1,6 @@
 //! Módulo para enumerar niveles de consistencia.
 
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use crate::protocol::{
     aliases::{
@@ -50,7 +50,7 @@ pub enum Consistency {
 
 impl Consistency {
     /// Convierte el _Consistency Level_ a la cantidad de nodos a esperar su confirmación.
-    /// 
+    ///
     /// `n` es la cantidad total de nodos.
     pub fn as_usize(&self, n: usize) -> usize {
         match self {
@@ -138,6 +138,26 @@ impl FromStr for Consistency {
                 s
             ))),
         }
+    }
+}
+
+impl fmt::Display for Consistency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let consistency = match self {
+            Self::Any => "Any",
+            Self::One => "One",
+            Self::Two => "Two",
+            Self::Three => "Three",
+            Self::Quorum => "Quorum",
+            Self::All => "All",
+            Self::LocalQuorum => "LocalQuorum",
+            Self::EachQuorum => "EachQuorum",
+            Self::Serial => "Serial",
+            Self::LocalSerial => "LocalSerial",
+            Self::LocalOne => "LocalOne",
+        };
+
+        write!(f, "{}", consistency)
     }
 }
 
