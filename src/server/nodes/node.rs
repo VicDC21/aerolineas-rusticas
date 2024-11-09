@@ -208,7 +208,7 @@ impl Node {
     }
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
-    fn select_node(&self, value: &str) -> NodeId {
+    pub fn select_node(&self, value: &str) -> NodeId {
         let hash_val = Self::hash_value(value);
 
         let mut i = 0;
@@ -1004,6 +1004,7 @@ impl Node {
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
+            self
         )?;
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());

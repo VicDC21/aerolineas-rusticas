@@ -1,6 +1,6 @@
 //! Módulo para manejo del almacenamiento en disco.
 
-use crate::parser::{
+use crate::{parser::{
     assignment::Assignment,
     data_types::{constant::Constant, term::Term},
     primary_key::PrimaryKey,
@@ -19,7 +19,7 @@ use crate::parser::{
             r#where::operator::Operator,
         },
     },
-};
+}, server::nodes::node::Node};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -234,6 +234,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        node: &Node
     ) -> Result<Vec<Byte>> {
         let path = TablePath::new(
             storage_addr,
@@ -257,7 +258,7 @@ impl DiskHandler {
         }
 
         let mut rows = table_ops.read_rows()?;
-
+        DiskHandler::filter_replicas_from_other_nodes(node, &mut rows, table.get_position_of_partition_key()?)?;
         if let Some(the_where) = &statement.options.the_where {
             rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
         }
@@ -280,6 +281,24 @@ impl DiskHandler {
             table,
         ))
     }
+
+    fn filter_replicas_from_other_nodes(node: &Node, rows: &mut Vec<Vec<String>>, partition_key_position: usize) -> Result<()>{
+        let mut index = 0;
+        while index < rows.len() {
+            let partition_key_value = match rows[index].get(partition_key_position){
+                Some(value) => value,
+                None => return Err(Error::ServerError("La columna del partition key declarada no existe en la tabla".to_string()))
+            };
+            if node.select_node(partition_key_value) != node.get_id() {
+                rows.remove(index);
+            } else {
+                index += 1;
+            }
+        }
+        Ok(())
+
+    }
+
 
     /// Actualiza filas en una tabla en el caso que corresponda.
     pub fn do_update(
