@@ -46,6 +46,7 @@ pub fn send_to_node_and_wait_response(
     id: NodeId,
     bytes: Vec<Byte>,
     port_type: PortType,
+    wait_response: bool
 ) -> Result<Vec<Byte>> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
@@ -68,12 +69,16 @@ pub fn send_to_node_and_wait_response(
         println!("Error haciendo flush desde el servidor:\n\n{}", err);
     }
     let mut buf = Vec::<Byte>::new();
-    match stream.read_to_end(&mut buf) {
-        Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
-        Ok(i) => {
-            println!("Nodo {} recibió {} bytes - {:?}", id, i, buf);
+
+    if wait_response{
+        match stream.read_to_end(&mut buf) {
+            Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
+            Ok(i) => {
+                println!("Nodo {} recibió {} bytes - {:?}", id, i, buf);
+            }
         }
     }
+
     Ok(buf)
 }
 
