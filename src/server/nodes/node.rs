@@ -1462,7 +1462,7 @@ impl Node {
         &self,
         node_id: u8,
         request: &[Byte],
-        consistency_counter: &mut i32,
+        consistency_counter: &mut usize,
         consistency_number: usize,
         response_from_first_replica: &[Byte],
         table_name: &str,
@@ -1488,7 +1488,7 @@ impl Node {
             }
         }
 
-        if *consistency_counter < consistency_number as i32 {
+        if *consistency_counter < consistency_number {
             return Ok(false);
         }
 
