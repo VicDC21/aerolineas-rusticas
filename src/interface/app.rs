@@ -8,7 +8,7 @@ use walkers::{Map, MapMemory, Position};
 
 use crate::client::cli::Client;
 use crate::interface::{
-    data::airports_details::AirportsDetails,
+    data::app_details::AirlinesDetails,
     map::{
         panels::{cur_airport_info, extra_airport_info},
         providers::{Provider, ProvidersMap},
@@ -55,7 +55,7 @@ pub struct AerolineasApp {
     datetime: DateTime<Local>,
 
     /// Los detalles de lso aeropuertos.
-    airports_details: AirportsDetails,
+    airlines_details: AirlinesDetails,
 }
 
 impl AerolineasApp {
@@ -76,7 +76,7 @@ impl AerolineasApp {
             screen_clicker: ScreenClicker::default(),
             flights_loader: FlightsLoader::default(),
             datetime: Local::now(),
-            airports_details: AirportsDetails::default(),
+            airlines_details: AirlinesDetails::default(),
         }
     }
 }
@@ -98,16 +98,18 @@ impl App for AerolineasApp {
             );
 
             // Añadimos los plugins.
-            self.airports_details
+            self.airlines_details
                 .set_airports(self.airports_loader.take_airports());
-            self.airports_details
-                .set_flights(self.flights_loader.take_flights());
+            self.airlines_details
+                .set_incoming_flights(self.flights_loader.take_incoming());
+            self.airlines_details
+                .set_departing_flights(self.flights_loader.take_departing());
 
             self.airports_drawer
-                .sync_airports(self.airports_details.get_airports())
+                .sync_airports(self.airlines_details.get_airports())
                 .sync_zoom(zoom_lvl);
             self.screen_clicker
-                .sync_airports(self.airports_details.get_airports())
+                .sync_airports(self.airlines_details.get_airports())
                 .sync_zoom(zoom_lvl);
             self.flights_loader
                 .sync_date(self.datetime)
@@ -115,10 +117,10 @@ impl App for AerolineasApp {
 
             // necesariamente antes de agregar al mapa
             if let Some(cur_airport) = self.screen_clicker.take_cur_airport() {
-                self.airports_details.set_selected_airport(cur_airport);
+                self.airlines_details.set_selected_airport(cur_airport);
             }
             if let Some(ex_airport) = self.screen_clicker.take_extra_airport() {
-                self.airports_details.set_extra_airport(ex_airport);
+                self.airlines_details.set_extra_airport(ex_airport);
             }
 
             let map = map
@@ -144,17 +146,17 @@ impl App for AerolineasApp {
         if let Some(valid_time) = clock_selector(ctx, &mut self.datetime) {
             self.datetime = valid_time;
         }
-        self.airports_details
-            .set_show_airports_list(cur_airport_info(
+        self.airlines_details
+            .set_show_incoming_flights(cur_airport_info(
                 ctx,
-                self.airports_details.get_selected_airport(),
-                self.airports_details.get_flights(),
-                self.airports_details.get_show_airports_list(),
+                self.airlines_details.get_selected_airport(),
+                self.airlines_details.get_incoming_flights(),
+                self.airlines_details.get_show_incoming_flights(),
             ));
         extra_airport_info(
             ctx,
-            self.airports_details.get_selected_airport(),
-            self.airports_details.get_extra_airport(),
+            self.airlines_details.get_selected_airport(),
+            self.airlines_details.get_extra_airport(),
             self.client.clone(),
             self.datetime.timestamp(),
         );
@@ -166,5 +168,6 @@ impl Drop for AerolineasApp {
         // Por si se cierra la ventana sin dejar que los hilos hijos del cargador
         // se cierren antes.
         self.airports_loader.wait_children();
+        self.flights_loader.wait_children();
     }
 }

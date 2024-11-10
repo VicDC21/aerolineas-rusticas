@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::data::{airports::Airport, flights::Flight};
 
 /// Holds details to many of the important data of the current instant in the GUI.
-pub struct AirportsDetails {
+pub struct AirlinesDetails {
     /// El puerto seleccionado actualmente.
     selected_airport: Option<Airport>,
 
@@ -15,28 +15,38 @@ pub struct AirportsDetails {
     /// Los aeropuertos actualmente en memoria.
     current_airports: Arc<Vec<Airport>>,
 
-    /// Los vuelos actualmente en memoria.
-    current_flights: Arc<Vec<Flight>>,
+    /// Los vuelos entrantes actualmente en memoria.
+    incoming_flights: Arc<Vec<Flight>>,
 
-    /// Decide si mostrar ciertos detalles o no.
-    show_airports_list: bool,
+    /// Los vuelos salientes actualmente en memoria.
+    departing_flights: Arc<Vec<Flight>>,
+
+    /// Decidir si mostrar los vuelos entrantes.
+    show_incoming_flights: bool,
+
+    /// Decide si mostrar los vuelos salientes.
+    show_departing_flights: bool,
 }
 
-impl AirportsDetails {
+impl AirlinesDetails {
     /// Crea una nueva instancia.
     pub fn new(
         selected_airport: Option<Airport>,
         extra_airport: Option<Airport>,
         current_airports: Vec<Airport>,
-        current_flights: Vec<Flight>,
-        show_airports_list: bool,
+        incoming_flights: Vec<Flight>,
+        departing_flights: Vec<Flight>,
+        show_incoming_flights: bool,
+        show_departing_flights: bool,
     ) -> Self {
         Self {
             selected_airport,
             extra_airport,
             current_airports: Arc::new(current_airports),
-            current_flights: Arc::new(current_flights),
-            show_airports_list,
+            incoming_flights: Arc::new(incoming_flights),
+            departing_flights: Arc::new(departing_flights),
+            show_incoming_flights,
+            show_departing_flights,
         }
     }
 
@@ -76,26 +86,48 @@ impl AirportsDetails {
         self.current_airports = Arc::new(new_airports);
     }
 
-    /// Consigue una referencia clonada a los vuelos guardados.
-    pub fn get_flights(&self) -> Arc<Vec<Flight>> {
-        Arc::clone(&self.current_flights)
+    /// Consigue una referencia clonada a los vuelos entrantes guardados.
+    pub fn get_incoming_flights(&self) -> Arc<Vec<Flight>> {
+        Arc::clone(&self.incoming_flights)
     }
 
-    /// Actualiza la lista de vuelos.
-    pub fn set_flights(&mut self, new_flights: Vec<Flight>) {
-        if !new_flights.is_empty() {
-            self.current_flights = Arc::new(new_flights);
+    /// Actualiza la lista de vuelos entrantes.
+    pub fn set_incoming_flights(&mut self, new_incoming: Vec<Flight>) {
+        if !new_incoming.is_empty() {
+            self.incoming_flights = Arc::new(new_incoming);
         }
     }
 
-    /// Consigue si mostrar la lista de aeropuertos o no.
-    pub fn get_show_airports_list(&self) -> &bool {
-        &self.show_airports_list
+    /// Consigue una referencia clonada a los vuelos salientes guardados.
+    pub fn get_departing_flights(&self) -> Arc<Vec<Flight>> {
+        Arc::clone(&self.departing_flights)
     }
 
-    /// Decide si mostrar la lista de aeropuertos o no.
-    pub fn set_show_airports_list(&mut self, do_show_airports: bool) {
-        self.show_airports_list = do_show_airports;
+    /// Actualiza la lista de vuelos entrantes.
+    pub fn set_departing_flights(&mut self, new_departing: Vec<Flight>) {
+        if !new_departing.is_empty() {
+            self.departing_flights = Arc::new(new_departing);
+        }
+    }
+
+    /// Consigue si mostrar la lista de vuelos entrantes o no.
+    pub fn get_show_incoming_flights(&self) -> &bool {
+        &self.show_incoming_flights
+    }
+
+    /// Decide si mostrar la lista de vuelos entrantes o no.
+    pub fn set_show_incoming_flights(&mut self, do_show_incoming: bool) {
+        self.show_incoming_flights = do_show_incoming;
+    }
+
+    /// Consigue si mostrar la lista de vuelos salientes o no.
+    pub fn get_show_departing_flights(&self) -> &bool {
+        &self.show_departing_flights
+    }
+
+    /// Decide si mostrar la lista de vuelos salientes o no.
+    pub fn set_show_departing_flights(&mut self, do_show_departing: bool) {
+        self.show_departing_flights = do_show_departing;
     }
 
     /// Verifica si dos opciones de aeropuertos son los mismos.
@@ -111,13 +143,15 @@ impl AirportsDetails {
     }
 }
 
-impl Default for AirportsDetails {
+impl Default for AirlinesDetails {
     fn default() -> Self {
         Self::new(
             None,
             None,
             Vec::<Airport>::new(),
             Vec::<Flight>::new(),
+            Vec::<Flight>::new(),
+            false,
             false,
         )
     }
