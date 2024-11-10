@@ -1,10 +1,10 @@
 //! Módulo de nodos.
 
+use chrono::Utc;
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
     fmt,
-    hash::{DefaultHasher, Hash, Hasher},
     io::{BufRead, BufReader, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     path::Path,
@@ -12,8 +12,6 @@ use std::{
     thread::Builder,
     vec::IntoIter,
 };
-
-use chrono::Utc;
 
 use crate::client::cql_frame::query_body::QueryBody;
 use crate::parser::{
@@ -59,7 +57,7 @@ use crate::server::{
             },
         },
         utils::{
-            hashmap_to_string, hashmap_vec_to_string, send_to_node, string_to_hashmap,
+            hash_value, hashmap_to_string, hashmap_vec_to_string, send_to_node, string_to_hashmap,
             string_to_hashmap_vec,
         },
     },
@@ -202,16 +200,9 @@ impl Node {
         self.neighbours_states.keys().copied().collect()
     }
 
-    /// Hashea el valor recibido.
-    fn hash_value(value: &str) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        value.hash(&mut hasher);
-        hasher.finish()
-    }
-
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
     pub fn select_node(&self, value: &str) -> NodeId {
-        let hash_val = Self::hash_value(value);
+        let hash_val = hash_value(value);
 
         let mut i = 0;
         for (a, b) in &self.nodes_ranges {
@@ -601,8 +592,17 @@ impl Node {
             }
             SvAction::GetResponseHashed(bytes) => {
                 let response = self.handle_request(&bytes, true);
-                self.hash_vec_of_bytes(&response);
-                let _ = tcp_stream.write_all(&response[..]);
+                // Devolvemos además un opcode para poder saber si el resultado fue un error o no.
+                if self.verify_succesful_response(&response) {
+                    let mut res = Opcode::Result.as_bytes();
+                    res.extend_from_slice(&hash_value(&response).to_be_bytes());
+                    let _ = tcp_stream.write_all(&res);
+                } else {
+                    let mut res = Opcode::RequestError.as_bytes();
+                    res.extend_from_slice(&response);
+                    let _ = tcp_stream.write_all(&res);
+                }
+
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
@@ -1470,43 +1470,37 @@ impl Node {
         if consistency_number == 1 {
             return Ok(true);
         }
-        let hashed_value = self.hash_vec_of_bytes(response_from_first_replica);
+        let first_hashed_value = hash_value(response_from_first_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
         for i in 0..consistency_number {
             let node_to_consult =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
-            let res = self.send_message_and_wait_response(
+            let opcode_with_hashed_value = self.send_message_and_wait_response(
                 SvAction::GetResponseHashed(request.to_vec()).as_bytes(),
                 node_to_consult,
                 PortType::Priv,
                 true,
             )?;
 
-            if self.verify_succesful_response(&res) {
+            if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result {
                 *consistency_counter += 1;
+                responses.push(opcode_with_hashed_value[1..].to_vec());
             }
-
-            responses.push(res);
         }
 
         if *consistency_counter < consistency_number as i32 {
             return Ok(false);
         }
 
-        // let mut hasher = DefaultHasher::new();
-        // value.hash(&mut hasher);
-        // hasher.finish()
-
         let mut exec_read_repair = false;
-        for response in responses {
-            if response.len() < 8 {
+        for hashed_value_vec in responses {
+            if hashed_value_vec.len() < 8 {
                 exec_read_repair = true;
             }
-            let mut array = [0u8; 8];
-            array.copy_from_slice(&response[0..8]);
-            let hashed_value_of_response = i64::from_be_bytes(array);
-            // let hashed_value =
-            if hashed_value != hashed_value_of_response {
+            let mut array = [0u8; 8]; // 8 es el len del hashed_value
+            array.copy_from_slice(&hashed_value_vec[0..8]);
+            let hashed_value_of_response = u64::from_be_bytes(array);
+            if first_hashed_value != hashed_value_of_response {
                 exec_read_repair = true;
             }
         }
@@ -1563,10 +1557,6 @@ impl Node {
         
 
         Ok(())
-    }
-
-    fn hash_vec_of_bytes(&self, _res: &[Byte]) -> i64 {
-        todo!()
     }
 
     fn process_delete(&mut self, delete: &Delete) -> Result<Vec<Byte>> {

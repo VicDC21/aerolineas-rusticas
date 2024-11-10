@@ -3,6 +3,7 @@
 use std::{
     collections::HashMap,
     fs::{read_dir, File},
+    hash::{DefaultHasher, Hash, Hasher},
     io::{BufRead, BufReader, Read, Result as IOResult, Write},
     net::TcpStream,
     path::PathBuf,
@@ -19,6 +20,16 @@ use crate::server::nodes::{addr::loader::AddrLoader, node::NodeId, port_type::Po
 const INIT_QUERIES_PATH: &str = "scripts/init";
 /// Extensión preferida para _queries_ de CQL, sin el punto de prefijo.
 const QUERY_EXT: &str = "cql";
+
+/// Hashea el valor recibido.
+///
+/// En esta función es determinístico, es decir, siempre devolverá el mismo valor para el mismo input.
+/// Esto es así porque cada vez vuelve a instanciar un `DefaultHasher` nuevo, manteniendo la misma semilla.
+pub fn hash_value<T: Hash>(value: T) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
 
 /// Manda un mensaje a un nodo específico.
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
