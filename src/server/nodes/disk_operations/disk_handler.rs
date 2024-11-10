@@ -13,31 +13,29 @@ use crate::server::nodes::{
     node::NodeId,
     table_metadata::table::Table,
 };
-use crate::{
-    parser::{
-        assignment::Assignment,
-        data_types::{constant::Constant, term::Term},
-        primary_key::PrimaryKey,
-        statements::{
-            ddl_statement::{
-                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
-            },
-            dml_statement::{
-                if_condition::{Condition, IfCondition},
-                main_statements::{
-                    delete::Delete,
-                    insert::Insert,
-                    select::{
-                        order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
-                    },
-                    update::Update,
+use crate::parser::{
+    assignment::Assignment,
+    data_types::{constant::Constant, term::Term},
+    primary_key::PrimaryKey,
+    statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+        },
+        dml_statement::{
+            if_condition::{Condition, IfCondition},
+            main_statements::{
+                delete::Delete,
+                insert::Insert,
+                select::{
+                    order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
                 },
-                r#where::operator::Operator,
+                update::Update,
             },
+            r#where::operator::Operator,
         },
     },
-    server::nodes::node::Node,
 };
+    
 
 use std::{
     fs::{create_dir, OpenOptions},
@@ -183,6 +181,7 @@ impl DiskHandler {
         statement: &CreateTable,
         storage_addr: &str,
         default_keyspace: &str,
+        node_number: u8
     ) -> Result<Option<Table>> {
         let (keyspace_name, table_name) =
             Self::validate_and_get_keyspace_table_names(statement, default_keyspace, storage_addr)?;
@@ -192,7 +191,7 @@ impl DiskHandler {
             .map(|c| c.get_name())
             .collect::<Vec<String>>();
 
-        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
+        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names, node_number)?;
 
         let primary_key = Self::validate_and_get_primary_key(statement)?;
         let clustering_keys_and_order = Self::get_clustering_keys_and_order(statement)?;
@@ -213,12 +212,14 @@ impl DiskHandler {
         table: &Table,
         default_keyspace: &str,
         timestamp: i64,
+        node_number: u8
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.table.get_keyspace(),
             &statement.table.get_name(),
             default_keyspace,
+            node_number
         );
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
@@ -236,24 +237,24 @@ impl DiskHandler {
     /// Devuelve las filas de la tabla como un string
     pub fn get_rows_with_timestamp_as_string(
         storage_addr: &str,
-        table: &Table,
         default_keyspace: &str,
-        node: &Node,
         statement: &Select,
+        node_number: Byte
     ) -> Result<String> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
             &statement.from.get_name(),
             default_keyspace,
+            node_number
         );
         let table_ops = TableOperations::new(path)?;
-        let mut rows = table_ops.read_rows(false)?;
-        DiskHandler::filter_replicas_from_other_nodes(
-            node,
-            &mut rows,
-            table.get_position_of_partition_key()?,
-        )?;
+        let rows = table_ops.read_rows(false)?;
+        // DiskHandler::filter_replicas_from_other_nodes( // SACAR DESPUES
+        //     node,
+        //     &mut rows,
+        //     table.get_position_of_partition_key()?,
+        // )?;
         let rows_as_string = rows
             .iter()
             .map(|row| row.join(","))
@@ -268,13 +269,14 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        node: &Node,
+        node_number: u8
     ) -> Result<Vec<Byte>> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
             &statement.from.get_name(),
             default_keyspace,
+            node_number
         );
 
         let table_ops = TableOperations::new(path)?;
@@ -292,11 +294,11 @@ impl DiskHandler {
         // }
 
         let mut rows = table_ops.read_rows(true)?;
-        DiskHandler::filter_replicas_from_other_nodes(
-            node,
-            &mut rows,
-            table.get_position_of_partition_key()?,
-        )?;
+        // DiskHandler::filter_replicas_from_other_nodes( // SACAR EN UN RATO DESPUES DE REVISAR
+        //     node,
+        //     &mut rows,
+        //     table.get_position_of_partition_key()?,
+        // )?;
         if let Some(the_where) = &statement.options.the_where {
             rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
         }
@@ -320,29 +322,29 @@ impl DiskHandler {
         ))
     }
 
-    fn filter_replicas_from_other_nodes(
-        node: &Node,
-        rows: &mut Vec<Vec<String>>,
-        partition_key_position: usize,
-    ) -> Result<()> {
-        let mut index = 0;
-        while index < rows.len() {
-            let partition_key_value = match rows[index].get(partition_key_position) {
-                Some(value) => value,
-                None => {
-                    return Err(Error::ServerError(
-                        "La columna del partition key declarada no existe en la tabla".to_string(),
-                    ))
-                }
-            };
-            if node.select_node(partition_key_value) != node.get_id() {
-                rows.remove(index);
-            } else {
-                index += 1;
-            }
-        }
-        Ok(())
-    }
+    // fn filter_replicas_from_other_nodes(
+    //     node: &Node,
+    //     rows: &mut Vec<Vec<String>>,
+    //     partition_key_position: usize,
+    // ) -> Result<()> {
+    //     let mut index = 0;
+    //     while index < rows.len() {
+    //         let partition_key_value = match rows[index].get(partition_key_position) {
+    //             Some(value) => value,
+    //             None => {
+    //                 return Err(Error::ServerError(
+    //                     "La columna del partition key declarada no existe en la tabla".to_string(),
+    //                 ))
+    //             }
+    //         };
+    //         if node.select_node(partition_key_value) != node.get_id() {
+    //             rows.remove(index);
+    //         } else {
+    //             index += 1;
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     /// Actualiza filas en una tabla en el caso que corresponda.
     pub fn do_update(
@@ -350,14 +352,15 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        node_number: Byte
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.table_name.get_keyspace(),
             &statement.table_name.get_name(),
             default_keyspace,
+            node_number
         );
-
         let table_ops = TableOperations::new(path)?;
         Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
         let mut rows = table_ops.read_rows(true)?;
@@ -412,12 +415,14 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        node_number: Byte
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
             &statement.from.get_name(),
             default_keyspace,
+            node_number
         );
 
         let table_ops = TableOperations::new(path)?;
@@ -691,8 +696,9 @@ impl DiskHandler {
         keyspace_name: &str,
         table_name: &str,
         columns_names: &[String],
+        node_number: u8
     ) -> Result<()> {
-        let table_addr = format!("{}/{}/{}.csv", storage_addr, keyspace_name, table_name);
+        let table_addr = format!("{}/{}/{}_replica_node_{}.csv", storage_addr, keyspace_name, table_name, node_number);
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)

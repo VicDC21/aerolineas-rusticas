@@ -581,12 +581,12 @@ impl Node {
                         ))
                     }
                 };
+                let node_number = 0; //CAMBIAR
                 let res = DiskHandler::get_rows_with_timestamp_as_string(
                     &self.storage_addr,
-                    self.get_table(&table_name)?,
                     &self.default_keyspace_name,
-                    self,
                     &select,
+                    node_number
                 )?;
                 let _ = tcp_stream.write_all(res.as_bytes());
             }
@@ -672,7 +672,8 @@ impl Node {
             let res = match make_parse(&mut tokenize_query(query_body.get_query())) {
                 Ok(statement) => {
                     if internal_request {
-                        self.handle_internal_statement(statement)
+                        let node_number: Byte = u8::from_be(request[(lenght.len as usize) + 9]);
+                        self.handle_internal_statement(statement, node_number)
                     } else {
                         self.handle_statement(
                             statement,
@@ -716,20 +717,20 @@ impl Node {
     }
 
     /// Maneja una declaración interna.
-    fn handle_internal_statement(&mut self, statement: Statement) -> Result<Vec<Byte>> {
+    fn handle_internal_statement(&mut self, statement: Statement, node_number: u8) -> Result<Vec<Byte>> {
         match statement {
             Statement::DdlStatement(ddl_statement) => {
-                self.handle_internal_ddl_statement(ddl_statement)
+                self.handle_internal_ddl_statement(ddl_statement, node_number)
             }
             Statement::DmlStatement(dml_statement) => {
-                self.handle_internal_dml_statement(dml_statement)
+                self.handle_internal_dml_statement(dml_statement, node_number)
             }
             Statement::UdtStatement(_udt_statement) => todo!(),
         }
     }
 
     /// Maneja una declaración DDL.
-    fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement) -> Result<Vec<Byte>> {
+    fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement, node_number: u8) -> Result<Vec<Byte>> {
         match ddl_statement {
             DdlStatement::UseStatement(keyspace_name) => {
                 self.process_internal_use_statement(&keyspace_name)
@@ -744,7 +745,7 @@ impl Node {
                 self.process_internal_drop_keyspace_statement(&drop_keyspace)
             }
             DdlStatement::CreateTableStatement(create_table) => {
-                self.process_internal_create_table_statement(&create_table)
+                self.process_internal_create_table_statement(&create_table, node_number)
             }
             DdlStatement::AlterTableStatement(_alter_table) => todo!(),
             DdlStatement::DropTableStatement(_drop_table) => todo!(),
@@ -979,12 +980,13 @@ impl Node {
     fn process_internal_create_table_statement(
         &mut self,
         create_table: &CreateTable,
+        node_number: u8
     ) -> Result<Vec<Byte>> {
         let default_keyspace_name = match self.get_default_keyspace() {
             Ok(keyspace) => keyspace.get_name().to_string(),
             Err(err) => return Err(err),
         };
-        match DiskHandler::create_table(create_table, &self.storage_addr, &default_keyspace_name) {
+        match DiskHandler::create_table(create_table, &self.storage_addr, &default_keyspace_name, node_number) {
             Ok(Some(table)) => {
                 self.add_table(table);
             }
@@ -1015,24 +1017,24 @@ impl Node {
                     false,
                 )?
             } else {
-                self.process_internal_create_table_statement(&create_table)?
+                self.process_internal_create_table_statement(&create_table, self.id)?
             }
         }
         Ok(response)
     }
     /// Maneja una declaración DML.
-    fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement) -> Result<Vec<Byte>> {
+    fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement, node_number: u8) -> Result<Vec<Byte>> {
         let timestamp = Utc::now().timestamp(); // CAMBIAR DESPUES, ESTA PARA QUE NO ROMPA
         match dml_statement {
-            DmlStatement::SelectStatement(select) => self.process_select(&select),
-            DmlStatement::InsertStatement(insert) => self.process_insert(&insert, timestamp),
-            DmlStatement::UpdateStatement(update) => self.process_update(&update),
-            DmlStatement::DeleteStatement(delete) => self.process_delete(&delete),
+            DmlStatement::SelectStatement(select) => self.process_select(&select, node_number),
+            DmlStatement::InsertStatement(insert) => self.process_insert(&insert, timestamp, node_number),
+            DmlStatement::UpdateStatement(update) => self.process_update(&update, node_number),
+            DmlStatement::DeleteStatement(delete) => self.process_delete(&delete, node_number),
             DmlStatement::BatchStatement(_batch) => todo!(),
         }
     }
 
-    fn process_select(&self, select: &Select) -> Result<Vec<Byte>> {
+    fn process_select(&self, select: &Select, node_id: Byte) -> Result<Vec<Byte>> {
         let table = match self.get_table(&select.from.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
@@ -1042,7 +1044,7 @@ impl Node {
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
-            self,
+            node_id
         )?;
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
@@ -1054,7 +1056,7 @@ impl Node {
         Ok(response)
     }
 
-    fn process_insert(&mut self, insert: &Insert, timestamp: i64) -> Result<Vec<Byte>> {
+    fn process_insert(&mut self, insert: &Insert, timestamp: i64, node_number: Byte) -> Result<Vec<Byte>> {
         let table = match self.get_table(&insert.table.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
@@ -1065,6 +1067,7 @@ impl Node {
             table,
             &self.default_keyspace_name,
             timestamp,
+            node_number
         )?;
         match self.check_if_has_new_partition_value(insert, table)? {
             Some(new_partition_values) => self
@@ -1107,7 +1110,7 @@ impl Node {
         Ok(None)
     }
 
-    fn process_update(&mut self, update: &Update) -> Result<Vec<Byte>> {
+    fn process_update(&mut self, update: &Update, node_number: Byte) -> Result<Vec<Byte>> {
         let table = match self.get_table(&update.table_name.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
@@ -1117,6 +1120,7 @@ impl Node {
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
+            node_number
         )?;
         Ok(self.create_result_void())
     }
@@ -1233,7 +1237,7 @@ impl Node {
                 };
                 res
             } else {
-                self.process_insert(&insert, timestamp)?
+                self.process_insert(&insert, timestamp, self.id)?
             };
 
             if consistency_counter >= consistency_number {
@@ -1311,7 +1315,7 @@ impl Node {
 
             if !consulted_nodes.contains(&partition_key_value) {
                 let current_response = if node_id == self.id {
-                    self.process_update(&update)?
+                    self.process_update(&update, self.id)?
                 } else {
                     let res = self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -1414,7 +1418,7 @@ impl Node {
             if !consulted_nodes.contains(&node_id) {
                 let mut consistency_counter = 0;
                 let res = if node_id == self.id {
-                    self.process_select(&select)?
+                    self.process_select(&select, self.id)?
                 } else {
                     self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -1559,7 +1563,11 @@ impl Node {
         Ok(())
     }
 
-    fn process_delete(&mut self, delete: &Delete) -> Result<Vec<Byte>> {
+    fn hash_vec_of_bytes(&self, _res: &[Byte]) -> i64 {
+        todo!()
+    }
+
+    fn process_delete(&mut self, delete: &Delete, node_number: Byte) -> Result<Vec<Byte>> {
         let table = match self.get_table(&delete.from.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
@@ -1570,6 +1578,7 @@ impl Node {
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
+            node_number
         )?;
 
         Ok(self.create_result_void())
@@ -1594,7 +1603,7 @@ impl Node {
 
             if !consulted_nodes.contains(&partition_key_value) {
                 let current_response = if node_id == self.id {
-                    self.process_delete(&delete)?
+                    self.process_delete(&delete, self.id)?
                 } else {
                     let res = self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
