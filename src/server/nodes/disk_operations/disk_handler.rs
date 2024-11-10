@@ -1,25 +1,5 @@
 //! Módulo para manejo del almacenamiento en disco.
 
-use crate::{parser::{
-    assignment::Assignment,
-    data_types::{constant::Constant, term::Term},
-    primary_key::PrimaryKey,
-    statements::{
-        ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
-        },
-        dml_statement::{
-            if_condition::{Condition, IfCondition},
-            main_statements::{
-                delete::Delete,
-                insert::Insert,
-                select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
-                update::Update,
-            },
-            r#where::operator::Operator,
-        },
-    },
-}, server::nodes::node::Node};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -32,6 +12,31 @@ use crate::server::nodes::{
     keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
     node::NodeId,
     table_metadata::table::Table,
+};
+use crate::{
+    parser::{
+        assignment::Assignment,
+        data_types::{constant::Constant, term::Term},
+        primary_key::PrimaryKey,
+        statements::{
+            ddl_statement::{
+                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+            },
+            dml_statement::{
+                if_condition::{Condition, IfCondition},
+                main_statements::{
+                    delete::Delete,
+                    insert::Insert,
+                    select::{
+                        order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
+                    },
+                    update::Update,
+                },
+                r#where::operator::Operator,
+            },
+        },
+    },
+    server::nodes::node::Node,
 };
 
 use std::{
@@ -207,7 +212,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        timestamp: i64
+        timestamp: i64,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
@@ -229,7 +234,13 @@ impl DiskHandler {
     }
 
     /// Devuelve las filas de la tabla como un string
-    pub fn get_rows_with_timestamp_as_string(storage_addr: &str, table: &Table, default_keyspace: &str, node: &Node, statement: &Select) -> Result<String>{
+    pub fn get_rows_with_timestamp_as_string(
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+        node: &Node,
+        statement: &Select,
+    ) -> Result<String> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
@@ -238,10 +249,14 @@ impl DiskHandler {
         );
         let table_ops = TableOperations::new(path)?;
         let mut rows = table_ops.read_rows(false)?;
-        DiskHandler::filter_replicas_from_other_nodes(node, &mut rows, table.get_position_of_partition_key()?)?;
+        DiskHandler::filter_replicas_from_other_nodes(
+            node,
+            &mut rows,
+            table.get_position_of_partition_key()?,
+        )?;
         let rows_as_string = rows
             .iter()
-            .map(|row| row.join(",")) 
+            .map(|row| row.join(","))
             .collect::<Vec<String>>()
             .join("\n");
         Ok(rows_as_string)
@@ -253,7 +268,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        node: &Node
+        node: &Node,
     ) -> Result<Vec<Byte>> {
         let path = TablePath::new(
             storage_addr,
@@ -277,7 +292,11 @@ impl DiskHandler {
         // }
 
         let mut rows = table_ops.read_rows(true)?;
-        DiskHandler::filter_replicas_from_other_nodes(node, &mut rows, table.get_position_of_partition_key()?)?;
+        DiskHandler::filter_replicas_from_other_nodes(
+            node,
+            &mut rows,
+            table.get_position_of_partition_key()?,
+        )?;
         if let Some(the_where) = &statement.options.the_where {
             rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
         }
@@ -301,12 +320,20 @@ impl DiskHandler {
         ))
     }
 
-    fn filter_replicas_from_other_nodes(node: &Node, rows: &mut Vec<Vec<String>>, partition_key_position: usize) -> Result<()>{
+    fn filter_replicas_from_other_nodes(
+        node: &Node,
+        rows: &mut Vec<Vec<String>>,
+        partition_key_position: usize,
+    ) -> Result<()> {
         let mut index = 0;
         while index < rows.len() {
-            let partition_key_value = match rows[index].get(partition_key_position){
+            let partition_key_value = match rows[index].get(partition_key_position) {
                 Some(value) => value,
-                None => return Err(Error::ServerError("La columna del partition key declarada no existe en la tabla".to_string()))
+                None => {
+                    return Err(Error::ServerError(
+                        "La columna del partition key declarada no existe en la tabla".to_string(),
+                    ))
+                }
             };
             if node.select_node(partition_key_value) != node.get_id() {
                 rows.remove(index);
@@ -315,7 +342,6 @@ impl DiskHandler {
             }
         }
         Ok(())
-
     }
 
     /// Actualiza filas en una tabla en el caso que corresponda.
@@ -421,15 +447,20 @@ impl DiskHandler {
         statement: &Insert,
         table_ops: &TableOperations,
         values: &[String],
-        timestamp: i64
+        timestamp: i64,
     ) -> Vec<String> {
         let table_columns: Vec<&str> = table_ops.columns.iter().map(|s| s.as_str()).collect();
 
-        Self::generate_row_to_insert(values, &statement.get_columns_names(), &table_columns, timestamp)
-            .trim()
-            .split(',')
-            .map(|s| s.to_string())
-            .collect()
+        Self::generate_row_to_insert(
+            values,
+            &statement.get_columns_names(),
+            &table_columns,
+            timestamp,
+        )
+        .trim()
+        .split(',')
+        .map(|s| s.to_string())
+        .collect()
     }
 
     fn order_and_save_rows(
@@ -761,7 +792,7 @@ impl DiskHandler {
         values: &[String],
         query_cols: &[String],
         table_cols: &[&str],
-        timestamp: i64
+        timestamp: i64,
     ) -> String {
         let mut values_to_insert: Vec<&str> = vec![""; table_cols.len()];
 
@@ -772,7 +803,6 @@ impl DiskHandler {
         }
         let timestamp_reference = &timestamp.to_string();
         values_to_insert.push(timestamp_reference);
-
 
         values_to_insert.join(",") + "\n"
     }

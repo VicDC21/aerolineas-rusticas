@@ -12,7 +12,7 @@ use crate::protocol::{
     },
     errors::error::Error,
     traits::Byteable,
-    utils::encode_iter_to_bytes,
+    utils::{encode_iter_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
 };
 use crate::server::nodes::{
     node::{NodeId, NodesMap},
@@ -76,7 +76,7 @@ pub enum SvAction {
     StoreMetadata,
 
     /// Obtiene unicamente las filas de la tabla solicitada, pero con sus timestamps.
-    GetTableWithTimestampOfRows,
+    GetTableWithTimestampOfRows(String, Vec<Byte>),
 
     /// Pide unicamente el valor hasheado de una query normal.
     GetResponseHashed(Vec<Byte>),
@@ -219,9 +219,14 @@ impl Byteable for SvAction {
                 bytes
             }
             Self::StoreMetadata => vec![0xF9],
-            Self::GetTableWithTimestampOfRows => vec![0xFA],
+            Self::GetTableWithTimestampOfRows(table_name, query_bytes) => {
+                let mut bytes = vec![0xFA];
+                bytes.extend(encode_string_to_bytes(table_name));
+                bytes.extend(query_bytes);
+                bytes
+            }
             Self::GetResponseHashed(query_bytes) => {
-                let mut bytes = vec![0xF8];
+                let mut bytes = vec![0xFB];
                 bytes.extend(query_bytes);
                 bytes
             }
@@ -315,6 +320,12 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xF8 => Ok(Self::InternalQuery(bytes[1..].to_vec())),
             0xF9 => Ok(Self::StoreMetadata),
+            0xFA => {
+                let table_name = parse_bytes_to_string(&bytes[1..], &mut i)?;
+                let query_bytes = bytes[table_name.len() + 1 + 2..].to_vec();
+                Ok(Self::GetTableWithTimestampOfRows(table_name, query_bytes))
+            }
+            0xFB => Ok(Self::GetResponseHashed(bytes[1..].to_vec())),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first
