@@ -57,7 +57,12 @@ impl AirlinesDetails {
 
     /// Actualiza el aeropuerto principal.
     pub fn set_selected_airport(&mut self, new_selection: Option<Airport>) {
-        self.selected_airport = new_selection;
+        if new_selection.is_none() || Self::same_airports(&self.extra_airport, &new_selection) {
+            self.selected_airport = None;
+            self.extra_airport = None;
+        } else {
+            self.selected_airport = new_selection;
+        }
     }
 
     /// Consigue una referencia al aeropuerto secundario actualmente seleccionado.
