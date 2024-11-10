@@ -1512,7 +1512,13 @@ impl Node {
         }
 
         if exec_read_repair {
-            self.exec_read_repair(node_id, request, consistency_number, table_name)?;
+            self.exec_read_repair(
+                node_id,
+                request,
+                consistency_number,
+                table_name,
+                response_from_first_replica,
+            )?;
         }
 
         Ok(true)
@@ -1524,7 +1530,16 @@ impl Node {
         request: &[Byte],
         consistency_number: usize,
         table_name: &str,
+        response_from_first_replica: &[Byte],
     ) -> Result<()> {
+        let first_res = String::from_utf8(response_from_first_replica.to_vec())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let rows: Vec<Vec<String>> = first_res
+            .split("\n")
+            .map(|row| row.split(",").map(|col| col.to_string()).collect())
+            .collect();
+        let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![(node_id, rows)];
+
         for i in 0..consistency_number {
             let node_to_consult =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
@@ -1537,12 +1552,15 @@ impl Node {
             )?;
             let select_res =
                 String::from_utf8(res.to_vec()).map_err(|e| Error::ServerError(e.to_string()))?;
-            let _table_rows: Vec<Vec<String>> = select_res
+            let rows: Vec<Vec<String>> = select_res
                 .split("\n")
                 .map(|row| row.split(",").map(|col| col.to_string()).collect())
                 .collect();
-            // continuar
+            ids_and_rows.push((node_to_consult, rows));
         }
+
+        let mut newer_rows: Vec<Vec<String>> = Vec::new();
+        
 
         Ok(())
     }
