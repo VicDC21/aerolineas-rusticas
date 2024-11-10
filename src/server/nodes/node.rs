@@ -1557,14 +1557,9 @@ impl Node {
             ids_and_rows.push((node_to_consult, rows));
         }
 
-        let mut newer_rows: Vec<Vec<String>> = Vec::new();
-        
+        // let mut newer_rows: Vec<Vec<String>> = Vec::new();
 
         Ok(())
-    }
-
-    fn hash_vec_of_bytes(&self, _res: &[Byte]) -> i64 {
-        todo!()
     }
 
     fn process_delete(&mut self, delete: &Delete, node_number: Byte) -> Result<Vec<Byte>> {
