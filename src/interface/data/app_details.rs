@@ -10,10 +10,10 @@ use crate::data::{
 /// Holds details to many of the important data of the current instant in the GUI.
 pub struct AirlinesDetails {
     /// El puerto seleccionado actualmente.
-    selected_airport: Option<Airport>,
+    selected_airport: Arc<Option<Airport>>,
 
     /// Un aeropuerto extra, para acciones especiales.
-    extra_airport: Option<Airport>,
+    extra_airport: Arc<Option<Airport>>,
 
     /// Los aeropuertos actualmente en memoria.
     current_airports: Arc<Vec<Airport>>,
@@ -43,8 +43,8 @@ impl AirlinesDetails {
         show_departing_flights: bool,
     ) -> Self {
         Self {
-            selected_airport,
-            extra_airport,
+            selected_airport: Arc::new(selected_airport),
+            extra_airport: Arc::new(extra_airport),
             current_airports: Arc::new(current_airports),
             incoming_flights: Arc::new(incoming_flights),
             departing_flights: Arc::new(departing_flights),
@@ -54,23 +54,34 @@ impl AirlinesDetails {
     }
 
     /// Consigue una referencia al aeropuerto principal actualmente seleccionado.
-    pub fn get_selected_airport(&self) -> &Option<Airport> {
-        &self.selected_airport
+    pub fn get_ref_selected_airport(&self) -> &Option<Airport> {
+        self.selected_airport.as_ref()
+    }
+
+    /// Consigue una referencia clonada al aeropuerto principal actualmente seleccionado.
+    pub fn get_selected_airport(&self) -> Arc<Option<Airport>> {
+        Arc::clone(&self.selected_airport)
     }
 
     /// Actualiza el aeropuerto principal.
     pub fn set_selected_airport(&mut self, new_selection: Option<Airport>) {
+        // Para evitar que un aeropuerto seleccionado muestre los vuelos de otro
+        if new_selection.is_some() || !Self::same_airports(&self.selected_airport, &new_selection) {
+            self.set_incoming_flights(Vec::<IncomingFlight>::new(), true);
+            self.set_departing_flights(Vec::<DepartingFlight>::new(), true);
+        }
+
         if new_selection.is_none() || Self::same_airports(&self.extra_airport, &new_selection) {
-            self.selected_airport = None;
-            self.extra_airport = None;
+            self.selected_airport = Arc::new(None);
+            self.extra_airport = Arc::new(None);
         } else {
-            self.selected_airport = new_selection;
+            self.selected_airport = Arc::new(new_selection);
         }
     }
 
     /// Consigue una referencia al aeropuerto secundario actualmente seleccionado.
-    pub fn get_extra_airport(&self) -> &Option<Airport> {
-        &self.extra_airport
+    pub fn get_ref_extra_airport(&self) -> &Option<Airport> {
+        self.extra_airport.as_ref()
     }
 
     /// Actualiza el aeropuerto secundario.
@@ -78,9 +89,9 @@ impl AirlinesDetails {
         if self.selected_airport.is_none()
             || Self::same_airports(&self.selected_airport, &new_extra)
         {
-            self.extra_airport = None;
+            self.extra_airport = Arc::new(None);
         } else {
-            self.extra_airport = new_extra;
+            self.extra_airport = Arc::new(new_extra);
         }
     }
 
@@ -100,8 +111,8 @@ impl AirlinesDetails {
     }
 
     /// Actualiza la lista de vuelos entrantes.
-    pub fn set_incoming_flights(&mut self, new_incoming: Vec<IncomingFlight>) {
-        if !new_incoming.is_empty() {
+    pub fn set_incoming_flights(&mut self, new_incoming: Vec<IncomingFlight>, ignore_empty: bool) {
+        if ignore_empty || !new_incoming.is_empty() {
             self.incoming_flights = Arc::new(new_incoming);
         }
     }
@@ -112,8 +123,12 @@ impl AirlinesDetails {
     }
 
     /// Actualiza la lista de vuelos entrantes.
-    pub fn set_departing_flights(&mut self, new_departing: Vec<DepartingFlight>) {
-        if !new_departing.is_empty() {
+    pub fn set_departing_flights(
+        &mut self,
+        new_departing: Vec<DepartingFlight>,
+        ignore_empty: bool,
+    ) {
+        if ignore_empty || !new_departing.is_empty() {
             self.departing_flights = Arc::new(new_departing);
         }
     }
