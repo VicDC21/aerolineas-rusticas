@@ -249,13 +249,22 @@ impl DiskHandler {
             node_number
         );
         let table_ops = TableOperations::new(path)?;
-        let rows = table_ops.read_rows(false)?;
-        // DiskHandler::filter_replicas_from_other_nodes( // SACAR DESPUES
-        //     node,
-        //     &mut rows,
-        //     table.get_position_of_partition_key()?,
-        // )?;
-        let rows_as_string = rows
+        let query_cols = vec!["*".to_string()];
+        let mut rows = table_ops.read_rows(false)?;
+        if let Some(the_where) = &statement.options.the_where {
+            rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
+        }
+
+        if let Some(order) = &statement.options.order_by {
+            order.order(&mut rows, &table_ops.columns);
+        }
+        let result_rows: Vec<Vec<String>> = rows
+            .into_iter()
+            .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols, false))
+            .collect();
+
+
+        let rows_as_string = result_rows
             .iter()
             .map(|row| row.join(","))
             .collect::<Vec<String>>()
@@ -269,7 +278,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        node_number: u8
+        node_number: u8,
     ) -> Result<Vec<Byte>> {
         let path = TablePath::new(
             storage_addr,
@@ -294,11 +303,6 @@ impl DiskHandler {
         // }
 
         let mut rows = table_ops.read_rows(true)?;
-        // DiskHandler::filter_replicas_from_other_nodes( // SACAR EN UN RATO DESPUES DE REVISAR
-        //     node,
-        //     &mut rows,
-        //     table.get_position_of_partition_key()?,
-        // )?;
         if let Some(the_where) = &statement.options.the_where {
             rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
         }
@@ -309,7 +313,7 @@ impl DiskHandler {
 
         let result_rows: Vec<Vec<String>> = rows
             .into_iter()
-            .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols))
+            .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols, true))
             .collect();
 
         result.extend(result_rows);
@@ -321,30 +325,6 @@ impl DiskHandler {
             table,
         ))
     }
-
-    // fn filter_replicas_from_other_nodes(
-    //     node: &Node,
-    //     rows: &mut Vec<Vec<String>>,
-    //     partition_key_position: usize,
-    // ) -> Result<()> {
-    //     let mut index = 0;
-    //     while index < rows.len() {
-    //         let partition_key_value = match rows[index].get(partition_key_position) {
-    //             Some(value) => value,
-    //             None => {
-    //                 return Err(Error::ServerError(
-    //                     "La columna del partition key declarada no existe en la tabla".to_string(),
-    //                 ))
-    //             }
-    //         };
-    //         if node.select_node(partition_key_value) != node.get_id() {
-    //             rows.remove(index);
-    //         } else {
-    //             index += 1;
-    //         }
-    //     }
-    //     Ok(())
-    // }
 
     /// Actualiza filas en una tabla en el caso que corresponda.
     pub fn do_update(
@@ -864,6 +844,7 @@ impl DiskHandler {
         table_row: &[String],
         table_cols: &[String],
         query_cols: &[String],
+        without_timestamp: bool
     ) -> Vec<String> {
         let mut new_row: Vec<String> = Vec::new();
         if query_cols.len() == 1 && query_cols[0] == "*" {
@@ -876,6 +857,9 @@ impl DiskHandler {
                 {
                     new_row.push(table_row[j].clone());
                 }
+            }
+            if !without_timestamp{
+                new_row.push(table_row.last().unwrap_or(&"0".to_string()).to_string())
             }
         }
         new_row
@@ -940,4 +924,11 @@ impl DiskHandler {
         }
         Ok(())
     }
+
+    /// Borra todas las filas existentes, excepto la de los nombres de las columnas y inserta todas las filas pasadas por parametro
+    pub fn actualize_all_rows(_rows: &str){
+        todo!() // ESTA SERIA LA FUNCION, HAY QUE VER LOS PARAMETROS QUE DEBERIA RECIBIR
+    }
+
+
 }

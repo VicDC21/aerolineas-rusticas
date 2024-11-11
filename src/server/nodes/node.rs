@@ -563,34 +563,11 @@ impl Node {
                     )));
                 }
             }
-            SvAction::GetTableWithTimestampOfRows(table_name, bytes) => {
-                let statement = match String::from_utf8(bytes) {
-                    Ok(query) => make_parse(&mut tokenize_query(&query))?,
-                    Err(err) => {
-                        return Err(Error::ServerError(format!(
-                            "Error convirtiendo bytes a string: {}",
-                            err
-                        )))
-                    }
-                };
-                let select = match statement {
-                    Statement::DmlStatement(DmlStatement::SelectStatement(select)) => select,
-                    _ => {
-                        return Err(Error::ServerError(
-                            "La declaración no es un SELECT".to_string(),
-                        ))
-                    }
-                };
-                let node_number = 0; //CAMBIAR
-                let res = DiskHandler::get_rows_with_timestamp_as_string(
-                    &self.storage_addr,
-                    &self.default_keyspace_name,
-                    &select,
-                    node_number
-                )?;
+            SvAction::DirectReadRequest(bytes) => {
+                let res = self.exec_direct_read_request(bytes)?;
                 let _ = tcp_stream.write_all(res.as_bytes());
             }
-            SvAction::GetResponseHashed(bytes) => {
+            SvAction::DigestReadRequest(bytes) => {
                 let response = self.handle_request(&bytes, true);
                 // Devolvemos además un opcode para poder saber si el resultado fue un error o no.
                 if self.verify_succesful_response(&response) {
@@ -607,8 +584,40 @@ impl Node {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
+            SvAction::RepairRows(_bytes) => {
+                // ESTOS BYTES DEBERIAN SER UN VEC DE VEC DE STRING, CON ESTO DEBERIAMOS CAMBIAR
+                // TODA LA TABLA CORRESPONDIENTE, EXCEPTO LA PRIMER FILA (COLUMNAS)
+            }
         };
         Ok(stop)
+    }
+
+    fn exec_direct_read_request(&self, mut bytes: Vec<Byte>) -> Result<String>{
+        let node_number = bytes.pop().unwrap_or(0); // despues cambiar
+        let statement = match String::from_utf8(bytes) {
+            Ok(query) => make_parse(&mut tokenize_query(&query))?,
+            Err(err) => {
+                return Err(Error::ServerError(format!(
+                    "Error convirtiendo bytes a string: {}",
+                    err
+                )))
+            }
+        };
+        let select = match statement {
+            Statement::DmlStatement(DmlStatement::SelectStatement(select)) => select,
+            _ => {
+                return Err(Error::ServerError(
+                    "La declaración no es un SELECT".to_string(),
+                ))
+            }
+        };
+        let res = DiskHandler::get_rows_with_timestamp_as_string(
+            &self.storage_addr,
+            &self.default_keyspace_name,
+            &select,
+            node_number
+        )?;
+        Ok(res)
     }
 
     /// Maneja una request.
@@ -1415,7 +1424,7 @@ impl Node {
             let node_id = self.select_node(partition_key_value);
             if !consulted_nodes.contains(&node_id) {
                 let mut consistency_counter = 0;
-                let res = if node_id == self.id {
+                let actual_result = if node_id == self.id {
                     self.process_select(&select, self.id)?
                 } else {
                     self.send_message_and_wait_response(
@@ -1438,7 +1447,7 @@ impl Node {
                     //     }
                     // };
                 };
-                self.handle_result_from_node(&mut results_from_another_nodes, &res, &select)?;
+                self.handle_result_from_node(&mut results_from_another_nodes, &actual_result, &select)?;
                 consulted_nodes.push(node_id);
                 // consistency_counter += 1;
                 // TODO: Terminar logica de Read-Repair
@@ -1447,8 +1456,7 @@ impl Node {
                     request,
                     &mut consistency_counter,
                     consistency_number,
-                    &res,
-                    &select.from.get_name(),
+                    &actual_result,
                 )? {
                     return Err(Error::ServerError(format!(
                         "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
@@ -1467,18 +1475,17 @@ impl Node {
         consistency_counter: &mut usize,
         consistency_number: usize,
         response_from_first_replica: &[Byte],
-        table_name: &str,
     ) -> Result<bool> {
         if consistency_number == 1 {
             return Ok(true);
         }
         let first_hashed_value = hash_value(response_from_first_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
-        for i in 0..consistency_number {
+        for i in 1..consistency_number {
             let node_to_consult =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
             let opcode_with_hashed_value = self.send_message_and_wait_response(
-                SvAction::GetResponseHashed(request.to_vec()).as_bytes(),
+                SvAction::DigestReadRequest(request.to_vec()).as_bytes(),
                 node_to_consult,
                 PortType::Priv,
                 true,
@@ -1512,7 +1519,6 @@ impl Node {
                 node_id,
                 request,
                 consistency_number,
-                table_name,
                 response_from_first_replica,
             )?;
         }
@@ -1525,37 +1531,79 @@ impl Node {
         node_id: u8,
         request: &[Byte],
         consistency_number: usize,
-        table_name: &str,
-        response_from_first_replica: &[Byte],
+        _response_from_first_replica: &[Byte],
     ) -> Result<()> {
-        let first_res = String::from_utf8(response_from_first_replica.to_vec())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-        let rows: Vec<Vec<String>> = first_res
-            .split("\n")
-            .map(|row| row.split(",").map(|col| col.to_string()).collect())
-            .collect();
-        let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![(node_id, rows)];
+        let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![];
 
         for i in 0..consistency_number {
             let node_to_consult =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
-            let res = self.send_message_and_wait_response(
-                SvAction::GetTableWithTimestampOfRows(table_name.to_string(), request.to_vec())
-                    .as_bytes(),
-                node_to_consult,
-                PortType::Priv,
-                true,
-            )?;
-            let select_res =
-                String::from_utf8(res.to_vec()).map_err(|e| Error::ServerError(e.to_string()))?;
-            let rows: Vec<Vec<String>> = select_res
+            let res = 
+            if node_to_consult == self.id{
+                self.exec_direct_read_request(request.to_vec())?
+            } else {
+                let extern_response = self.send_message_and_wait_response(
+                    SvAction::DirectReadRequest(request.to_vec()).as_bytes(),
+                    node_to_consult,
+                    PortType::Priv,
+                    true,
+                )?;
+                match String::from_utf8(extern_response){
+                    Ok(value) => value,
+                    Err(_err) => return Err(Error::ServerError("Error al castear de vector a string".to_string()))
+                }
+            };
+            let rows: Vec<Vec<String>> = res
                 .split("\n")
                 .map(|row| row.split(",").map(|col| col.to_string()).collect())
                 .collect();
             ids_and_rows.push((node_to_consult, rows));
         }
+        let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
+        for (i, (_node, rows)) in ids_and_rows.iter().enumerate() {
+            for (j ,row) in rows.iter().enumerate() {
+                if most_recent_timestamps.len() <= j{
+                    most_recent_timestamps.push((i, row[row.len() - 1].clone()));
+                } else{
+                    let actual_timestamp = row[row.len() - 1].clone();
+                    if actual_timestamp > most_recent_timestamps[j].1{
+                        most_recent_timestamps[j] = (i, actual_timestamp);
+                    }
+                }
+            }
+        }
+        let mut newer_rows: Vec<Vec<String>> = Vec::new();
+        for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate(){
+            let new_row = &ids_and_rows[actual_timestamp.0].1[i];
+            newer_rows.push(new_row.clone());
+        }
+        let rows_as_string = newer_rows
+            .iter()
+            .map(|row| row.join(","))
+            .collect::<Vec<String>>()
+            .join("\n");
 
-        // let mut newer_rows: Vec<Vec<String>> = Vec::new();
+        for i in 0..consistency_number{
+            let node_to_repair =
+                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+            if node_to_repair == self.id{
+                DiskHandler::actualize_all_rows(&rows_as_string);
+                self.exec_direct_read_request(request.to_vec())?
+            } else {
+                let extern_response = self.send_message_and_wait_response(
+                    SvAction::RepairRows(rows_as_string.as_bytes().to_vec()).as_bytes(), // FALTA VER ESTA PARTE, QUE HACEMOS PARA QUE SE GUARDEN LOS DATOS EN EL LA TABLA CORRESPONDIENTE, HABRIA QUE MANDAR METADATA PARA LA FUNCION QUE USEMOS
+                    node_to_repair,
+                    PortType::Priv,
+                    false,
+                )?;
+                match String::from_utf8(extern_response){
+                    Ok(value) => value,
+                    Err(_err) => return Err(Error::ServerError("Error al castear de vector a string".to_string()))
+                }
+            };
+        }
+
+
 
         Ok(())
     }
