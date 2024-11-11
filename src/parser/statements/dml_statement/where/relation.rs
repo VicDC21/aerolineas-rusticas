@@ -1,9 +1,8 @@
 use crate::parser::{
-    data_types::identifier::identifier::Identifier, data_types::term::Term,
-    statements::dml_statement::r#where::operator::Operator,
+    data_types::constant::Constant, data_types::identifier::identifier::Identifier,
+    data_types::term::Term, statements::dml_statement::r#where::operator::Operator,
 };
 use crate::protocol::{aliases::results::Result, errors::error::Error};
-use crate::tokenizer::tokenizer::tokenize_query;
 
 /// Representa una relación en una cláusula WHERE con dos columnas y un operador.
 #[derive(Debug)]
@@ -30,19 +29,6 @@ impl Relation {
 
     /// Evalúa la relación entre la columna de la tabla y el término dados.
     pub fn evaluate(&self, line_to_review: &[String], general_columns: &[String]) -> Result<bool> {
-        match self.operator {
-            Operator::In => todo!(),
-            Operator::Contains => todo!(),
-            Operator::ContainsKey => todo!(),
-            _ => self.make_comparison(line_to_review, general_columns),
-        }
-    }
-
-    fn make_comparison(
-        &self,
-        line_to_review: &[String],
-        general_columns: &[String],
-    ) -> Result<bool> {
         let column = self.column.get_name();
         let index = match general_columns.iter().position(|word| word == column) {
             Some(position) => position,
@@ -53,36 +39,72 @@ impl Relation {
             }
         };
 
-        let column_term = match Term::is_term(&mut tokenize_query(&line_to_review[index]))? {
-            Some(value) => value,
-            None => {
-                return Err(Error::Invalid(
-                    "La columna es un tipo de dato no valido".to_string(),
-                ))
+        if index >= line_to_review.len() {
+            return Err(Error::Invalid(
+                "Índice de columna fuera de rango".to_string(),
+            ));
+        }
+
+        let column_value = &line_to_review[index];
+        let column_term = self.parse_csv_value_to_term(column_value)?;
+
+        self.compare_terms(&column_term, &self.term_to_compare)
+    }
+
+    fn parse_csv_value_to_term(&self, value: &str) -> Result<Term> {
+        if let Ok(int_val) = value.parse::<i32>() {
+            return Ok(Term::Constant(Constant::Integer(int_val)));
+        }
+
+        if let Ok(double_val) = value.parse::<f64>() {
+            return Ok(Term::Constant(Constant::Double(double_val)));
+        }
+
+        match value.to_uppercase().as_str() {
+            "TRUE" => return Ok(Term::Constant(Constant::Boolean(true))),
+            "FALSE" => return Ok(Term::Constant(Constant::Boolean(false))),
+            _ => {}
+        }
+
+        if value.to_uppercase() == "NULL" {
+            return Ok(Term::Constant(Constant::NULL));
+        }
+
+        let cleaned_value = value.trim_matches('"').trim_matches('\'');
+        Ok(Term::Constant(Constant::String(cleaned_value.to_string())))
+    }
+
+    fn compare_terms(&self, column_term: &Term, compare_term: &Term) -> Result<bool> {
+        match &self.operator {
+            Operator::Equal => Ok(column_term == compare_term),
+            Operator::Distinct => Ok(column_term != compare_term),
+            Operator::Minor => match column_term.partial_cmp(compare_term) {
+                Some(ordering) => Ok(ordering == std::cmp::Ordering::Less),
+                None => Err(Error::Invalid(
+                    "Tipos incompatibles para comparación".to_string(),
+                )),
+            },
+            Operator::Mayor => match column_term.partial_cmp(compare_term) {
+                Some(ordering) => Ok(ordering == std::cmp::Ordering::Greater),
+                None => Err(Error::Invalid(
+                    "Tipos incompatibles para comparación".to_string(),
+                )),
+            },
+            Operator::MinorEqual => match column_term.partial_cmp(compare_term) {
+                Some(ordering) => Ok(ordering != std::cmp::Ordering::Greater),
+                None => Err(Error::Invalid(
+                    "Tipos incompatibles para comparación".to_string(),
+                )),
+            },
+            Operator::MayorEqual => match column_term.partial_cmp(compare_term) {
+                Some(ordering) => Ok(ordering != std::cmp::Ordering::Less),
+                None => Err(Error::Invalid(
+                    "Tipos incompatibles para comparación".to_string(),
+                )),
+            },
+            Operator::In | Operator::Contains | Operator::ContainsKey => {
+                Err(Error::Invalid("Operador no implementado".to_string()))
             }
-        };
-
-        // if self.first_column.is_a_string() || self.second_column.is_a_string() {
-        //     return Err(Error::SyntaxError(
-        //         "For comparisons whose operator is not '=' the parameters must be numbers"
-        //             .to_string(),
-        //     ));
-        // }
-        // let num1_comparator: i32 =
-        //     self.parse_to_a_number(line_to_review, general_columns, &self.first_column)?;
-        // let num2_comparator: i32 =
-        //     self.parse_to_a_number(line_to_review, general_columns, &self.second_column)?;
-
-        match self.operator {
-            Operator::Minor => Ok(column_term < self.term_to_compare),
-            Operator::Mayor => Ok(column_term > self.term_to_compare),
-            Operator::MayorEqual => Ok(column_term >= self.term_to_compare),
-            Operator::MinorEqual => Ok(column_term <= self.term_to_compare),
-            Operator::Equal => Ok(column_term == self.term_to_compare),
-            Operator::Distinct => Ok(column_term != self.term_to_compare),
-            Operator::In => todo!(),
-            Operator::Contains => todo!(),
-            Operator::ContainsKey => todo!(),
         }
     }
 }

@@ -6,35 +6,31 @@ use rand::{
 };
 use std::{
     collections::HashSet,
-    net::TcpStream,
+    net::SocketAddr,
     path::Path,
-    sync::mpsc::{channel, Sender},
+    sync::{
+        mpsc::{channel, Sender},
+        Arc, Mutex,
+    },
     thread::{sleep, Builder, JoinHandle},
     time::Duration,
 };
 
-use crate::{
-    client::cql_frame::frame::Frame,
-    parser::{main_parser::make_parse, statements::statement::Statement},
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        traits::Byteable,
+use crate::server::{
+    actions::opcode::SvAction,
+    modes::ConnectionMode,
+    nodes::{
+        node::{Node, NodeId},
+        port_type::PortType,
+        utils::{load_init_queries, send_to_node},
     },
-    tokenizer::tokenizer::tokenize_query,
+    utils::load_serializable,
 };
 use crate::{
-    protocol::notations::consistency::Consistency,
-    server::{
-        actions::opcode::SvAction,
-        modes::ConnectionMode,
-        nodes::{
-            node::{Node, NodeId},
-            port_type::PortType,
-            utils::{load_init_queries, send_to_node},
-        },
-        utils::load_serializable,
-    },
+    client::frame::Frame,
+    parser::{main_parser::make_parse, statements::statement::Statement},
+    protocol::{aliases::results::Result, errors::error::Error, traits::Byteable},
+    tokenizer::tokenizer::tokenize_query,
 };
 
 /// El handle donde vive una operación de nodo.
@@ -193,33 +189,23 @@ impl NodesGraph {
 
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         for i in 0..n {
-            let mut node_listeners: Vec<NodeHandle> = Vec::new();
+            let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
             let current_id = self.add_node_id();
             let node = Node::new(current_id, self.preferred_mode.clone());
 
             let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
             let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-            let (proc_sender, proc_receiver) = channel::<(TcpStream, Vec<Byte>)>();
-
-            // Sino aparentemente el hilo toma ownership antes de poder clonarlo.
-            let cli_sender = proc_sender.clone();
-            let priv_sender = proc_sender.clone();
-
             create_client_and_private_conexion(
                 current_id,
                 cli_socket,
-                cli_sender,
                 &mut node_listeners,
                 i,
                 priv_socket,
-                priv_sender,
+                node,
             )?;
 
-            let processor = node.request_processor(proc_receiver, node_listeners)?;
-
-            // Los join de los listeners están dentro del procesador
-            handlers.push(Some(processor));
+            handlers.append(&mut node_listeners);
         }
         // Llenamos de información al nodo "seed".
         self.send_states_to_node(self.max_weight());
@@ -246,31 +232,21 @@ impl NodesGraph {
                 self.node_weights.push(1);
             }
 
-            let mut node_listeners: Vec<NodeHandle> = Vec::new();
+            let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
 
             let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
             let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-            let (proc_sender, proc_receiver) = channel::<(TcpStream, Vec<Byte>)>();
-
-            // Sino aparentemente el hilo toma ownership antes de poder clonarlo.
-            let cli_sender = proc_sender.clone();
-            let priv_sender = proc_sender.clone();
-
             create_client_and_private_conexion(
                 node_id,
                 cli_socket,
-                cli_sender,
                 &mut node_listeners,
                 i as Byte,
                 priv_socket,
-                priv_sender,
+                node,
             )?;
 
-            let processor = node.request_processor(proc_receiver, node_listeners)?;
-
-            // Los join de los listeners están dentro del procesador
-            handlers.push(Some(processor));
+            handlers.append(&mut node_listeners);
         }
         // Llenamos de información al nodo "seed".
         self.send_states_to_node(self.max_weight());
@@ -359,19 +335,29 @@ impl NodesGraph {
     }
 }
 
+/// Crea los _handlers_ que escuchan por conexiones entrantes.
+///
+/// <div class="warning">
+///
+/// Esta función toma _ownership_ del [nodo](Node) que se le pasa.
+///
+/// </div>
 fn create_client_and_private_conexion(
-    current_id: Byte,
-    cli_socket: std::net::SocketAddr,
-    cli_sender: Sender<(TcpStream, Vec<Byte>)>,
-    node_listeners: &mut Vec<JoinHandle<Result<()>>>,
-    i: Byte,
-    priv_socket: std::net::SocketAddr,
-    priv_sender: Sender<(TcpStream, Vec<Byte>)>,
+    current_id: u8,
+    cli_socket: SocketAddr,
+    node_listeners: &mut Vec<Option<NodeHandle>>,
+    i: u8,
+    priv_socket: SocketAddr,
+    node: Node,
 ) -> Result<()> {
+    let sendable_node = Arc::new(Mutex::new(node));
+    let cli_node = Arc::clone(&sendable_node);
+    let priv_node = Arc::clone(&sendable_node);
+
     let cli_builder = Builder::new().name(format!("{}_cli", current_id));
-    let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_sender));
+    let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_node));
     match cli_res {
-        Ok(cli_handler) => node_listeners.push(cli_handler),
+        Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
         Err(err) => {
             return Err(Error::ServerError(format!(
                 "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
@@ -380,9 +366,9 @@ fn create_client_and_private_conexion(
         }
     }
     let priv_builder = Builder::new().name(format!("{}_priv", current_id));
-    let priv_res = priv_builder.spawn(move || Node::priv_listen(priv_socket, priv_sender));
+    let priv_res = priv_builder.spawn(move || Node::priv_listen(priv_socket, priv_node));
     match priv_res {
-        Ok(priv_handler) => node_listeners.push(priv_handler),
+        Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
         Err(err) => {
             return Err(Error::ServerError(format!(
                 "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",

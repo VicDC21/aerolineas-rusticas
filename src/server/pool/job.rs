@@ -1,0 +1,15 @@
+//! Módulo para un _Job_.
+
+use crate::protocol::aliases::results::Result;
+
+/// Un _Job_ representa una tarea en ejecución de parte de un [Worker](crate::server::pool::worker::Worker).
+pub type Job = Box<dyn FnOnce() -> Result<()> + Send + 'static>;
+
+/// Un tipo específico de tarea a realizar.
+pub enum JobType {
+    /// Ejecutar una nueva tarea.
+    NewTask(Job),
+
+    /// Terminar la ejecución del [Worker](crate::server::pool::worker::Worker).
+    Exit,
+}
