@@ -1066,7 +1066,7 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 10..(N_NODES + 10) {
+        for actual_node in START_ID..(N_NODES + START_ID) {
             let node_id = self.next_node_to_replicate_data(
                 self.id,
                 actual_node as Byte,
