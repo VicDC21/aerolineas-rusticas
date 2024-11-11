@@ -1066,7 +1066,7 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 0..5 {
+        for actual_node in 0..N_NODES {
             let node_id = self.next_node_to_replicate_data(
                 self.id,
                 actual_node as Byte,
@@ -1074,8 +1074,9 @@ impl Node {
                 START_ID + N_NODES,
             );
             response = if node_id != self.id {
+                let request_with_metadata = self.add_metadata_to_internal_request(request, None, Some(actual_node));
                 self.send_message_and_wait_response(
-                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    request_with_metadata,
                     node_id,
                     PortType::Priv,
                     true,
@@ -1352,7 +1353,7 @@ impl Node {
             let timestamp =  i64::from_be_bytes(bytes);
             return (Some(timestamp), None)
         } else if internal_metadata.len() == 1{
-            let node_id = internal_metadata[8];
+            let node_id = internal_metadata[0];
             return (None, Some(node_id));
         }
         (None, None)
