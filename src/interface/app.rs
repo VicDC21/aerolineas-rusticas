@@ -97,13 +97,12 @@ impl App for AerolineasApp {
                 Position::from_lat_lon(ORIG_LAT, ORIG_LONG),
             );
 
-            // Añadimos los plugins.
             self.airlines_details
                 .set_airports(self.airports_loader.take_airports());
             self.airlines_details
-                .set_incoming_flights(self.flights_loader.take_incoming());
+                .set_incoming_flights(self.flights_loader.take_incoming(), false);
             self.airlines_details
-                .set_departing_flights(self.flights_loader.take_departing());
+                .set_departing_flights(self.flights_loader.take_departing(), false);
 
             self.airports_drawer
                 .sync_airports(self.airlines_details.get_airports())
@@ -111,17 +110,20 @@ impl App for AerolineasApp {
             self.screen_clicker
                 .sync_airports(self.airlines_details.get_airports())
                 .sync_zoom(zoom_lvl);
-            self.flights_loader
-                .sync_date(self.datetime)
-                .sync_client(self.client.clone());
 
             // necesariamente antes de agregar al mapa
             if let Some(cur_airport) = self.screen_clicker.take_cur_airport() {
+                // preferiblemente después de asignar las lsitas de vuelos
                 self.airlines_details.set_selected_airport(cur_airport);
             }
             if let Some(ex_airport) = self.screen_clicker.take_extra_airport() {
                 self.airlines_details.set_extra_airport(ex_airport);
             }
+
+            self.flights_loader
+                .sync_date(self.datetime)
+                .sync_client(self.client.clone())
+                .sync_selected_airport(self.airlines_details.get_selected_airport());
 
             let map = map
                 .with_plugin(&mut self.airports_loader)
@@ -148,7 +150,7 @@ impl App for AerolineasApp {
         }
         let (show_incoming, show_departing) = cur_airport_info(
             ctx,
-            self.airlines_details.get_selected_airport(),
+            self.airlines_details.get_ref_selected_airport(),
             self.airlines_details.get_incoming_flights(),
             self.airlines_details.get_show_incoming_flights(),
             self.airlines_details.get_departing_flights(),
@@ -161,8 +163,8 @@ impl App for AerolineasApp {
 
         extra_airport_info(
             ctx,
-            self.airlines_details.get_selected_airport(),
-            self.airlines_details.get_extra_airport(),
+            self.airlines_details.get_ref_selected_airport(),
+            self.airlines_details.get_ref_extra_airport(),
             self.client.clone(),
             self.datetime.timestamp(),
         );

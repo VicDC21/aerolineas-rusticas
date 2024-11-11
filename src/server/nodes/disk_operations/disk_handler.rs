@@ -1,25 +1,5 @@
 //! Módulo para manejo del almacenamiento en disco.
 
-use crate::parser::{
-    assignment::Assignment,
-    data_types::{constant::Constant, term::Term},
-    primary_key::PrimaryKey,
-    statements::{
-        ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
-        },
-        dml_statement::{
-            if_condition::{Condition, IfCondition},
-            main_statements::{
-                delete::Delete,
-                insert::Insert,
-                select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
-                update::Update,
-            },
-            r#where::operator::Operator,
-        },
-    },
-};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -32,6 +12,31 @@ use crate::server::nodes::{
     keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
     node::NodeId,
     table_metadata::table::Table,
+};
+use crate::{
+    parser::{
+        assignment::Assignment,
+        data_types::{constant::Constant, term::Term},
+        primary_key::PrimaryKey,
+        statements::{
+            ddl_statement::{
+                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+            },
+            dml_statement::{
+                if_condition::{Condition, IfCondition},
+                main_statements::{
+                    delete::Delete,
+                    insert::Insert,
+                    select::{
+                        order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
+                    },
+                    update::Update,
+                },
+                r#where::operator::Operator,
+            },
+        },
+    },
+    protocol::aliases::types::Int,
 };
 
 use std::{
@@ -744,7 +749,7 @@ impl DiskHandler {
     ) -> Vec<u8> {
         let mut res: Vec<u8> = vec![0x0, 0x0, 0x0, 0x2];
         let mut metadata: Vec<u8> = Vec::new();
-        let flags: i32 = 0;
+        let flags: Int = 0;
         metadata.append(&mut flags.to_be_bytes().to_vec());
 
         let selected_cols = if query_cols[0] == "*" {
@@ -753,7 +758,7 @@ impl DiskHandler {
             query_cols
         };
 
-        metadata.append(&mut (selected_cols.len() as i32).to_be_bytes().to_vec());
+        metadata.append(&mut (selected_cols.len() as Int).to_be_bytes().to_vec());
 
         let cols_name_and_type = table.get_columns_name_and_data_type();
         for col_name in selected_cols {
@@ -766,7 +771,7 @@ impl DiskHandler {
             }
         }
 
-        let rows_count = result.len() as i32;
+        let rows_count = result.len() as Int;
         metadata.append(&mut rows_count.to_be_bytes().to_vec());
 
         let mut rows_content: Vec<u8> = Vec::new();

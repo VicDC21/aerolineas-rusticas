@@ -189,6 +189,8 @@ fn show_incoming_flights(
         ScrollArea::vertical()
             .max_height(100.0)
             .max_width(ctx.screen_rect().width() / 4.0)
+            .animated(true)
+            .id_salt("incoming_scroll")
             .show(ui, |scroll_ui| {
                 for incoming_flight in incoming_flights.iter() {
                     let potential_date = match incoming_flight.get_date() {
@@ -213,10 +215,10 @@ fn show_incoming_flights(
     }
     if ui.add(incoming_button).clicked() {
         if *show_incoming {
-            println!("Mostrando vuelos entrantes...");
+            println!("Ocultando vuelos entrantes...");
             must_show_incoming = false;
         } else {
-            println!("Ocultando vuelos entrantes...");
+            println!("Mostrando vuelos entrantes...");
             must_show_incoming = true;
         }
     }
@@ -236,6 +238,8 @@ fn show_departing_flights(
         ScrollArea::vertical()
                 .max_height(100.0)
                 .max_width(ctx.screen_rect().width() / 4.0)
+                .animated(true)
+                .id_salt("departing_scroll")
                 .show(ui, |scroll_ui| {
                     for departing_flight in departing_flights.iter() {
                         let potential_date = match departing_flight.get_date() {
@@ -256,10 +260,10 @@ fn show_departing_flights(
     }
     if ui.add(departing_button).clicked() {
         if *show_departing {
-            println!("Mostrando vuelos salientes...");
+            println!("Ocultando vuelos salientes...");
             must_show_departing = false;
         } else {
-            println!("Ocultando vuelos salientes...");
+            println!("Mostrando vuelos salientes...");
             must_show_departing = true;
         }
     }

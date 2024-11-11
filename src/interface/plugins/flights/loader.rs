@@ -15,9 +15,12 @@ use walkers::{Plugin, Projector};
 
 use crate::{
     client::cli::Client,
-    data::flights::{
-        departing::DepartingFlight, flight_type::FlightType, incoming::IncomingFlight,
-        traits::Flight,
+    data::{
+        airports::Airport,
+        flights::{
+            departing::DepartingFlight, flight_type::FlightType, incoming::IncomingFlight,
+            traits::Flight,
+        },
     },
     protocol::{
         aliases::{results::Result, types::Long},
@@ -29,7 +32,7 @@ use crate::{
 type ChildHandle = JoinHandle<Result<()>>;
 
 /// El tipo de hilo hijo para cargar datos según fecha.
-type DateChild = (Option<ChildHandle>, Sender<Long>);
+type DateChild = (Option<ChildHandle>, Sender<(Arc<Option<Airport>>, Long)>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
 const FLIGHTS_INTERVAL_SECS: u64 = 5;
@@ -41,6 +44,9 @@ const DAY_IN_SECONDS: i64 = 86400;
 pub struct FlightsLoader {
     /// El cliente para pedir las queries.
     client: Arc<Mutex<Client>>,
+
+    /// El aeropuerto acualmente seleccionado.
+    selected_airport: Arc<Option<Airport>>,
 
     /// Los vuelos entrantes actualmente en memoria.
     incoming_flights: Option<Vec<IncomingFlight>>,
@@ -71,6 +77,7 @@ impl FlightsLoader {
     /// Crea una nueva instancia de cargador de vuelos.
     pub fn new(
         client: Arc<Mutex<Client>>,
+        selected_airport: Arc<Option<Airport>>,
         flights: (Option<Vec<IncomingFlight>>, Option<Vec<DepartingFlight>>),
         last_checked: Instant,
         date: DateTime<Local>,
@@ -83,6 +90,7 @@ impl FlightsLoader {
 
         Self {
             client,
+            selected_airport,
             incoming_flights,
             departing_flights,
             last_checked,
@@ -124,25 +132,34 @@ impl FlightsLoader {
         flight_type: FlightType,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
-        let (date_sender, date_receiver) = channel::<Long>();
+        let (date_sender, date_receiver) = channel::<(Arc<Option<Airport>>, Long)>();
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
+            let airport_stop = Airport::dummy();
 
             loop {
                 match date_receiver.recv() {
-                    Ok(timestamp) => {
-                        if timestamp == stop_value {
+                    Ok((selected_airport, timestamp)) => {
+                        let mut stop_by_airport = false;
+                        if let Some(airport) = selected_airport.as_ref() {
+                            stop_by_airport = airport == &airport_stop;
+                        }
+
+                        if stop_by_airport && (timestamp == stop_value) {
                             break;
                         }
-                        let flights =
-                            match Self::load_flights(Arc::clone(&client), &flight_type, &timestamp)
-                            {
-                                Ok(loaded) => loaded,
-                                Err(err) => {
-                                    println!("Error cargando los vuelos:\n\n{}", err);
-                                    Vec::new()
-                                }
-                            };
+                        let flights = match Self::load_flights(
+                            Arc::clone(&client),
+                            &flight_type,
+                            selected_airport.as_ref(),
+                            &timestamp,
+                        ) {
+                            Ok(loaded) => loaded,
+                            Err(err) => {
+                                println!("Error cargando los vuelos:\n\n{}", err);
+                                Vec::new()
+                            }
+                        };
 
                         if let Err(err) = to_parent.send(flights) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);
@@ -189,6 +206,12 @@ impl FlightsLoader {
         self
     }
 
+    /// Sincroniza el aeropuerto seleccionado.
+    pub fn sync_selected_airport(&mut self, new_airport: Arc<Option<Airport>>) -> &mut Self {
+        self.selected_airport = new_airport;
+        self
+    }
+
     /// Resetea el chequeo al [Instant] actual.
     pub fn reset_instant(&mut self) {
         self.last_checked = Instant::now();
@@ -204,6 +227,7 @@ impl FlightsLoader {
     fn load_flights(
         client_lock: Arc<Mutex<Client>>,
         flight_type: &FlightType,
+        selected_airport: &Option<Airport>,
         timestamp: &Long,
     ) -> Result<Vec<FlightType>> {
         let mut client = match client_lock.lock() {
@@ -218,14 +242,20 @@ impl FlightsLoader {
 
         let mut tcp_stream = client.connect()?;
 
+        let airport = match selected_airport {
+            Some(airp) => airp,
+            None => return Ok(Vec::<FlightType>::new()),
+        };
         let query = match flight_type {
             FlightType::Incoming(_) => format!(
-                "SELECT * FROM vuelos_entrantes WHERE llegada < {} AND llegada > {};",
+                "SELECT * FROM vuelos_entrantes WHERE dest = '{}' AND llegada < {} AND llegada > {};",
+                airport.ident,
                 timestamp + (DAY_IN_SECONDS / 2),
                 timestamp - (DAY_IN_SECONDS / 2),
             ),
             FlightType::Departing(_) => format!(
-                "SELECT * FROM vuelos_salientes WHERE salida < {} AND salida > {};",
+                "SELECT * FROM vuelos_salientes WHERE orig = '{}' AND salida < {} AND salida > {};",
+                airport.ident,
                 timestamp + (DAY_IN_SECONDS / 2),
                 timestamp - (DAY_IN_SECONDS / 2),
             ),
@@ -243,8 +273,6 @@ impl FlightsLoader {
                 .collect(),
         };
 
-        println!("Vuelos de tipo '{:?}':\t{:?}", flight_type, flights);
-
         Ok(flights)
     }
 
@@ -258,7 +286,10 @@ impl FlightsLoader {
     fn wait_for_child(child: &mut DateChild) {
         let (date_child, date_sender) = child;
         if let Some(hanging) = date_child.take() {
-            if date_sender.send(0).is_err() {
+            if date_sender
+                .send((Arc::new(Some(Airport::dummy())), 0))
+                .is_err()
+            {
                 println!("Error mandando un mensaje para parar hilo de fecha.")
             }
             if hanging.join().is_err() {
@@ -279,6 +310,7 @@ impl Default for FlightsLoader {
 
         Self::new(
             client,
+            Arc::new(None),
             (
                 Some(Vec::<IncomingFlight>::new()),
                 Some(Vec::<DepartingFlight>::new()),
@@ -300,7 +332,9 @@ impl Plugin for &mut FlightsLoader {
             self.reset_instant();
 
             let (_, incoming_sender) = &mut self.incoming_child;
-            if let Err(err) = incoming_sender.send(self.date.timestamp()) {
+            if let Err(err) =
+                incoming_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
+            {
                 println!(
                     "Error al enviar timestamp al cargador de vuelos entrantes:\n\n{}",
                     err
@@ -308,7 +342,9 @@ impl Plugin for &mut FlightsLoader {
             }
 
             let (_, departing_sender) = &mut self.departing_child;
-            if let Err(err) = departing_sender.send(self.date.timestamp()) {
+            if let Err(err) =
+                departing_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
+            {
                 println!(
                     "Error al enviar timestamp al cargador de vuelos salientes:\n\n{}",
                     err

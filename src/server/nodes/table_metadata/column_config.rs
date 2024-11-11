@@ -7,6 +7,7 @@ use crate::protocol::{aliases::results::Result, errors::error::Error};
 use super::column_data_type::ColumnDataType;
 
 /// Representa la configuración de una columna.
+#[derive(Debug)]
 pub struct ColumnConfig {
     /// Nombre de la columna.
     pub name: String,
