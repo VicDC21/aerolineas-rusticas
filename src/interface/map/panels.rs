@@ -8,7 +8,10 @@ use crate::{
     client::{cli::Client, protocol_result::ProtocolResult},
     data::{
         airports::Airport,
-        flights::{departing::DepartingFlight, incoming::IncomingFlight, states::FlightState},
+        flights::{
+            departing::DepartingFlight, incoming::IncomingFlight, states::FlightState,
+            traits::Flight,
+        },
     },
     protocol::{
         aliases::{
@@ -27,8 +30,9 @@ pub fn cur_airport_info(
     show_incoming: &bool,
     departing_flights: Arc<Vec<DepartingFlight>>,
     show_departing: &bool,
-) -> bool {
-    let mut must_show = *show_incoming;
+) -> (bool, bool) {
+    let mut must_show_incoming = *show_incoming;
+    let mut must_show_departing = *show_departing;
 
     let panel_frame = Frame {
         fill: Color32::from_rgba_unmultiplied(66, 66, 66, 200),
@@ -41,42 +45,12 @@ pub fn cur_airport_info(
         .frame(panel_frame);
     info_panel.show_animated(ctx, cur_airport.is_some(), |ui| {
         show_airport_info(ui, cur_airport);
-
         ui.separator();
-
-        let button = Button::new(RichText::new("Mostrar Vuelos").heading());
-        if *show_incoming {
-            // ScrollArea::vertical()
-            //     .max_height(50.0)
-            //     .show(ui, |scroll_ui| {
-            //         for flight in incoming_flights.iter() {
-            //             let potential_date = match flight.get_date() {
-            //                 None => "".to_string(),
-            //                 Some(date) => date.to_string(),
-            //             };
-            //             let info = format!(
-            //                 "Id: {}\nOrigen: {}\nDestino: {}\nFecha: {}\n\n",
-            //                 flight.id, flight.orig, flight.dest, potential_date,
-            //             );
-            //             scroll_ui.label(
-            //                 RichText::new(info)
-            //                     .italics()
-            //                     .color(Color32::from_rgb(255, 255, 255)),
-            //             );
-            //         }
-            //     });
-        }
-        if ui.add(button).clicked() {
-            if *show_incoming {
-                println!("Mostrando vuelos...");
-                must_show = false;
-            } else {
-                println!("Ocultando vuelos...");
-                must_show = true;
-            }
-        }
+        must_show_incoming = show_incoming_flights(ctx, ui, show_incoming, incoming_flights);
+        ui.separator();
+        must_show_departing = show_departing_flights(ctx, ui, show_departing, departing_flights);
     });
-    must_show
+    (must_show_incoming, must_show_departing)
 }
 
 /// Muestra por un panel lateral los detalles del aeropuerto extra.
@@ -200,4 +174,94 @@ fn send_insert_query(client_lock: Arc<Mutex<Client>>, query: &str) -> Result<()>
     }
 
     Ok(())
+}
+
+/// Muestra lso vuelos entrantes.
+fn show_incoming_flights(
+    ctx: &Context,
+    ui: &mut Ui,
+    show_incoming: &bool,
+    incoming_flights: Arc<Vec<IncomingFlight>>,
+) -> bool {
+    let mut must_show_incoming = *show_incoming;
+    let incoming_button = Button::new(RichText::new("Mostrar Vuelos Entrantes").heading());
+    if must_show_incoming {
+        ScrollArea::vertical()
+            .max_height(100.0)
+            .max_width(ctx.screen_rect().width() / 4.0)
+            .show(ui, |scroll_ui| {
+                for incoming_flight in incoming_flights.iter() {
+                    let potential_date = match incoming_flight.get_date() {
+                        None => "".to_string(),
+                        Some(date) => date.to_string(),
+                    };
+                    let info = format!(
+                        "Id: {}\n\nDestino: {}\nETA: {}\nPosición (lat, lon): {:?}, estado: {}\n",
+                        incoming_flight.id,
+                        incoming_flight.dest,
+                        potential_date,
+                        (incoming_flight.pos.lat(), incoming_flight.pos.lon()),
+                        incoming_flight.state
+                    );
+                    scroll_ui.label(
+                        RichText::new(info)
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                }
+            });
+    }
+    if ui.add(incoming_button).clicked() {
+        if *show_incoming {
+            println!("Mostrando vuelos entrantes...");
+            must_show_incoming = false;
+        } else {
+            println!("Ocultando vuelos entrantes...");
+            must_show_incoming = true;
+        }
+    }
+    must_show_incoming
+}
+
+/// Muestra los vuelos salientes.
+fn show_departing_flights(
+    ctx: &Context,
+    ui: &mut Ui,
+    show_departing: &bool,
+    departing_flights: Arc<Vec<DepartingFlight>>,
+) -> bool {
+    let mut must_show_departing = *show_departing;
+    let departing_button = Button::new(RichText::new("Mostrar Vuelos Salientes").heading());
+    if must_show_departing {
+        ScrollArea::vertical()
+                .max_height(100.0)
+                .max_width(ctx.screen_rect().width() / 4.0)
+                .show(ui, |scroll_ui| {
+                    for departing_flight in departing_flights.iter() {
+                        let potential_date = match departing_flight.get_date() {
+                            None => "".to_string(),
+                            Some(date) => date.to_string(),
+                        };
+                        let info = format!(
+                            "Id: {}\n\nOrigen: {}\nDespegue: {}\nPosición (lat, lon): {:?}, estado: {}\n",
+                            departing_flight.id, departing_flight.orig, potential_date, (departing_flight.pos.lat(), departing_flight.pos.lon()), departing_flight.state
+                        );
+                        scroll_ui.label(
+                            RichText::new(info)
+                                .italics()
+                                .color(Color32::from_rgb(255, 255, 255)),
+                        );
+                    }
+                });
+    }
+    if ui.add(departing_button).clicked() {
+        if *show_departing {
+            println!("Mostrando vuelos salientes...");
+            must_show_departing = false;
+        } else {
+            println!("Ocultando vuelos salientes...");
+            must_show_departing = true;
+        }
+    }
+    must_show_departing
 }

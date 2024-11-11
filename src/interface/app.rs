@@ -146,15 +146,19 @@ impl App for AerolineasApp {
         if let Some(valid_time) = clock_selector(ctx, &mut self.datetime) {
             self.datetime = valid_time;
         }
+        let (show_incoming, show_departing) = cur_airport_info(
+            ctx,
+            self.airlines_details.get_selected_airport(),
+            self.airlines_details.get_incoming_flights(),
+            self.airlines_details.get_show_incoming_flights(),
+            self.airlines_details.get_departing_flights(),
+            self.airlines_details.get_show_departing_flights(),
+        );
         self.airlines_details
-            .set_show_incoming_flights(cur_airport_info(
-                ctx,
-                self.airlines_details.get_selected_airport(),
-                self.airlines_details.get_incoming_flights(),
-                self.airlines_details.get_show_incoming_flights(),
-                self.airlines_details.get_departing_flights(),
-                self.airlines_details.get_show_departing_flights(),
-            ));
+            .set_show_incoming_flights(show_incoming);
+        self.airlines_details
+            .set_show_departing_flights(show_departing);
+
         extra_airport_info(
             ctx,
             self.airlines_details.get_selected_airport(),

@@ -232,33 +232,6 @@ impl FlightsLoader {
         };
 
         let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
-        // if let ProtocolResult::Rows(rows) = protocol_result {
-        //     for row in rows {
-        //         if row.len() != 3 {
-        //             continue;
-        //         }
-
-        //         // 1. Origen.
-        //         if let ColData::String(orig) = &row[0] {
-        //             // 2. Destino.
-        //             if let ColData::String(dest) = &row[1] {
-        //                 // 3. Fecha.
-        //                 if let ColData::String(timestamp) = &row[2] {
-        //                     let id = timestamp.parse::<i32>().unwrap_or(0);
-        //                     let true_timestamp = timestamp.parse::<Long>().unwrap_or(0);
-        //                     flights.push(Flight::new(
-        //                         id,
-        //                         orig.to_string(),
-        //                         dest.to_string(),
-        //                         true_timestamp,
-        //                     ));
-        //                 }
-        //             }
-        //         }
-        //     }
-        // } else if let ProtocolResult::QueryError(err) = protocol_result {
-        //     println!("{}", err);
-        // }
         let flights = match flight_type {
             FlightType::Incoming(_) => IncomingFlight::try_from_protocol_result(protocol_result)?
                 .into_iter()
@@ -269,6 +242,8 @@ impl FlightsLoader {
                 .map(FlightType::Departing)
                 .collect(),
         };
+
+        println!("Vuelos de tipo '{:?}':\t{:?}", flight_type, flights);
 
         Ok(flights)
     }

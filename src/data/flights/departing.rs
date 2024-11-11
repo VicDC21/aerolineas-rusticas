@@ -13,12 +13,13 @@ use crate::protocol::aliases::{
 use crate::protocol::errors::error::Error;
 
 /// Un vuelo que ha partido.
+#[derive(Debug)]
 pub struct DepartingFlight {
     /// El ID único del vuelo saliente.
     pub id: Int,
 
     /// El [identificador](crate::data::airports::Airport::ident) del aeropuerto de origen.
-    pub dest: String,
+    pub orig: String,
 
     /// El momento en que ha comenzado el vuelo.
     pub take_off: Long,
@@ -32,10 +33,10 @@ pub struct DepartingFlight {
 
 impl DepartingFlight {
     /// Crea una nueva instancia de vuelo.
-    pub fn new(id: Int, dest: String, take_off: Long, pos: Position, state: FlightState) -> Self {
+    pub fn new(id: Int, orig: String, take_off: Long, pos: Position, state: FlightState) -> Self {
         Self {
             id,
-            dest,
+            orig,
             take_off,
             pos,
             state,

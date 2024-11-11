@@ -421,9 +421,9 @@ impl Client {
         let str_value = std::str::from_utf8(&request[*actual_position..right_position])
             .map_err(|_| Error::TruncateError("Error al transformar bytes a utf8".to_string()))?;
 
-        str_value
-            .parse::<T>()
-            .map_err(|e| Error::TruncateError(format!("Error al parsear string '{}': {}", str_value, e)))
+        str_value.parse::<T>().map_err(|e| {
+            Error::TruncateError(format!("Error al parsear string '{}': {}", str_value, e))
+        })
     }
 
     fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {

@@ -7,6 +7,7 @@ use crate::data::flights::{departing::DepartingFlight, incoming::IncomingFlight}
 /// Un tipo de aeropuerto cargable.
 ///
 /// Principalmente los vuelos entrantes y los salientes.
+#[derive(Debug)]
 pub enum FlightType {
     /// Un vuelo entrante.
     Incoming(IncomingFlight),

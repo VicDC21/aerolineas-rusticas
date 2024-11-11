@@ -13,6 +13,7 @@ use crate::protocol::aliases::{
 use crate::protocol::errors::error::Error;
 
 /// Un vuelo esperando a concluir.
+#[derive(Debug)]
 pub struct IncomingFlight {
     /// El ID único del vuelo entrante.
     pub id: Int,
