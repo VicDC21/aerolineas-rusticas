@@ -12,7 +12,7 @@ use std::{
     vec::IntoIter,
 };
 
-use crate::client::cql_frame::query_body::QueryBody;
+use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
 use crate::parser::{
     data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
@@ -62,28 +62,7 @@ use crate::server::{
     traits::Serializable,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{
-    parser::{
-        data_types::keyspace_name::KeyspaceName,
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::{
-                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-                create_table::CreateTable, ddl_statement_parser::DdlStatement,
-                drop_keyspace::DropKeyspace,
-            },
-            dml_statement::{
-                dml_statement_parser::DmlStatement,
-                main_statements::{
-                    delete::Delete, insert::Insert, select::select_operation::Select,
-                    update::Update,
-                },
-            },
-            statement::Statement,
-        },
-    },
-    server::pool::threadpool::ThreadPool,
-};
+
 
 use super::{
     addr::loader::AddrLoader,
@@ -544,9 +523,10 @@ impl Node {
     }
 
     /// Maneja una acción de servidor.
-    fn handle_sv_action(&mut self, action: SvAction, mut tcp_stream: TcpStream) -> Result<()> {
+    fn handle_sv_action(&mut self, action: SvAction, mut tcp_stream: TcpStream) -> Result<bool> {
+        let mut stop = false;
         match action {
-            SvAction::Exit => {} // La comparación para salir ocurre en otro lado
+            SvAction::Exit => stop = true, // La comparación para salir ocurre en otro lado
             SvAction::Beat => {
                 self.beat();
             }
@@ -1336,21 +1316,21 @@ impl Node {
                 let current_response = if node_id == self.id {
                     self.process_update(&update, self.id)?
                 } else {
-                    let res = self.send_message_and_wait_response(
+                    self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
                         PortType::Priv,
                         wait_response,
-                    )?;
-                    match Opcode::try_from(res[4])? {
-                        Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-                        Opcode::Result => (),
-                        _ => {
-                            return Err(Error::ServerError(
-                                "Nodo manda opcode inesperado".to_string(),
-                            ))
-                        }
-                    }
+                    )?
+                    // match Opcode::try_from(res[4])? {
+                    //     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+                    //     Opcode::Result => (),
+                    //     _ => {
+                    //         return Err(Error::ServerError(
+                    //             "Nodo manda opcode inesperado".to_string(),
+                    //         ))
+                    //     }
+                    // }
                 };
 
                 consulted_nodes.push(partition_key_value.clone());

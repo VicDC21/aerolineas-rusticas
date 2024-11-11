@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 
-use crate::server::{
+use crate::{protocol::{aliases::types::Byte, notations::consistency::Consistency}, server::{
     actions::opcode::SvAction,
     modes::ConnectionMode,
     nodes::{
@@ -25,9 +25,9 @@ use crate::server::{
         utils::{load_init_queries, send_to_node},
     },
     utils::load_serializable,
-};
+}};
 use crate::{
-    client::frame::Frame,
+    client::cql_frame::frame::Frame,
     parser::{main_parser::make_parse, statements::statement::Statement},
     protocol::{aliases::results::Result, errors::error::Error, traits::Byteable},
     tokenizer::tokenizer::tokenize_query,
