@@ -1066,23 +1066,36 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 0..N_NODES {
+        for actual_node in 10..(N_NODES + 10) {
             let node_id = self.next_node_to_replicate_data(
                 self.id,
                 actual_node as Byte,
                 START_ID,
                 START_ID + N_NODES,
             );
-            response = if node_id != self.id {
-                let request_with_metadata = self.add_metadata_to_internal_request(request, None, Some(actual_node));
-                self.send_message_and_wait_response(
-                    request_with_metadata,
-                    node_id,
-                    PortType::Priv,
-                    true,
-                )?
-            } else {
-                self.process_internal_create_table_statement(&create_table, self.id)?
+            let a = &self.default_keyspace_name;
+            let keyspace = match self.keyspaces.get(a){
+                Some(value) => value,
+                None => return Err(Error::ServerError("No hay una keyspace definida".to_string()))
+            };
+            let quantity_replicas = match keyspace.simple_replicas(){
+                Some(value) => value,
+                None => return Err(Error::ServerError("No se usa una estrategia de replicacion simple".to_string())) // Despues cambiamos esto
+            };
+            for i in 0..quantity_replicas{
+                let next_node_id = self.next_node_to_replicate_data(node_id, i as u8, 10, 15);
+                response = 
+                if node_id != self.id {
+                    let request_with_metadata = self.add_metadata_to_internal_request(request, None, Some(next_node_id));
+                    self.send_message_and_wait_response(
+                        request_with_metadata,
+                        node_id,
+                        PortType::Priv,
+                        true,
+                    )?
+                } else {
+                    self.process_internal_create_table_statement(&create_table, next_node_id)?
+                }
             }
         }
         Ok(response)
