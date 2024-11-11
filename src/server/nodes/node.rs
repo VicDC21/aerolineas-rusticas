@@ -718,8 +718,12 @@ impl Node {
             let res = match make_parse(&mut tokenize_query(query_body.get_query())) {
                 Ok(statement) => {
                     if internal_request {
-                        let node_number: Byte = u8::from_be(request[(lenght.len as usize) + 9]);
-                        self.handle_internal_statement(statement, node_number)
+                        let mut internal_metadata: Vec<Byte> = Vec::new();
+                        if request.len() > (lenght.len as usize) + 9{
+                            internal_metadata.append(&mut request[(lenght.len as usize) + 9..].to_vec());
+                        }
+                        let internal_metadata = self.read_metadata_from_internal_request(internal_metadata);
+                        self.handle_internal_statement(statement, internal_metadata)
                     } else {
                         self.handle_statement(
                             statement,
@@ -763,17 +767,16 @@ impl Node {
     }
 
     /// Maneja una declaración interna.
-    fn handle_internal_statement(
-        &mut self,
-        statement: Statement,
-        node_number: u8,
-    ) -> Result<Vec<Byte>> {
+    fn handle_internal_statement(&mut self, statement: Statement, internal_metadata: (Option<i64>, Option<Byte>)) -> Result<Vec<Byte>> {
         match statement {
             Statement::DdlStatement(ddl_statement) => {
-                self.handle_internal_ddl_statement(ddl_statement, node_number)
+                match internal_metadata.1{
+                    Some(node_number) => self.handle_internal_ddl_statement(ddl_statement, node_number),
+                    None => Err(Error::ServerError("No se paso metadata necesaria".to_string()))
+                }
             }
             Statement::DmlStatement(dml_statement) => {
-                self.handle_internal_dml_statement(dml_statement, node_number)
+                self.handle_internal_dml_statement(dml_statement, internal_metadata)
             }
             Statement::UdtStatement(_udt_statement) => todo!(),
         }
@@ -865,7 +868,7 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 0..5 {
+        for actual_node in 0..N_NODES {
             let node_id = self.next_node_to_replicate_data(
                 self.id,
                 actual_node as Byte,
@@ -1082,17 +1085,19 @@ impl Node {
         Ok(response)
     }
     /// Maneja una declaración DML.
-    fn handle_internal_dml_statement(
-        &mut self,
-        dml_statement: DmlStatement,
-        node_number: u8,
-    ) -> Result<Vec<Byte>> {
-        let timestamp = Utc::now().timestamp(); // CAMBIAR DESPUES, ESTA PARA QUE NO ROMPA
+    fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement, internal_metadata: (Option<i64>, Option<Byte>)) -> Result<Vec<Byte>> {
+        let node_number = match internal_metadata.1{
+            Some(value) => value,
+            None => return Err(Error::ServerError("No se paso la informacion del nodo en la metadata interna".to_string()))
+        };
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select, node_number),
             DmlStatement::InsertStatement(insert) => {
-                self.process_insert(&insert, timestamp, node_number)
-            }
+                let timestamp = match internal_metadata.0{
+                    Some(value) => value,
+                    None => return Err(Error::ServerError("No se paso la informacion del timestamp en la metadata interna".to_string()))
+                    };
+                self.process_insert(&insert, timestamp, node_number)},
             DmlStatement::UpdateStatement(update) => self.process_update(&update, node_number),
             DmlStatement::DeleteStatement(delete) => self.process_delete(&delete, node_number),
             DmlStatement::BatchStatement(_batch) => todo!(),
@@ -1289,10 +1294,10 @@ impl Node {
         for i in 0..replication_factor {
             let node_to_replicate =
                 self.next_node_to_replicate_data(node_id, i as Byte, START_ID, START_ID + N_NODES);
-
             response = if node_to_replicate != self.id {
+                let request_with_metadata = self.add_metadata_to_internal_request(request, Some(timestamp), Some(node_id));
                 let res = self.send_message_and_wait_response(
-                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    request_with_metadata,
                     node_to_replicate,
                     PortType::Priv,
                     wait_response,
@@ -1307,7 +1312,7 @@ impl Node {
                 };
                 res
             } else {
-                self.process_insert(&insert, timestamp, self.id)?
+                self.process_insert(&insert, timestamp, node_id)?
             };
 
             if consistency_counter >= consistency_number {
@@ -1325,6 +1330,44 @@ impl Node {
         } else {
             Ok(response)
         }
+    }
+
+    /// Revisa si hay metadata extra necesaria para la query pedida
+    fn read_metadata_from_internal_request(&self, internal_metadata: Vec<Byte>) -> (Option<i64>, Option<Byte>) {
+        if internal_metadata.len() == 9{
+            let bytes: [u8; 8] = match internal_metadata[0..8].try_into(){
+                Ok(value) => value,
+                Err(_err) => [5,5,5,5,5,5,5,5] // nunca pasa 
+            };
+            let timestamp =  i64::from_be_bytes(bytes);
+            let node_id = internal_metadata[8];
+            return (Some(timestamp), Some(node_id))
+        } else if internal_metadata.len() == 8{
+            let bytes: [u8; 8] = match internal_metadata[0..8].try_into(){
+                Ok(value) => value,
+                Err(_err) => [5,5,5,5,5,5,5,5] // nunca pasa 
+            };
+            let timestamp =  i64::from_be_bytes(bytes);
+            return (Some(timestamp), None)
+        } else if internal_metadata.len() == 1{
+            let node_id = internal_metadata[8];
+            return (None, Some(node_id));
+        }
+        (None, None)
+    }
+
+    /// Agrega metadata, como el timestamp o el node_id si es necesario, sino no agrega estos campos.
+    fn add_metadata_to_internal_request(&self, original_request: &[Byte], timestamp: Option<i64>, node_id: Option<Byte>) -> Vec<Byte>{
+        let mut metadata: Vec<Byte> = Vec::new();
+        if let Some(value) = timestamp{
+            metadata.append(&mut value.to_be_bytes().to_vec())
+        };
+        if let Some(value) = node_id{
+            metadata.push(value)
+        };
+        let mut request_with_metadata = SvAction::InternalQuery(original_request.to_vec()).as_bytes();
+        request_with_metadata.append(&mut metadata);
+        request_with_metadata
     }
 
     fn verify_succesful_response(&self, response: &[Byte]) -> bool {
@@ -1477,6 +1520,7 @@ impl Node {
         consistency_level: &Consistency,
     ) -> Result<Vec<Byte>> {
         let table_name = select.from.get_name();
+        let timestamp = Utc::now().timestamp();
         let mut results_from_another_nodes: Vec<Byte> = Vec::new();
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?;
         let mut consulted_nodes: Vec<Byte> = Vec::new();
@@ -1488,11 +1532,13 @@ impl Node {
             let node_id = self.select_node(partition_key_value);
             if !consulted_nodes.contains(&node_id) {
                 let mut consistency_counter = 0;
-                let actual_result = if node_id == self.id {
-                    self.process_select(&select, self.id)?
+                let actual_result = 
+                if node_id == self.id {
+                    self.process_select(&select, node_id)?
                 } else {
+                    let request_with_metadata = self.add_metadata_to_internal_request(request, Some(timestamp), Some(node_id));
                     self.send_message_and_wait_response(
-                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        request_with_metadata,
                         node_id,
                         PortType::Priv,
                         wait_response,
@@ -1710,6 +1756,8 @@ impl Node {
                 }
             };
         }
+
+
 
         Ok(())
     }
