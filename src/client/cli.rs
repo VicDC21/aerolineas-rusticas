@@ -423,7 +423,7 @@ impl Client {
 
         str_value
             .parse::<T>()
-            .map_err(|e| Error::TruncateError(format!("Error al parsear string: {}", e)))
+            .map_err(|e| Error::TruncateError(format!("Error al parsear string '{}': {}", str_value, e)))
     }
 
     fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {
