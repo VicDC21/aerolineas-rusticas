@@ -13,10 +13,12 @@ use chrono::{DateTime, Local};
 use eframe::egui::{Painter, Response};
 use walkers::{Plugin, Projector};
 
-use crate::interface::plugins::flights::flight_type::LoadableFlight;
 use crate::{
-    client::{cli::Client, col_data::ColData, protocol_result::ProtocolResult},
-    data::flights::Flight,
+    client::cli::Client,
+    data::flights::{
+        departing::DepartingFlight, flight_type::FlightType, incoming::IncomingFlight,
+        traits::Flight,
+    },
     protocol::{
         aliases::{results::Result, types::Long},
         errors::error::Error,
@@ -41,10 +43,10 @@ pub struct FlightsLoader {
     client: Arc<Mutex<Client>>,
 
     /// Los vuelos entrantes actualmente en memoria.
-    incoming_flights: Option<Vec<Flight>>,
+    incoming_flights: Option<Vec<IncomingFlight>>,
 
     /// Los vuelso salientes actualmente en memoria.
-    departing_flights: Option<Vec<Flight>>,
+    departing_flights: Option<Vec<DepartingFlight>>,
 
     /// El tiempo que pasó desde la última _query_.
     last_checked: Instant,
@@ -56,24 +58,24 @@ pub struct FlightsLoader {
     incoming_child: DateChild,
 
     /// Extremo de canal que recibe actualizaciones de los vuelos entrantes.
-    incoming_receiver: Receiver<Vec<Flight>>,
+    incoming_receiver: Receiver<Vec<FlightType>>,
 
     /// Hilo hijo para cargar vuelos salientes.
     departing_child: DateChild,
 
     /// Extremo de canal que recibe actualizaciones de los vuelos entrantes.
-    departing_receiver: Receiver<Vec<Flight>>,
+    departing_receiver: Receiver<Vec<FlightType>>,
 }
 
 impl FlightsLoader {
     /// Crea una nueva instancia de cargador de vuelos.
     pub fn new(
         client: Arc<Mutex<Client>>,
-        flights: (Option<Vec<Flight>>, Option<Vec<Flight>>),
+        flights: (Option<Vec<IncomingFlight>>, Option<Vec<DepartingFlight>>),
         last_checked: Instant,
         date: DateTime<Local>,
         children: (DateChild, DateChild),
-        receivers: (Receiver<Vec<Flight>>, Receiver<Vec<Flight>>),
+        receivers: (Receiver<Vec<FlightType>>, Receiver<Vec<FlightType>>),
     ) -> Self {
         let (incoming_receiver, departing_receiver) = receivers;
         let (incoming_flights, departing_flights) = flights;
@@ -94,24 +96,32 @@ impl FlightsLoader {
 
     /// Genera el hilo hijo para cargar vuelos entrantes.
     pub fn gen_incoming_child(
-        to_parent: Sender<Vec<Flight>>,
+        to_parent: Sender<Vec<FlightType>>,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
-        Self::gen_date_child(to_parent, LoadableFlight::Incoming, client)
+        Self::gen_date_child(
+            to_parent,
+            FlightType::Incoming(IncomingFlight::dummy()),
+            client,
+        )
     }
 
     /// Genera el hilo hijo para cargar vuelos salientes.
     pub fn gen_departing_child(
-        to_parent: Sender<Vec<Flight>>,
+        to_parent: Sender<Vec<FlightType>>,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
-        Self::gen_date_child(to_parent, LoadableFlight::Departing, client)
+        Self::gen_date_child(
+            to_parent,
+            FlightType::Departing(DepartingFlight::dummy()),
+            client,
+        )
     }
 
     /// Genera un hilo hijo.
     fn gen_date_child(
-        to_parent: Sender<Vec<Flight>>,
-        flight_type: LoadableFlight,
+        to_parent: Sender<Vec<FlightType>>,
+        flight_type: FlightType,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
         let (date_sender, date_receiver) = channel::<Long>();
@@ -124,28 +134,15 @@ impl FlightsLoader {
                         if timestamp == stop_value {
                             break;
                         }
-
-                        let query = match flight_type {
-                            LoadableFlight::Incoming => format!(
-                                "SELECT * FROM vuelos_entrantes WHERE llegada < {} AND llegada > {};",
-                                timestamp + (DAY_IN_SECONDS / 2),
-                                timestamp - (DAY_IN_SECONDS / 2),
-                            ),
-                            LoadableFlight::Departing => format!(
-                                "SELECT * FROM vuelos_salientes WHERE salida < {} AND salida > {};",
-                                timestamp + (DAY_IN_SECONDS / 2),
-                                timestamp - (DAY_IN_SECONDS / 2),
-                            ),
-                        };
-
-                        let flights = match Self::load_flights(Arc::clone(&client), query.as_str())
-                        {
-                            Ok(loaded) => loaded,
-                            Err(err) => {
-                                println!("Error cargando los vuelos:\n\n{}", err);
-                                Vec::new()
-                            }
-                        };
+                        let flights =
+                            match Self::load_flights(Arc::clone(&client), &flight_type, &timestamp)
+                            {
+                                Ok(loaded) => loaded,
+                                Err(err) => {
+                                    println!("Error cargando los vuelos:\n\n{}", err);
+                                    Vec::new()
+                                }
+                            };
 
                         if let Err(err) = to_parent.send(flights) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);
@@ -168,7 +165,7 @@ impl FlightsLoader {
     /// y en su lugar deja [None].
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
-    pub fn take_incoming(&mut self) -> Vec<Flight> {
+    pub fn take_incoming(&mut self) -> Vec<IncomingFlight> {
         self.incoming_flights.take().unwrap_or_default()
     }
 
@@ -176,7 +173,7 @@ impl FlightsLoader {
     /// y en su lugar deja [None].
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
-    pub fn take_departing(&mut self) -> Vec<Flight> {
+    pub fn take_departing(&mut self) -> Vec<DepartingFlight> {
         self.departing_flights.take().unwrap_or_default()
     }
 
@@ -204,7 +201,11 @@ impl FlightsLoader {
     }
 
     /// Carga los vuelos con una _query_.
-    fn load_flights(client_lock: Arc<Mutex<Client>>, query: &str) -> Result<Vec<Flight>> {
+    fn load_flights(
+        client_lock: Arc<Mutex<Client>>,
+        flight_type: &FlightType,
+        timestamp: &Long,
+    ) -> Result<Vec<FlightType>> {
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
                 return Err(Error::ServerError(format!(
@@ -215,39 +216,59 @@ impl FlightsLoader {
             Ok(cli) => cli,
         };
 
-        let mut flights = Vec::<Flight>::new();
         let mut tcp_stream = client.connect()?;
-        let protocol_result = client.send_query(query, &mut tcp_stream)?;
 
-        // println!("{:?}", protocol_result);
+        let query = match flight_type {
+            FlightType::Incoming(_) => format!(
+                "SELECT * FROM vuelos_entrantes WHERE llegada < {} AND llegada > {};",
+                timestamp + (DAY_IN_SECONDS / 2),
+                timestamp - (DAY_IN_SECONDS / 2),
+            ),
+            FlightType::Departing(_) => format!(
+                "SELECT * FROM vuelos_salientes WHERE salida < {} AND salida > {};",
+                timestamp + (DAY_IN_SECONDS / 2),
+                timestamp - (DAY_IN_SECONDS / 2),
+            ),
+        };
 
-        if let ProtocolResult::Rows(rows) = protocol_result {
-            for row in rows {
-                if row.len() != 3 {
-                    continue;
-                }
+        let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
+        // if let ProtocolResult::Rows(rows) = protocol_result {
+        //     for row in rows {
+        //         if row.len() != 3 {
+        //             continue;
+        //         }
 
-                // 1. Origen.
-                if let ColData::String(orig) = &row[0] {
-                    // 2. Destino.
-                    if let ColData::String(dest) = &row[1] {
-                        // 3. Fecha.
-                        if let ColData::String(timestamp) = &row[2] {
-                            let id = timestamp.parse::<i32>().unwrap_or(0);
-                            let true_timestamp = timestamp.parse::<Long>().unwrap_or(0);
-                            flights.push(Flight::new(
-                                id,
-                                orig.to_string(),
-                                dest.to_string(),
-                                true_timestamp,
-                            ));
-                        }
-                    }
-                }
-            }
-        } else if let ProtocolResult::QueryError(err) = protocol_result {
-            println!("{}", err);
-        }
+        //         // 1. Origen.
+        //         if let ColData::String(orig) = &row[0] {
+        //             // 2. Destino.
+        //             if let ColData::String(dest) = &row[1] {
+        //                 // 3. Fecha.
+        //                 if let ColData::String(timestamp) = &row[2] {
+        //                     let id = timestamp.parse::<i32>().unwrap_or(0);
+        //                     let true_timestamp = timestamp.parse::<Long>().unwrap_or(0);
+        //                     flights.push(Flight::new(
+        //                         id,
+        //                         orig.to_string(),
+        //                         dest.to_string(),
+        //                         true_timestamp,
+        //                     ));
+        //                 }
+        //             }
+        //         }
+        //     }
+        // } else if let ProtocolResult::QueryError(err) = protocol_result {
+        //     println!("{}", err);
+        // }
+        let flights = match flight_type {
+            FlightType::Incoming(_) => IncomingFlight::try_from_protocol_result(protocol_result)?
+                .into_iter()
+                .map(FlightType::Incoming)
+                .collect(),
+            FlightType::Departing(_) => DepartingFlight::try_from_protocol_result(protocol_result)?
+                .into_iter()
+                .map(FlightType::Departing)
+                .collect(),
+        };
 
         Ok(flights)
     }
@@ -275,15 +296,18 @@ impl FlightsLoader {
 impl Default for FlightsLoader {
     fn default() -> Self {
         let client = Arc::new(Mutex::new(Client::default()));
-        let (incoming_sender, incoming_receiver) = channel::<Vec<Flight>>();
-        let (departing_sender, departing_receiver) = channel::<Vec<Flight>>();
+        let (incoming_sender, incoming_receiver) = channel::<Vec<FlightType>>();
+        let (departing_sender, departing_receiver) = channel::<Vec<FlightType>>();
 
         let incoming_client = Arc::clone(&client);
         let departing_client = Arc::clone(&client);
 
         Self::new(
             client,
-            (Some(Vec::<Flight>::new()), Some(Vec::<Flight>::new())),
+            (
+                Some(Vec::<IncomingFlight>::new()),
+                Some(Vec::<DepartingFlight>::new()),
+            ),
             Instant::now(),
             Local::now(),
             (
@@ -319,13 +343,13 @@ impl Plugin for &mut FlightsLoader {
 
         if let Ok(new_incoming) = self.incoming_receiver.try_recv() {
             if !new_incoming.is_empty() {
-                self.incoming_flights = Some(new_incoming);
+                self.incoming_flights = Some(FlightType::filter_incoming(new_incoming));
             }
         }
 
         if let Ok(new_departing) = self.departing_receiver.try_recv() {
             if !new_departing.is_empty() {
-                self.departing_flights = Some(new_departing);
+                self.departing_flights = Some(FlightType::filter_departing(new_departing));
             }
         }
     }

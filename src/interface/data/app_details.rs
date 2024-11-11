@@ -2,7 +2,10 @@
 
 use std::sync::Arc;
 
-use crate::data::{airports::Airport, flights::Flight};
+use crate::data::{
+    airports::Airport,
+    flights::{departing::DepartingFlight, incoming::IncomingFlight},
+};
 
 /// Holds details to many of the important data of the current instant in the GUI.
 pub struct AirlinesDetails {
@@ -16,10 +19,10 @@ pub struct AirlinesDetails {
     current_airports: Arc<Vec<Airport>>,
 
     /// Los vuelos entrantes actualmente en memoria.
-    incoming_flights: Arc<Vec<Flight>>,
+    incoming_flights: Arc<Vec<IncomingFlight>>,
 
     /// Los vuelos salientes actualmente en memoria.
-    departing_flights: Arc<Vec<Flight>>,
+    departing_flights: Arc<Vec<DepartingFlight>>,
 
     /// Decidir si mostrar los vuelos entrantes.
     show_incoming_flights: bool,
@@ -34,8 +37,8 @@ impl AirlinesDetails {
         selected_airport: Option<Airport>,
         extra_airport: Option<Airport>,
         current_airports: Vec<Airport>,
-        incoming_flights: Vec<Flight>,
-        departing_flights: Vec<Flight>,
+        incoming_flights: Vec<IncomingFlight>,
+        departing_flights: Vec<DepartingFlight>,
         show_incoming_flights: bool,
         show_departing_flights: bool,
     ) -> Self {
@@ -92,24 +95,24 @@ impl AirlinesDetails {
     }
 
     /// Consigue una referencia clonada a los vuelos entrantes guardados.
-    pub fn get_incoming_flights(&self) -> Arc<Vec<Flight>> {
+    pub fn get_incoming_flights(&self) -> Arc<Vec<IncomingFlight>> {
         Arc::clone(&self.incoming_flights)
     }
 
     /// Actualiza la lista de vuelos entrantes.
-    pub fn set_incoming_flights(&mut self, new_incoming: Vec<Flight>) {
+    pub fn set_incoming_flights(&mut self, new_incoming: Vec<IncomingFlight>) {
         if !new_incoming.is_empty() {
             self.incoming_flights = Arc::new(new_incoming);
         }
     }
 
     /// Consigue una referencia clonada a los vuelos salientes guardados.
-    pub fn get_departing_flights(&self) -> Arc<Vec<Flight>> {
+    pub fn get_departing_flights(&self) -> Arc<Vec<DepartingFlight>> {
         Arc::clone(&self.departing_flights)
     }
 
     /// Actualiza la lista de vuelos entrantes.
-    pub fn set_departing_flights(&mut self, new_departing: Vec<Flight>) {
+    pub fn set_departing_flights(&mut self, new_departing: Vec<DepartingFlight>) {
         if !new_departing.is_empty() {
             self.departing_flights = Arc::new(new_departing);
         }
@@ -154,8 +157,8 @@ impl Default for AirlinesDetails {
             None,
             None,
             Vec::<Airport>::new(),
-            Vec::<Flight>::new(),
-            Vec::<Flight>::new(),
+            Vec::<IncomingFlight>::new(),
+            Vec::<DepartingFlight>::new(),
             false,
             false,
         )

@@ -152,6 +152,8 @@ impl App for AerolineasApp {
                 self.airlines_details.get_selected_airport(),
                 self.airlines_details.get_incoming_flights(),
                 self.airlines_details.get_show_incoming_flights(),
+                self.airlines_details.get_departing_flights(),
+                self.airlines_details.get_show_departing_flights(),
             ));
         extra_airport_info(
             ctx,

@@ -6,7 +6,10 @@ use eframe::egui::{Button, Color32, Context, Frame, Margin, RichText, ScrollArea
 
 use crate::{
     client::{cli::Client, protocol_result::ProtocolResult},
-    data::{airports::Airport, flight_states::FlightState, flights::Flight},
+    data::{
+        airports::Airport,
+        flights::{departing::DepartingFlight, incoming::IncomingFlight, states::FlightState},
+    },
     protocol::{
         aliases::{
             results::Result,
@@ -20,10 +23,12 @@ use crate::{
 pub fn cur_airport_info(
     ctx: &Context,
     cur_airport: &Option<Airport>,
-    flights: Arc<Vec<Flight>>,
-    show_details: &bool,
+    incoming_flights: Arc<Vec<IncomingFlight>>,
+    show_incoming: &bool,
+    departing_flights: Arc<Vec<DepartingFlight>>,
+    show_departing: &bool,
 ) -> bool {
-    let mut must_show = *show_details;
+    let mut must_show = *show_incoming;
 
     let panel_frame = Frame {
         fill: Color32::from_rgba_unmultiplied(66, 66, 66, 200),
@@ -40,29 +45,29 @@ pub fn cur_airport_info(
         ui.separator();
 
         let button = Button::new(RichText::new("Mostrar Vuelos").heading());
-        if *show_details {
-            ScrollArea::vertical()
-                .max_height(50.0)
-                .show(ui, |scroll_ui| {
-                    for flight in flights.iter() {
-                        let potential_date = match flight.get_date() {
-                            None => "".to_string(),
-                            Some(date) => date.to_string(),
-                        };
-                        let info = format!(
-                            "Id: {}\nOrigen: {}\nDestino: {}\nFecha: {}\n\n",
-                            flight.id, flight.orig, flight.dest, potential_date,
-                        );
-                        scroll_ui.label(
-                            RichText::new(info)
-                                .italics()
-                                .color(Color32::from_rgb(255, 255, 255)),
-                        );
-                    }
-                });
+        if *show_incoming {
+            // ScrollArea::vertical()
+            //     .max_height(50.0)
+            //     .show(ui, |scroll_ui| {
+            //         for flight in incoming_flights.iter() {
+            //             let potential_date = match flight.get_date() {
+            //                 None => "".to_string(),
+            //                 Some(date) => date.to_string(),
+            //             };
+            //             let info = format!(
+            //                 "Id: {}\nOrigen: {}\nDestino: {}\nFecha: {}\n\n",
+            //                 flight.id, flight.orig, flight.dest, potential_date,
+            //             );
+            //             scroll_ui.label(
+            //                 RichText::new(info)
+            //                     .italics()
+            //                     .color(Color32::from_rgb(255, 255, 255)),
+            //             );
+            //         }
+            //     });
         }
         if ui.add(button).clicked() {
-            if *show_details {
+            if *show_incoming {
                 println!("Mostrando vuelos...");
                 must_show = false;
             } else {
