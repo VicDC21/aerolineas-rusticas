@@ -723,6 +723,7 @@ impl Node {
                             internal_metadata.append(&mut request[(lenght.len as usize) + 9..].to_vec());
                         }
                         let internal_metadata = self.read_metadata_from_internal_request(internal_metadata);
+                        println!("la metadata es: {:?}", internal_metadata);
                         self.handle_internal_statement(statement, internal_metadata)
                     } else {
                         self.handle_statement(
@@ -770,10 +771,7 @@ impl Node {
     fn handle_internal_statement(&mut self, statement: Statement, internal_metadata: (Option<i64>, Option<Byte>)) -> Result<Vec<Byte>> {
         match statement {
             Statement::DdlStatement(ddl_statement) => {
-                match internal_metadata.1{
-                    Some(node_number) => self.handle_internal_ddl_statement(ddl_statement, node_number),
-                    None => Err(Error::ServerError("No se paso metadata necesaria".to_string()))
-                }
+                self.handle_internal_ddl_statement(ddl_statement, internal_metadata)
             }
             Statement::DmlStatement(dml_statement) => {
                 self.handle_internal_dml_statement(dml_statement, internal_metadata)
@@ -786,7 +784,7 @@ impl Node {
     fn handle_internal_ddl_statement(
         &mut self,
         ddl_statement: DdlStatement,
-        node_number: u8,
+        internal_metadata: (Option<i64>, Option<Byte>)
     ) -> Result<Vec<Byte>> {
         match ddl_statement {
             DdlStatement::UseStatement(keyspace_name) => {
@@ -802,7 +800,11 @@ impl Node {
                 self.process_internal_drop_keyspace_statement(&drop_keyspace)
             }
             DdlStatement::CreateTableStatement(create_table) => {
-                self.process_internal_create_table_statement(&create_table, node_number)
+                println!("intentar crear tabla");
+                match internal_metadata.1{
+                    Some(node_number) => self.process_internal_create_table_statement(&create_table, node_number),
+                    None => Err(Error::ServerError("No se paso metadata necesaria".to_string()))
+                }
             }
             DdlStatement::AlterTableStatement(_alter_table) => todo!(),
             DdlStatement::DropTableStatement(_drop_table) => todo!(),
@@ -834,7 +836,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false,
+                    true,
                 )?
             } else {
                 self.process_internal_use_statement(&keyspace_name)?
@@ -880,7 +882,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false,
+                    true,
                 )?
             } else {
                 self.process_internal_create_keyspace_statement(&create_keyspace)?
@@ -928,7 +930,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false,
+                    true,
                 )?
             } else {
                 self.process_internal_alter_keyspace_statement(&alter_keyspace)?
@@ -992,7 +994,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false,
+                    true,
                 )?
             } else {
                 self.process_internal_drop_keyspace_statement(&drop_keyspace)?
@@ -1076,7 +1078,7 @@ impl Node {
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
-                    false,
+                    true,
                 )?
             } else {
                 self.process_internal_create_table_statement(&create_table, self.id)?
