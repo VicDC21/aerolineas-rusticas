@@ -273,8 +273,6 @@ impl FlightsLoader {
                 .collect(),
         };
 
-        println!("\nVuelos de tipo '{:?}':\t{:?}", flight_type, flights);
-
         Ok(flights)
     }
 
