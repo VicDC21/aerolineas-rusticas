@@ -7,7 +7,7 @@ use crate::protocol::{
 };
 
 /// Representa el tipo de dato de una columna.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ColumnDataType {
     /// Tipo de dato `String`.
     String,
