@@ -250,11 +250,11 @@ impl DiskHandler {
         }
 
         let mut result = Vec::new();
-        if query_cols.len() == 1 && query_cols[0] == "*" {
-            result.push(table_ops.columns.clone());
-        } else {
-            result.push(query_cols.clone());
-        }
+        // if query_cols.len() == 1 && query_cols[0] == "*" {
+        //     result.push(table_ops.columns.clone());
+        // } else {
+        //     result.push(query_cols.clone());
+        // }
 
         let mut rows = table_ops.read_rows()?;
 
