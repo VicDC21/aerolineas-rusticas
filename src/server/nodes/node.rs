@@ -1482,6 +1482,8 @@ impl Node {
         let mut consulted_nodes: Vec<Byte> = Vec::new();
         let wait_response = true;
         let consistency_number = consistency_level.as_usize(N_NODES as usize);
+        let mut read_repair_executed = false;
+
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(partition_key_value);
             if !consulted_nodes.contains(&node_id) {
@@ -1516,25 +1518,47 @@ impl Node {
                 )?;
                 consulted_nodes.push(node_id);
                 // consistency_counter += 1;
-                // TODO: Terminar logica de Read-Repair
-                if !self.consult_replica_nodes(
+
+                match self.consult_replica_nodes(
                     node_id,
                     request,
                     &mut consistency_counter,
                     consistency_number,
                     &actual_result,
                     &table_name,
-                )? {
-                    return Err(Error::ServerError(format!(
+                ) {
+                    Ok(rr_executed) => {
+                        // Este chequeo es porque si ya es true, no queremos que vuelva a ser false
+                        // Nos importa si se ejecutó al menos una vez
+                        if !read_repair_executed {
+                            read_repair_executed = rr_executed;
+                        }
+                    }
+                    Err(_) => return Err(Error::ServerError(format!(
                         "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
                         consistency_level, consistency_counter, consistency_number,
-                    )));
-                };
+                    ))),
+                }
             }
         }
-        Ok(results_from_another_nodes)
+
+        // Una vez que todo fue reparado, queremos reenviar la query para obtener el resultado
+        // pero ahora con las tablas reparadas.
+        if read_repair_executed {
+            Ok(self.send_message_and_wait_response(
+                SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                self.id,
+                PortType::Priv,
+                false,
+            )?)
+        } else {
+            Ok(results_from_another_nodes)
+        }
     }
 
+    /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
+    ///
+    /// Devuelve un booleano indicando si _read-repair_ fue ejecutado o no.
     fn consult_replica_nodes(
         &self,
         node_id: u8,
@@ -1545,7 +1569,7 @@ impl Node {
         table_name: &str,
     ) -> Result<bool> {
         if consistency_number == 1 {
-            return Ok(true);
+            return Ok(false);
         }
         let first_hashed_value = hash_value(response_from_first_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
@@ -1566,7 +1590,10 @@ impl Node {
         }
 
         if *consistency_counter < consistency_number {
-            return Ok(false);
+            return Err(Error::ServerError(format!(
+                "No se pudo cumplir con el nivel de consistencia, solo se logró con {} de {}",
+                *consistency_counter, consistency_number,
+            )));
         }
 
         let mut exec_read_repair = false;
@@ -1584,11 +1611,10 @@ impl Node {
 
         if exec_read_repair {
             self.exec_read_repair(node_id, request, consistency_number, table_name)?;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        // Despues de que pase un tiempo y se hayan actualizado las tablas como corresponde,
-        // consultamos por las filas para el cliente
-
-        Ok(true)
     }
 
     fn exec_read_repair(
