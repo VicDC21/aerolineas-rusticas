@@ -12,7 +12,7 @@ use crate::protocol::{
     },
     errors::error::Error,
     traits::Byteable,
-    utils::{encode_iter_to_bytes, parse_bytes_to_string},
+    utils::{encode_iter_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
 };
 use crate::server::nodes::{
     node::{NodeId, NodesMap},
@@ -80,7 +80,9 @@ pub enum SvAction {
     DigestReadRequest(Vec<Byte>),
 
     /// Arregla la tabla mientras se realiza el read-repair.
-    RepairRows(Vec<Byte>)
+    ///
+    /// _(table_name, node_id, rows)_
+    RepairRows(String, Byte, Vec<Byte>),
 }
 
 impl SvAction {
@@ -230,8 +232,10 @@ impl Byteable for SvAction {
                 bytes.extend(query_bytes);
                 bytes
             }
-            Self::RepairRows(rows) =>{
+            Self::RepairRows(table_name, node_id, rows) => {
                 let mut bytes = vec![0xFC];
+                bytes.extend(encode_string_to_bytes(table_name));
+                bytes.push(*node_id);
                 bytes.extend(rows);
                 bytes
             }
@@ -325,12 +329,14 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xF8 => Ok(Self::InternalQuery(bytes[1..].to_vec())),
             0xF9 => Ok(Self::StoreMetadata),
-            0xFA => {
-                let table_name = parse_bytes_to_string(&bytes[1..], &mut i)?;
-                let query_bytes = bytes[table_name.len() + 1 + 2..].to_vec();
-                Ok(Self::DirectReadRequest(query_bytes))
-            }
+            0xFA => Ok(Self::DirectReadRequest(bytes[1..].to_vec())),
             0xFB => Ok(Self::DigestReadRequest(bytes[1..].to_vec())),
+            0xFC => {
+                let table_name = parse_bytes_to_string(&bytes[1..], &mut i)?;
+                let node_id = bytes[table_name.len() + 1];
+                let rows = bytes[table_name.len() + 1 + 2 + 1..].to_vec();
+                Ok(Self::RepairRows(table_name, node_id, rows))
+            }
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

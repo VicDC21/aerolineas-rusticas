@@ -44,6 +44,11 @@ impl Table {
         &self.name
     }
 
+    /// Obtiene el nombre del keyspace al que pertenece la tabla.
+    pub fn get_keyspace(&self) -> &str {
+        &self.keyspace
+    }
+
     /// Obtiene la partition key de la tabla.
     pub fn get_partition_key(&self) -> Vec<String> {
         self.partition_key.clone()

@@ -12,7 +12,6 @@ use std::{
     vec::IntoIter,
 };
 
-use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
 use crate::parser::{
     data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
@@ -62,7 +61,7 @@ use crate::server::{
     traits::Serializable,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-
+use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
 
 use super::{
     addr::loader::AddrLoader,
@@ -164,6 +163,10 @@ impl Node {
         }
     }
 
+    fn table_exists(&self, table_name: &str) -> bool {
+        self.tables.contains_key(table_name)
+    }
+
     fn add_keyspace(&mut self, keyspace: Keyspace) {
         self.keyspaces
             .insert(keyspace.get_name().to_string(), keyspace);
@@ -184,6 +187,10 @@ impl Node {
                 "El keyspace solicitado no existe".to_string(),
             )),
         }
+    }
+
+    fn keyspace_exists(&self, keyspace_name: &str) -> bool {
+        self.keyspaces.contains_key(keyspace_name)
     }
 
     fn set_default_keyspace(&mut self, keyspace_name: String) {
@@ -584,15 +591,45 @@ impl Node {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
-            SvAction::RepairRows(_bytes) => {
-                // ESTOS BYTES DEBERIAN SER UN VEC DE VEC DE STRING, CON ESTO DEBERIAMOS CAMBIAR
-                // TODA LA TABLA CORRESPONDIENTE, EXCEPTO LA PRIMER FILA (COLUMNAS)
+            SvAction::RepairRows(table_name, node_id, rows_bytes) => {
+                if !self.table_exists(&table_name) {
+                    return Err(Error::ServerError(format!(
+                        "La tabla `{}` no existe",
+                        table_name
+                    )));
+                }
+
+                let table = self.get_table(&table_name)?;
+                let keyspace_name = table.get_keyspace();
+                if !self.keyspace_exists(keyspace_name) {
+                    return Err(Error::ServerError(format!(
+                        "El keyspace `{}` asociado a la tabla `{}` no existe",
+                        keyspace_name, table_name
+                    )));
+                }
+
+                let rows = String::from_utf8(rows_bytes).map_err(|_| {
+                    Error::ServerError("Error al castear de bytes a string".to_string())
+                })?;
+                let rows_as_string: Vec<Vec<String>> = rows
+                    .split('\n')
+                    .map(|row| row.split(',').map(|s| s.to_string()).collect())
+                    .collect();
+
+                DiskHandler::repair_rows(
+                    &self.storage_addr,
+                    &table_name,
+                    keyspace_name,
+                    &self.default_keyspace_name,
+                    node_id,
+                    &rows_as_string,
+                )?;
             }
         };
         Ok(stop)
     }
 
-    fn exec_direct_read_request(&self, mut bytes: Vec<Byte>) -> Result<String>{
+    fn exec_direct_read_request(&self, mut bytes: Vec<Byte>) -> Result<String> {
         let node_number = bytes.pop().unwrap_or(0); // despues cambiar
         let statement = match String::from_utf8(bytes) {
             Ok(query) => make_parse(&mut tokenize_query(&query))?,
@@ -615,7 +652,7 @@ impl Node {
             &self.storage_addr,
             &self.default_keyspace_name,
             &select,
-            node_number
+            node_number,
         )?;
         Ok(res)
     }
@@ -726,7 +763,11 @@ impl Node {
     }
 
     /// Maneja una declaración interna.
-    fn handle_internal_statement(&mut self, statement: Statement, node_number: u8) -> Result<Vec<Byte>> {
+    fn handle_internal_statement(
+        &mut self,
+        statement: Statement,
+        node_number: u8,
+    ) -> Result<Vec<Byte>> {
         match statement {
             Statement::DdlStatement(ddl_statement) => {
                 self.handle_internal_ddl_statement(ddl_statement, node_number)
@@ -739,7 +780,11 @@ impl Node {
     }
 
     /// Maneja una declaración DDL.
-    fn handle_internal_ddl_statement(&mut self, ddl_statement: DdlStatement, node_number: u8) -> Result<Vec<Byte>> {
+    fn handle_internal_ddl_statement(
+        &mut self,
+        ddl_statement: DdlStatement,
+        node_number: u8,
+    ) -> Result<Vec<Byte>> {
         match ddl_statement {
             DdlStatement::UseStatement(keyspace_name) => {
                 self.process_internal_use_statement(&keyspace_name)
@@ -989,13 +1034,18 @@ impl Node {
     fn process_internal_create_table_statement(
         &mut self,
         create_table: &CreateTable,
-        node_number: u8
+        node_number: u8,
     ) -> Result<Vec<Byte>> {
         let default_keyspace_name = match self.get_default_keyspace() {
             Ok(keyspace) => keyspace.get_name().to_string(),
             Err(err) => return Err(err),
         };
-        match DiskHandler::create_table(create_table, &self.storage_addr, &default_keyspace_name, node_number) {
+        match DiskHandler::create_table(
+            create_table,
+            &self.storage_addr,
+            &default_keyspace_name,
+            node_number,
+        ) {
             Ok(Some(table)) => {
                 self.add_table(table);
             }
@@ -1032,11 +1082,17 @@ impl Node {
         Ok(response)
     }
     /// Maneja una declaración DML.
-    fn handle_internal_dml_statement(&mut self, dml_statement: DmlStatement, node_number: u8) -> Result<Vec<Byte>> {
+    fn handle_internal_dml_statement(
+        &mut self,
+        dml_statement: DmlStatement,
+        node_number: u8,
+    ) -> Result<Vec<Byte>> {
         let timestamp = Utc::now().timestamp(); // CAMBIAR DESPUES, ESTA PARA QUE NO ROMPA
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select, node_number),
-            DmlStatement::InsertStatement(insert) => self.process_insert(&insert, timestamp, node_number),
+            DmlStatement::InsertStatement(insert) => {
+                self.process_insert(&insert, timestamp, node_number)
+            }
             DmlStatement::UpdateStatement(update) => self.process_update(&update, node_number),
             DmlStatement::DeleteStatement(delete) => self.process_delete(&delete, node_number),
             DmlStatement::BatchStatement(_batch) => todo!(),
@@ -1053,7 +1109,7 @@ impl Node {
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
-            node_id
+            node_id,
         )?;
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
@@ -1065,7 +1121,12 @@ impl Node {
         Ok(response)
     }
 
-    fn process_insert(&mut self, insert: &Insert, timestamp: i64, node_number: Byte) -> Result<Vec<Byte>> {
+    fn process_insert(
+        &mut self,
+        insert: &Insert,
+        timestamp: i64,
+        node_number: Byte,
+    ) -> Result<Vec<Byte>> {
         let table = match self.get_table(&insert.table.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
@@ -1076,7 +1137,7 @@ impl Node {
             table,
             &self.default_keyspace_name,
             timestamp,
-            node_number
+            node_number,
         )?;
         match self.check_if_has_new_partition_value(insert, table)? {
             Some(new_partition_values) => self
@@ -1129,7 +1190,7 @@ impl Node {
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
-            node_number
+            node_number,
         )?;
         Ok(self.create_result_void())
     }
@@ -1415,8 +1476,9 @@ impl Node {
         request: &[Byte],
         consistency_level: &Consistency,
     ) -> Result<Vec<Byte>> {
+        let table_name = select.from.get_name();
         let mut results_from_another_nodes: Vec<Byte> = Vec::new();
-        let partitions_keys_to_nodes = self.get_partition_keys_values(&select.from.get_name())?;
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?;
         let mut consulted_nodes: Vec<Byte> = Vec::new();
         let wait_response = true;
         let consistency_number = consistency_level.as_usize(N_NODES as usize);
@@ -1447,7 +1509,11 @@ impl Node {
                     //     }
                     // };
                 };
-                self.handle_result_from_node(&mut results_from_another_nodes, &actual_result, &select)?;
+                self.handle_result_from_node(
+                    &mut results_from_another_nodes,
+                    &actual_result,
+                    &select,
+                )?;
                 consulted_nodes.push(node_id);
                 // consistency_counter += 1;
                 // TODO: Terminar logica de Read-Repair
@@ -1457,6 +1523,7 @@ impl Node {
                     &mut consistency_counter,
                     consistency_number,
                     &actual_result,
+                    &table_name,
                 )? {
                     return Err(Error::ServerError(format!(
                         "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
@@ -1475,6 +1542,7 @@ impl Node {
         consistency_counter: &mut usize,
         consistency_number: usize,
         response_from_first_replica: &[Byte],
+        table_name: &str,
     ) -> Result<bool> {
         if consistency_number == 1 {
             return Ok(true);
@@ -1515,15 +1583,10 @@ impl Node {
         }
 
         if exec_read_repair {
-            self.exec_read_repair(
-                node_id,
-                request,
-                consistency_number,
-                response_from_first_replica,
-            )?;
+            self.exec_read_repair(node_id, request, consistency_number, table_name)?;
         }
-        // Despues de que pase un tiempo y se hayan actualizado las tablas como corresponde, consultamos por las filas para el cliente
-
+        // Despues de que pase un tiempo y se hayan actualizado las tablas como corresponde,
+        // consultamos por las filas para el cliente
 
         Ok(true)
     }
@@ -1533,15 +1596,14 @@ impl Node {
         node_id: u8,
         request: &[Byte],
         consistency_number: usize,
-        _response_from_first_replica: &[Byte],
+        table_name: &str,
     ) -> Result<()> {
         let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![];
 
         for i in 0..consistency_number {
             let node_to_consult =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
-            let res = 
-            if node_to_consult == self.id{
+            let res = if node_to_consult == self.id {
                 self.exec_direct_read_request(request.to_vec())?
             } else {
                 let extern_response = self.send_message_and_wait_response(
@@ -1550,62 +1612,78 @@ impl Node {
                     PortType::Priv,
                     true,
                 )?;
-                match String::from_utf8(extern_response){
+
+                match String::from_utf8(extern_response) {
                     Ok(value) => value,
-                    Err(_err) => return Err(Error::ServerError("Error al castear de vector a string".to_string()))
+                    Err(_err) => {
+                        return Err(Error::ServerError(
+                            "Error al castear de vector a string".to_string(),
+                        ))
+                    }
                 }
             };
+
             let rows: Vec<Vec<String>> = res
                 .split("\n")
                 .map(|row| row.split(",").map(|col| col.to_string()).collect())
                 .collect();
             ids_and_rows.push((node_to_consult, rows));
         }
+
         let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
         for (i, (_node, rows)) in ids_and_rows.iter().enumerate() {
-            for (j ,row) in rows.iter().enumerate() {
-                if most_recent_timestamps.len() <= j{
+            for (j, row) in rows.iter().enumerate() {
+                if most_recent_timestamps.len() <= j {
                     most_recent_timestamps.push((i, row[row.len() - 1].clone()));
-                } else{
+                } else {
                     let actual_timestamp = row[row.len() - 1].clone();
-                    if actual_timestamp > most_recent_timestamps[j].1{
+                    if actual_timestamp > most_recent_timestamps[j].1 {
                         most_recent_timestamps[j] = (i, actual_timestamp);
                     }
                 }
             }
         }
+
         let mut newer_rows: Vec<Vec<String>> = Vec::new();
-        for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate(){
+        for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate() {
             let new_row = &ids_and_rows[actual_timestamp.0].1[i];
             newer_rows.push(new_row.clone());
         }
+
         let rows_as_string = newer_rows
             .iter()
             .map(|row| row.join(","))
             .collect::<Vec<String>>()
             .join("\n");
-
-        for i in 0..consistency_number{
+        for i in 0..consistency_number {
             let node_to_repair =
                 self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
-            if node_to_repair == self.id{
+            if node_to_repair == self.id {
                 DiskHandler::actualize_all_rows(&rows_as_string);
                 self.exec_direct_read_request(request.to_vec())?
             } else {
                 let extern_response = self.send_message_and_wait_response(
-                    SvAction::RepairRows(rows_as_string.as_bytes().to_vec()).as_bytes(), // FALTA VER ESTA PARTE, QUE HACEMOS PARA QUE SE GUARDEN LOS DATOS EN EL LA TABLA CORRESPONDIENTE, HABRIA QUE MANDAR METADATA PARA LA FUNCION QUE USEMOS
+                    SvAction::RepairRows(
+                        table_name.to_string(),
+                        node_id,
+                        rows_as_string.as_bytes().to_vec(),
+                    )
+                    .as_bytes(),
                     node_to_repair,
                     PortType::Priv,
                     false,
                 )?;
-                match String::from_utf8(extern_response){
+
+                match String::from_utf8(extern_response) {
                     Ok(value) => value,
-                    Err(_err) => return Err(Error::ServerError("Error al castear de vector a string".to_string()))
+                    Err(_err) => {
+                        return Err(Error::ServerError(
+                            "Error al castear de vector a string".to_string(),
+                        ))
+                    }
                 }
             };
         }
-
-
 
         Ok(())
     }
@@ -1621,7 +1699,7 @@ impl Node {
             &self.storage_addr,
             table,
             &self.default_keyspace_name,
-            node_number
+            node_number,
         )?;
 
         Ok(self.create_result_void())

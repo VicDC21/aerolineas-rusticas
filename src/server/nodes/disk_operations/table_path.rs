@@ -17,7 +17,7 @@ impl TablePath {
         keyspace: Option<String>,
         table_name: &str,
         default_keyspace: &str,
-        node_number: u8
+        node_number: u8,
     ) -> Self {
         let keyspace = keyspace.unwrap_or_else(|| default_keyspace.to_string());
         Self {
@@ -26,6 +26,7 @@ impl TablePath {
             table_name: format!("{}_replica_node_{}", table_name, node_number),
         }
     }
+
     /// Devuelve el path completo de la tabla.
     pub fn full_path(&self) -> String {
         format!(

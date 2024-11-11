@@ -1,18 +1,5 @@
 //! Módulo para manejo del almacenamiento en disco.
 
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    messages::responses::result::col_type::ColType,
-    traits::Byteable,
-    utils::encode_string_to_bytes,
-};
-use crate::server::nodes::{
-    graph::NODES_PATH,
-    keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
-    node::NodeId,
-    table_metadata::table::Table,
-};
 use crate::parser::{
     assignment::Assignment,
     data_types::{constant::Constant, term::Term},
@@ -26,16 +13,26 @@ use crate::parser::{
             main_statements::{
                 delete::Delete,
                 insert::Insert,
-                select::{
-                    order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
-                },
+                select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
                 update::Update,
             },
             r#where::operator::Operator,
         },
     },
 };
-    
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    messages::responses::result::col_type::ColType,
+    traits::Byteable,
+    utils::encode_string_to_bytes,
+};
+use crate::server::nodes::{
+    graph::NODES_PATH,
+    keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
+    node::NodeId,
+    table_metadata::table::Table,
+};
 
 use std::{
     fs::{create_dir, OpenOptions},
@@ -181,7 +178,7 @@ impl DiskHandler {
         statement: &CreateTable,
         storage_addr: &str,
         default_keyspace: &str,
-        node_number: u8
+        node_number: Byte,
     ) -> Result<Option<Table>> {
         let (keyspace_name, table_name) =
             Self::validate_and_get_keyspace_table_names(statement, default_keyspace, storage_addr)?;
@@ -191,7 +188,13 @@ impl DiskHandler {
             .map(|c| c.get_name())
             .collect::<Vec<String>>();
 
-        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names, node_number)?;
+        Self::create_table_csv_file(
+            storage_addr,
+            &keyspace_name,
+            &table_name,
+            &columns_names,
+            node_number,
+        )?;
 
         let primary_key = Self::validate_and_get_primary_key(statement)?;
         let clustering_keys_and_order = Self::get_clustering_keys_and_order(statement)?;
@@ -205,6 +208,32 @@ impl DiskHandler {
         )))
     }
 
+    /// Repara las filas de la tabla con las filas pasadas por parámetro.
+    ///
+    /// **PRECAUCIÓN**: Esta función trunca todo el contenido previo de la tabla y este es irrecuperable luego de su uso, por lo que se debe
+    /// tener cuidado al utilizarla.
+    pub fn repair_rows(
+        storage_addr: &str,
+        table_name: &str,
+        keyspace_name: &str,
+        default_keyspace: &str,
+        node_number: Byte,
+        repaired_rows: &[Vec<String>],
+    ) -> Result<()> {
+        let path = TablePath::new(
+            storage_addr,
+            Some(keyspace_name.to_string()),
+            table_name,
+            default_keyspace,
+            node_number,
+        );
+
+        let table_ops = TableOperations::new(path)?;
+        table_ops.write_rows(repaired_rows)?;
+
+        Ok(())
+    }
+
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
     pub fn do_insert(
         statement: &Insert,
@@ -212,14 +241,14 @@ impl DiskHandler {
         table: &Table,
         default_keyspace: &str,
         timestamp: i64,
-        node_number: u8
+        node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.table.get_keyspace(),
             &statement.table.get_name(),
             default_keyspace,
-            node_number
+            node_number,
         );
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
@@ -239,14 +268,14 @@ impl DiskHandler {
         storage_addr: &str,
         default_keyspace: &str,
         statement: &Select,
-        node_number: Byte
+        node_number: Byte,
     ) -> Result<String> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
             &statement.from.get_name(),
             default_keyspace,
-            node_number
+            node_number,
         );
         let table_ops = TableOperations::new(path)?;
         let query_cols = vec!["*".to_string()];
@@ -263,7 +292,6 @@ impl DiskHandler {
             .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols, false))
             .collect();
 
-
         let rows_as_string = result_rows
             .iter()
             .map(|row| row.join(","))
@@ -278,14 +306,14 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        node_number: u8,
+        node_number: Byte,
     ) -> Result<Vec<Byte>> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
             &statement.from.get_name(),
             default_keyspace,
-            node_number
+            node_number,
         );
 
         let table_ops = TableOperations::new(path)?;
@@ -332,14 +360,14 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        node_number: Byte
+        node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.table_name.get_keyspace(),
             &statement.table_name.get_name(),
             default_keyspace,
-            node_number
+            node_number,
         );
         let table_ops = TableOperations::new(path)?;
         Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
@@ -395,14 +423,14 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        node_number: Byte
+        node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
             &statement.from.get_name(),
             default_keyspace,
-            node_number
+            node_number,
         );
 
         let table_ops = TableOperations::new(path)?;
@@ -676,9 +704,12 @@ impl DiskHandler {
         keyspace_name: &str,
         table_name: &str,
         columns_names: &[String],
-        node_number: u8
+        node_number: Byte,
     ) -> Result<()> {
-        let table_addr = format!("{}/{}/{}_replica_node_{}.csv", storage_addr, keyspace_name, table_name, node_number);
+        let table_addr = format!(
+            "{}/{}/{}_replica_node_{}.csv",
+            storage_addr, keyspace_name, table_name, node_number
+        );
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -844,7 +875,7 @@ impl DiskHandler {
         table_row: &[String],
         table_cols: &[String],
         query_cols: &[String],
-        without_timestamp: bool
+        without_timestamp: bool,
     ) -> Vec<String> {
         let mut new_row: Vec<String> = Vec::new();
         if query_cols.len() == 1 && query_cols[0] == "*" {
@@ -858,7 +889,7 @@ impl DiskHandler {
                     new_row.push(table_row[j].clone());
                 }
             }
-            if !without_timestamp{
+            if !without_timestamp {
                 new_row.push(table_row.last().unwrap_or(&"0".to_string()).to_string())
             }
         }
@@ -926,9 +957,7 @@ impl DiskHandler {
     }
 
     /// Borra todas las filas existentes, excepto la de los nombres de las columnas y inserta todas las filas pasadas por parametro
-    pub fn actualize_all_rows(_rows: &str){
+    pub fn actualize_all_rows(_rows: &str) {
         todo!() // ESTA SERIA LA FUNCION, HAY QUE VER LOS PARAMETROS QUE DEBERIA RECIBIR
     }
-
-
 }
