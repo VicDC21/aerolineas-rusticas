@@ -1522,6 +1522,8 @@ impl Node {
                 response_from_first_replica,
             )?;
         }
+        // Despues de que pase un tiempo y se hayan actualizado las tablas como corresponde, consultamos por las filas para el cliente
+
 
         Ok(true)
     }
