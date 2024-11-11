@@ -1186,15 +1186,14 @@ impl Node {
     fn update_with_other_nodes(&mut self, update: Update, request: &[u8]) -> Result<Vec<Byte>> {
         let table_name = update.table_name.get_name();
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
-        let mut results_from_nodes: Vec<u8> = Vec::new();
         let mut consulted_nodes: Vec<String> = Vec::new();
 
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(&partition_key_value);
 
             if !consulted_nodes.contains(&partition_key_value) {
-                let current_response = if node_id == self.id {
-                    self.process_update(&update)?
+                if node_id == self.id {
+                    self.process_update(&update)?;
                 } else {
                     let res = self.send_message_and_wait_response(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -1203,23 +1202,22 @@ impl Node {
                     )?;
                     match Opcode::try_from(res[4])? {
                         Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-                        Opcode::Result => res,
+                        Opcode::Result => (),
                         _ => {
                             return Err(Error::ServerError(
                                 "Nodo manda opcode inesperado".to_string(),
                             ))
                         }
                     }
-                };
+                }
 
-                results_from_nodes.extend_from_slice(&current_response);
                 consulted_nodes.push(partition_key_value.clone());
                 let replication_factor = self.get_replicas_from_table_name(&table_name)?;
                 self.replicate_update_in_other_nodes(replication_factor, node_id, request)?;
             }
         }
 
-        Ok(results_from_nodes)
+        Ok(self.create_result_void())
     }
 
     fn replicate_update_in_other_nodes(
