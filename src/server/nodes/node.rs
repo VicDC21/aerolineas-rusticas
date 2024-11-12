@@ -723,7 +723,6 @@ impl Node {
                         }
                         let internal_metadata =
                             self.read_metadata_from_internal_request(internal_metadata);
-                        println!("la metadata es: {:?}", internal_metadata);
                         self.handle_internal_statement(statement, internal_metadata)
                     } else {
                         self.handle_statement(
@@ -1054,42 +1053,48 @@ impl Node {
         create_table: CreateTable,
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
+        let default_keyspace_name = match self.get_default_keyspace() {
+            Ok(keyspace) => keyspace.get_name().to_string(),
+            Err(err) => return Err(err),
+        };
+        let keyspace_name = match create_table.name.get_keyspace() {
+            Some(ks) => ks,
+            None => default_keyspace_name,
+        };
+        let keyspace = match self.keyspaces.get(&keyspace_name) {
+            Some(value) => value,
+            None => {
+                return Err(Error::ServerError(format!(
+                    "No hay una keyspace definida con el nombre {}",
+                    keyspace_name
+                )))
+            }
+        };
+        let quantity_replicas = match keyspace.simple_replicas() {
+            Some(value) => value,
+            None => {
+                return Err(Error::ServerError(
+                    "No se usa una estrategia de replicacion simple".to_string(),
+                ))
+            } // TODO: Soportar el otro tipo de replicación
+        };
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in START_ID..LAST_ID {
-            let node_id: u8 =
-                next_node_to_replicate_data(self.id, actual_node - START_ID, START_ID, LAST_ID);
 
-            let a = &self.default_keyspace_name;
-            let keyspace = match self.keyspaces.get(a) {
-                Some(value) => value,
-                None => {
-                    return Err(Error::ServerError(
-                        "No hay una keyspace definida".to_string(),
-                    ))
-                }
-            };
-            let quantity_replicas = match keyspace.simple_replicas() {
-                Some(value) => value,
-                None => {
-                    return Err(Error::ServerError(
-                        "No se usa una estrategia de replicacion simple".to_string(),
-                    ))
-                } // Despues cambiamos esto
-            };
-
+        for actual_node_id in START_ID..LAST_ID {
             for i in 0..quantity_replicas {
-                let next_node_id = next_node_to_replicate_data(node_id, i as u8, 10, 15);
-                response = if node_id != self.id {
+                let next_node_id =
+                    next_node_to_replicate_data(actual_node_id, i as u8, START_ID, LAST_ID);
+                response = if next_node_id != self.id {
                     let request_with_metadata =
-                        self.add_metadata_to_internal_request(request, None, Some(next_node_id));
+                        self.add_metadata_to_internal_request(request, None, Some(actual_node_id));
                     self.send_message_and_wait_response(
                         request_with_metadata,
-                        node_id,
+                        next_node_id,
                         PortType::Priv,
                         true,
                     )?
                 } else {
-                    self.process_internal_create_table_statement(&create_table, next_node_id)?
+                    self.process_internal_create_table_statement(&create_table, actual_node_id)?
                 }
             }
         }
