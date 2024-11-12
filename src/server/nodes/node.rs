@@ -170,20 +170,27 @@ impl Node {
             .insert(keyspace.get_name().to_string(), keyspace);
     }
 
+    /// Obtiene un keyspace dado el nombre de una tabla.
     fn get_keyspace(&self, table_name: &str) -> Result<&Keyspace> {
-        let table = match self.tables.get(table_name) {
-            Some(table) => table,
-            None => {
-                return Err(Error::ServerError(
-                    "La tabla solicitada no existe".to_string(),
-                ))
-            }
-        };
+        let table = self.get_table(table_name)?;
+
         match self.keyspaces.get(table.keyspace.as_str()) {
             Some(keyspace) => Ok(keyspace),
-            None => Err(Error::ServerError(
-                "El keyspace solicitado no existe".to_string(),
-            )),
+            None => Err(Error::ServerError(format!(
+                "El keyspace `{}` no existe",
+                table.keyspace.as_str()
+            ))),
+        }
+    }
+
+    /// Obtiene un keyspace dado su nombre.
+    fn get_keyspace_from_name(&self, keyspace_name: &str) -> Result<&Keyspace> {
+        match self.keyspaces.get(keyspace_name) {
+            Some(keyspace) => Ok(keyspace),
+            None => Err(Error::ServerError(format!(
+                "El keyspace `{}` no existe",
+                keyspace_name
+            ))),
         }
     }
 
@@ -191,16 +198,46 @@ impl Node {
         self.keyspaces.contains_key(keyspace_name)
     }
 
-    fn set_default_keyspace(&mut self, keyspace_name: String) {
-        self.default_keyspace_name = keyspace_name;
+    fn set_default_keyspace_name(&mut self, keyspace_name: String) -> Result<()> {
+        if self.keyspace_exists(&keyspace_name) {
+            self.default_keyspace_name = keyspace_name;
+            Ok(())
+        } else {
+            Err(Error::ServerError(format!(
+                "El keyspace `{}` no existe",
+                keyspace_name
+            )))
+        }
     }
 
-    fn get_default_keyspace(&self) -> Result<&Keyspace> {
-        match self.keyspaces.get(&self.default_keyspace_name) {
-            Some(keyspace) => Ok(keyspace),
-            None => Err(Error::ServerError(
-                "El keyspace por defecto no existe".to_string(),
-            )),
+    fn get_default_keyspace_name(&self) -> Result<String> {
+        if !self.default_keyspace_name.is_empty() {
+            Ok(self.default_keyspace_name.clone())
+        } else {
+            Err(Error::ServerError(
+                "No se ha seleccionado un keyspace por defecto".to_string(),
+            ))
+        }
+    }
+
+    fn choose_available_keyspace_name(
+        &self,
+        preferred_keyspace_name: Option<String>,
+    ) -> Result<String> {
+        let default_keyspace_name = self.get_default_keyspace_name()?;
+
+        match preferred_keyspace_name {
+            Some(preferred_keyspace_name) => {
+                if self.keyspace_exists(&preferred_keyspace_name) {
+                    Ok(preferred_keyspace_name.to_string())
+                } else {
+                    Err(Error::ServerError(format!(
+                        "El keyspace llamado {} no existe",
+                        preferred_keyspace_name
+                    )))
+                }
+            }
+            None => Ok(default_keyspace_name),
         }
     }
 
@@ -618,7 +655,7 @@ impl Node {
                     &self.storage_addr,
                     &table_name,
                     keyspace_name,
-                    &self.default_keyspace_name,
+                    &self.get_default_keyspace_name()?,
                     node_id,
                     &rows_as_string,
                 )?;
@@ -648,7 +685,7 @@ impl Node {
         };
         let res = DiskHandler::get_rows_with_timestamp_as_string(
             &self.storage_addr,
-            &self.default_keyspace_name,
+            &self.get_default_keyspace_name()?,
             &select,
             node_number,
         )?;
@@ -851,11 +888,11 @@ impl Node {
     ) -> Result<Vec<Byte>> {
         let name = keyspace_name.get_name().to_string();
         if self.keyspaces.contains_key(&name) {
-            self.set_default_keyspace(name.clone());
+            self.set_default_keyspace_name(name.clone())?;
             Ok(self.create_result_void())
         } else {
             if self.check_if_keyspace_exists(keyspace_name) {
-                self.set_default_keyspace(name.clone());
+                self.set_default_keyspace_name(name.clone())?;
                 return Ok(self.create_result_void());
             }
             Err(Error::ServerError(
@@ -1029,10 +1066,8 @@ impl Node {
         create_table: &CreateTable,
         node_number: u8,
     ) -> Result<Vec<Byte>> {
-        let default_keyspace_name = match self.get_default_keyspace() {
-            Ok(keyspace) => keyspace.get_name().to_string(),
-            Err(err) => return Err(err),
-        };
+        let default_keyspace_name = self.get_default_keyspace_name()?;
+
         match DiskHandler::create_table(
             create_table,
             &self.storage_addr,
@@ -1053,23 +1088,9 @@ impl Node {
         create_table: CreateTable,
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
-        let default_keyspace_name = match self.get_default_keyspace() {
-            Ok(keyspace) => keyspace.get_name().to_string(),
-            Err(err) => return Err(err),
-        };
-        let keyspace_name = match create_table.name.get_keyspace() {
-            Some(ks) => ks,
-            None => default_keyspace_name,
-        };
-        let keyspace = match self.keyspaces.get(&keyspace_name) {
-            Some(value) => value,
-            None => {
-                return Err(Error::ServerError(format!(
-                    "No hay una keyspace definida con el nombre {}",
-                    keyspace_name
-                )))
-            }
-        };
+        let keyspace_name =
+            self.choose_available_keyspace_name(create_table.name.get_keyspace())?;
+        let keyspace = self.get_keyspace_from_name(&keyspace_name)?;
         let quantity_replicas = match keyspace.simple_replicas() {
             Some(value) => value,
             None => {
@@ -1144,7 +1165,7 @@ impl Node {
             select,
             &self.storage_addr,
             table,
-            &self.default_keyspace_name,
+            &self.get_default_keyspace_name()?,
             node_id,
         )?;
         let mut response: Vec<Byte> = Vec::new();
@@ -1171,7 +1192,7 @@ impl Node {
             insert,
             &self.storage_addr,
             table,
-            &self.default_keyspace_name,
+            &self.get_default_keyspace_name()?,
             timestamp,
             node_number,
         )?;
@@ -1225,7 +1246,7 @@ impl Node {
             update,
             &self.storage_addr,
             table,
-            &self.default_keyspace_name,
+            &self.get_default_keyspace_name()?,
             node_number,
         )?;
         Ok(self.create_result_void())
@@ -1800,7 +1821,7 @@ impl Node {
             delete,
             &self.storage_addr,
             table,
-            &self.default_keyspace_name,
+            &self.get_default_keyspace_name()?,
             node_number,
         )?;
 
