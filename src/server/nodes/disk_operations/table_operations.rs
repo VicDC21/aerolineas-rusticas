@@ -23,13 +23,21 @@ impl TableOperations {
         let file = OpenOptions::new()
             .read(true)
             .open(path.full_path())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|_| {
+                Error::ServerError(format!(
+                    "No se pudo abrir {} para lectura",
+                    path.full_path()
+                ))
+            })?;
 
         let mut reader = BufReader::new(&file);
         let mut header = String::new();
-        reader
-            .read_line(&mut header)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+        reader.read_line(&mut header).map_err(|_| {
+            Error::ServerError(format!(
+                "No se pudo abrir {} para escritura",
+                path.full_path()
+            ))
+        })?;
 
         if header.trim().is_empty() {
             return Err(Error::ServerError(format!(
@@ -62,7 +70,12 @@ impl TableOperations {
         let file = OpenOptions::new()
             .read(true)
             .open(self.path.full_path())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|_| {
+                Error::ServerError(format!(
+                    "No se pudo abrir {} para lectura",
+                    self.path.full_path()
+                ))
+            })?;
 
         let reader = BufReader::new(file);
         let mut rows = Vec::new();
@@ -92,7 +105,8 @@ impl TableOperations {
             content.push('\n');
         }
 
-        std::fs::write(self.path.full_path(), content)
-            .map_err(|e| Error::ServerError(e.to_string()))
+        std::fs::write(self.path.full_path(), content).map_err(|_| {
+            Error::ServerError(format!("No se pudo escribir en {}", self.path.full_path()))
+        })
     }
 }

@@ -44,20 +44,6 @@ use crate::protocol::{
 use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
-    nodes::{
-        port_type::PortType,
-        states::{
-            appstatus::AppStatus,
-            endpoints::EndpointState,
-            heartbeat::{
-                HeartbeatState, {GenType, VerType},
-            },
-        },
-        utils::{
-            hash_value, hashmap_to_string, hashmap_vec_to_string, send_to_node, string_to_hashmap,
-            string_to_hashmap_vec,
-        },
-    },
     traits::Serializable,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
@@ -66,10 +52,22 @@ use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::
 use super::{
     addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
-    graph::{N_NODES, START_ID},
+    graph::{LAST_ID, N_NODES, START_ID},
     keyspace_metadata::keyspace::Keyspace,
+    port_type::PortType,
+    states::{
+        appstatus::AppStatus,
+        endpoints::EndpointState,
+        heartbeat::{
+            HeartbeatState, {GenType, VerType},
+        },
+    },
     table_metadata::table::Table,
-    utils::{divide_range, send_to_node_and_wait_response},
+    utils::{
+        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string,
+        next_node_to_replicate_data, send_to_node, send_to_node_and_wait_response,
+        string_to_hashmap, string_to_hashmap_vec,
+    },
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -805,17 +803,14 @@ impl Node {
             DdlStatement::DropKeyspaceStatement(drop_keyspace) => {
                 self.process_internal_drop_keyspace_statement(&drop_keyspace)
             }
-            DdlStatement::CreateTableStatement(create_table) => {
-                println!("intentar crear tabla");
-                match internal_metadata.1 {
-                    Some(node_number) => {
-                        self.process_internal_create_table_statement(&create_table, node_number)
-                    }
-                    None => Err(Error::ServerError(
-                        "No se paso metadata necesaria".to_string(),
-                    )),
+            DdlStatement::CreateTableStatement(create_table) => match internal_metadata.1 {
+                Some(node_number) => {
+                    self.process_internal_create_table_statement(&create_table, node_number)
                 }
-            }
+                None => Err(Error::ServerError(
+                    "No se paso metadata necesaria".to_string(),
+                )),
+            },
             DdlStatement::AlterTableStatement(_alter_table) => todo!(),
             DdlStatement::DropTableStatement(_drop_table) => todo!(),
             DdlStatement::TruncateStatement(_truncate) => todo!(),
@@ -835,12 +830,8 @@ impl Node {
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
         for actual_node in 0..5 {
-            let node_id = self.next_node_to_replicate_data(
-                self.id,
-                actual_node as Byte,
-                START_ID,
-                START_ID + N_NODES,
-            );
+            let node_id =
+                next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
             response = if node_id != self.id {
                 self.send_message_and_wait_response(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -881,12 +872,8 @@ impl Node {
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
         for actual_node in 0..N_NODES {
-            let node_id = self.next_node_to_replicate_data(
-                self.id,
-                actual_node as Byte,
-                START_ID,
-                START_ID + N_NODES,
-            );
+            let node_id =
+                next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
             response = if node_id != self.id {
                 self.send_message_and_wait_response(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -928,12 +915,8 @@ impl Node {
 
         let mut responses = Vec::new();
         for actual_node in 0..5 {
-            let node_id = self.next_node_to_replicate_data(
-                self.id,
-                actual_node as Byte,
-                START_ID,
-                START_ID + N_NODES,
-            );
+            let node_id =
+                next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
 
             let response = if node_id != self.id {
                 self.send_message_and_wait_response(
@@ -992,12 +975,8 @@ impl Node {
 
         let mut responses = Vec::new();
         for actual_node in 0..5 {
-            let node_id = self.next_node_to_replicate_data(
-                self.id,
-                actual_node as Byte,
-                START_ID,
-                START_ID + N_NODES,
-            );
+            let node_id =
+                next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
 
             let response = if node_id != self.id {
                 self.send_message_and_wait_response(
@@ -1076,13 +1055,10 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in START_ID..(N_NODES + START_ID) {
-            let node_id = self.next_node_to_replicate_data(
-                self.id,
-                actual_node as Byte,
-                START_ID,
-                START_ID + N_NODES,
-            );
+        for actual_node in START_ID..LAST_ID {
+            let node_id: u8 =
+                next_node_to_replicate_data(self.id, actual_node - START_ID, START_ID, LAST_ID);
+
             let a = &self.default_keyspace_name;
             let keyspace = match self.keyspaces.get(a) {
                 Some(value) => value,
@@ -1100,8 +1076,9 @@ impl Node {
                     ))
                 } // Despues cambiamos esto
             };
+
             for i in 0..quantity_replicas {
-                let next_node_id = self.next_node_to_replicate_data(node_id, i as u8, 10, 15);
+                let next_node_id = next_node_to_replicate_data(node_id, i as u8, 10, 15);
                 response = if node_id != self.id {
                     let request_with_metadata =
                         self.add_metadata_to_internal_request(request, None, Some(next_node_id));
@@ -1118,6 +1095,7 @@ impl Node {
         }
         Ok(response)
     }
+
     /// Maneja una declaración DML.
     fn handle_internal_dml_statement(
         &mut self,
@@ -1341,7 +1319,7 @@ impl Node {
 
         for i in 0..replication_factor {
             let node_to_replicate =
-                self.next_node_to_replicate_data(node_id, i as Byte, START_ID, START_ID + N_NODES);
+                next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
             response = if node_to_replicate != self.id {
                 let request_with_metadata =
                     self.add_metadata_to_internal_request(request, Some(timestamp), Some(node_id));
@@ -1534,7 +1512,7 @@ impl Node {
     ) -> Result<()> {
         for i in 0..replication_factor {
             let node_to_replicate =
-                self.next_node_to_replicate_data(node_id, i as Byte, START_ID, START_ID + N_NODES);
+                next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
 
             if node_to_replicate != node_id {
                 let replica_response = self.send_message_and_wait_response(
@@ -1558,17 +1536,6 @@ impl Node {
             }
         }
         Ok(())
-    }
-
-    fn next_node_to_replicate_data(
-        &self,
-        first_node_to_replicate: Byte,
-        node_iterator: Byte,
-        min: Byte,
-        max: Byte,
-    ) -> Byte {
-        let nodes_range = max - min;
-        min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
     }
 
     fn select_with_other_nodes(
@@ -1681,8 +1648,7 @@ impl Node {
         let first_hashed_value = hash_value(response_from_first_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
         for i in 1..consistency_number {
-            let node_to_consult =
-                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+            let node_to_consult = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
             let opcode_with_hashed_value = self.send_message_and_wait_response(
                 SvAction::DigestReadRequest(request.to_vec()).as_bytes(),
                 node_to_consult,
@@ -1734,8 +1700,7 @@ impl Node {
         let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![];
 
         for i in 0..consistency_number {
-            let node_to_consult =
-                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+            let node_to_consult = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
             let res = if node_to_consult == self.id {
                 self.exec_direct_read_request(request.to_vec())?
             } else {
@@ -1789,8 +1754,7 @@ impl Node {
             .collect::<Vec<String>>()
             .join("\n");
         for i in 0..consistency_number {
-            let node_to_repair =
-                self.next_node_to_replicate_data(node_id, i as u8, START_ID, START_ID + N_NODES);
+            let node_to_repair = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
             if node_to_repair == self.id {
                 DiskHandler::actualize_all_rows(&rows_as_string);
                 self.exec_direct_read_request(request.to_vec())?
@@ -1908,7 +1872,7 @@ impl Node {
     ) -> Result<()> {
         for i in 0..replication_factor {
             let node_to_replicate =
-                self.next_node_to_replicate_data(node_id, i as Byte, START_ID, START_ID + N_NODES);
+                next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
 
             if node_to_replicate != self.id {
                 self.send_message_and_wait_response(

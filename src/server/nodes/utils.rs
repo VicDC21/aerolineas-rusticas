@@ -31,6 +31,17 @@ pub fn hash_value<T: Hash>(value: T) -> u64 {
     hasher.finish()
 }
 
+/// Devuelve el ID del siguiente nodo donde se deberían replicar datos.
+pub fn next_node_to_replicate_data(
+    first_node_to_replicate: Byte,
+    node_iterator: Byte,
+    min: Byte,
+    max: Byte,
+) -> Byte {
+    let nodes_range = max - min;
+    min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
+}
+
 /// Manda un mensaje a un nodo específico.
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;

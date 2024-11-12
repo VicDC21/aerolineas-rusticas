@@ -43,6 +43,8 @@ pub type NodeHandle = JoinHandle<Result<()>>;
 pub const N_NODES: Byte = 5;
 /// El ID con el que comenzar a contar los nodos.
 pub const START_ID: NodeId = 10;
+/// El último ID de los nodos, basado en la cantidad de nodos del clúster.
+pub const LAST_ID: NodeId = START_ID + N_NODES;
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// La cantidad de nodos que comenzarán su intercambio de _gossip_ con otros [n](crate::server::nodes::graph::HANDSHAKE_NEIGHBOURS) nodos.
