@@ -104,6 +104,29 @@ pub struct Airport {
 }
 
 impl Airport {
+    /// Crea una entidad vacía para _matchear_.
+    pub fn dummy() -> Self {
+        Self {
+            id: 0,
+            ident: "".to_string(),
+            airport_type: AirportType::Closed,
+            name: "".to_string(),
+            position: Position::from_lat_lon(0., 0.),
+            elevation_ft: None,
+            continent: ContinentType::Oceania, // porque no existe, es un mito
+            iso_country: "".to_string(),
+            iso_region: "".to_string(),
+            municipality: "".to_string(),
+            scheduled_service: false,
+            gps_code: "".to_string(),
+            iata_code: None,
+            local_code: None,
+            home_link: None,
+            wikipedia_link: None,
+            keywords: Vec::<String>::new(),
+        }
+    }
+
     /// Trata de parsear las coordenadas a partir de strings.
     pub fn coords(lat_str: &str, lon_str: &str) -> Result<(f64, f64)> {
         let cur_lat = match lat_str.parse::<f64>() {

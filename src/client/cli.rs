@@ -439,8 +439,9 @@ impl Client {
             let mut displacement: usize = 0;
             let col_name = parse_bytes_to_string(&request[actual_position..], &mut displacement)?;
             col_names.push(col_name);
+            actual_position += displacement;
             col_types.push(ColType::try_from(&request[actual_position..])?);
-            actual_position += displacement + 2;
+            actual_position += 2;
         }
         let rows_count = i32::from_be_bytes([
             request[actual_position],
@@ -517,9 +518,9 @@ impl Client {
         let str_value = std::str::from_utf8(&request[*actual_position..right_position])
             .map_err(|_| Error::TruncateError("Error al transformar bytes a utf8".to_string()))?;
 
-        str_value
-            .parse::<T>()
-            .map_err(|e| Error::TruncateError(format!("Error al parsear string: {}", e)))
+        str_value.parse::<T>().map_err(|e| {
+            Error::TruncateError(format!("Error al parsear string '{}': {}", str_value, e))
+        })
     }
 
     fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {
