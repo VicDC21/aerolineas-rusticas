@@ -155,9 +155,10 @@ impl Node {
     fn get_table(&self, table_name: &str) -> Result<&Table> {
         match self.tables.get(table_name) {
             Some(table) => Ok(table),
-            None => Err(Error::ServerError(
-                "La tabla solicitada no existe".to_string(),
-            )),
+            None => Err(Error::ServerError(format!(
+                "La tabla llamada {} no existe",
+                table_name
+            ))),
         }
     }
 
@@ -1215,9 +1216,10 @@ impl Node {
             match self.tables_and_partitions_keys_values.get(table_name) {
                 Some(partition_values) => partition_values.clone(),
                 None => {
-                    return Err(Error::SyntaxError(
-                        "La tabla solicitada no existe".to_string(),
-                    ))
+                    return Err(Error::ServerError(format!(
+                        "La tabla llamada {} no existe",
+                        table_name
+                    )))
                 }
             };
         let insert_columns = insert.get_columns_names();
