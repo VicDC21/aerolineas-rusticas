@@ -811,7 +811,7 @@ impl DiskHandler {
         table_cols: &[&str],
         timestamp: i64,
     ) -> String {
-        let mut values_to_insert: Vec<&str> = vec![""; table_cols.len()];
+        let mut values_to_insert: Vec<&str> = vec![""; table_cols.len() - 1]; // - 1 porque hay que ignorar la columna del timestamp, se agrega luego
 
         for i in 0..query_cols.len() {
             if let Some(j) = table_cols.iter().position(|c| *c == query_cols[i]) {
