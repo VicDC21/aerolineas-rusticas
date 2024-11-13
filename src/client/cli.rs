@@ -294,6 +294,8 @@ impl Client {
 
         // Primero leer el header completo
         while response.len() < HEADER_SIZE {
+            println!("El response ahora es {:?}", response);
+
             if std::time::Instant::now() > deadline {
                 return Err(Error::ServerError("Timeout al leer header".into()));
             }

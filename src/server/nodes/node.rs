@@ -1651,6 +1651,7 @@ impl Node {
         }
     }
 
+
     /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
     ///
     /// Devuelve un booleano indicando si _read-repair_ fue ejecutado o no.
@@ -1668,6 +1669,7 @@ impl Node {
         }
         let first_hashed_value = hash_value(response_from_first_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
+
         for i in 1..consistency_number {
             let node_to_consult = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
             let opcode_with_hashed_value = self.send_message_and_wait_response(
@@ -1676,8 +1678,8 @@ impl Node {
                 PortType::Priv,
                 true,
             )?;
-
-            if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result {
+            let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
+            if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result && first_hashed_value == res_hashed_value{
                 *consistency_counter += 1;
                 responses.push(opcode_with_hashed_value[1..].to_vec());
             }
@@ -2019,6 +2021,18 @@ impl Node {
             } // TODO: Soportar el otro tipo de replicación
         };
         Ok(replicas)
+    }
+
+    fn get_digest_read_request_value(&self, opcode_with_hashed_value: &[Byte]) -> Result<u64>{
+        if opcode_with_hashed_value.len() != 9{ // OpCode + i64
+            return Err(Error::ServerError("Se esperaba un vec de largo 9".to_string()))
+        }
+        let array = match opcode_with_hashed_value[1..9].try_into().ok(){
+            Some(value) => value,
+            None => return Err(Error::ServerError("No se pudo transformar el vector a i64".to_string()))
+        };
+        let res_hashed_value = u64::from_be_bytes(array);
+        Ok(res_hashed_value)
     }
 
     fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
