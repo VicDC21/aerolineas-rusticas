@@ -1092,16 +1092,8 @@ impl Node {
         let keyspace_name =
             self.choose_available_keyspace_name(create_table.name.get_keyspace())?;
         let keyspace = self.get_keyspace_from_name(&keyspace_name)?;
-        let quantity_replicas = match keyspace.simple_replicas() {
-            Some(value) => value,
-            None => {
-                return Err(Error::ServerError(
-                    "No se usa una estrategia de replicacion simple".to_string(),
-                ))
-            } // TODO: Soportar el otro tipo de replicación
-        };
+        let quantity_replicas = self.get_quantity_of_replicas_from_keyspace(keyspace)?;
         let mut response: Vec<Byte> = Vec::new();
-
         for actual_node_id in START_ID..LAST_ID {
             for i in 0..quantity_replicas {
                 let next_node_id =
@@ -1340,12 +1332,12 @@ impl Node {
         let partition_key_value = self
             .get_partition_key_value_from_insert_statement(&insert, self.get_table(&table_name)?)?;
         let node_id = self.select_node(&partition_key_value);
-        let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-        let consistency_number = consistency_level.as_usize(N_NODES as usize);
+        let replication_factor_quantity = self.get_replicas_from_table_name(&table_name)?;
+        let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
         let mut consistency_counter = 0;
         let mut wait_response = true;
 
-        for i in 0..replication_factor {
+        for i in 0..replication_factor_quantity {
             let node_to_replicate =
                 next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
             response = if node_to_replicate != self.id {
@@ -1578,7 +1570,8 @@ impl Node {
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?;
         let mut consulted_nodes: Vec<Byte> = Vec::new();
         let wait_response = true;
-        let consistency_number = consistency_level.as_usize(N_NODES as usize);
+        let replication_factor_quantity = self.get_replicas_from_table_name(&table_name)?;
+        let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
         let mut read_repair_executed = false;
 
         for partition_key_value in partitions_keys_to_nodes {
@@ -2014,6 +2007,18 @@ impl Node {
             .join("\n");
 
         Ok(new_ordered_res.as_bytes().to_vec())
+    }
+
+    fn get_quantity_of_replicas_from_keyspace(&self, keyspace: &Keyspace) -> Result<u32>{
+        let replicas = match keyspace.simple_replicas() {
+            Some(value) => value,
+            None => {
+                return Err(Error::ServerError(
+                    "No se usa una estrategia de replicacion simple".to_string(),
+                ))
+            } // TODO: Soportar el otro tipo de replicación
+        };
+        Ok(replicas)
     }
 
     fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
