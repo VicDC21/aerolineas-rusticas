@@ -10,4 +10,5 @@ pub mod interface;
 pub mod parser;
 pub mod protocol;
 pub mod server;
+pub mod simulator;
 pub mod tokenizer;

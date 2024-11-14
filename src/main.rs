@@ -1,3 +1,4 @@
+use aerolineas::simulator::flight_simulator::run_sim;
 use aerolineas::{
     client::cli::Client, interface::run::run_app, protocol::aliases::results::Result,
     server::nodes::graph::NodesGraph,
@@ -34,9 +35,13 @@ fn main() {
         "gui" => {
             print_err(run_app());
         }
+        "sim" => {
+            let client = Client::default();
+            print_err(run_sim(client));
+        }
         _ => {
             println!(
-                "Se debe elegir o 'sv', 'cli' o 'gui', pero no '{}'...",
+                "Se debe elegir 'sv', 'cli', 'gui' o 'sim', pero no '{}'...",
                 argv[1]
             );
         }
