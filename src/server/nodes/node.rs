@@ -1100,7 +1100,7 @@ impl Node {
                     next_node_to_replicate_data(actual_node_id, i as u8, START_ID, LAST_ID);
                 response = if next_node_id != self.id {
                     let request_with_metadata =
-                        self.add_metadata_to_internal_request(request, None, Some(actual_node_id));
+                        self.add_metadata_to_internal_request_of_any_kind(SvAction::InternalQuery(request.to_vec()).as_bytes(), None, Some(actual_node_id));
                     self.send_message_and_wait_response(
                         request_with_metadata,
                         next_node_id,
@@ -1342,7 +1342,7 @@ impl Node {
                 next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
             response = if node_to_replicate != self.id {
                 let request_with_metadata =
-                    self.add_metadata_to_internal_request(request, Some(timestamp), Some(node_id));
+                    self.add_metadata_to_internal_request_of_any_kind(SvAction::InternalQuery(request.to_vec()).as_bytes(), Some(timestamp), Some(node_id));
                 let res = self.send_message_and_wait_response(
                     request_with_metadata,
                     node_to_replicate,
@@ -1407,9 +1407,9 @@ impl Node {
     }
 
     /// Agrega metadata, como el timestamp o el node_id si es necesario, sino no agrega estos campos.
-    fn add_metadata_to_internal_request(
+    fn add_metadata_to_internal_request_of_any_kind(
         &self,
-        original_request: &[Byte],
+        mut sv_action_with_request: Vec<Byte>,
         timestamp: Option<i64>,
         node_id: Option<Byte>,
     ) -> Vec<Byte> {
@@ -1420,10 +1420,8 @@ impl Node {
         if let Some(value) = node_id {
             metadata.push(value)
         };
-        let mut request_with_metadata =
-            SvAction::InternalQuery(original_request.to_vec()).as_bytes();
-        request_with_metadata.append(&mut metadata);
-        request_with_metadata
+        sv_action_with_request.append(&mut metadata);
+        sv_action_with_request
     }
 
     fn verify_succesful_response(&self, response: &[Byte]) -> bool {
@@ -1565,7 +1563,6 @@ impl Node {
         consistency_level: &Consistency,
     ) -> Result<Vec<Byte>> {
         let table_name = select.from.get_name();
-        let timestamp = Utc::now().timestamp();
         let mut results_from_another_nodes: Vec<Byte> = Vec::new();
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?;
         let mut consulted_nodes: Vec<Byte> = Vec::new();
@@ -1581,9 +1578,9 @@ impl Node {
                 let actual_result = if node_id == self.id {
                     self.process_select(&select, node_id)?
                 } else {
-                    let request_with_metadata = self.add_metadata_to_internal_request(
-                        request,
-                        Some(timestamp),
+                    let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
+                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        None,
                         Some(node_id),
                     );
                     self.send_message_and_wait_response(
@@ -1612,7 +1609,7 @@ impl Node {
                     &select,
                 )?;
                 consulted_nodes.push(node_id);
-                // consistency_counter += 1;
+                consistency_counter += 1;
 
                 match self.consult_replica_nodes(
                     node_id,
@@ -1647,6 +1644,7 @@ impl Node {
                 false,
             )?)
         } else {
+            println!("La respuesta desde el server es: {:?}", results_from_another_nodes);
             Ok(results_from_another_nodes)
         }
     }
@@ -1672,12 +1670,18 @@ impl Node {
 
         for i in 1..consistency_number {
             let node_to_consult = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
-            let opcode_with_hashed_value = self.send_message_and_wait_response(
+            let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
                 SvAction::DigestReadRequest(request.to_vec()).as_bytes(),
+                None,
+                Some(node_id),
+            );
+            let opcode_with_hashed_value = self.send_message_and_wait_response(
+                request_with_metadata,
                 node_to_consult,
                 PortType::Priv,
                 true,
             )?;
+            // println!("El hashed del otro nodo en bytes es: {:?}", opcode_with_hashed_value);
             let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
             if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result && first_hashed_value == res_hashed_value{
                 *consistency_counter += 1;

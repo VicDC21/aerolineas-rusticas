@@ -96,7 +96,7 @@ pub fn send_to_node_and_wait_response(
         match stream.read_to_end(&mut buf) {
             Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
             Ok(i) => {
-                print!("Nodo [{}] recibió {} bytes: [ ", id, i);
+                print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
                 for byte in &buf[..] {
                     print!("{:#X} ", byte);
                 }
