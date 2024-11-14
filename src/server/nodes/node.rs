@@ -1099,8 +1099,11 @@ impl Node {
                 let next_node_id =
                     next_node_to_replicate_data(actual_node_id, i as u8, START_ID, LAST_ID);
                 response = if next_node_id != self.id {
-                    let request_with_metadata =
-                        self.add_metadata_to_internal_request_of_any_kind(SvAction::InternalQuery(request.to_vec()).as_bytes(), None, Some(actual_node_id));
+                    let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
+                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                        None,
+                        Some(actual_node_id),
+                    );
                     self.send_message_and_wait_response(
                         request_with_metadata,
                         next_node_id,
@@ -1341,8 +1344,11 @@ impl Node {
             let node_to_replicate =
                 next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
             response = if node_to_replicate != self.id {
-                let request_with_metadata =
-                    self.add_metadata_to_internal_request_of_any_kind(SvAction::InternalQuery(request.to_vec()).as_bytes(), Some(timestamp), Some(node_id));
+                let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    Some(timestamp),
+                    Some(node_id),
+                );
                 let res = self.send_message_and_wait_response(
                     request_with_metadata,
                     node_to_replicate,
@@ -1648,7 +1654,6 @@ impl Node {
         }
     }
 
-
     /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
     ///
     /// Devuelve un booleano indicando si _read-repair_ fue ejecutado o no.
@@ -1682,7 +1687,9 @@ impl Node {
             )?;
             // println!("El hashed del otro nodo en bytes es: {:?}", opcode_with_hashed_value);
             let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
-            if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result && first_hashed_value == res_hashed_value{
+            if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result
+                && first_hashed_value == res_hashed_value
+            {
                 *consistency_counter += 1;
                 responses.push(opcode_with_hashed_value[1..].to_vec());
             }
@@ -2014,7 +2021,7 @@ impl Node {
         Ok(new_ordered_res.as_bytes().to_vec())
     }
 
-    fn get_quantity_of_replicas_from_keyspace(&self, keyspace: &Keyspace) -> Result<u32>{
+    fn get_quantity_of_replicas_from_keyspace(&self, keyspace: &Keyspace) -> Result<u32> {
         let replicas = match keyspace.simple_replicas() {
             Some(value) => value,
             None => {
@@ -2026,13 +2033,20 @@ impl Node {
         Ok(replicas)
     }
 
-    fn get_digest_read_request_value(&self, opcode_with_hashed_value: &[Byte]) -> Result<u64>{
-        if opcode_with_hashed_value.len() != 9{ // OpCode + i64
-            return Err(Error::ServerError("Se esperaba un vec de largo 9".to_string()))
+    fn get_digest_read_request_value(&self, opcode_with_hashed_value: &[Byte]) -> Result<u64> {
+        if opcode_with_hashed_value.len() != 9 {
+            // OpCode + i64
+            return Err(Error::ServerError(
+                "Se esperaba un vec de largo 9".to_string(),
+            ));
         }
-        let array = match opcode_with_hashed_value[1..9].try_into().ok(){
+        let array = match opcode_with_hashed_value[1..9].try_into().ok() {
             Some(value) => value,
-            None => return Err(Error::ServerError("No se pudo transformar el vector a i64".to_string()))
+            None => {
+                return Err(Error::ServerError(
+                    "No se pudo transformar el vector a i64".to_string(),
+                ))
+            }
         };
         let res_hashed_value = u64::from_be_bytes(array);
         Ok(res_hashed_value)

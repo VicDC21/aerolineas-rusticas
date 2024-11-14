@@ -66,7 +66,7 @@ impl TableOperations {
     }
 
     /// Saca la columna del timestamp de las filas
-    pub fn remove_row_timestamp_column(&mut self){
+    pub fn remove_row_timestamp_column(&mut self) {
         self.columns.pop();
     }
 

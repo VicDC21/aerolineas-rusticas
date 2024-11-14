@@ -62,9 +62,9 @@ impl DiskHandler {
     /// Crea una carpeta de almacenamiento para el nodo.
     /// Devuelve la ruta a dicho almacenamiento.
     pub fn new_node_storage(id: NodeId) -> String {
-        DiskHandler::create_directory(STORAGE_PATH);
+        Self::create_directory(STORAGE_PATH);
         let storage_addr: String = Self::get_node_storage(id);
-        DiskHandler::create_directory(&storage_addr);
+        Self::create_directory(&storage_addr);
         storage_addr
     }
 
@@ -257,12 +257,12 @@ impl DiskHandler {
         );
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
-        let mut rows = table_ops.read_rows(true)?;
+        let mut rows = table_ops.read_rows(false)?;
         let values = statement.get_values();
-        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values, timestamp);
+        let new_row = Self::generate_row_values(statement, &table_ops, &values, timestamp);
         if !rows.contains(&new_row) {
             rows.push(new_row.clone());
-            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
+            Self::order_and_save_rows(&table_ops, &mut rows, table)?;
             return Ok(new_row);
         }
         Ok(Vec::new())
@@ -351,7 +351,6 @@ impl DiskHandler {
             .collect();
 
         result.extend(result_rows);
-        
 
         Ok(Self::serialize_select_result(
             result,
@@ -418,7 +417,7 @@ impl DiskHandler {
         }
 
         if should_write {
-            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
+            Self::order_and_save_rows(&table_ops, &mut rows, table)?;
         }
 
         Ok(updated_rows.iter().map(|row| row.join(",")).collect())
@@ -448,16 +447,16 @@ impl DiskHandler {
         }
 
         let result = if statement.cols.is_empty() {
-            DiskHandler::process_full_row_delete(statement, &rows, &table_ops)?
+            Self::process_full_row_delete(statement, &rows, &table_ops)?
         } else {
-            DiskHandler::process_partial_row_delete(statement, &rows, &table_ops)?
+            Self::process_partial_row_delete(statement, &rows, &table_ops)?
         };
 
         let (modified_rows, deleted_data) = result;
 
         if !deleted_data.is_empty() || modified_rows.is_empty() {
             let mut rows_to_write = modified_rows.clone();
-            DiskHandler::order_and_save_rows(&table_ops, &mut rows_to_write, table)?;
+            Self::order_and_save_rows(&table_ops, &mut rows_to_write, table)?;
         }
 
         Ok(deleted_data)
@@ -623,7 +622,7 @@ impl DiskHandler {
         columns: &[String],
     ) -> Result<bool> {
         for row in rows {
-            if DiskHandler::verify_row_conditions(row, conditions, columns)? {
+            if Self::verify_row_conditions(row, conditions, columns)? {
                 return Ok(true);
             }
         }
@@ -647,7 +646,7 @@ impl DiskHandler {
                     let values = map_literal.get_values().as_slice();
                     let (term1, term2) = &values[0];
                     if term1.get_value() == "class" && term2.get_value() == "SimpleStrategy" {
-                        return DiskHandler::get_single_strategy_replication(values);
+                        return Self::get_single_strategy_replication(values);
                     } else if term1.get_value() == "class"
                         && term2.get_value() == "NetworkTopologyStrategy"
                     {
