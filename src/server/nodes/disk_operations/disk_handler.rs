@@ -321,7 +321,8 @@ impl DiskHandler {
             node_number,
         );
 
-        let table_ops = TableOperations::new(path)?;
+        let mut table_ops = TableOperations::new(path)?;
+        table_ops.remove_row_timestamp_column();
         let query_cols = statement.columns.get_columns();
 
         if query_cols.len() != 1 && query_cols[0] != "*" {
@@ -350,6 +351,7 @@ impl DiskHandler {
             .collect();
 
         result.extend(result_rows);
+        
 
         Ok(Self::serialize_select_result(
             result,

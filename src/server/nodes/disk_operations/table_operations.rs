@@ -46,7 +46,7 @@ impl TableOperations {
             )));
         }
 
-        let columns = header.trim().split(',').map(|s| s.to_string()).collect();
+        let columns: Vec<String> = header.trim().split(',').map(|s| s.to_string()).collect();
 
         Ok(Self { path, columns })
     }
@@ -63,6 +63,11 @@ impl TableOperations {
             }
         }
         Ok(())
+    }
+
+    /// Saca la columna del timestamp de las filas
+    pub fn remove_row_timestamp_column(&mut self){
+        self.columns.pop();
     }
 
     /// Lee las filas de la tabla, sin contar la columna extra del timestamp.

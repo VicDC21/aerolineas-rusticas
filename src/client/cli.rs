@@ -293,8 +293,6 @@ impl Client {
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         // Primero leer el header completo
         while response.len() < HEADER_SIZE {
-            println!("El response ahora es {:?}", response);
-
             if std::time::Instant::now() > deadline {
                 return Err(Error::ServerError("Timeout al leer header".into()));
             }
@@ -510,13 +508,9 @@ impl Client {
         T: std::str::FromStr,
         T::Err: std::fmt::Display,
     {
-        println!("la request del lenght es: {:?}", request);
         let value_len = self.get_length(request, *actual_position);
-        println!("value len es {}", value_len);
         *actual_position += 4;
-        println!("actual position es {}", actual_position);
         let right_position = *actual_position + value_len as usize;
-        println!("right position es {}", right_position);
         let str_value = std::str::from_utf8(&request[*actual_position..right_position])
             .map_err(|_| Error::TruncateError("Error al transformar bytes a utf8".to_string()))?;
 

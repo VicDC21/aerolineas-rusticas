@@ -1644,7 +1644,6 @@ impl Node {
                 false,
             )?)
         } else {
-            println!("La respuesta desde el server es: {:?}", results_from_another_nodes);
             Ok(results_from_another_nodes)
         }
     }
