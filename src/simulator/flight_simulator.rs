@@ -160,7 +160,7 @@ impl FlightSimulator {
         }
 
         let simulation_start = std::time::Instant::now();
-        let simulation_limit = Duration::from_secs(5); // Reducido a 5 segundos
+        let simulation_limit = Duration::from_secs(5);
 
         while flight.fuel_level > 0.0 && simulation_start.elapsed() < simulation_limit {
             flight.current_position.0 += rng.gen_range(-0.1..0.1);
@@ -212,12 +212,12 @@ impl FlightSimulator {
         client: &Client,
     ) -> Result<(), Error> {
         let incoming_query = format!(
-            "INSERT INTO vuelos_entrantes (id, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', {}, {}, {}, '{}', {}, {}, {});",
+            "INSERT INTO vuelos_entrantes_en_vivo (id, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', {}, {}, {}, '{}', {}, {}, {});",
             flight.flight_number.parse::<i64>().unwrap(), flight.destination, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
         );
 
         let departing_query = format!(
-            "INSERT INTO vuelos_salientes (id, orig, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', {}, {}, {}, '{}', {}, {}, {});",
+            "INSERT INTO vuelos_salientes_en_vivo (id, orig, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', {}, {}, {}, '{}', {}, {}, {});",
             flight.flight_number.parse::<i64>().unwrap(), flight.origin, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
         );
 
