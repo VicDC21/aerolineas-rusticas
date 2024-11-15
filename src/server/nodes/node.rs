@@ -1575,13 +1575,14 @@ impl Node {
         let wait_response = true;
         let replication_factor_quantity = self.get_replicas_from_table_name(&table_name)?;
         let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
-        let mut read_repair_executed = false;
 
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(partition_key_value);
             if !consulted_nodes.contains(&node_id) {
+                let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
-                let actual_result = if node_id == self.id {
+                let mut actual_result = 
+                if node_id == self.id {
                     self.process_select(&select, node_id)?
                 } else {
                     let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
@@ -1595,28 +1596,8 @@ impl Node {
                         PortType::Priv,
                         wait_response,
                     )?
-                    // match Opcode::try_from(res[4])? {
-                    //     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-                    //     Opcode::Result => self.handle_result_from_node(
-                    //         &mut results_from_another_nodes,
-                    //         res,
-                    //         &select,
-                    //     )?,
-                    //     _ => {
-                    //         return Err(Error::ServerError(
-                    //             "Nodo manda opcode inesperado".to_string(),
-                    //         ))
-                    //     }
-                    // };
                 };
-                self.handle_result_from_node(
-                    &mut results_from_another_nodes,
-                    &actual_result,
-                    &select,
-                )?;
-                consulted_nodes.push(node_id);
                 consistency_counter += 1;
-
                 match self.consult_replica_nodes(
                     node_id,
                     request,
@@ -1637,22 +1618,55 @@ impl Node {
                         consistency_level, consistency_counter, consistency_number,
                     ))),
                 }
+                // Una vez que todo fue reparado, queremos reenviar la query para obtener el resultado
+                // pero ahora con las tablas reparadas.
+                if read_repair_executed {
+                    actual_result = 
+                    if node_id == self.id {
+                        self.process_select(&select, node_id)?
+                    } else {
+                        let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
+                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                            None,
+                            Some(node_id),
+                        );
+                        self.send_message_and_wait_response(
+                            request_with_metadata,
+                            node_id,
+                            PortType::Priv,
+                            wait_response,
+                        )?
+                    };
+                }
+                self.handle_result_from_node(
+                    &mut results_from_another_nodes,
+                    &actual_result,
+                    &select,
+                )?;
+                println!("la nueva respuesta es {:?}", results_from_another_nodes);
+                println!("Pasa por aca");
+
+                consulted_nodes.push(node_id);
             }
         }
-
-        // Una vez que todo fue reparado, queremos reenviar la query para obtener el resultado
-        // pero ahora con las tablas reparadas.
-        if read_repair_executed {
-            Ok(self.send_message_and_wait_response(
-                SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                self.id,
-                PortType::Priv,
-                false,
-            )?)
-        } else {
-            Ok(results_from_another_nodes)
-        }
+        println!("la respuesta final es {:?}", results_from_another_nodes);
+        Ok(results_from_another_nodes)
     }
+    // esta comprobacion podriamos usarla en handle_result_from_node
+    // match Opcode::try_from(res[4])? {
+    //     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+    //     Opcode::Result => self.handle_result_from_node(
+    //         &mut results_from_another_nodes,
+    //         res,
+    //         &select,
+    //     )?,
+    //     _ => {
+    //         return Err(Error::ServerError(
+    //             "Nodo manda opcode inesperado".to_string(),
+    //         ))
+    //     }
+    // };
+
 
     /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
     ///
@@ -1947,33 +1961,45 @@ impl Node {
             results_from_another_nodes.append(&mut res);
             return Ok(());
         }
-        let size = Length::try_from(results_from_another_nodes[5..9].to_vec())?;
-        let new_size = Length::try_from(result_from_actual_node[5..9].to_vec())?;
-
-        let total_length_from_metadata = self.get_columns_metadata_length(&mut res);
-
-        let new_size_without_metadata =
-            size.len + new_size.len - (total_length_from_metadata as u32);
-        results_from_another_nodes[5..9].copy_from_slice(&new_size_without_metadata.to_be_bytes());
-        let mut new_res = result_from_actual_node[total_length_from_metadata..].to_vec();
+        let total_length_until_end_of_metadata = self.get_columns_metadata_length(&res);
+        let total_lenght_until_rows_content = total_length_until_end_of_metadata + 4;
+        let mut quantity_rows = self.get_quantity_of_rows(results_from_another_nodes ,total_length_until_end_of_metadata);
+        let new_quantity_rows = self.get_quantity_of_rows(result_from_actual_node ,total_length_until_end_of_metadata);
+        quantity_rows += new_quantity_rows;
+        results_from_another_nodes[total_length_until_end_of_metadata..total_lenght_until_rows_content].copy_from_slice(&quantity_rows.to_be_bytes());
+        let mut new_res = result_from_actual_node[total_lenght_until_rows_content..].to_vec();
         results_from_another_nodes.append(&mut new_res);
+        let final_length = (results_from_another_nodes.len() as u32) - 9;
+        results_from_another_nodes[5..9].copy_from_slice(&final_length.to_be_bytes());
 
         // No funciona, las filas no son un string largo, el formato es [largo del string][string], entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
         // let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
         //     results_from_another_nodes,
-        //     total_length_from_metadata,
+        //     total_length_until_end_of_metadata,
         //     select,
         // )?;
 
         // le agrego el body de las filas a las que ya tenia
-        // results_from_another_nodes.truncate(total_length_from_metadata);
+        // results_from_another_nodes.truncate(total_length_until_end_of_metadata);
         // results_from_another_nodes.append(&mut new_ordered_res_bytes);
 
         Ok(())
     }
 
-    fn get_columns_metadata_length(&self, results_from_another_nodes: &mut [Byte]) -> usize {
-        let mut total_length_from_metadata: usize = 13;
+    fn get_quantity_of_rows(&self, results_from_another_nodes: &[Byte], rows_quantity_position: usize) -> i32 {
+        let new_quantity_rows = &results_from_another_nodes[rows_quantity_position..(rows_quantity_position + 4)];
+        i32::from_be_bytes([
+            new_quantity_rows[0],
+            new_quantity_rows[1],
+            new_quantity_rows[2],
+            new_quantity_rows[3],
+        ])
+    }
+
+
+    fn get_columns_metadata_length(&self, results_from_another_nodes: &[Byte]) -> usize {
+        let mut total_length_from_metadata: usize = 21;
+        // el 13 al 17 son flags
         let column_quantity = &results_from_another_nodes[17..21];
         let column_quantity = i32::from_be_bytes([
             column_quantity[0],
