@@ -427,7 +427,6 @@ impl Client {
     }
 
     fn deserialize_rows(&self, _lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
-        println!("El largo es {}", _lenght.len);
         let _flags = RowsFlag::try_from(request[..4].to_vec())?;
         let columns_count = u32::from_be_bytes([request[4], request[5], request[6], request[7]]);
         let mut actual_position: usize = 8;
@@ -447,7 +446,6 @@ impl Client {
             request[actual_position + 2],
             request[actual_position + 3],
         ]);
-        println!("El rows count es {}", rows_count);
         actual_position += 4;
         let mut rows: Vec<Vec<ColData>> = Vec::new(); // usar las filas ya parseadas
         for _ in 0..rows_count {

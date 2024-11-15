@@ -1642,13 +1642,9 @@ impl Node {
                     &actual_result,
                     &select,
                 )?;
-                println!("la nueva respuesta es {:?}", results_from_another_nodes);
-                println!("Pasa por aca");
-
                 consulted_nodes.push(node_id);
             }
         }
-        println!("la respuesta final es {:?}", results_from_another_nodes);
         Ok(results_from_another_nodes)
     }
     // esta comprobacion podriamos usarla en handle_result_from_node
