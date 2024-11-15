@@ -1581,8 +1581,7 @@ impl Node {
             if !consulted_nodes.contains(&node_id) {
                 let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
-                let mut actual_result = 
-                if node_id == self.id {
+                let mut actual_result = if node_id == self.id {
                     self.process_select(&select, node_id)?
                 } else {
                     let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
@@ -1621,15 +1620,15 @@ impl Node {
                 // Una vez que todo fue reparado, queremos reenviar la query para obtener el resultado
                 // pero ahora con las tablas reparadas.
                 if read_repair_executed {
-                    actual_result = 
-                    if node_id == self.id {
+                    actual_result = if node_id == self.id {
                         self.process_select(&select, node_id)?
                     } else {
-                        let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
-                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                            None,
-                            Some(node_id),
-                        );
+                        let request_with_metadata = self
+                            .add_metadata_to_internal_request_of_any_kind(
+                                SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                                None,
+                                Some(node_id),
+                            );
                         self.send_message_and_wait_response(
                             request_with_metadata,
                             node_id,
@@ -1666,7 +1665,6 @@ impl Node {
     //         ))
     //     }
     // };
-
 
     /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
     ///
@@ -1963,12 +1961,20 @@ impl Node {
         }
         let total_length_until_end_of_metadata = self.get_columns_metadata_length(&res);
         let total_lenght_until_rows_content = total_length_until_end_of_metadata + 4;
-        let mut quantity_rows = self.get_quantity_of_rows(results_from_another_nodes ,total_length_until_end_of_metadata);
-        let new_quantity_rows = self.get_quantity_of_rows(result_from_actual_node ,total_length_until_end_of_metadata);
+        let mut quantity_rows = self.get_quantity_of_rows(
+            results_from_another_nodes,
+            total_length_until_end_of_metadata,
+        );
+        let new_quantity_rows =
+            self.get_quantity_of_rows(result_from_actual_node, total_length_until_end_of_metadata);
         quantity_rows += new_quantity_rows;
-        results_from_another_nodes[total_length_until_end_of_metadata..total_lenght_until_rows_content].copy_from_slice(&quantity_rows.to_be_bytes());
+        results_from_another_nodes
+            [total_length_until_end_of_metadata..total_lenght_until_rows_content]
+            .copy_from_slice(&quantity_rows.to_be_bytes());
+
         let mut new_res = result_from_actual_node[total_lenght_until_rows_content..].to_vec();
         results_from_another_nodes.append(&mut new_res);
+
         let final_length = (results_from_another_nodes.len() as u32) - 9;
         results_from_another_nodes[5..9].copy_from_slice(&final_length.to_be_bytes());
 
@@ -1986,8 +1992,13 @@ impl Node {
         Ok(())
     }
 
-    fn get_quantity_of_rows(&self, results_from_another_nodes: &[Byte], rows_quantity_position: usize) -> i32 {
-        let new_quantity_rows = &results_from_another_nodes[rows_quantity_position..(rows_quantity_position + 4)];
+    fn get_quantity_of_rows(
+        &self,
+        results_from_another_nodes: &[Byte],
+        rows_quantity_position: usize,
+    ) -> i32 {
+        let new_quantity_rows =
+            &results_from_another_nodes[rows_quantity_position..(rows_quantity_position + 4)];
         i32::from_be_bytes([
             new_quantity_rows[0],
             new_quantity_rows[1],
@@ -1995,7 +2006,6 @@ impl Node {
             new_quantity_rows[3],
         ])
     }
-
 
     fn get_columns_metadata_length(&self, results_from_another_nodes: &[Byte]) -> usize {
         let mut total_length_from_metadata: usize = 21;
