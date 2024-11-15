@@ -219,18 +219,36 @@ impl DiskHandler {
             &statement.table.get_name(),
             default_keyspace,
         );
-
+    
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
         let mut rows = table_ops.read_rows()?;
         let values = statement.get_values();
         let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
-        if !rows.contains(&new_row) {
+    
+        let partition_key_columns = table.get_partition_key();
+        let duplicate_index = rows.iter().position(|row| {
+            partition_key_columns.iter().all(|col| {
+                if let Some(index) = table.get_columns_names().iter().position(|c| c == col) {
+                    row[index] == new_row[index]
+                } else {
+                    false
+                }
+            })
+        });
+    
+        if let Some(index) = duplicate_index {
+            if partition_key_columns.len() == 1 {
+                rows.push(new_row.clone());
+            } else {
+                rows[index] = new_row.clone();
+            }
+        } else if !statement.if_not_exists {
             rows.push(new_row.clone());
-            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
-            return Ok(new_row);
         }
-        Ok(Vec::new())
+    
+        DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
+        Ok(new_row)
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.

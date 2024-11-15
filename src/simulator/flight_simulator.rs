@@ -146,7 +146,7 @@ impl FlightSimulator {
         client: Client,
     ) {
         let mut rng = rand::thread_rng();
-        let fuel_consumption_rate = 10.0;
+        let fuel_consumption_rate = 0.1;
         thread::sleep(Duration::from_secs(2));
 
         if let Ok(mut flight_list) = flights.lock() {
@@ -160,7 +160,7 @@ impl FlightSimulator {
         }
 
         let simulation_start = std::time::Instant::now();
-        let simulation_limit = Duration::from_secs(5);
+        let simulation_limit = Duration::from_secs(60);
 
         while flight.fuel_level > 0.0 && simulation_start.elapsed() < simulation_limit {
             flight.current_position.0 += rng.gen_range(-0.1..0.1);
@@ -185,7 +185,7 @@ impl FlightSimulator {
                 .as_secs() as i64;
             let _ = FlightSimulator::send_flight_update(&flight, timestamp, &client);
 
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_secs(1));
         }
 
         flight.status = FlightStatus::Landed;
