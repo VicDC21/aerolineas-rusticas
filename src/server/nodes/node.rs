@@ -613,6 +613,9 @@ impl Node {
             SvAction::DirectReadRequest(bytes) => {
                 let res = self.exec_direct_read_request(bytes)?;
                 let _ = tcp_stream.write_all(res.as_bytes());
+                if let Err(err) = tcp_stream.flush() {
+                    return Err(Error::ServerError(err.to_string()));
+                };
             }
             SvAction::DigestReadRequest(bytes) => {
                 let response = self.handle_request(&bytes, true);
@@ -1574,19 +1577,21 @@ impl Node {
     ) -> Result<Vec<Byte>> {
         let table_name = select.from.get_name();
         let mut results_from_another_nodes: Vec<Byte> = Vec::new();
-        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?;
+        let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone(); // Tuve que agregar un clone para que no me tire error de referencia mutable e inmutable al mismo tiempo
         let mut consulted_nodes: Vec<Byte> = Vec::new();
-        let wait_response = true;
         let replication_factor_quantity = self.get_replicas_from_table_name(&table_name)?;
         let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
-        println!("partitions_keys_to_nodes: {:?}", partitions_keys_to_nodes);
-
+        println!("las partition values son: {:?}", partitions_keys_to_nodes);
         for partition_key_value in partitions_keys_to_nodes {
-            let node_id = self.select_node(partition_key_value);
+            let node_id = self.select_node(&partition_key_value);
+            println!("Se quiere consultar al nodo {}", node_id);
             if !consulted_nodes.contains(&node_id) {
+                let wait_response = true;
                 let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
-                let mut actual_result = if node_id == self.id {
+                println!("pasa por aca");
+                let mut actual_result = 
+                if node_id == self.id {
                     self.process_select(&select, node_id)?
                 } else {
                     let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
@@ -1641,7 +1646,8 @@ impl Node {
                             wait_response,
                         )?
                     };
-                }
+                };
+                println!("Se va a agregar la response : {:?}", actual_result);
                 self.handle_result_from_node(
                     &mut results_from_another_nodes,
                     &actual_result,
@@ -1671,7 +1677,7 @@ impl Node {
     ///
     /// Devuelve un booleano indicando si _read-repair_ fue ejecutado o no.
     fn consult_replica_nodes(
-        &self,
+        &mut self,
         node_id: u8,
         request: &[Byte],
         consistency_counter: &mut usize,
@@ -1684,7 +1690,6 @@ impl Node {
         }
         let first_hashed_value = hash_value(response_from_first_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
-
         for i in 1..consistency_number {
             let node_to_consult = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
             let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
@@ -1692,13 +1697,29 @@ impl Node {
                 None,
                 Some(node_id),
             );
-            let opcode_with_hashed_value = self.send_message_and_wait_response(
-                request_with_metadata,
-                node_to_consult,
-                PortType::Priv,
-                true,
-            )?;
-            // println!("El hashed del otro nodo en bytes es: {:?}", opcode_with_hashed_value);
+            println!("Soy el nodo {}", self.id);
+            let opcode_with_hashed_value = 
+            if node_to_consult == self.id{
+                let internal_request = self.add_metadata_to_internal_request_of_any_kind(request.to_vec(), None, Some(node_id));
+                let res = self.handle_request(&internal_request, true);
+                let mut res_with_opcode;
+                if self.verify_succesful_response(&res) {
+                    res_with_opcode = Opcode::Result.as_bytes();
+                    res_with_opcode.extend_from_slice(&hash_value(&res).to_be_bytes());
+                } else {
+                    res_with_opcode = Opcode::RequestError.as_bytes();
+                    res_with_opcode.extend_from_slice(&res);
+                }
+                res_with_opcode
+            } else{
+                self.send_message_and_wait_response(
+                    request_with_metadata,
+                    node_to_consult,
+                    PortType::Priv,
+                    true,
+                )?
+            };
+            // println!("Mi nodo es {}, y el hashed del nodo {} y  busco data de la replica {} que en bytes es: {:?}", self.id, node_to_consult, node_id, opcode_with_hashed_value);
             let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
             if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result
                 && first_hashed_value == res_hashed_value

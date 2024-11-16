@@ -80,6 +80,9 @@ pub fn send_to_node_and_wait_response(
             )))
         }
     };
+    println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
+    
+
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
             "No se pudo escribir el contenido en {}",
@@ -93,6 +96,7 @@ pub fn send_to_node_and_wait_response(
     let mut buf = Vec::<Byte>::new();
 
     if wait_response {
+        println!("empieza a esperar respuesta");
         match stream.read_to_end(&mut buf) {
             Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
             Ok(i) => {
