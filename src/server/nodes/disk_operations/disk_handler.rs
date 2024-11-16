@@ -61,11 +61,11 @@ pub struct DiskHandler;
 impl DiskHandler {
     /// Crea una carpeta de almacenamiento para el nodo.
     /// Devuelve la ruta a dicho almacenamiento.
-    pub fn new_node_storage(id: NodeId) -> String {
-        Self::create_directory(STORAGE_PATH);
+    pub fn new_node_storage(id: NodeId) -> Result<String> {
+        Self::create_directory(STORAGE_PATH)?;
         let storage_addr: String = Self::get_node_storage(id);
-        Self::create_directory(&storage_addr);
-        storage_addr
+        Self::create_directory(&storage_addr)?;
+        Ok(storage_addr)
     }
 
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
@@ -629,12 +629,17 @@ impl DiskHandler {
         Ok(false)
     }
 
-    fn create_directory(path: &str) {
+    fn create_directory(path: &str) -> Result<()> {
         let path_folder = Path::new(path);
         if !path_folder.exists() && !path_folder.is_dir() {
-            let err_msg = format!("No se pudo crear la carpeta de almacenamiento {}", path);
-            create_dir(path_folder).expect(&err_msg);
+            create_dir(path_folder).map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo crear la carpeta de almacenamiento {}: {}",
+                    path, e
+                ))
+            })?;
         }
+        Ok(())
     }
 
     /// Obtiene la estrategia de replicación de un keyspace.

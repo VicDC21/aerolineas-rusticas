@@ -51,7 +51,7 @@ pub enum Consistency {
 impl Consistency {
     /// Convierte el _Consistency Level_ a la cantidad de nodos a esperar su confirmación.
     ///
-    /// `n` es la cantidad total de nodos.
+    /// `n` es la cantidad de réplicas.
     pub fn as_usize(&self, n: usize) -> usize {
         match self {
             Self::Any => 1,

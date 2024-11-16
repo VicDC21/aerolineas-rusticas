@@ -126,10 +126,10 @@ pub struct Node {
 
 impl Node {
     /// Crea un nuevo nodo.
-    pub fn new(id: NodeId, mode: ConnectionMode) -> Self {
-        let storage_addr = DiskHandler::new_node_storage(id);
+    pub fn new(id: NodeId, mode: ConnectionMode) -> Result<Self> {
+        let storage_addr = DiskHandler::new_node_storage(id)?;
         let nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
-        Self {
+        Ok(Self {
             id,
             neighbours_states: NodesMap::new(),
             endpoint_state: EndpointState::with_id_and_mode(id, mode),
@@ -141,7 +141,7 @@ impl Node {
             tables_and_partitions_keys_values: HashMap::new(),
             pool: ThreadPool::build(N_THREADS).unwrap(),
             open_connections: OpenConnectionsMap::new(),
-        }
+        })
     }
 
     fn add_table(&mut self, table: Table) {
@@ -553,6 +553,7 @@ impl Node {
         }
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
+                println!("[{} - TCP] Accion del servidor", self.id);
                 if let Err(err) = self.handle_sv_action(action, tcp_stream) {
                     println!(
                         "[{} - ACTION] Error en la acción del servidor: {}",
@@ -561,7 +562,10 @@ impl Node {
                 }
                 Ok(())
             }
-            None => self.match_kind_of_conection_mode(bytes, tcp_stream),
+            None => {
+                println!("[{} - TCP] Conexión externa", self.id);
+                self.match_kind_of_conection_mode(bytes, tcp_stream)
+            }
         }
     }
 
@@ -1575,6 +1579,7 @@ impl Node {
         let wait_response = true;
         let replication_factor_quantity = self.get_replicas_from_table_name(&table_name)?;
         let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
+        println!("partitions_keys_to_nodes: {:?}", partitions_keys_to_nodes);
 
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(partition_key_value);
@@ -2175,7 +2180,9 @@ impl Node {
                 }
             }
             ConnectionMode::Parsing => {
+                println!("En modo parsing...");
                 let res = self.handle_request(&bytes[..], false);
+                println!("respuesta: {:?}", res);
                 let _ = tcp_stream.write_all(&res[..]);
                 if let Err(err) = tcp_stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);

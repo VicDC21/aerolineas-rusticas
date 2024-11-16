@@ -196,7 +196,7 @@ impl NodesGraph {
         for i in 0..n {
             let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
             let current_id = self.add_node_id();
-            let node = Node::new(current_id, self.preferred_mode.clone());
+            let node = Node::new(current_id, self.preferred_mode.clone())?;
 
             let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
             let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
