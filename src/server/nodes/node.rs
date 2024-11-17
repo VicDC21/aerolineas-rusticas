@@ -66,14 +66,13 @@ use super::{
     utils::{
         divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string,
         next_node_to_replicate_data, send_to_node, send_to_node_and_wait_response,
-        string_to_hashmap, string_to_hashmap_vec,
+        send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
     },
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
 /// así que un byte debería bastar para representarlo.
 pub type NodeId = Byte;
-
 /// Mapea todos los estados de los vecinos y de sí mismo.
 pub type NodesMap = HashMap<NodeId, EndpointState>;
 /// Mapea todas las conexiones actualmente abiertas.
@@ -83,6 +82,8 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
 const N_THREADS: usize = 6;
+/// El tiempo de espera _(en segundos)_ por una respuesta.
+const TIMEOUT_SECS: u64 = 2;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
@@ -275,7 +276,7 @@ impl Node {
         START_ID + (i) as NodeId
     }
 
-    fn send_message_and_wait_response(
+    fn _send_message_and_wait_response(
         &self,
         bytes: Vec<Byte>,
         node_id: Byte,
@@ -283,6 +284,23 @@ impl Node {
         wait_response: bool,
     ) -> Result<Vec<Byte>> {
         send_to_node_and_wait_response(node_id, bytes, port_type, wait_response)
+    }
+
+    fn send_message_and_wait_response_with_timeout(
+        &self,
+        bytes: Vec<Byte>,
+        node_id: Byte,
+        port_type: PortType,
+        wait_response: bool,
+        timeout: u64,
+    ) -> Result<Vec<Byte>> {
+        send_to_node_and_wait_response_with_timeout(
+            node_id,
+            bytes,
+            port_type,
+            wait_response,
+            Some(timeout),
+        )
     }
 
     /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
@@ -931,11 +949,12 @@ impl Node {
             let node_id =
                 next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
             response = if node_id != self.id {
-                self.send_message_and_wait_response(
+                self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
                     true,
+                    TIMEOUT_SECS,
                 )?
             } else {
                 self.process_internal_use_statement(&keyspace_name)?
@@ -973,11 +992,12 @@ impl Node {
             let node_id =
                 next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
             response = if node_id != self.id {
-                self.send_message_and_wait_response(
+                self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
                     true,
+                    TIMEOUT_SECS,
                 )?
             } else {
                 self.process_internal_create_keyspace_statement(&create_keyspace)?
@@ -1017,11 +1037,12 @@ impl Node {
                 next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
 
             let response = if node_id != self.id {
-                self.send_message_and_wait_response(
+                self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
                     true,
+                    TIMEOUT_SECS,
                 )?
             } else {
                 self.process_internal_alter_keyspace_statement(&alter_keyspace)?
@@ -1077,11 +1098,12 @@ impl Node {
                 next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
 
             let response = if node_id != self.id {
-                self.send_message_and_wait_response(
+                self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_id,
                     PortType::Priv,
                     true,
+                    TIMEOUT_SECS,
                 )?
             } else {
                 self.process_internal_drop_keyspace_statement(&drop_keyspace)?
@@ -1167,11 +1189,12 @@ impl Node {
                         None,
                         Some(actual_node_id),
                     );
-                    self.send_message_and_wait_response(
+                    self.send_message_and_wait_response_with_timeout(
                         request_with_metadata,
                         next_node_id,
                         PortType::Priv,
                         true,
+                        TIMEOUT_SECS,
                     )?
                 }
             }
@@ -1421,11 +1444,12 @@ impl Node {
                         Some(timestamp),
                         Some(node_id),
                     );
-                    self.send_message_and_wait_response(
+                    self.send_message_and_wait_response_with_timeout(
                         request_with_metadata,
                         node_to_replicate,
                         PortType::Priv,
                         wait_response,
+                        TIMEOUT_SECS,
                     )?
                 }
             } else if node_to_replicate == self.id {
@@ -1450,11 +1474,12 @@ impl Node {
                     None,
                     None,
                 );
-                self.send_message_and_wait_response(
+                self.send_message_and_wait_response_with_timeout(
                     request_with_metadata,
                     node_to_replicate,
                     PortType::Priv,
                     false,
+                    TIMEOUT_SECS,
                 )?;
             };
 
@@ -1579,11 +1604,12 @@ impl Node {
                 let current_response = if node_id == self.id {
                     self.process_update(&update, self.id)?
                 } else {
-                    self.send_message_and_wait_response(
+                    self.send_message_and_wait_response_with_timeout(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
                         PortType::Priv,
                         wait_response,
+                        TIMEOUT_SECS,
                     )?
                     // match Opcode::try_from(res[4])? {
                     //     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
@@ -1629,11 +1655,12 @@ impl Node {
                 next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
 
             if node_to_replicate != node_id {
-                let replica_response = self.send_message_and_wait_response(
+                let replica_response = self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_to_replicate,
                     PortType::Priv,
                     false,
+                    TIMEOUT_SECS,
                 )?;
 
                 match Opcode::try_from(replica_response[4])? {
@@ -1678,11 +1705,12 @@ impl Node {
                         None,
                         Some(node_id),
                     );
-                    self.send_message_and_wait_response(
+                    self.send_message_and_wait_response_with_timeout(
                         request_with_metadata,
                         node_id,
                         PortType::Priv,
                         wait_response,
+                        TIMEOUT_SECS,
                     )?
                 };
                 consistency_counter += 1;
@@ -1718,11 +1746,12 @@ impl Node {
                                 None,
                                 Some(node_id),
                             );
-                        self.send_message_and_wait_response(
+                        self.send_message_and_wait_response_with_timeout(
                             request_with_metadata,
                             node_id,
                             PortType::Priv,
                             wait_response,
+                            TIMEOUT_SECS,
                         )?
                     };
                 };
@@ -1792,11 +1821,12 @@ impl Node {
                 }
                 res_with_opcode
             } else {
-                self.send_message_and_wait_response(
+                self.send_message_and_wait_response_with_timeout(
                     request_with_metadata,
                     node_to_consult,
                     PortType::Priv,
                     true,
+                    TIMEOUT_SECS,
                 )?
             };
 
@@ -1851,11 +1881,12 @@ impl Node {
             let res = if node_to_consult == self.id {
                 self.exec_direct_read_request(request.to_vec())?
             } else {
-                let extern_response = self.send_message_and_wait_response(
+                let extern_response = self.send_message_and_wait_response_with_timeout(
                     SvAction::DirectReadRequest(request.to_vec()).as_bytes(),
                     node_to_consult,
                     PortType::Priv,
                     true,
+                    TIMEOUT_SECS,
                 )?;
 
                 match String::from_utf8(extern_response) {
@@ -1906,7 +1937,7 @@ impl Node {
                 DiskHandler::actualize_all_rows(&rows_as_string);
                 self.exec_direct_read_request(request.to_vec())?
             } else {
-                let extern_response = self.send_message_and_wait_response(
+                let extern_response = self.send_message_and_wait_response_with_timeout(
                     SvAction::RepairRows(
                         table_name.to_string(),
                         node_id,
@@ -1916,6 +1947,7 @@ impl Node {
                     node_to_repair,
                     PortType::Priv,
                     false,
+                    TIMEOUT_SECS,
                 )?;
 
                 match String::from_utf8(extern_response) {
@@ -1970,11 +2002,12 @@ impl Node {
                 let current_response = if node_id == self.id {
                     self.process_delete(&delete, self.id)?
                 } else {
-                    let res = self.send_message_and_wait_response(
+                    let res = self.send_message_and_wait_response_with_timeout(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         node_id,
                         PortType::Priv,
                         wait_response,
+                        TIMEOUT_SECS,
                     )?;
                     match Opcode::try_from(res[4])? {
                         Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
@@ -2022,11 +2055,12 @@ impl Node {
                 next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
 
             if node_to_replicate != self.id {
-                self.send_message_and_wait_response(
+                self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     node_to_replicate,
                     PortType::Priv,
                     false,
+                    TIMEOUT_SECS,
                 )?;
             }
         }

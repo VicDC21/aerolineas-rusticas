@@ -70,55 +70,19 @@ pub fn send_to_node_and_wait_response(
     port_type: PortType,
     wait_response: bool,
 ) -> Result<Vec<Byte>> {
-    let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
-    let mut stream = match TcpStream::connect(addr) {
-        Ok(tcpstream) => tcpstream,
-        Err(_) => {
-            return Err(Error::ServerError(format!(
-                "No se pudo conectar al nodo con ID {}",
-                id
-            )))
-        }
-    };
-
-    if stream.write_all(&bytes[..]).is_err() {
-        return Err(Error::ServerError(format!(
-            "No se pudo escribir el contenido en {}",
-            addr
-        )));
-    }
-    // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
-    if let Err(err) = stream.flush() {
-        println!("Error haciendo flush desde el servidor:\n\n{}", err);
-    }
-    let mut buf = Vec::<Byte>::new();
-
-    if wait_response {
-        match stream.read_to_end(&mut buf) {
-            Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
-            Ok(i) => {
-                print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
-                for byte in &buf[..] {
-                    print!("{:#X} ", byte);
-                }
-                println!("]");
-            }
-        }
-    }
-
-    Ok(buf)
+    send_to_node_and_wait_response_with_timeout(id, bytes, port_type, wait_response, None)
 }
 
 /// Manda un mensaje a un nodo específico y espera por la respuesta de este, con un timeout.
 /// Si el timeout se alcanza, se devuelve un buffer vacío.
-/// 
+///
 /// `timeout` es medido en segundos.
 pub fn send_to_node_and_wait_response_with_timeout(
     id: NodeId,
     bytes: Vec<Byte>,
     port_type: PortType,
     wait_response: bool,
-    timeout: u64,
+    timeout: Option<u64>,
 ) -> Result<Vec<Byte>> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
@@ -144,22 +108,27 @@ pub fn send_to_node_and_wait_response_with_timeout(
     let mut buf = Vec::<Byte>::new();
 
     if wait_response {
-        match stream.set_read_timeout(Some(std::time::Duration::from_secs(timeout))) {
-            Err(err) => println!("Error estableciendo timeout en el nodo:\n\n{}", err),
-            Ok(_) => {
-                match stream.read_to_end(&mut buf) {
-                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                        println!("Timeout alcanzado al esperar respuesta del nodo {}:\n\n{}", id, err);
-                    }
-                    Err(err) => println!("Error recibiendo response del nodo {}:\n\n{}", id, err),
-                    Ok(i) => {
-                        print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
-                        for byte in &buf[..] {
-                            print!("{:#X} ", byte);
-                        }
-                        println!("]");
-                    }
+        if let Some(timeout_secs) = timeout {
+            if let Err(err) =
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(timeout_secs)))
+            {
+                println!("Error estableciendo timeout en el nodo:\n\n{}", err)
+            }
+        }
+        match stream.read_to_end(&mut buf) {
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                println!(
+                    "Timeout alcanzado al esperar respuesta del nodo {}:\n\n{}",
+                    id, err
+                );
+            }
+            Err(err) => println!("Error recibiendo response del nodo {}:\n\n{}", id, err),
+            Ok(i) => {
+                print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
+                for byte in &buf[..] {
+                    print!("{:#X} ", byte);
                 }
+                println!("]");
             }
         }
     }
