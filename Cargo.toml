@@ -4,10 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-cli = []
-sv = []
-gui = ["cli", "sv", "dep:eframe", "dep:egui_extras", "dep:image", "dep:walkers"]
-sim = []
+# La interfaz incorpora muchísimas dependencias. De ser posible, evitar compilarlo salvo
+# que invoquemos esa parte específica del proyecto.
+gui = ["dep:eframe", "dep:egui_extras", "dep:image", "dep:walkers"]
 
 [dependencies]
 chrono = { version = "0.4.38" }
