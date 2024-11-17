@@ -4,15 +4,15 @@ use chrono::{DateTime, Local};
 use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
 use egui_extras::install_image_loaders;
-use walkers::{Map, MapMemory, Position};
+use walkers::sources::OpenStreetMap;
+use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position};
 
 use crate::client::cli::Client;
 use crate::interface::{
     data::app_details::AirlinesDetails,
     map::{
         panels::{cur_airport_info, extra_airport_info},
-        providers::{Provider, ProvidersMap},
-        windows::{clock_selector, controls, date_selector, go_to_my_position, zoom},
+        windows::{clock_selector, date_selector, go_to_my_position, zoom},
     },
     plugins::{
         airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
@@ -33,11 +33,8 @@ pub struct AerolineasApp {
     /// Guarda el estado del widget del mapa.
     map_memory: MapMemory,
 
-    /// Lista de potenciales proveedores de tiles.
-    map_providers: ProvidersMap,
-
-    /// El proveedor actualmente en uso.
-    selected_provider: Provider,
+    /// El proveedor de las _tiles_ del mapa.
+    map_tiles: HttpTiles,
 
     /// El cargador de aeropuertos.
     airports_loader: AirportsLoader,
@@ -69,8 +66,7 @@ impl AerolineasApp {
         Self {
             client: Client::default(),
             map_memory: mem,
-            map_providers: Provider::providers(egui_ctx.to_owned()),
-            selected_provider: Provider::OpenStreetMap,
+            map_tiles: Self::open_street_tiles(&egui_ctx),
             airports_loader: AirportsLoader::default(),
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
@@ -79,20 +75,29 @@ impl AerolineasApp {
             airlines_details: AirlinesDetails::default(),
         }
     }
+
+    fn open_street_tiles(ctx: &Context) -> HttpTiles {
+        HttpTiles::with_options(
+            OpenStreetMap,
+            HttpOptions {
+                cache: if cfg!(target_os = "android") || std::env::var("NO_HTTP_CACHE").is_ok() {
+                    None
+                } else {
+                    Some(".cache".into())
+                },
+                ..Default::default()
+            },
+            ctx.clone(),
+        )
+    }
 }
 
 impl App for AerolineasApp {
     fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         CentralPanel::default().show(ctx, |ui| {
-            let tiles = self
-                .map_providers
-                .get_mut(&self.selected_provider)
-                .unwrap()
-                .as_mut();
-
             let zoom_lvl = self.map_memory.zoom(); // necesariamente antes de crear el mapa
             let map = Map::new(
-                Some(tiles),
+                Some(&mut self.map_tiles),
                 &mut self.map_memory,
                 Position::from_lat_lon(ORIG_LAT, ORIG_LONG),
             );
@@ -135,11 +140,6 @@ impl App for AerolineasApp {
 
             zoom(ui, &mut self.map_memory);
             go_to_my_position(ui, &mut self.map_memory);
-            controls(
-                ui,
-                &mut self.selected_provider,
-                &mut self.map_providers.keys(),
-            );
         });
 
         if let Some(valid_date) = date_selector(ctx, &mut self.datetime) {
