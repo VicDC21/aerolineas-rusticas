@@ -36,6 +36,34 @@ pub fn encode_string_to_bytes(string: &str) -> Vec<Byte> {
     bytes_vec
 }
 
+/// Transforma un [Long String] a una colección de [Byte]s tal cual como está especificado
+/// en el protocolo de Cassandra.
+///
+/// Más específicamente, el protocolo pide que primero vaya un entero de
+/// 4 bytes ([Int](crate::protocol::aliases::types::Int)), seguido del contenido mismo del
+/// [String], en donde cada _byte_ representa un carácter UTF-8.
+///
+/// ```rust
+/// # use aerolineas::protocol::utils::encode_long_string_to_bytes;
+/// let bytes = encode_long_string_to_bytes(&"Hello");
+///
+/// assert_eq!(bytes, vec![0x0, 0x0, 0x0, 0x5, /* <- longitud | contenido -> */ 0x48, 0x65, 0x6C, 0x6C, 0x6F]);
+/// ```
+pub fn encode_long_string_to_bytes(string: &str) -> Vec<Byte> {
+    let string_bytes = string.as_bytes();
+    // litle endian para que los cuatro bytes menos significativos (los únicos que nos interesa
+    // para un Int) estén al principio
+    let bytes_len = string_bytes.len().to_le_bytes();
+    let mut bytes_vec: Vec<Byte> = vec![
+        bytes_len[3],
+        bytes_len[2],
+        bytes_len[1],
+        bytes_len[0], // Longitud del string
+    ];
+    bytes_vec.extend_from_slice(string_bytes);
+    bytes_vec
+}
+
 /// Parsea una [dirección IP](IpAddr) a una colección de [Byte]s, tal y como está explicitado en el
 /// protocolo de Cassandra.
 ///
@@ -224,6 +252,50 @@ pub fn parse_bytes_to_string(bytes_vec: &[Byte], i: &mut usize) -> Result<String
     let string_len = Short::from_le_bytes([bytes_vec[1], bytes_vec[0]]) as usize;
     *i += string_len + short_len;
     match String::from_utf8(bytes_vec[short_len..(string_len + short_len)].to_vec()) {
+        Ok(string) => Ok(string),
+        Err(_) => Err(Error::Invalid(
+            "El cuerpo del string no se pudo parsear".to_string(),
+        )),
+    }
+}
+
+/// Parsea un conjunto de [Byte]s de vuelta a un objeto [Long String].
+///
+/// Esta es la operación recíproca a [encodearlos](encode_long_string_to_bytes).
+///
+/// ```rust
+/// # use aerolineas::protocol::utils::parse_bytes_to_long_string;
+/// # use aerolineas::protocol::aliases::results::Result;
+/// let string = "World!".to_string();
+///
+/// let mut i_1: usize = 0;
+/// let res_1 = parse_bytes_to_long_string(&[0x0, 0x0, 0x0, 0x6, /* <- longitud | contenido -> */ 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21], &mut i_1);
+/// assert!(res_1.is_ok());
+/// if let Ok(str_1) = res_1 {
+///     assert_eq!(str_1, string);
+///     assert_eq!(i_1, 10);
+/// }
+///
+/// // Debería funcionar igual si el slice de bytes es más largo
+/// let mut i_2: usize = 0;
+/// let res_2 = parse_bytes_to_long_string(&[0x0, 0x0, 0x0, 0x6, /* <- longitud | contenido -> */ 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21, /* ruido ->*/ 0x23, 0x97, 0x24, 0x23], &mut i_2);
+/// assert!(res_2.is_ok());
+/// if let Ok(str_2) = res_2 {
+///     assert_eq!(str_2, string);
+///     assert_eq!(i_2, 10);
+/// }
+/// ```
+pub fn parse_bytes_to_long_string(bytes_vec: &[Byte], i: &mut usize) -> Result<String> {
+    let int_len: usize = 4; // los bytes de un Int
+    if bytes_vec.len() < int_len {
+        return Err(Error::SyntaxError(
+            "Se esperaban 4 bytes que indiquen el tamaño del string a formar".to_string(),
+        ));
+    }
+    let string_len =
+        Int::from_le_bytes([bytes_vec[3], bytes_vec[2], bytes_vec[1], bytes_vec[0]]) as usize;
+    *i += string_len + int_len;
+    match String::from_utf8(bytes_vec[int_len..(string_len + int_len)].to_vec()) {
         Ok(string) => Ok(string),
         Err(_) => Err(Error::Invalid(
             "El cuerpo del string no se pudo parsear".to_string(),

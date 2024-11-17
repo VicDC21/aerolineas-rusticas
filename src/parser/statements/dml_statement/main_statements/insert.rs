@@ -32,6 +32,11 @@ impl Insert {
         }
     }
 
+    /// Devuelve el nombre de la tabla
+    pub fn get_table_name(&self) -> String {
+        self.table.get_name()
+    }
+
     /// Devuelve las columnas a insertar en formato String.
     pub fn get_columns_names(&self) -> Vec<String> {
         self.names

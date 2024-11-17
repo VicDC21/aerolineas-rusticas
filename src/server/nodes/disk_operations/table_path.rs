@@ -17,12 +17,13 @@ impl TablePath {
         keyspace: Option<String>,
         table_name: &str,
         default_keyspace: &str,
+        node_number: u8,
     ) -> Self {
         let keyspace = keyspace.unwrap_or_else(|| default_keyspace.to_string());
         Self {
             storage_addr: storage_addr.to_string(),
             keyspace,
-            table_name: table_name.to_string(),
+            table_name: format!("{}_replica_node_{}", table_name, node_number),
         }
     }
 

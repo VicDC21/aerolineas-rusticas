@@ -3,6 +3,7 @@
 use std::{
     collections::HashMap,
     fs::{read_dir, File},
+    hash::{DefaultHasher, Hash, Hasher},
     io::{BufRead, BufReader, Read, Result as IOResult, Write},
     net::TcpStream,
     path::PathBuf,
@@ -19,6 +20,27 @@ use crate::server::nodes::{addr::loader::AddrLoader, node::NodeId, port_type::Po
 const INIT_QUERIES_PATH: &str = "scripts/init";
 /// Extensión preferida para _queries_ de CQL, sin el punto de prefijo.
 const QUERY_EXT: &str = "cql";
+
+/// Hashea el valor recibido.
+///
+/// En esta función es determinístico, es decir, siempre devolverá el mismo valor para el mismo input.
+/// Esto es así porque cada vez vuelve a instanciar un `DefaultHasher` nuevo, manteniendo la misma semilla.
+pub fn hash_value<T: Hash>(value: T) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Devuelve el ID del siguiente nodo donde se deberían replicar datos.
+pub fn next_node_to_replicate_data(
+    first_node_to_replicate: Byte,
+    node_iterator: Byte,
+    min: Byte,
+    max: Byte,
+) -> Byte {
+    let nodes_range = max - min;
+    min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
+}
 
 /// Manda un mensaje a un nodo específico.
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
@@ -46,7 +68,8 @@ pub fn send_to_node_and_wait_response(
     id: NodeId,
     bytes: Vec<Byte>,
     port_type: PortType,
-) -> Result<Vec<u8>> {
+    wait_response: bool,
+) -> Result<Vec<Byte>> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
@@ -57,6 +80,8 @@ pub fn send_to_node_and_wait_response(
             )))
         }
     };
+    println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
+
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
             "No se pudo escribir el contenido en {}",
@@ -68,16 +93,21 @@ pub fn send_to_node_and_wait_response(
         println!("Error haciendo flush desde el servidor:\n\n{}", err);
     }
     let mut buf = Vec::<Byte>::new();
-    match stream.read_to_end(&mut buf) {
-        Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
-        Ok(i) => {
-            print!("Nodo [{}] recibió {} bytes: [ ", id, i);
-            for byte in &buf[..] {
-                print!("{:#X} ", byte);
+
+    if wait_response {
+        println!("empieza a esperar respuesta");
+        match stream.read_to_end(&mut buf) {
+            Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
+            Ok(i) => {
+                print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
+                for byte in &buf[..] {
+                    print!("{:#X} ", byte);
+                }
+                println!("]");
             }
-            println!("]");
         }
     }
+
     Ok(buf)
 }
 

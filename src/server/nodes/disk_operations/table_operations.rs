@@ -23,13 +23,21 @@ impl TableOperations {
         let file = OpenOptions::new()
             .read(true)
             .open(path.full_path())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|_| {
+                Error::ServerError(format!(
+                    "No se pudo abrir {} para lectura",
+                    path.full_path()
+                ))
+            })?;
 
         let mut reader = BufReader::new(&file);
         let mut header = String::new();
-        reader
-            .read_line(&mut header)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+        reader.read_line(&mut header).map_err(|_| {
+            Error::ServerError(format!(
+                "No se pudo abrir {} para escritura",
+                path.full_path()
+            ))
+        })?;
 
         if header.trim().is_empty() {
             return Err(Error::ServerError(format!(
@@ -38,7 +46,7 @@ impl TableOperations {
             )));
         }
 
-        let columns = header.trim().split(',').map(|s| s.to_string()).collect();
+        let columns: Vec<String> = header.trim().split(',').map(|s| s.to_string()).collect();
 
         Ok(Self { path, columns })
     }
@@ -57,12 +65,22 @@ impl TableOperations {
         Ok(())
     }
 
-    /// Lee las filas de la tabla.
-    pub fn read_rows(&self) -> Result<Vec<Vec<String>>> {
+    /// Saca la columna del timestamp de las filas
+    pub fn remove_row_timestamp_column(&mut self) {
+        self.columns.pop();
+    }
+
+    /// Lee las filas de la tabla, sin contar la columna extra del timestamp.
+    pub fn read_rows(&self, without_timestamp: bool) -> Result<Vec<Vec<String>>> {
         let file = OpenOptions::new()
             .read(true)
             .open(self.path.full_path())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|_| {
+                Error::ServerError(format!(
+                    "No se pudo abrir {} para lectura",
+                    self.path.full_path()
+                ))
+            })?;
 
         let reader = BufReader::new(file);
         let mut rows = Vec::new();
@@ -70,7 +88,12 @@ impl TableOperations {
         for line in reader.lines().skip(1) {
             let line = line.map_err(|e| Error::ServerError(e.to_string()))?;
             if !line.trim().is_empty() {
-                rows.push(line.trim().split(',').map(|s| s.to_string()).collect());
+                let mut line_separated: Vec<String> =
+                    line.trim().split(',').map(|s| s.to_string()).collect();
+                if without_timestamp {
+                    line_separated.pop(); // saco la columna del timestamp
+                }
+                rows.push(line_separated);
             }
         }
 
@@ -87,7 +110,8 @@ impl TableOperations {
             content.push('\n');
         }
 
-        std::fs::write(self.path.full_path(), content)
-            .map_err(|e| Error::ServerError(e.to_string()))
+        std::fs::write(self.path.full_path(), content).map_err(|_| {
+            Error::ServerError(format!("No se pudo escribir en {}", self.path.full_path()))
+        })
     }
 }
