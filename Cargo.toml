@@ -3,10 +3,16 @@ name = "aerolineas"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+cli = []
+sv = []
+gui = ["cli", "sv", "dep:eframe", "dep:egui_extras", "dep:image", "dep:walkers"]
+sim = []
+
 [dependencies]
-chrono = "0.4.38"
-eframe = "=0.29.1"
-egui_extras = { version = "0.29.1", features = ["image", "datepicker"] }
-image = { version = "0.25.4", features = ["png"] }
-rand = "0.8.5"
-walkers = "=0.25.0"
+chrono = { version = "0.4.38" }
+eframe = { version = "=0.29.1", optional = true }
+egui_extras = { version = "0.29.1", features = ["image", "datepicker"], optional = true }
+image = { version = "0.25.4", features = ["png"], optional = true }
+rand = { version = "0.8.5" }
+walkers = { version = "=0.25.0", optional = true }
