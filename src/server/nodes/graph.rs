@@ -115,11 +115,10 @@ impl NodesGraph {
         self.handlers.extend(nodes);
 
         // Paramos los handlers especiales primero
-        let _ = beat_stopper.send(true);
-        let _ = beater.join();
-
-        let _ = gossip_stopper.send(true);
-        let _ = gossiper.join();
+        //let _ = beat_stopper.send(true);
+        //let _ = beater.join();
+        //let _ = gossip_stopper.send(true);
+        //let _ = gossiper.join();
 
         // Corremos los scripts iniciales
         if let Err(err) = self.send_init_queries() {
@@ -402,12 +401,12 @@ fn increase_heartbeat_and_store_nodes(
                     node_id
                 )));
             }
-            if send_to_node(*node_id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
-                return Err(Error::ServerError(format!(
-                    "Error enviando mensaje de almacenamiento de metadata a nodo {}",
-                    node_id
-                )));
-            }
+            //if send_to_node(*node_id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
+            //    return Err(Error::ServerError(format!(
+            //        "Error enviando mensaje de almacenamiento de metadata a nodo {}",
+            //        node_id
+            //    )));
+            //}
         }
     }
     Ok(())

@@ -24,7 +24,7 @@ use crate::server::{
 };
 
 /// Las propiedades de un nodo.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct EndpointState {
     /// La dirección de _socket_ del nodo.
     ipaddr: IpAddr,

@@ -405,6 +405,8 @@ impl Node {
 
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
+        println!("Vecinos del nodo {}: {:?}", self.id, self.neighbours_states);
+        println!("Estado del nodo {}: {:?}", self.id, self.endpoint_state.get_heartbeat());
         for neighbour_id in neighbours {
             if let Err(err) = send_to_node(
                 neighbour_id,
@@ -485,6 +487,31 @@ impl Node {
         self.update_neighbours(nodes_map)
     }
 
+    fn classify_nodes_in_gossip(
+        &mut self,
+        gossip_info: &HashMap<Byte, HeartbeatState>,
+        response_nodes: &mut HashMap<Byte, EndpointState>,
+        own_gossip: &mut HashMap<Byte, HeartbeatState>,
+    ) {
+        for (node_id, heartbeat) in gossip_info {
+            let endpoint_state_opt = &self.neighbours_states.get(node_id);
+            match endpoint_state_opt {
+                Some(endpoint_state) => {
+                    let cur_heartbeat = endpoint_state.get_heartbeat();
+                    if cur_heartbeat > heartbeat {
+                        response_nodes.insert(*node_id, (*endpoint_state).clone());
+                    } else if cur_heartbeat < heartbeat {
+                        own_gossip.insert(*node_id, endpoint_state.clone_heartbeat());
+                    }
+                }
+                None => {
+                    // Se trata de un vecino que no conocemos aún
+                    own_gossip.insert(*node_id, HeartbeatState::minimal());
+                }
+            }
+        }
+    }
+
     /// Limpia las conexiones cerradas.
     ///
     /// Devuelve las conexiones que logró cerrar.
@@ -553,7 +580,7 @@ impl Node {
         }
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
-                println!("[{} - TCP] Accion del servidor", self.id);
+                //println!("[{} - TCP] Accion del servidor", self.id);
                 if let Err(err) = self.handle_sv_action(action, tcp_stream) {
                     println!(
                         "[{} - ACTION] Error en la acción del servidor: {}",
@@ -563,7 +590,7 @@ impl Node {
                 Ok(())
             }
             None => {
-                println!("[{} - TCP] Conexión externa", self.id);
+                //println!("[{} - TCP] Conexión externa", self.id);
                 self.match_kind_of_conection_mode(bytes, tcp_stream)
             }
         }
@@ -2191,31 +2218,6 @@ impl Node {
                 "No se pudo escribir los bytes:\n\n{}",
                 err
             ))),
-        }
-    }
-
-    fn classify_nodes_in_gossip(
-        &mut self,
-        gossip_info: &HashMap<Byte, HeartbeatState>,
-        response_nodes: &mut HashMap<Byte, EndpointState>,
-        own_gossip: &mut HashMap<Byte, HeartbeatState>,
-    ) {
-        for (node_id, heartbeat) in gossip_info {
-            let endpoint_state_opt = &self.neighbours_states.get(node_id);
-            match endpoint_state_opt {
-                Some(endpoint_state) => {
-                    let cur_heartbeat = endpoint_state.get_heartbeat();
-                    if cur_heartbeat > heartbeat {
-                        response_nodes.insert(*node_id, (*endpoint_state).clone());
-                    } else if cur_heartbeat < heartbeat {
-                        own_gossip.insert(*node_id, endpoint_state.clone_heartbeat());
-                    }
-                }
-                None => {
-                    // Se trata de un vecino que no conocemos aún
-                    own_gossip.insert(*node_id, HeartbeatState::minimal());
-                }
-            }
         }
     }
 

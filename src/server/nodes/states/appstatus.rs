@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
 
 /// El estado actual de un nodo.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum AppStatus {
     /// El nodo funciona normalmente.
     Normal,
