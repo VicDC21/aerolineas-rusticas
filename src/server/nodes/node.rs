@@ -129,10 +129,14 @@ impl Node {
     pub fn new(id: NodeId, mode: ConnectionMode) -> Result<Self> {
         let storage_addr = DiskHandler::new_node_storage(id)?;
         let nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
+        let mut neighbours_states = NodesMap::new();
+        let endpoint_state = EndpointState::with_id_and_mode(id, mode);
+        neighbours_states.insert(id, endpoint_state.clone());
+
         Ok(Self {
             id,
-            neighbours_states: NodesMap::new(),
-            endpoint_state: EndpointState::with_id_and_mode(id, mode),
+            neighbours_states,
+            endpoint_state,
             storage_addr,
             default_keyspace_name: "".to_string(),
             keyspaces: HashMap::new(),
@@ -400,13 +404,15 @@ impl Node {
 
     /// Avanza el tiempo para el nodo.
     fn beat(&mut self) -> VerType {
-        self.endpoint_state.beat()
+        self.endpoint_state.beat();
+        self.neighbours_states
+            .insert(self.id, self.endpoint_state.clone());
+        self.get_beat().1
     }
 
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
-        println!("Vecinos del nodo {}: {:?}", self.id, self.neighbours_states);
-        println!("Estado del nodo {}: {:?}", self.id, self.endpoint_state.get_heartbeat());
+        //println!("Gossip info propia (nodo {}): {:?}", self.id, self.get_gossip_info());
         for neighbour_id in neighbours {
             if let Err(err) = send_to_node(
                 neighbour_id,
@@ -423,22 +429,26 @@ impl Node {
     }
 
     /// Se recibe un mensaje [SYN](crate::server::actions::opcode::SvAction::Syn).
-    fn syn(&mut self, emissor_id: NodeId, gossip_info: GossipInfo) -> Result<()> {
-        let mut own_gossip = GossipInfo::new(); // quiero info de estos nodos
+    fn syn(&mut self, emissor_id: NodeId, emissor_gossip_info: GossipInfo) -> Result<()> {
+        let mut own_gossip_info = GossipInfo::new(); // quiero info de estos nodos
         let mut response_nodes = NodesMap::new(); // doy info de estos nodos
 
-        self.classify_nodes_in_gossip(&gossip_info, &mut response_nodes, &mut own_gossip);
+        self.classify_nodes_in_gossip(
+            &emissor_gossip_info,
+            &mut response_nodes,
+            &mut own_gossip_info,
+        );
 
         // Ahora rondamos nuestros vecinos para ver si tenemos uno que el nodo emisor no
         for (own_node_id, endpoint_state) in &self.neighbours_states {
-            if !gossip_info.contains_key(own_node_id) {
+            if !emissor_gossip_info.contains_key(own_node_id) {
                 response_nodes.insert(*own_node_id, endpoint_state.clone());
             }
         }
 
         if let Err(err) = send_to_node(
             emissor_id,
-            SvAction::Ack(self.get_id().to_owned(), own_gossip, response_nodes).as_bytes(),
+            SvAction::Ack(self.get_id().to_owned(), own_gossip_info, response_nodes).as_bytes(),
             PortType::Priv,
         ) {
             println!(
@@ -453,21 +463,21 @@ impl Node {
     fn ack(
         &mut self,
         receptor_id: NodeId,
-        gossip_info: GossipInfo,
-        nodes_map: NodesMap,
+        receptor_gossip_info: GossipInfo,
+        response_nodes: NodesMap,
     ) -> Result<()> {
         // Poblamos un mapa con los estados que pide el receptor
         let mut nodes_for_receptor = NodesMap::new();
-        for (node_id, heartbeat) in &gossip_info {
-            let cur_endpoint_state = &self.neighbours_states[node_id];
-            if cur_endpoint_state.get_heartbeat() > heartbeat {
+        for (node_id, receptor_heartbeat) in &receptor_gossip_info {
+            let own_endpoint_state = &self.neighbours_states[node_id];
+            if own_endpoint_state.get_heartbeat() > receptor_heartbeat {
                 // hacemos doble chequeo que efectivamente tenemos información más nueva
-                nodes_for_receptor.insert(*node_id, cur_endpoint_state.clone());
+                nodes_for_receptor.insert(*node_id, own_endpoint_state.clone());
             }
         }
 
         // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
-        self.update_neighbours(nodes_map)?;
+        self.update_neighbours(response_nodes)?;
 
         if let Err(err) = send_to_node(
             receptor_id,
@@ -489,19 +499,20 @@ impl Node {
 
     fn classify_nodes_in_gossip(
         &mut self,
-        gossip_info: &HashMap<Byte, HeartbeatState>,
+        emissor_gossip_info: &HashMap<Byte, HeartbeatState>,
         response_nodes: &mut HashMap<Byte, EndpointState>,
         own_gossip: &mut HashMap<Byte, HeartbeatState>,
     ) {
-        for (node_id, heartbeat) in gossip_info {
-            let endpoint_state_opt = &self.neighbours_states.get(node_id);
-            match endpoint_state_opt {
-                Some(endpoint_state) => {
-                    let cur_heartbeat = endpoint_state.get_heartbeat();
-                    if cur_heartbeat > heartbeat {
-                        response_nodes.insert(*node_id, (*endpoint_state).clone());
-                    } else if cur_heartbeat < heartbeat {
-                        own_gossip.insert(*node_id, endpoint_state.clone_heartbeat());
+        for (node_id, emissor_heartbeat) in emissor_gossip_info {
+            match &self.neighbours_states.get(node_id) {
+                Some(own_endpoint_state) => {
+                    let own_heartbeat = own_endpoint_state.get_heartbeat();
+                    if emissor_heartbeat < own_heartbeat {
+                        // El nodo propio tiene un heartbeat más nuevo que el que se recibió
+                        response_nodes.insert(*node_id, (*own_endpoint_state).clone());
+                    } else if own_heartbeat < emissor_heartbeat {
+                        // El nodo propio tiene un heartbeat más viejo que el que se recibió
+                        own_gossip.insert(*node_id, own_heartbeat.clone());
                     }
                 }
                 None => {
