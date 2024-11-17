@@ -927,7 +927,7 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 0..5 {
+        for actual_node in 0..N_NODES {
             let node_id =
                 next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
             response = if node_id != self.id {
@@ -1012,7 +1012,7 @@ impl Node {
         }
 
         let mut responses = Vec::new();
-        for actual_node in 0..5 {
+        for actual_node in 0..N_NODES {
             let node_id =
                 next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
 
@@ -1072,7 +1072,7 @@ impl Node {
         }
 
         let mut responses = Vec::new();
-        for actual_node in 0..5 {
+        for actual_node in 0..N_NODES {
             let node_id =
                 next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
 
