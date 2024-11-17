@@ -670,9 +670,10 @@ impl Node {
             }
             SvAction::AddPartitionValueToMetadata(table_name, partition_value) => {
                 let table = self.get_table(&table_name)?;
-                match self
-                .check_if_has_new_partition_value(partition_value, &table.get_name().to_string())?
-                {
+                match self.check_if_has_new_partition_value(
+                    partition_value,
+                    &table.get_name().to_string(),
+                )? {
                     Some(new_partition_values) => self
                         .tables_and_partitions_keys_values
                         .insert(table_name, new_partition_values),
@@ -1116,8 +1117,7 @@ impl Node {
             for i in 0..quantity_replicas {
                 let next_node_id =
                     next_node_to_replicate_data(actual_node_id, i as u8, START_ID, LAST_ID);
-                response = 
-                if next_node_id == self.id {
+                response = if next_node_id == self.id {
                     self.process_internal_create_table_statement(&create_table, actual_node_id)?
                 } else {
                     let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
@@ -1198,7 +1198,6 @@ impl Node {
         insert: &Insert,
         timestamp: i64,
         node_number: Byte,
-        
     ) -> Result<Vec<Byte>> {
         let table = match self.get_table(&insert.table.get_name()) {
             Ok(table) => table,
@@ -1244,11 +1243,7 @@ impl Node {
         Ok(None)
     }
 
-    fn get_partition_value_from_insert(
-        &self,
-        insert: &Insert,
-        table: &Table,
-    ) -> Result<String> {
+    fn get_partition_value_from_insert(&self, insert: &Insert, table: &Table) -> Result<String> {
         let insert_columns = insert.get_columns_names();
         let insert_column_values = insert.get_values();
 
@@ -1257,11 +1252,14 @@ impl Node {
             .position(|x| x == &table.get_partition_key()[0])
         {
             Some(position) => position,
-            None => return Err(Error::SyntaxError("No se mando la partition key en la query del insert".to_string())),
+            None => {
+                return Err(Error::SyntaxError(
+                    "No se mando la partition key en la query del insert".to_string(),
+                ))
+            }
         };
         Ok(insert_column_values[position].to_string())
     }
-
 
     fn process_update(&mut self, update: &Update, node_number: Byte) -> Result<Vec<Byte>> {
         let table = match self.get_table(&update.table_name.get_name()) {
@@ -1372,9 +1370,8 @@ impl Node {
         for i in 0..N_NODES {
             let node_to_replicate =
                 next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
-            if (i as u32) < replication_factor_quantity{
-                response = 
-                if node_to_replicate == self.id {
+            if (i as u32) < replication_factor_quantity {
+                response = if node_to_replicate == self.id {
                     self.process_insert(&insert, timestamp, node_id)?
                 } else {
                     let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
@@ -1391,19 +1388,23 @@ impl Node {
                 }
             } else if node_to_replicate == self.id {
                 let table = self.get_table(&table_name)?;
-                let partition_value = self.get_partition_key_value_from_insert_statement(&insert, table)?;
-                match self
-                .check_if_has_new_partition_value(partition_value, &table.get_name().to_string())?
-                {
+                let partition_value =
+                    self.get_partition_key_value_from_insert_statement(&insert, table)?;
+                match self.check_if_has_new_partition_value(
+                    partition_value,
+                    &table.get_name().to_string(),
+                )? {
                     Some(new_partition_values) => self
                         .tables_and_partitions_keys_values
                         .insert(insert.table.get_name().to_string(), new_partition_values),
                     None => None,
                 };
             } else {
-                let partition_value = self.get_partition_value_from_insert(&insert, self.get_table(&table_name)?)?;
+                let partition_value =
+                    self.get_partition_value_from_insert(&insert, self.get_table(&table_name)?)?;
                 let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
-                    SvAction::AddPartitionValueToMetadata(table_name.clone(), partition_value).as_bytes(),
+                    SvAction::AddPartitionValueToMetadata(table_name.clone(), partition_value)
+                        .as_bytes(),
                     None,
                     None,
                 );
@@ -1414,7 +1415,7 @@ impl Node {
                     false,
                 )?;
             };
-            
+
             if consistency_counter >= consistency_number {
                 wait_response = false;
             } else if self.verify_succesful_response(&response) {
@@ -1533,8 +1534,7 @@ impl Node {
             let node_id = self.select_node(&partition_key_value);
 
             if !consulted_nodes.contains(&partition_key_value) {
-                let current_response = 
-                if node_id == self.id {
+                let current_response = if node_id == self.id {
                     self.process_update(&update, self.id)?
                 } else {
                     self.send_message_and_wait_response(
@@ -1628,8 +1628,7 @@ impl Node {
                 let wait_response = true;
                 let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
-                let mut actual_result = 
-                if node_id == self.id {
+                let mut actual_result = if node_id == self.id {
                     self.process_select(&select, node_id)?
                 } else {
                     let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
@@ -1734,9 +1733,12 @@ impl Node {
                 None,
                 Some(node_id),
             );
-            let opcode_with_hashed_value = 
-            if node_to_consult == self.id{
-                let internal_request = self.add_metadata_to_internal_request_of_any_kind(request.to_vec(), None, Some(node_id));
+            let opcode_with_hashed_value = if node_to_consult == self.id {
+                let internal_request = self.add_metadata_to_internal_request_of_any_kind(
+                    request.to_vec(),
+                    None,
+                    Some(node_id),
+                );
                 let res = self.handle_request(&internal_request, true);
                 let mut res_with_opcode;
                 if self.verify_succesful_response(&res) {
@@ -1747,7 +1749,7 @@ impl Node {
                     res_with_opcode.extend_from_slice(&res);
                 }
                 res_with_opcode
-            } else{
+            } else {
                 self.send_message_and_wait_response(
                     request_with_metadata,
                     node_to_consult,
@@ -1923,8 +1925,7 @@ impl Node {
             let node_id = self.select_node(&partition_key_value);
 
             if !consulted_nodes.contains(&partition_key_value) {
-                let current_response = 
-                if node_id == self.id {
+                let current_response = if node_id == self.id {
                     self.process_delete(&delete, self.id)?
                 } else {
                     let res = self.send_message_and_wait_response(

@@ -85,8 +85,7 @@ pub enum SvAction {
     RepairRows(String, Byte, Vec<Byte>),
 
     /// Agrega una relacion de tabla con un partition value
-    AddPartitionValueToMetadata(String, String)
-
+    AddPartitionValueToMetadata(String, String),
 }
 
 impl SvAction {
@@ -248,7 +247,6 @@ impl Byteable for SvAction {
                 bytes.extend(encode_string_to_bytes(table_name));
                 bytes.extend(encode_string_to_bytes(partition_value));
                 bytes
-
             }
         }
     }
@@ -351,7 +349,10 @@ impl TryFrom<&[Byte]> for SvAction {
             0xFD => {
                 let table_name = parse_bytes_to_string(&bytes[1..], &mut i)?;
                 let partition_value = parse_bytes_to_string(&bytes[(i + 1)..], &mut i)?;
-                Ok(Self::AddPartitionValueToMetadata(table_name, partition_value))
+                Ok(Self::AddPartitionValueToMetadata(
+                    table_name,
+                    partition_value,
+                ))
             }
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",

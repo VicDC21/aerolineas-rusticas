@@ -33,7 +33,7 @@ impl Insert {
     }
 
     /// Devuelve el nombre de la tabla
-    pub fn get_table_name(&self) -> String{
+    pub fn get_table_name(&self) -> String {
         self.table.get_name()
     }
 
