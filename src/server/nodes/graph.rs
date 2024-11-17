@@ -109,8 +109,9 @@ impl NodesGraph {
     /// Inicializa el grafo y levanta todos los handlers necesarios.
     pub fn init(&mut self) -> Result<()> {
         let nodes = self.bootup_nodes(N_NODES)?;
-        let (beater, beat_stopper) = self.beater()?;
-        let (gossiper, gossip_stopper) = self.gossiper()?;
+        // REVISAR
+        let (_beater, _beat_stopper) = self.beater()?;
+        let (_gossiper, _gossip_stopper) = self.gossiper()?;
 
         self.handlers.extend(nodes);
 

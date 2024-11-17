@@ -26,6 +26,11 @@ impl AppState {
         &self.status
     }
 
+    /// Establece el estado del nodo.
+    pub fn set_status(&mut self, status: AppStatus) {
+        self.status = status;
+    }
+
     /// Consulta el modo de conexión.
     pub fn get_mode(&self) -> &ConnectionMode {
         &self.conmode

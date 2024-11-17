@@ -88,9 +88,14 @@ impl EndpointState {
         self.heartbeat.clone()
     }
 
-    /// Consulta el estado de aplicación.
+    /// Consulta el estado de aplicación del _endpoint_.
     pub fn get_appstate(&self) -> &AppState {
         &self.application
+    }
+
+    /// Establece el estado de aplicación del _endpoint_.
+    pub fn set_appstate_status(&mut self, appstatus: AppStatus) {
+        self.application.set_status(appstatus);
     }
 
     /// Gets a socket depending of the selected port.

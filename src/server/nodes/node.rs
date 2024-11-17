@@ -397,6 +397,13 @@ impl Node {
         )
     }
 
+    /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
+    fn is_bootstrap_done(&mut self) {
+        if self.neighbours_states.len() == N_NODES as usize {
+            self.endpoint_state.set_appstate_status(AppStatus::Normal);
+        }
+    }
+
     /// Consulta el estado de _heartbeat_.
     pub fn get_beat(&mut self) -> (GenType, VerType) {
         self.endpoint_state.get_heartbeat().as_tuple()
@@ -412,7 +419,8 @@ impl Node {
 
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
-        //println!("Gossip info propia (nodo {}): {:?}", self.id, self.get_gossip_info());
+        self.is_bootstrap_done();
+
         for neighbour_id in neighbours {
             if let Err(err) = send_to_node(
                 neighbour_id,
@@ -591,7 +599,6 @@ impl Node {
         }
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
-                //println!("[{} - TCP] Accion del servidor", self.id);
                 if let Err(err) = self.handle_sv_action(action, tcp_stream) {
                     println!(
                         "[{} - ACTION] Error en la acción del servidor: {}",
@@ -600,10 +607,7 @@ impl Node {
                 }
                 Ok(())
             }
-            None => {
-                //println!("[{} - TCP] Conexión externa", self.id);
-                self.match_kind_of_conection_mode(bytes, tcp_stream)
-            }
+            None => self.match_kind_of_conection_mode(bytes, tcp_stream),
         }
     }
 
@@ -1795,7 +1799,7 @@ impl Node {
                     true,
                 )?
             };
-            // println!("Mi nodo es {}, y el hashed del nodo {} y  busco data de la replica {} que en bytes es: {:?}", self.id, node_to_consult, node_id, opcode_with_hashed_value);
+
             let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
             if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result
                 && first_hashed_value == res_hashed_value
@@ -2252,9 +2256,7 @@ impl Node {
                 }
             }
             ConnectionMode::Parsing => {
-                println!("En modo parsing...");
                 let res = self.handle_request(&bytes[..], false);
-                println!("respuesta: {:?}", res);
                 let _ = tcp_stream.write_all(&res[..]);
                 if let Err(err) = tcp_stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);
