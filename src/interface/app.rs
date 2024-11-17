@@ -1,5 +1,7 @@
 //! Módulo para la estructura de la aplicación en sí.
 
+use std::env::var;
+
 use chrono::{DateTime, Local};
 use eframe::egui::{CentralPanel, Context};
 use eframe::{App, Frame};
@@ -80,7 +82,7 @@ impl AerolineasApp {
         HttpTiles::with_options(
             OpenStreetMap,
             HttpOptions {
-                cache: if cfg!(target_os = "android") || std::env::var("NO_HTTP_CACHE").is_ok() {
+                cache: if cfg!(target_os = "android") || var("NO_HTTP_CACHE").is_ok() {
                     None
                 } else {
                     Some(".cache".into())

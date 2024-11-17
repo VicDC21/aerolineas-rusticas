@@ -1,8 +1,13 @@
 //! Módulo para paneles de la interfaz.
 
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
-use eframe::egui::{Button, Color32, Context, Frame, Margin, RichText, ScrollArea, SidePanel, Ui};
+use eframe::egui::{
+    Button, Color32, Context, Frame, Margin, Response, RichText, ScrollArea, SidePanel, Ui,
+};
 
 use crate::{
     client::{cli::Client, protocol_result::ProtocolResult},
@@ -33,6 +38,7 @@ pub fn cur_airport_info(
 ) -> (bool, bool) {
     let mut must_show_incoming = *show_incoming;
     let mut must_show_departing = *show_departing;
+    let panel_width = ctx.screen_rect().width() / 3.0;
 
     let panel_frame = Frame {
         fill: Color32::from_rgba_unmultiplied(66, 66, 66, 200),
@@ -41,14 +47,49 @@ pub fn cur_airport_info(
     };
     let info_panel = SidePanel::left("cur_airport_info")
         .resizable(false)
-        .exact_width(ctx.screen_rect().width() / 3.0)
+        .exact_width(panel_width)
         .frame(panel_frame);
     info_panel.show_animated(ctx, cur_airport.is_some(), |ui| {
+        ui.style_mut().spacing.indent = 3.0; // Para que no se pegue a los bordes
         show_airport_info(ui, cur_airport);
         ui.separator();
-        must_show_incoming = show_incoming_flights(ctx, ui, show_incoming, incoming_flights);
-        ui.separator();
-        must_show_departing = show_departing_flights(ctx, ui, show_departing, departing_flights);
+
+        let mut buttons = HashMap::<&str, Response>::new();
+        let can_show = |show| if show { "Ocultar" } else { "Mostrar" };
+        ui.horizontal(|horizontal_ui| {
+            buttons.insert(
+                "incoming",
+                horizontal_ui.button(
+                    RichText::new(format!("{} Vuelos Entrantes", can_show(must_show_incoming)))
+                        .heading(),
+                ),
+            );
+            buttons.insert(
+                "departing",
+                horizontal_ui.button(
+                    RichText::new(format!(
+                        "{} Vuelos Salientes",
+                        can_show(must_show_departing)
+                    ))
+                    .heading(),
+                ),
+            );
+        });
+
+        must_show_incoming = show_incoming_flights(
+            ctx,
+            ui,
+            &buttons["incoming"],
+            show_incoming,
+            incoming_flights,
+        );
+        must_show_departing = show_departing_flights(
+            ctx,
+            ui,
+            &buttons["departing"],
+            show_departing,
+            departing_flights,
+        );
     });
     (must_show_incoming, must_show_departing)
 }
@@ -180,11 +221,11 @@ fn send_insert_query(client_lock: Arc<Mutex<Client>>, query: &str) -> Result<()>
 fn show_incoming_flights(
     ctx: &Context,
     ui: &mut Ui,
+    incoming_button_response: &Response,
     show_incoming: &bool,
     incoming_flights: Arc<Vec<IncomingFlight>>,
 ) -> bool {
     let mut must_show_incoming = *show_incoming;
-    let incoming_button = Button::new(RichText::new("Mostrar Vuelos Entrantes").heading());
     if must_show_incoming {
         ScrollArea::vertical()
             .max_height(100.0)
@@ -192,6 +233,10 @@ fn show_incoming_flights(
             .animated(true)
             .id_salt("incoming_scroll")
             .show(ui, |scroll_ui| {
+                if incoming_flights.is_empty() {
+                    show_loading_spinner(scroll_ui, "Cargando vuelos entrantes...".to_string());
+                }
+
                 for incoming_flight in incoming_flights.iter() {
                     let potential_date = match incoming_flight.get_date() {
                         None => "".to_string(),
@@ -213,7 +258,7 @@ fn show_incoming_flights(
                 }
             });
     }
-    if ui.add(incoming_button).clicked() {
+    if incoming_button_response.clicked() {
         if *show_incoming {
             println!("Ocultando vuelos entrantes...");
             must_show_incoming = false;
@@ -229,11 +274,11 @@ fn show_incoming_flights(
 fn show_departing_flights(
     ctx: &Context,
     ui: &mut Ui,
+    departing_button_response: &Response,
     show_departing: &bool,
     departing_flights: Arc<Vec<DepartingFlight>>,
 ) -> bool {
     let mut must_show_departing = *show_departing;
-    let departing_button = Button::new(RichText::new("Mostrar Vuelos Salientes").heading());
     if must_show_departing {
         ScrollArea::vertical()
                 .max_height(100.0)
@@ -241,6 +286,10 @@ fn show_departing_flights(
                 .animated(true)
                 .id_salt("departing_scroll")
                 .show(ui, |scroll_ui| {
+                    if departing_flights.is_empty() {
+                        show_loading_spinner(scroll_ui, "Cargando vuelos salientes...".to_string());
+                    }
+
                     for departing_flight in departing_flights.iter() {
                         let potential_date = match departing_flight.get_date() {
                             None => "".to_string(),
@@ -258,7 +307,7 @@ fn show_departing_flights(
                     }
                 });
     }
-    if ui.add(departing_button).clicked() {
+    if departing_button_response.clicked() {
         if *show_departing {
             println!("Ocultando vuelos salientes...");
             must_show_departing = false;
@@ -268,4 +317,17 @@ fn show_departing_flights(
         }
     }
     must_show_departing
+}
+
+/// Muestra un mensaje de carga.
+fn show_loading_spinner(ui: &mut Ui, msg: String) -> Response {
+    ui.vertical_centered(|loading_ui| {
+        loading_ui.label(
+            RichText::new(msg)
+                .italics()
+                .color(Color32::from_rgb(255, 255, 255)),
+        );
+        loading_ui.spinner();
+    })
+    .response
 }
