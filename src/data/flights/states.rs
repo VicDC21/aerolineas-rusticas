@@ -6,7 +6,7 @@ use crate::protocol::errors::error::Error;
 
 /// Un mismo vuelo puede cancelarse, atrasarse, u otras cosas que es necesario detectar.
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FlightState {
     /// Un vuelo actualmente ne curso.
     InCourse,
@@ -19,6 +19,9 @@ pub enum FlightState {
 
     /// Un vuelo finalizado correctamente (no [cancelado](crate::data::flight_states::FlightState::Canceled)).
     Finished,
+
+    /// Un vuelo en preparación.
+    Preparing,
 }
 
 impl Display for FlightState {
@@ -28,6 +31,7 @@ impl Display for FlightState {
             Self::Delayed => write!(f, "delayed"),
             Self::Canceled => write!(f, "canceled"),
             Self::Finished => write!(f, "finished"),
+            Self::Preparing => write!(f, "preparing"),
         }
     }
 }
@@ -40,6 +44,7 @@ impl TryFrom<&str> for FlightState {
             "delayed" => Ok(Self::Delayed),
             "canceled" => Ok(Self::Canceled),
             "finished" => Ok(Self::Finished),
+            "preparing" => Ok(Self::Preparing),
             _ => Err(Error::ServerError(format!(
                 "'{}' no es un nombre válido de estado de vuelo.",
                 state
