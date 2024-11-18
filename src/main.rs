@@ -1,3 +1,4 @@
+use aerolineas::simulator::flight_simulator::run_sim;
 use aerolineas::{
     client::cli::Client, protocol::aliases::results::Result, server::nodes::graph::NodesGraph,
 };
@@ -41,9 +42,13 @@ fn main() {
             #[cfg(not(feature = "gui"))]
             println!("Se quizo ejecutar 'gui', pero la feature relevante no está activada. Prueba con:\n\ncargo run --features \"gui\" gui\n")
         }
+        "sim" => {
+            let client = Client::default();
+            print_err(run_sim(client));
+        }
         _ => {
             println!(
-                "Se debe elegir o 'sv', 'cli' o 'gui', pero no '{}'...",
+                "Se debe elegir 'sv', 'cli', 'gui' o 'sim', pero no '{}'...",
                 argv[1]
             );
         }

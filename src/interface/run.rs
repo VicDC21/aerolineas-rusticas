@@ -1,5 +1,6 @@
 //! Módulo para correr la interfaz.
 
+use eframe::egui::ViewportBuilder;
 use eframe::{run_native, NativeOptions};
 
 use crate::interface::app::AerolineasApp;
@@ -9,7 +10,10 @@ use crate::protocol::{aliases::results::Result, errors::error::Error};
 pub fn run_app() -> Result<()> {
     if let Err(err) = run_native(
         "Aerolíneas App",
-        NativeOptions::default(),
+        NativeOptions {
+            viewport: ViewportBuilder::default().with_maximized(true),
+            ..Default::default()
+        },
         Box::new(|cc| {
             Ok(Box::<AerolineasApp>::new(AerolineasApp::new(
                 cc.egui_ctx.clone(),
