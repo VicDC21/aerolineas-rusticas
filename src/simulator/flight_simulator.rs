@@ -1,11 +1,17 @@
-use crate::client::cli::Client;
-use crate::client::protocol_result::ProtocolResult;
-use crate::protocol::errors::error::Error;
-use crate::server::pool::threadpool::ThreadPool;
-use rand::Rng;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
+use {
+    crate::{
+        client::{cli::Client, protocol_result::ProtocolResult},
+        data::flights::states::FlightState,
+        protocol::errors::error::Error,
+        server::pool::threadpool::ThreadPool,
+    },
+    rand::Rng,
+    std::{
+        sync::{Arc, Mutex},
+        thread,
+        time::Duration,
+    },
+};
 
 /// Ejecuta el simulador de vuelos
 pub fn run_sim(client: Client) -> Result<(), Error> {
@@ -83,14 +89,7 @@ struct FlightData {
     altitude: f64,
     fuel_level: f64,
     current_speed: f64,
-    status: FlightStatus,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum FlightStatus {
-    Preparing,
-    InFlight,
-    Landed,
+    status: FlightState,
 }
 
 struct FlightSimulator {
@@ -124,7 +123,7 @@ impl FlightSimulator {
             altitude: 0.0,
             fuel_level: 100.0,
             current_speed: 0.0,
-            status: FlightStatus::Preparing,
+            status: FlightState::Preparing,
         };
 
         let flights = Arc::clone(&self.flights);
@@ -154,8 +153,8 @@ impl FlightSimulator {
                 .iter_mut()
                 .find(|f| f.flight_number == flight.flight_number)
             {
-                existing_flight.status = FlightStatus::InFlight;
-                flight.status = FlightStatus::InFlight;
+                existing_flight.status = FlightState::InCourse;
+                flight.status = FlightState::InCourse;
             }
         }
 
@@ -188,13 +187,13 @@ impl FlightSimulator {
             thread::sleep(Duration::from_secs(1));
         }
 
-        flight.status = FlightStatus::Landed;
+        flight.status = FlightState::Finished;
         if let Ok(mut flight_list) = flights.lock() {
             if let Some(existing_flight) = flight_list
                 .iter_mut()
                 .find(|f| f.flight_number == flight.flight_number)
             {
-                existing_flight.status = FlightStatus::Landed;
+                existing_flight.status = FlightState::Finished;
             }
         }
 
@@ -284,7 +283,7 @@ mod tests {
         assert!(flight_data.is_some());
 
         if let Some(data) = flight_data {
-            assert_eq!(data.status, FlightStatus::InFlight);
+            assert_eq!(data.status, FlightState::InCourse);
         }
 
         thread::sleep(Duration::from_secs(15));
@@ -292,7 +291,7 @@ mod tests {
         if let Some(data) = simulator.get_flight_data("123456") {
             assert_eq!(
                 data.status,
-                FlightStatus::Landed,
+                FlightState::Finished,
                 "El estado del vuelo es {:?} cuando debería ser Landed",
                 data.status
             );
