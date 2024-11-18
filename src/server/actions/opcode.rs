@@ -342,7 +342,7 @@ impl TryFrom<&[Byte]> for SvAction {
             0xFB => Ok(Self::DigestReadRequest(bytes[1..].to_vec())),
             0xFC => {
                 let table_name = parse_bytes_to_string(&bytes[1..], &mut i)?;
-                let node_id = bytes[table_name.len() + 1];
+                let node_id = bytes[i + 1];
                 let rows = bytes[table_name.len() + 1 + 2 + 1..].to_vec();
                 Ok(Self::RepairRows(table_name, node_id, rows))
             }

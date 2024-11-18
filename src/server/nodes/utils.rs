@@ -32,7 +32,7 @@ pub fn hash_value<T: Hash>(value: T) -> u64 {
 }
 
 /// Devuelve el ID del siguiente nodo donde se deberían replicar datos.
-pub fn next_node_to_replicate_data(
+pub fn next_node_in_the_round(
     first_node_to_replicate: Byte,
     node_iterator: Byte,
     min: Byte,
@@ -70,6 +70,20 @@ pub fn send_to_node_and_wait_response(
     port_type: PortType,
     wait_response: bool,
 ) -> Result<Vec<Byte>> {
+    send_to_node_and_wait_response_with_timeout(id, bytes, port_type, wait_response, None)
+}
+
+/// Manda un mensaje a un nodo específico y espera por la respuesta de este, con un timeout.
+/// Si el timeout se alcanza, se devuelve un buffer vacío.
+///
+/// `timeout` es medido en segundos.
+pub fn send_to_node_and_wait_response_with_timeout(
+    id: NodeId,
+    bytes: Vec<Byte>,
+    port_type: PortType,
+    wait_response: bool,
+    timeout: Option<u64>,
+) -> Result<Vec<Byte>> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
@@ -80,7 +94,7 @@ pub fn send_to_node_and_wait_response(
             )))
         }
     };
-    println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
+    // println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
 
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
@@ -95,9 +109,21 @@ pub fn send_to_node_and_wait_response(
     let mut buf = Vec::<Byte>::new();
 
     if wait_response {
-        println!("empieza a esperar respuesta");
+        if let Some(timeout_secs) = timeout {
+            if let Err(err) =
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(timeout_secs)))
+            {
+                println!("Error estableciendo timeout en el nodo:\n\n{}", err)
+            }
+        }
         match stream.read_to_end(&mut buf) {
-            Err(err) => println!("Error recibiendo response de un nodo:\n\n{}", err),
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                println!(
+                    "Timeout alcanzado al esperar respuesta del nodo {}:\n\n{}",
+                    id, err
+                );
+            }
+            Err(err) => println!("Error recibiendo response del nodo {}:\n\n{}", id, err),
             Ok(i) => {
                 print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
                 for byte in &buf[..] {

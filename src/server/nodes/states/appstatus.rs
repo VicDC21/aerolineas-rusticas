@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
 
 /// El estado actual de un nodo.
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AppStatus {
     /// El nodo funciona normalmente.
     Normal,
@@ -18,6 +18,9 @@ pub enum AppStatus {
 
     /// El nodo esta siendo dado de baja porque no se puede acceder a él.
     Remove,
+
+    /// El nodo no está respondiendo a los mensajes.
+    Offline,
 }
 
 impl Byteable for AppStatus {
@@ -27,6 +30,7 @@ impl Byteable for AppStatus {
             Self::Bootstrap => vec![0x1],
             Self::Left => vec![0x2],
             Self::Remove => vec![0x3],
+            Self::Offline => vec![0x4],
         }
     }
 }
@@ -46,6 +50,7 @@ impl TryFrom<&[Byte]> for AppStatus {
             0x1 => Ok(Self::Bootstrap),
             0x2 => Ok(Self::Left),
             0x3 => Ok(Self::Remove),
+            0x4 => Ok(Self::Offline),
             _ => Err(Error::ServerError(format!(
                 "El ID '{}' no corresponde a ningún estado de aplicación.",
                 first

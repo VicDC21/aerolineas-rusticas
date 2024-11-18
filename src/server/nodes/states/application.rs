@@ -6,7 +6,7 @@ use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteab
 use crate::server::{modes::ConnectionMode, nodes::states::appstatus::AppStatus};
 
 /// El estado de aplicación contiene otros datos actuales sobre el estado del nodo.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct AppState {
     /// El estado de conexión del nodo.
     status: AppStatus,
@@ -24,6 +24,11 @@ impl AppState {
     /// Consulta el estado del nodo.
     pub fn get_status(&self) -> &AppStatus {
         &self.status
+    }
+
+    /// Establece el estado del nodo.
+    pub fn set_status(&mut self, status: AppStatus) {
+        self.status = status;
     }
 
     /// Consulta el modo de conexión.

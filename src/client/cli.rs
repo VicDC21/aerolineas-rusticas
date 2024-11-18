@@ -296,7 +296,7 @@ impl Client {
             if std::time::Instant::now() > deadline {
                 return Err(Error::ServerError("Timeout al leer header".into()));
             }
-            println!("Response: {:?}", response);
+            // println!("Response: {:?}", response);
             match tcp_stream.read(&mut buffer) {
                 Ok(0) => {
                     if response.is_empty() {

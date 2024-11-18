@@ -24,7 +24,7 @@ use crate::server::{
 };
 
 /// Las propiedades de un nodo.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct EndpointState {
     /// La dirección de _socket_ del nodo.
     ipaddr: IpAddr,
@@ -88,9 +88,19 @@ impl EndpointState {
         self.heartbeat.clone()
     }
 
-    /// Consulta el estado de aplicación.
+    /// Consulta el estado de aplicación del _endpoint_.
     pub fn get_appstate(&self) -> &AppState {
         &self.application
+    }
+
+    /// Consulta el _status_ de la aplicación del _endpoint_.
+    pub fn get_appstate_status(&self) -> &AppStatus {
+        self.application.get_status()
+    }
+
+    /// Establece el estado de aplicación del _endpoint_.
+    pub fn set_appstate_status(&mut self, appstatus: AppStatus) {
+        self.application.set_status(appstatus);
     }
 
     /// Gets a socket depending of the selected port.

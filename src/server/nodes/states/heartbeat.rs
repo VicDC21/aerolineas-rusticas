@@ -15,7 +15,7 @@ pub type GenType = i64;
 pub type VerType = u64;
 
 /// Estructura para el _Heartbeat State_ de un nodo.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct HeartbeatState {
     /// Momento de generación del nodo.
     gen: GenType,
