@@ -1,7 +1,14 @@
 //! Módulo de nodos.
 use chrono::Utc;
 use std::{
-    cmp::PartialEq, collections::{HashMap, HashSet}, fmt, io::{BufRead, BufReader, Write}, net::{SocketAddr, TcpListener, TcpStream}, path::Path, sync::{Arc, Mutex}, vec::IntoIter
+    cmp::PartialEq,
+    collections::{HashMap, HashSet},
+    fmt,
+    io::{BufRead, BufReader, Write},
+    net::{SocketAddr, TcpListener, TcpStream},
+    path::Path,
+    sync::{Arc, Mutex},
+    vec::IntoIter,
 };
 
 use crate::parser::{
@@ -1240,7 +1247,8 @@ impl Node {
                         ))
                     }
                 };
-                self.process_update(&update, timestamp, node_number)},
+                self.process_update(&update, timestamp, node_number)
+            }
             DmlStatement::DeleteStatement(delete) => self.process_delete(&delete, node_number),
             DmlStatement::BatchStatement(_batch) => todo!(),
         }
@@ -1336,7 +1344,12 @@ impl Node {
         Ok(insert_column_values[position].to_string())
     }
 
-    fn process_update(&mut self, update: &Update, timestamp: i64, node_number: Byte) -> Result<Vec<Byte>> {
+    fn process_update(
+        &mut self,
+        update: &Update,
+        timestamp: i64,
+        node_number: Byte,
+    ) -> Result<Vec<Byte>> {
         let table = match self.get_table(&update.table_name.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),
@@ -1597,7 +1610,13 @@ impl Node {
 
                 consulted_nodes.push(partition_key_value.clone());
                 let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-                self.replicate_update_in_other_nodes(replication_factor, node_id, request, &update, timestamp)?;
+                self.replicate_update_in_other_nodes(
+                    replication_factor,
+                    node_id,
+                    request,
+                    &update,
+                    timestamp,
+                )?;
 
                 if consistency_counter >= consistency_number {
                     wait_response = false;
@@ -1623,7 +1642,7 @@ impl Node {
         node_id: Byte,
         request: &[Byte],
         update: &Update,
-        timestamp: i64 
+        timestamp: i64,
     ) -> Result<()> {
         for i in 1..replication_factor {
             let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
@@ -1964,10 +1983,16 @@ impl Node {
             if !consulted_nodes.contains(&partition_key_value) {
                 consulted_nodes.push(partition_key_value.clone());
                 let replication_factor = self.get_replicas_from_table_name(&table_name)?;
-                self.replicate_delete_in_other_nodes(replication_factor, node_id, request, &delete, consistency_number)?;
+                self.replicate_delete_in_other_nodes(
+                    replication_factor,
+                    node_id,
+                    request,
+                    &delete,
+                    consistency_number,
+                )?;
             }
         }
-    Ok(self.create_result_void())
+        Ok(self.create_result_void())
     }
 
     // Función auxiliar para replicar el delete en otros nodos
@@ -1977,7 +2002,7 @@ impl Node {
         node_id: Byte,
         request: &[Byte],
         delete: &Delete,
-        consistency_number: usize
+        consistency_number: usize,
     ) -> Result<()> {
         let mut consistency_counter = 0;
         let mut wait_response = true;
@@ -2009,7 +2034,7 @@ impl Node {
             return Err(Error::ServerError(format!(
                 "No se pudo cumplir con el nivel de consistencia, solo se logró con {} de {}",
                 consistency_counter, consistency_number,
-            )))
+            )));
         };
         Ok(())
     }
