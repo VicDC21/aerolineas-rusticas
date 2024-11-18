@@ -239,6 +239,7 @@ impl DiskHandler {
         );
 
         let table_ops = TableOperations::new(path)?;
+        println!("Las filas siguen siendo {:?}", rows_as_string);
         table_ops.write_rows(&rows_as_string)?;
 
         Ok(())

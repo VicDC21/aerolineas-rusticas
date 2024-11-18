@@ -639,6 +639,8 @@ impl Node {
                         table_name
                     )));
                 }
+                println!("Llega hasta aca 1, la tabla es {} y la replica a arreglar es {}", table_name, node_id);
+
                 let table = self.get_table(&table_name)?;
                 let keyspace_name = table.get_keyspace();
                 if !self.keyspace_exists(keyspace_name) {
@@ -647,11 +649,13 @@ impl Node {
                         keyspace_name, table_name
                     )));
                 }
-
+                println!("Llega hasta aca 2 y el keyspace es {}", keyspace_name);
                 let rows = String::from_utf8(rows_bytes).map_err(|_| {
                     Error::ServerError("Error al castear de bytes a string".to_string())
                 })?;
 
+                println!("Llega hasta aca 3 y las filas son");
+                println!("{}", rows);
 
                 DiskHandler::repair_rows(
                     &self.storage_addr,
