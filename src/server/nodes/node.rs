@@ -83,7 +83,7 @@ const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
 const N_THREADS: usize = 6;
 /// El tiempo de espera _(en segundos)_ por una respuesta.
-const TIMEOUT_SECS: u64 = 1;
+const TIMEOUT_SECS: u64 = 2;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
@@ -393,7 +393,7 @@ impl Node {
     }
 
     /// Actualiza el estado del nodo recibido a _Offline_.
-    fn acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
+    fn _acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
         if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
             endpoint_state.set_appstate_status(AppStatus::Offline);
         }
@@ -541,7 +541,7 @@ impl Node {
                 Some(own_endpoint_state) => {
                     let own_heartbeat = own_endpoint_state.get_heartbeat();
                     if own_heartbeat > emissor_heartbeat
-                        || *own_endpoint_state.get_appstate_status() != AppStatus::Normal
+                        || *own_endpoint_state.get_appstate_status() == AppStatus::Offline
                     {
                         // El nodo propio tiene un heartbeat más nuevo que el que se recibió
                         // o
@@ -1742,28 +1742,42 @@ impl Node {
         let actual_result = if node_id == self.id {
             self.process_select(select, node_id)?
         } else {
-            let mut result: Vec<u8> = Vec::new();
-            for i in 0..replication_factor_quantity {
-                let next_node_replica =
-                    next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
-                let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    None,
-                    Some(next_node_replica),
-                );
-                let replica_response = self.send_message_and_wait_response_with_timeout(
-                    SvAction::InternalQuery(request_with_metadata).as_bytes(),
-                    next_node_replica,
-                    PortType::Priv,
-                    wait_response,
-                    TIMEOUT_SECS,
-                )?;
-                *replicas_asked += 1;
-                if !replica_response.is_empty() {
-                    result = replica_response;
-                    break;
-                } else {
-                    self.acknowledge_offline_neighbour(next_node_replica);
+            let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                None,
+                Some(node_id),
+            );
+            let mut result = self.send_message_and_wait_response_with_timeout(
+                request_with_metadata,
+                node_id,
+                PortType::Priv,
+                wait_response,
+                TIMEOUT_SECS,
+            )?;
+            // Si hubo timeout al esperar la respuesta, se intenta con las replicas
+            if result.is_empty() {
+                for i in 1..replication_factor_quantity {
+                    let node_to_replicate =
+                        next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
+                    if node_to_replicate != node_id {
+                        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                            None,
+                            Some(node_to_replicate),
+                        );
+                        let replica_response = self.send_message_and_wait_response_with_timeout(
+                            SvAction::InternalQuery(request_with_metadata).as_bytes(),
+                            node_to_replicate,
+                            PortType::Priv,
+                            wait_response,
+                            TIMEOUT_SECS,
+                        )?;
+                        *replicas_asked += 1;
+                        if !replica_response.is_empty() {
+                            result = replica_response;
+                            break;
+                        }
+                    }
                 }
             }
             result
