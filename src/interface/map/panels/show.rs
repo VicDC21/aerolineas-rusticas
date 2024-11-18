@@ -1,7 +1,7 @@
 //! Módulo para paneles de la interfaz.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
 };
 
@@ -11,25 +11,21 @@ use eframe::egui::{
 };
 
 use crate::{
-    client::{cli::Client, protocol_result::ProtocolResult},
+    client::cli::Client,
     data::{
         airports::Airport,
-        flights::{
-            departing::DepartingFlight, incoming::IncomingFlight, states::FlightState,
-            traits::Flight,
-        },
+        flights::{departing::DepartingFlight, incoming::IncomingFlight, traits::Flight},
     },
-    protocol::{
-        aliases::{
-            results::Result,
-            types::{Int, Long},
-        },
-        errors::error::Error,
-    },
+    interface::map::panels::crud::{delete_flight_by_id, insert_flight},
+    protocol::aliases::types::{Int, Long},
 };
+
+/// IDs de aeropuertos a borrar después.
+pub type DeleteQueue = HashSet<Int>;
 
 /// Muestra por un panel lateral los detalles del aeropuerto actualmente seleccionado.
 pub fn cur_airport_info(
+    client: Arc<Mutex<Client>>,
     ctx: &Context,
     cur_airport: &Option<Airport>,
     incoming_flights: Arc<Vec<IncomingFlight>>,
@@ -39,6 +35,7 @@ pub fn cur_airport_info(
 ) -> (bool, bool) {
     let mut must_show_incoming = *show_incoming;
     let mut must_show_departing = *show_departing;
+    let mut delete_queue = DeleteQueue::new();
     let panel_width = ctx.screen_rect().width() / 3.0;
 
     let panel_frame = Frame {
@@ -83,6 +80,7 @@ pub fn cur_airport_info(
             &buttons["incoming"],
             show_incoming,
             incoming_flights,
+            &mut delete_queue,
         );
         must_show_departing = show_departing_flights(
             ctx,
@@ -90,17 +88,25 @@ pub fn cur_airport_info(
             &buttons["departing"],
             show_departing,
             departing_flights,
+            &mut delete_queue,
         );
     });
+
+    if !delete_queue.is_empty() {
+        for flight_id in delete_queue {
+            let _ = delete_flight_by_id(Arc::clone(&client), flight_id);
+        }
+    }
+
     (must_show_incoming, must_show_departing)
 }
 
 /// Muestra por un panel lateral los detalles del aeropuerto extra.
 pub fn extra_airport_info(
+    client: Arc<Mutex<Client>>,
     ctx: &Context,
     selected_airport: &Option<Airport>,
     extra_airport: &Option<Airport>,
-    client: Client,
     timestamp: Long,
 ) {
     let panel_frame = Frame {
@@ -168,56 +174,6 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
     }
 }
 
-/// Inserta un nuevo vuelo.
-fn insert_flight(
-    client: Client,
-    timestamp: Long,
-    cur_airport: &Airport,
-    ex_airport: &Airport,
-) -> Result<()> {
-    let flight_id = cur_airport.id + ex_airport.id + timestamp as usize;
-
-    let incoming_client = Arc::new(Mutex::new(client));
-    // TODO: calcular el tiempo estimado por distancia en vez de asumir que el vuelo es instantáneo.
-    let incoming_query = format!(
-        "INSERT INTO vuelos_entrantes (id, dest, llegada, pos_lat, pos_lon, estado) VALUES ({}, '{}', {}, {}, {}, '{}');",
-        flight_id as Int, ex_airport.ident, timestamp, cur_airport.position.lat(), cur_airport.position.lon(), FlightState::InCourse
-    );
-
-    let departing_client = Arc::clone(&incoming_client);
-    let departing_query = format!(
-        "INSERT INTO vuelos_salientes (id, orig, salida, pos_lat, pos_lon, estado) VALUES ({}, '{}', {}, {}, {}, '{}');",
-        flight_id as Int, cur_airport.ident, timestamp, cur_airport.position.lat(), cur_airport.position.lon(), FlightState::InCourse
-    );
-
-    send_insert_query(incoming_client, incoming_query.as_str())?;
-    send_insert_query(departing_client, departing_query.as_str())?;
-
-    Ok(())
-}
-
-/// Manda una _query_ para insertar un tipo de vuelo.
-fn send_insert_query(client_lock: Arc<Mutex<Client>>, query: &str) -> Result<()> {
-    let mut client = match client_lock.lock() {
-        Ok(cli) => cli,
-        Err(poison_err) => {
-            return Err(Error::ServerError(format!(
-                "Error de lock envenenado tratando de leer un cliente:\n\n{}",
-                poison_err
-            )))
-        }
-    };
-
-    let mut tcp_stream = client.connect()?;
-    let protocol_result = client.send_query(query, &mut tcp_stream)?;
-
-    if let ProtocolResult::QueryError(err) = protocol_result {
-        println!("{}", err);
-    }
-
-    Ok(())
-}
-
 /// Muestra lso vuelos entrantes.
 fn show_incoming_flights(
     ctx: &Context,
@@ -225,6 +181,7 @@ fn show_incoming_flights(
     incoming_button_response: &Response,
     show_incoming: &bool,
     incoming_flights: Arc<Vec<IncomingFlight>>,
+    delete_queue: &mut DeleteQueue,
 ) -> bool {
     let mut must_show_incoming = *show_incoming;
     if must_show_incoming {
@@ -271,6 +228,9 @@ fn show_incoming_flights(
                             .italics()
                             .color(Color32::from_rgb(255, 255, 255)),
                     );
+                    if scroll_ui.button("Borrar").clicked() {
+                        delete_queue.insert(incoming_flight.id);
+                    }
                     scroll_ui.add(Separator::default().shrink(30.0));
                 }
             });
@@ -294,6 +254,7 @@ fn show_departing_flights(
     departing_button_response: &Response,
     show_departing: &bool,
     departing_flights: Arc<Vec<DepartingFlight>>,
+    delete_queue: &mut DeleteQueue,
 ) -> bool {
     let mut must_show_departing = *show_departing;
     if must_show_departing {
@@ -340,6 +301,9 @@ fn show_departing_flights(
                             .italics()
                             .color(Color32::from_rgb(255, 255, 255)),
                     );
+                    if scroll_ui.button("Borrar").clicked() {
+                        delete_queue.insert(departing_flight.id);
+                    }
                     scroll_ui.add(Separator::default().shrink(30.0));
                 }
             });

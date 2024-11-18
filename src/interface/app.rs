@@ -1,6 +1,7 @@
 //! Módulo para la estructura de la aplicación en sí.
 
 use std::env::var;
+use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Local};
 use eframe::egui::{CentralPanel, Context};
@@ -13,7 +14,7 @@ use crate::client::cli::Client;
 use crate::interface::{
     data::app_details::AirlinesDetails,
     map::{
-        panels::{cur_airport_info, extra_airport_info},
+        panels::show::{cur_airport_info, extra_airport_info},
         windows::{clock_selector, date_selector, go_to_my_position, zoom},
     },
     plugins::{
@@ -30,7 +31,7 @@ pub const ORIG_LONG: f64 = -58.36909719124974;
 /// La app de aerolíneas misma.
 pub struct AerolineasApp {
     /// El cliente interno de la aplicación.
-    client: Client,
+    client: Arc<Mutex<Client>>,
 
     /// Guarda el estado del widget del mapa.
     map_memory: MapMemory,
@@ -66,7 +67,7 @@ impl AerolineasApp {
         let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
 
         Self {
-            client: Client::default(),
+            client: Arc::new(Mutex::new(Client::default())),
             map_memory: mem,
             map_tiles: Self::open_street_tiles(&egui_ctx),
             airports_loader: AirportsLoader::default(),
@@ -129,7 +130,7 @@ impl App for AerolineasApp {
 
             self.flights_loader
                 .sync_date(self.datetime)
-                .sync_client(self.client.clone())
+                .sync_client(Arc::clone(&self.client))
                 .sync_selected_airport(self.airlines_details.get_selected_airport());
 
             let map = map
@@ -151,6 +152,7 @@ impl App for AerolineasApp {
             self.datetime = valid_time;
         }
         let (show_incoming, show_departing) = cur_airport_info(
+            Arc::clone(&self.client),
             ctx,
             self.airlines_details.get_ref_selected_airport(),
             self.airlines_details.get_incoming_flights(),
@@ -164,10 +166,10 @@ impl App for AerolineasApp {
             .set_show_departing_flights(show_departing);
 
         extra_airport_info(
+            Arc::clone(&self.client),
             ctx,
             self.airlines_details.get_ref_selected_airport(),
             self.airlines_details.get_ref_extra_airport(),
-            self.client.clone(),
             self.datetime.timestamp(),
         );
     }
