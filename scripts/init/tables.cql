@@ -1,4 +1,4 @@
 CREATE TABLE IF NOT EXISTS vuelos_entrantes (id int, dest text, llegada timestamp, pos_lat double, pos_lon double, estado text, PRIMARY KEY ((dest), id));
 CREATE TABLE IF NOT EXISTS vuelos_salientes (id int, orig text, salida timestamp, pos_lat double, pos_lon double, estado text, PRIMARY KEY ((orig), id));
-CREATE TABLE IF NOT EXISTS vuelos_entrantes_en_vivo (id int, dest text, llegada timestamp, pos_lat double, pos_lon double, estado text, velocidad double, altitud double, nivel_combustible double, PRIMARY KEY ((dest, id));
-CREATE TABLE IF NOT EXISTS vuelos_salientes_en_vivo (id int, orig text, salida timestamp, pos_lat double, pos_lon double, estado text, velocidad double, altitud double, nivel_combustible double, PRIMARY KEY ((orig, id));
+CREATE TABLE IF NOT EXISTS vuelos_entrantes_en_vivo (id int, dest text, llegada timestamp, pos_lat double, pos_lon double, estado text, velocidad double, altitud double, nivel_combustible double, PRIMARY KEY ((dest, id)));
+CREATE TABLE IF NOT EXISTS vuelos_salientes_en_vivo (id int, orig text, salida timestamp, pos_lat double, pos_lon double, estado text, velocidad double, altitud double, nivel_combustible double, PRIMARY KEY ((orig, id)));
