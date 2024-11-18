@@ -28,13 +28,32 @@ $ cargo build
 
 ### Cómo correr
 
-El proyecto se ejecuta haciendo:
+El proyecto tiene soporte para correr sus diferentes partes.
+
+#### Servidor
+
+También conocido como los "nodos", se invocan con:
 
 ```console
-$ cargo run
+$ cargo run sv
 ```
 
-que, de por sí, corre `cargo build` de ser necesario.
+#### Cliente
+
+Una instancia de cliente en consola se puede invocar con:
+
+```console
+$ cargo run cli
+```
+
+#### Interfaz de Usuario
+
+La interfaz de usuario incluye muchas dependencias y por lo tanto, se compila
+con una _feature_ aparte. El comando es:
+
+```console
+$ cargo run --features "gui" gui
+```
 
 ## Cómo testear
 

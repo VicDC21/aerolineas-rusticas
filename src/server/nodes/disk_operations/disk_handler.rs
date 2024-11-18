@@ -223,8 +223,13 @@ impl DiskHandler {
         keyspace_name: &str,
         default_keyspace: &str,
         node_number: Byte,
-        repaired_rows: &[Vec<String>],
+        repaired_rows: &str,
     ) -> Result<()> {
+        let rows_as_string: Vec<Vec<String>> = repaired_rows
+            .split('\n')
+            .map(|row| row.split(',').map(|s| s.to_string()).collect())
+            .collect();
+
         let path = TablePath::new(
             storage_addr,
             Some(keyspace_name.to_string()),
@@ -234,7 +239,7 @@ impl DiskHandler {
         );
 
         let table_ops = TableOperations::new(path)?;
-        table_ops.write_rows(repaired_rows)?;
+        table_ops.write_rows(&rows_as_string)?;
 
         Ok(())
     }

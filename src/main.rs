@@ -1,7 +1,10 @@
 use aerolineas::{
-    client::cli::Client, interface::run::run_app, protocol::aliases::results::Result,
-    server::nodes::graph::NodesGraph,
+    client::cli::Client, protocol::aliases::results::Result, server::nodes::graph::NodesGraph,
 };
+
+#[cfg(feature = "gui")]
+use aerolineas::interface::run::run_app;
+
 use std::env::args;
 
 /// Imprime por pantalla el error
@@ -32,7 +35,11 @@ fn main() {
             print_err(client.echo());
         }
         "gui" => {
+            #[cfg(feature = "gui")]
             print_err(run_app());
+
+            #[cfg(not(feature = "gui"))]
+            println!("Se quizo ejecutar 'gui', pero la feature relevante no está activada. Prueba con:\n\ncargo run --features \"gui\" gui\n")
         }
         _ => {
             println!(

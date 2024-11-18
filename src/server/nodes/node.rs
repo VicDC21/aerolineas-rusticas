@@ -64,9 +64,8 @@ use super::{
     },
     table_metadata::table::Table,
     utils::{
-        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string,
-        next_node_to_replicate_data, send_to_node, send_to_node_and_wait_response,
-        send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
+        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string, next_node_in_the_round,
+        send_to_node, send_to_node_and_wait_response, send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
     },
 };
 
@@ -680,7 +679,7 @@ impl Node {
             SvAction::DigestReadRequest(bytes) => {
                 let response = self.handle_request(&bytes, true);
                 // Devolvemos además un opcode para poder saber si el resultado fue un error o no.
-                if self.verify_succesful_response(&response) {
+                if verify_succesful_response(&response) {
                     let mut res = Opcode::Result.as_bytes();
                     res.extend_from_slice(&hash_value(&response).to_be_bytes());
                     let _ = tcp_stream.write_all(&res);
@@ -689,7 +688,6 @@ impl Node {
                     res.extend_from_slice(&response);
                     let _ = tcp_stream.write_all(&res);
                 }
-
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
@@ -710,22 +708,16 @@ impl Node {
                         keyspace_name, table_name
                     )));
                 }
-
                 let rows = String::from_utf8(rows_bytes).map_err(|_| {
                     Error::ServerError("Error al castear de bytes a string".to_string())
                 })?;
-                let rows_as_string: Vec<Vec<String>> = rows
-                    .split('\n')
-                    .map(|row| row.split(',').map(|s| s.to_string()).collect())
-                    .collect();
-
                 DiskHandler::repair_rows(
                     &self.storage_addr,
                     &table_name,
                     keyspace_name,
                     &self.get_default_keyspace_name()?,
                     node_id,
-                    &rows_as_string,
+                    &rows,
                 )?;
             }
             SvAction::AddPartitionValueToMetadata(table_name, partition_value) => {
@@ -746,15 +738,26 @@ impl Node {
 
     fn exec_direct_read_request(&self, mut bytes: Vec<Byte>) -> Result<String> {
         let node_number = bytes.pop().unwrap_or(0); // despues cambiar
-        let statement = match String::from_utf8(bytes) {
-            Ok(query) => make_parse(&mut tokenize_query(&query))?,
-            Err(err) => {
-                return Err(Error::ServerError(format!(
-                    "Error convirtiendo bytes a string: {}",
-                    err
-                )))
+        let copia: &[u8] = &bytes;
+        let statement = match QueryBody::try_from(copia) {
+            Ok(query_body) => match make_parse(&mut tokenize_query(query_body.get_query())) {
+                Ok(statement) => statement,
+                Err(_err) => {
+                    return Err(Error::ServerError(
+                        "No se cumplio el protocolo al hacer read-repair".to_string(),
+                    ))
+                }
+            },
+            Err(_err) => {
+                return Err(Error::ServerError(
+                    "No se cumplio el protocolo al hacer read-repair".to_string(),
+                ))
             }
         };
+        println!(
+            "Soy el nodo {} y busco la replica del nodo {}",
+            self.id, node_number
+        );
         let select = match statement {
             Statement::DmlStatement(DmlStatement::SelectStatement(select)) => select,
             _ => {
@@ -763,6 +766,8 @@ impl Node {
                 ))
             }
         };
+        println!("La keyspace es {}", self.get_default_keyspace_name()?);
+
         let res = DiskHandler::get_rows_with_timestamp_as_string(
             &self.storage_addr,
             &self.get_default_keyspace_name()?,
@@ -946,8 +951,7 @@ impl Node {
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
         for actual_node in 0..N_NODES {
-            let node_id =
-                next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
+            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
             response = if node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -989,8 +993,7 @@ impl Node {
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
         for actual_node in 0..N_NODES {
-            let node_id =
-                next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
+            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
             response = if node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -1033,8 +1036,7 @@ impl Node {
 
         let mut responses = Vec::new();
         for actual_node in 0..N_NODES {
-            let node_id =
-                next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
+            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
 
             let response = if node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
@@ -1094,8 +1096,7 @@ impl Node {
 
         let mut responses = Vec::new();
         for actual_node in 0..N_NODES {
-            let node_id =
-                next_node_to_replicate_data(self.id, actual_node as Byte, START_ID, LAST_ID);
+            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
 
             let response = if node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
@@ -1180,11 +1181,11 @@ impl Node {
         for actual_node_id in START_ID..LAST_ID {
             for i in 0..quantity_replicas {
                 let next_node_id =
-                    next_node_to_replicate_data(actual_node_id, i as u8, START_ID, LAST_ID);
+                    next_node_in_the_round(actual_node_id, i as u8, START_ID, LAST_ID);
                 response = if next_node_id == self.id {
                     self.process_internal_create_table_statement(&create_table, actual_node_id)?
                 } else {
-                    let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
+                    let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         None,
                         Some(actual_node_id),
@@ -1433,13 +1434,12 @@ impl Node {
         let mut wait_response = true;
 
         for i in 0..N_NODES {
-            let node_to_replicate =
-                next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
+            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
             if (i as u32) < replication_factor_quantity {
                 response = if node_to_replicate == self.id {
                     self.process_insert(&insert, timestamp, node_id)?
                 } else {
-                    let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
+                    let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         Some(timestamp),
                         Some(node_id),
@@ -1468,7 +1468,7 @@ impl Node {
             } else {
                 let partition_value =
                     self.get_partition_value_from_insert(&insert, self.get_table(&table_name)?)?;
-                let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
+                let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                     SvAction::AddPartitionValueToMetadata(table_name.clone(), partition_value)
                         .as_bytes(),
                     None,
@@ -1485,7 +1485,7 @@ impl Node {
 
             if consistency_counter >= consistency_number {
                 wait_response = false;
-            } else if self.verify_succesful_response(&response) {
+            } else if verify_succesful_response(&response) {
                 consistency_counter += 1;
             }
         }
@@ -1525,38 +1525,6 @@ impl Node {
             return (None, Some(node_id));
         }
         (None, None)
-    }
-
-    /// Agrega metadata, como el timestamp o el node_id si es necesario, sino no agrega estos campos.
-    fn add_metadata_to_internal_request_of_any_kind(
-        &self,
-        mut sv_action_with_request: Vec<Byte>,
-        timestamp: Option<i64>,
-        node_id: Option<Byte>,
-    ) -> Vec<Byte> {
-        let mut metadata: Vec<Byte> = Vec::new();
-        if let Some(value) = timestamp {
-            metadata.append(&mut value.to_be_bytes().to_vec())
-        };
-        if let Some(value) = node_id {
-            metadata.push(value)
-        };
-        sv_action_with_request.append(&mut metadata);
-        sv_action_with_request
-    }
-
-    fn verify_succesful_response(&self, response: &[Byte]) -> bool {
-        let opcode = match Opcode::try_from(response[4]) {
-            Ok(opcode) => opcode,
-            Err(_err) => Opcode::RequestError,
-        };
-        if response.len() < 9 {
-            return false;
-        };
-        match opcode {
-            Opcode::Result => true, // Si la response tiene el opcode Result entonces es valida
-            _ => false,
-        }
     }
 
     fn get_partition_key_value_from_insert_statement(
@@ -1628,7 +1596,7 @@ impl Node {
 
                 if consistency_counter >= consistency_number {
                     wait_response = false;
-                } else if self.verify_succesful_response(&current_response) {
+                } else if verify_succesful_response(&current_response) {
                     consistency_counter += 1;
                 }
             }
@@ -1651,8 +1619,7 @@ impl Node {
         request: &[Byte],
     ) -> Result<()> {
         for i in 0..replication_factor {
-            let node_to_replicate =
-                next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
+            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
 
             if node_to_replicate != node_id {
                 let replica_response = self.send_message_and_wait_response_with_timeout(
@@ -1698,51 +1665,13 @@ impl Node {
                 let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
                 let mut replicas_asked = 1;
-                let mut actual_result = if node_id == self.id {
-                    self.process_select(&select, node_id)?
-                } else {
-                    let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
-                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                        None,
-                        Some(node_id),
-                    );
-                    let mut result = self.send_message_and_wait_response_with_timeout(
-                        request_with_metadata,
-                        node_id,
-                        PortType::Priv,
-                        wait_response,
-                        TIMEOUT_SECS,
-                    )?;
-                    // Si hubo timeout al esperar la respuesta, se intenta con las replicas
-                    if result.is_empty() {
-                        for i in 1..replication_factor_quantity {
-                            let node_to_replicate =
-                                next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
-                            if node_to_replicate != node_id {
-                                let request_with_metadata = self
-                                    .add_metadata_to_internal_request_of_any_kind(
-                                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                                        None,
-                                        Some(node_to_replicate),
-                                    );
-                                let replica_response = self
-                                    .send_message_and_wait_response_with_timeout(
-                                        SvAction::InternalQuery(request_with_metadata).as_bytes(),
-                                        node_to_replicate,
-                                        PortType::Priv,
-                                        wait_response,
-                                        TIMEOUT_SECS,
-                                    )?;
-                                replicas_asked += 1;
-                                if !replica_response.is_empty() {
-                                    result = replica_response;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    result
-                };
+
+                let mut actual_result = self.decide_how_to_request_internal_query_select(
+                    node_id,
+                    &select,
+                    request,
+                    wait_response,
+                )?;
                 consistency_counter += 1;
                 match self.consult_replica_nodes(
                     (node_id, replicas_asked),
@@ -1767,23 +1696,12 @@ impl Node {
                 // Una vez que todo fue reparado, queremos reenviar la query para obtener el resultado
                 // pero ahora con las tablas reparadas.
                 if read_repair_executed {
-                    actual_result = if node_id == self.id {
-                        self.process_select(&select, node_id)?
-                    } else {
-                        let request_with_metadata = self
-                            .add_metadata_to_internal_request_of_any_kind(
-                                SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                                None,
-                                Some(node_id),
-                            );
-                        self.send_message_and_wait_response_with_timeout(
-                            request_with_metadata,
-                            node_id,
-                            PortType::Priv,
-                            wait_response,
-                            TIMEOUT_SECS,
-                        )?
-                    };
+                    actual_result = self.decide_how_to_request_internal_query_select(
+                        node_id,
+                        &select,
+                        request,
+                        wait_response,
+                    )?;
                 };
                 self.handle_result_from_node(
                     &mut results_from_another_nodes,
@@ -1795,20 +1713,61 @@ impl Node {
         }
         Ok(results_from_another_nodes)
     }
-    // esta comprobacion podriamos usarla en handle_result_from_node
-    // match Opcode::try_from(res[4])? {
-    //     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-    //     Opcode::Result => self.handle_result_from_node(
-    //         &mut results_from_another_nodes,
-    //         res,
-    //         &select,
-    //     )?,
-    //     _ => {
-    //         return Err(Error::ServerError(
-    //             "Nodo manda opcode inesperado".to_string(),
-    //         ))
-    //     }
-    // };
+
+    fn decide_how_to_request_internal_query_select(
+        &mut self,
+        node_id: u8,
+        select: &Select,
+        request: &[u8],
+        wait_response: bool,
+    ) -> Result<Vec<u8>> {
+        let actual_result = if node_id == self.id {
+            self.process_select(select, node_id)?
+        } else {
+            let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                None,
+                Some(node_id),
+            );
+            let result = self.send_message_and_wait_response_with_timeout(
+                request_with_metadata,
+                node_id,
+                PortType::Priv,
+                wait_response,
+                TIMEOUT_SECS
+            )?;
+            // Si hubo timeout al esperar la respuesta, se intenta con las replicas
+            if result.is_empty() {
+                for i in 1..replication_factor_quantity {
+                    let node_to_replicate =
+                        next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
+                    if node_to_replicate != node_id {
+                        let request_with_metadata = self
+                            .add_metadata_to_internal_request_of_any_kind(
+                                SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                                None,
+                                Some(node_to_replicate),
+                            );
+                        let replica_response = self
+                            .send_message_and_wait_response_with_timeout(
+                                SvAction::InternalQuery(request_with_metadata).as_bytes(),
+                                node_to_replicate,
+                                PortType::Priv,
+                                wait_response,
+                                TIMEOUT_SECS,
+                            )?;
+                        replicas_asked += 1;
+                        if !replica_response.is_empty() {
+                            result = replica_response;
+                            break;
+                        }
+                    }
+                }
+            }
+            result
+        };
+        Ok(actual_result)
+    }
 
     /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
     ///
@@ -1822,6 +1781,7 @@ impl Node {
         response_from_first_responsive_replica: &[Byte],
         table_name: &str,
     ) -> Result<bool> {
+        let mut exec_read_repair = false;
         if consistency_number == 1 {
             return Ok(false);
         }
@@ -1829,73 +1789,67 @@ impl Node {
         let first_hashed_value = hash_value(response_from_first_responsive_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
         for i in replicas_asked..consistency_number {
-            let node_to_consult = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
-            let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
+            let node_to_consult = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
+            let opcode_with_hashed_value = self.decide_how_to_request_the_digest_read_request(
+                node_to_consult,
+                request,
+                node_id,
+            )?;
+            let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
+            check_consistency_of_the_responses(
+                opcode_with_hashed_value,
+                first_hashed_value,
+                res_hashed_value,
+                consistency_counter,
+                &mut responses,
+            )?;
+        }
+        check_if_read_repair_is_neccesary(
+            consistency_counter,
+            consistency_number,
+            &mut exec_read_repair,
+            responses,
+            first_hashed_value,
+        );
+        if exec_read_repair {
+            return self.exec_read_repair(node_id, request, consistency_number, table_name);
+        };
+        Ok(false)
+    }
+
+    fn decide_how_to_request_the_digest_read_request(
+        &mut self,
+        node_to_consult: u8,
+        request: &[u8],
+        node_id: u8,
+    ) -> Result<Vec<u8>> {
+        let opcode_with_hashed_value = if node_to_consult == self.id {
+            let internal_request =
+                add_metadata_to_internal_request_of_any_kind(request.to_vec(), None, Some(node_id));
+            let res = self.handle_request(&internal_request, true);
+            let mut res_with_opcode;
+            if verify_succesful_response(&res) {
+                res_with_opcode = Opcode::Result.as_bytes();
+                res_with_opcode.extend_from_slice(&hash_value(&res).to_be_bytes());
+            } else {
+                res_with_opcode = Opcode::RequestError.as_bytes();
+                res_with_opcode.extend_from_slice(&res);
+            }
+            res_with_opcode
+        } else {
+            let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                 SvAction::DigestReadRequest(request.to_vec()).as_bytes(),
                 None,
                 Some(node_id),
             );
-            let opcode_with_hashed_value = if node_to_consult == self.id {
-                let internal_request = self.add_metadata_to_internal_request_of_any_kind(
-                    request.to_vec(),
-                    None,
-                    Some(node_id),
-                );
-                let res = self.handle_request(&internal_request, true);
-                let mut res_with_opcode;
-                if self.verify_succesful_response(&res) {
-                    res_with_opcode = Opcode::Result.as_bytes();
-                    res_with_opcode.extend_from_slice(&hash_value(&res).to_be_bytes());
-                } else {
-                    res_with_opcode = Opcode::RequestError.as_bytes();
-                    res_with_opcode.extend_from_slice(&res);
-                }
-                res_with_opcode
-            } else {
-                self.send_message_and_wait_response_with_timeout(
-                    request_with_metadata,
-                    node_to_consult,
-                    PortType::Priv,
-                    true,
-                    TIMEOUT_SECS,
-                )?
-            };
-
-            let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
-            if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result
-                && first_hashed_value == res_hashed_value
-            {
-                *consistency_counter += 1;
-                responses.push(opcode_with_hashed_value[1..].to_vec());
-            }
-        }
-
-        if *consistency_counter < consistency_number {
-            return Err(Error::ServerError(format!(
-                "No se pudo cumplir con el nivel de consistencia, solo se logró con {} de {}",
-                *consistency_counter, consistency_number,
-            )));
-        }
-
-        let mut exec_read_repair = false;
-        for hashed_value_vec in responses {
-            if hashed_value_vec.len() < 8 {
-                exec_read_repair = true;
-            }
-            let mut array = [0u8; 8]; // 8 es el len del hashed_value
-            array.copy_from_slice(&hashed_value_vec[0..8]);
-            let hashed_value_of_response = u64::from_be_bytes(array);
-            if first_hashed_value != hashed_value_of_response {
-                exec_read_repair = true;
-            }
-        }
-
-        if exec_read_repair {
-            self.exec_read_repair(node_id, request, consistency_number, table_name)?;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+            self.send_message_and_wait_response(
+                request_with_metadata,
+                node_to_consult,
+                PortType::Priv,
+                true,
+            )?
+        };
+        Ok(opcode_with_hashed_value)
     }
 
     fn exec_read_repair(
@@ -1904,95 +1858,56 @@ impl Node {
         request: &[Byte],
         consistency_number: usize,
         table_name: &str,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![];
-
+        let mut req_with_node_replica = request[9..].to_vec();
+        req_with_node_replica.push(node_id);
         for i in 0..consistency_number {
-            let node_to_consult = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
+            let node_to_consult = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
             let res = if node_to_consult == self.id {
-                self.exec_direct_read_request(request.to_vec())?
+                self.exec_direct_read_request(req_with_node_replica.clone())?
             } else {
                 let extern_response = self.send_message_and_wait_response_with_timeout(
-                    SvAction::DirectReadRequest(request.to_vec()).as_bytes(),
+                    SvAction::DirectReadRequest(req_with_node_replica.clone()).as_bytes(),
                     node_to_consult,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
                 )?;
-
-                match String::from_utf8(extern_response) {
-                    Ok(value) => value,
-                    Err(_err) => {
-                        return Err(Error::ServerError(
-                            "Error al castear de vector a string".to_string(),
-                        ))
-                    }
-                }
+                create_utf8_string_from_bytes(extern_response)?
             };
-
-            let rows: Vec<Vec<String>> = res
-                .split("\n")
-                .map(|row| row.split(",").map(|col| col.to_string()).collect())
-                .collect();
-            ids_and_rows.push((node_to_consult, rows));
+            add_rows_with_his_node(res, &mut ids_and_rows, node_to_consult);
         }
-
-        let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
-        for (i, (_node, rows)) in ids_and_rows.iter().enumerate() {
-            for (j, row) in rows.iter().enumerate() {
-                if most_recent_timestamps.len() <= j {
-                    most_recent_timestamps.push((i, row[row.len() - 1].clone()));
-                } else {
-                    let actual_timestamp = row[row.len() - 1].clone();
-                    if actual_timestamp > most_recent_timestamps[j].1 {
-                        most_recent_timestamps[j] = (i, actual_timestamp);
-                    }
-                }
-            }
-        }
-
-        let mut newer_rows: Vec<Vec<String>> = Vec::new();
-        for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate() {
-            let new_row = &ids_and_rows[actual_timestamp.0].1[i];
-            newer_rows.push(new_row.clone());
-        }
-
-        let rows_as_string = newer_rows
-            .iter()
-            .map(|row| row.join(","))
-            .collect::<Vec<String>>()
-            .join("\n");
+        let rows_as_string = get_most_recent_rows_as_string(ids_and_rows);
         for i in 0..consistency_number {
-            let node_to_repair = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
+            let node_to_repair = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
             if node_to_repair == self.id {
-                DiskHandler::actualize_all_rows(&rows_as_string);
-                self.exec_direct_read_request(request.to_vec())?
+                let table = self.get_table(table_name)?;
+                DiskHandler::repair_rows(
+                    &self.storage_addr,
+                    table_name,
+                    table.get_keyspace(),
+                    &self.default_keyspace_name,
+                    node_to_repair,
+                    &rows_as_string,
+                )?;
             } else {
-                let extern_response = self.send_message_and_wait_response_with_timeout(
-                    SvAction::RepairRows(
-                        table_name.to_string(),
-                        node_id,
-                        rows_as_string.as_bytes().to_vec(),
-                    )
-                    .as_bytes(),
+                let sv_action = SvAction::RepairRows(
+                    table_name.to_string(),
+                    node_id,
+                    rows_as_string.as_bytes().to_vec(),
+                )
+                .as_bytes();
+                self.send_message_and_wait_response_with_timeout(
+                    sv_action,
                     node_to_repair,
                     PortType::Priv,
                     false,
-                    TIMEOUT_SECS,
+                    TIMEOUT_SECS
                 )?;
-
-                match String::from_utf8(extern_response) {
-                    Ok(value) => value,
-                    Err(_err) => {
-                        return Err(Error::ServerError(
-                            "Error al castear de vector a string".to_string(),
-                        ))
-                    }
-                }
             };
         }
-
-        Ok(())
+        Ok(true)
     }
 
     fn process_delete(&mut self, delete: &Delete, node_number: Byte) -> Result<Vec<Byte>> {
@@ -2058,7 +1973,7 @@ impl Node {
 
                 if consistency_counter >= consistency_number {
                     wait_response = false;
-                } else if self.verify_succesful_response(&current_response) {
+                } else if verify_succesful_response(&current_response) {
                     consistency_counter += 1;
                 }
             }
@@ -2082,8 +1997,7 @@ impl Node {
         request: &[Byte],
     ) -> Result<()> {
         for i in 0..replication_factor {
-            let node_to_replicate =
-                next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
+            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
 
             if node_to_replicate != self.id {
                 self.send_message_and_wait_response_with_timeout(
@@ -2332,6 +2246,128 @@ impl Node {
     }
 }
 
+fn check_consistency_of_the_responses(
+    opcode_with_hashed_value: Vec<u8>,
+    first_hashed_value: u64,
+    res_hashed_value: u64,
+    consistency_counter: &mut usize,
+    responses: &mut Vec<Vec<u8>>,
+) -> Result<()> {
+    if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result
+        && first_hashed_value == res_hashed_value
+    {
+        *consistency_counter += 1;
+        responses.push(opcode_with_hashed_value[1..].to_vec());
+    };
+    Ok(())
+}
+
+fn check_if_read_repair_is_neccesary(
+    consistency_counter: &mut usize,
+    consistency_number: usize,
+    exec_read_repair: &mut bool,
+    responses: Vec<Vec<u8>>,
+    first_hashed_value: u64,
+) {
+    if *consistency_counter < consistency_number {
+        *exec_read_repair = true
+    }
+
+    for hashed_value_vec in responses {
+        if hashed_value_vec.len() < 8 {
+            *exec_read_repair = true;
+        }
+        let mut array = [0u8; 8]; // 8 es el len del hashed_value
+        array.copy_from_slice(&hashed_value_vec[0..8]);
+        let hashed_value_of_response = u64::from_be_bytes(array);
+        if first_hashed_value != hashed_value_of_response {
+            *exec_read_repair = true;
+        }
+    }
+}
+
+fn add_rows_with_his_node(
+    res: String,
+    ids_and_rows: &mut Vec<(u8, Vec<Vec<String>>)>,
+    node_to_consult: u8,
+) {
+    let rows: Vec<Vec<String>> = res
+        .split("\n")
+        .map(|row| row.split(",").map(|col| col.to_string()).collect())
+        .collect();
+    ids_and_rows.push((node_to_consult, rows));
+}
+
+fn create_utf8_string_from_bytes(extern_response: Vec<u8>) -> Result<String> {
+    Ok(match String::from_utf8(extern_response) {
+        Ok(value) => value,
+        Err(_err) => {
+            return Err(Error::ServerError(
+                "Error al castear de vector a string".to_string(),
+            ))
+        }
+    })
+}
+
+fn get_most_recent_rows_as_string(ids_and_rows: Vec<(u8, Vec<Vec<String>>)>) -> String {
+    let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
+    let mut newer_rows: Vec<Vec<String>> = Vec::new();
+
+    for (i, (_node, rows)) in ids_and_rows.iter().enumerate() {
+        for (j, row) in rows.iter().enumerate() {
+            if most_recent_timestamps.len() <= j {
+                most_recent_timestamps.push((i, row[row.len() - 1].clone()));
+            } else {
+                let actual_timestamp = row[row.len() - 1].clone();
+                if actual_timestamp > most_recent_timestamps[j].1 {
+                    most_recent_timestamps[j] = (i, actual_timestamp);
+                }
+            }
+        }
+    }
+    for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate() {
+        let new_row = &ids_and_rows[actual_timestamp.0].1[i];
+        newer_rows.push(new_row.clone());
+    }
+    let rows_as_string = newer_rows
+        .iter()
+        .map(|row| row.join(","))
+        .collect::<Vec<String>>()
+        .join("\n");
+    rows_as_string
+}
+
+/// Agrega metadata, como el timestamp o el node_id si es necesario, sino no agrega estos campos.
+fn add_metadata_to_internal_request_of_any_kind(
+    mut sv_action_with_request: Vec<Byte>,
+    timestamp: Option<i64>,
+    node_id: Option<Byte>,
+) -> Vec<Byte> {
+    let mut metadata: Vec<Byte> = Vec::new();
+    if let Some(value) = timestamp {
+        metadata.append(&mut value.to_be_bytes().to_vec())
+    };
+    if let Some(value) = node_id {
+        metadata.push(value)
+    };
+    sv_action_with_request.append(&mut metadata);
+    sv_action_with_request
+}
+
+fn verify_succesful_response(response: &[Byte]) -> bool {
+    let opcode = match Opcode::try_from(response[4]) {
+        Ok(opcode) => opcode,
+        Err(_err) => Opcode::RequestError,
+    };
+    if response.len() < 9 {
+        return false;
+    };
+    match opcode {
+        Opcode::Result => true, // Si la response tiene el opcode Result entonces es valida
+        _ => false,
+    }
+}
+
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.endpoint_state.eq(&other.endpoint_state)
@@ -2428,3 +2464,18 @@ impl Serializable for Node {
         })
     }
 }
+
+// esta comprobacion podriamos usarla en handle_result_from_node
+// match Opcode::try_from(res[4])? {
+//     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+//     Opcode::Result => self.handle_result_from_node(
+//         &mut results_from_another_nodes,
+//         res,
+//         &select,
+//     )?,
+//     _ => {
+//         return Err(Error::ServerError(
+//             "Nodo manda opcode inesperado".to_string(),
+//         ))
+//     }
+// };

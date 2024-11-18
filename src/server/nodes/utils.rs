@@ -32,7 +32,7 @@ pub fn hash_value<T: Hash>(value: T) -> u64 {
 }
 
 /// Devuelve el ID del siguiente nodo donde se deberían replicar datos.
-pub fn next_node_to_replicate_data(
+pub fn next_node_in_the_round(
     first_node_to_replicate: Byte,
     node_iterator: Byte,
     min: Byte,
@@ -94,6 +94,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
             )))
         }
     };
+    // println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
 
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
