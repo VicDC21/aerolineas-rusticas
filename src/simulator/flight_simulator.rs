@@ -1,7 +1,6 @@
 use {
     crate::{
         client::{cli::Client, protocol_result::ProtocolResult},
-        data::flights::states::FlightState,
         protocol::errors::error::Error,
         server::pool::threadpool::ThreadPool,
     },
@@ -67,7 +66,7 @@ pub fn run_sim(client: Client) -> Result<(), Error> {
                     }
                 }
                 "3" => {
-                    for flight in simulator.get_all_flights() {
+                    for flight in &simulator.get_all_flights() {
                         println!("{:#?}", flight);
                     }
                 }
@@ -96,6 +95,13 @@ struct FlightSimulator {
     flights: Arc<Mutex<Vec<FlightData>>>,
     thread_pool: ThreadPool,
     client: Client,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum FlightState {
+    InCourse,
+    Finished,
+    Preparing,
 }
 
 impl FlightSimulator {
