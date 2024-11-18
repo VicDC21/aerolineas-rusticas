@@ -160,7 +160,7 @@ impl FlightSimulator {
         }
 
         let simulation_start = std::time::Instant::now();
-        let simulation_limit = Duration::from_secs(60);
+        let simulation_limit = Duration::from_secs(15);
 
         while flight.fuel_level > 0.0 && simulation_start.elapsed() < simulation_limit {
             flight.current_position.0 += rng.gen_range(-0.1..0.1);
@@ -287,7 +287,7 @@ mod tests {
             assert_eq!(data.status, FlightStatus::InFlight);
         }
 
-        thread::sleep(Duration::from_secs(6));
+        thread::sleep(Duration::from_secs(15));
 
         if let Some(data) = simulator.get_flight_data("123456") {
             assert_eq!(
