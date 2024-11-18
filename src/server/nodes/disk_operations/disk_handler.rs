@@ -259,7 +259,7 @@ impl DiskHandler {
         table_ops.validate_columns(&statement.get_columns_names())?;
         let mut rows = table_ops.read_rows(false)?;
         let values = statement.get_values();
-        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
+        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values, timestamp);
 
         let partition_key_columns = table.get_partition_key();
         let duplicate_index = rows.iter().position(|row| {
