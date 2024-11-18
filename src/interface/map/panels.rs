@@ -6,7 +6,8 @@ use std::{
 };
 
 use eframe::egui::{
-    Button, Color32, Context, Frame, Margin, Response, RichText, ScrollArea, SidePanel, Ui,
+    Button, Color32, Context, Frame, Margin, Response, RichText, ScrollArea, Separator, SidePanel,
+    Ui,
 };
 
 use crate::{
@@ -229,7 +230,7 @@ fn show_incoming_flights(
     if must_show_incoming {
         ScrollArea::vertical()
             .max_height(100.0)
-            .max_width(ctx.screen_rect().width() / 4.0)
+            .max_width(ctx.screen_rect().width() / 3.5)
             .animated(true)
             .id_salt("incoming_scroll")
             .show(ui, |scroll_ui| {
@@ -242,19 +243,35 @@ fn show_incoming_flights(
                         None => "".to_string(),
                         Some(date) => date.to_string(),
                     };
-                    let info = format!(
-                        "Id: {}\n\nDestino: {}\nETA: {}\nPosición (lat, lon): {:?}, estado: {}\n",
-                        incoming_flight.id,
-                        incoming_flight.dest,
-                        potential_date,
-                        (incoming_flight.pos.lat(), incoming_flight.pos.lon()),
-                        incoming_flight.state
-                    );
                     scroll_ui.label(
-                        RichText::new(info)
+                        RichText::new(format!("\tId: {}\n", incoming_flight.id))
                             .italics()
                             .color(Color32::from_rgb(255, 255, 255)),
                     );
+                    scroll_ui.label(
+                        RichText::new(format!("\tDestino: {}", incoming_flight.dest))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.label(
+                        RichText::new(format!("\tETA: {}", potential_date))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.label(
+                        RichText::new(format!(
+                            "\tPosición (lat, lon): {:?}",
+                            (incoming_flight.pos.lat(), incoming_flight.pos.lon())
+                        ))
+                        .italics()
+                        .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.label(
+                        RichText::new(format!("\testado: {}", incoming_flight.state))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.add(Separator::default().shrink(30.0));
                 }
             });
     }
@@ -281,31 +298,51 @@ fn show_departing_flights(
     let mut must_show_departing = *show_departing;
     if must_show_departing {
         ScrollArea::vertical()
-                .max_height(100.0)
-                .max_width(ctx.screen_rect().width() / 4.0)
-                .animated(true)
-                .id_salt("departing_scroll")
-                .show(ui, |scroll_ui| {
-                    if departing_flights.is_empty() {
-                        show_loading_spinner(scroll_ui, "Cargando vuelos salientes...".to_string());
-                    }
+            .max_height(100.0)
+            .max_width(ctx.screen_rect().width() / 3.5)
+            .animated(true)
+            .id_salt("departing_scroll")
+            .show(ui, |scroll_ui| {
+                if departing_flights.is_empty() {
+                    show_loading_spinner(scroll_ui, "Cargando vuelos salientes...".to_string());
+                }
 
-                    for departing_flight in departing_flights.iter() {
-                        let potential_date = match departing_flight.get_date() {
-                            None => "".to_string(),
-                            Some(date) => date.to_string(),
-                        };
-                        let info = format!(
-                            "Id: {}\n\nOrigen: {}\nDespegue: {}\nPosición (lat, lon): {:?}, estado: {}\n",
-                            departing_flight.id, departing_flight.orig, potential_date, (departing_flight.pos.lat(), departing_flight.pos.lon()), departing_flight.state
-                        );
-                        scroll_ui.label(
-                            RichText::new(info)
-                                .italics()
-                                .color(Color32::from_rgb(255, 255, 255)),
-                        );
-                    }
-                });
+                for departing_flight in departing_flights.iter() {
+                    let potential_date = match departing_flight.get_date() {
+                        None => "".to_string(),
+                        Some(date) => date.to_string(),
+                    };
+                    scroll_ui.label(
+                        RichText::new(format!("\tId: {}\n", departing_flight.id))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.label(
+                        RichText::new(format!("\tOrigen: {}", departing_flight.orig))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.label(
+                        RichText::new(format!("\tDespegue: {}", potential_date))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.label(
+                        RichText::new(format!(
+                            "\tPosición (lat, lon): {:?}",
+                            (departing_flight.pos.lat(), departing_flight.pos.lon())
+                        ))
+                        .italics()
+                        .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.label(
+                        RichText::new(format!("\testado: {}", departing_flight.state))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.add(Separator::default().shrink(30.0));
+                }
+            });
     }
     if departing_button_response.clicked() {
         if *show_departing {
