@@ -12,7 +12,7 @@ use crate::protocol::{
     },
     errors::error::Error,
     traits::Byteable,
-    utils::encode_iter_to_bytes,
+    utils::{encode_iter_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
 };
 use crate::server::nodes::{
     node::{NodeId, NodesMap},
@@ -25,7 +25,7 @@ pub type EndpointsVec = Vec<EndpointState>;
 /// Contiene los metadatos mínimos para comparar versiones de nodos.
 pub type GossipInfo = HashMap<NodeId, HeartbeatState>;
 
-const ACTION_MASK: u8 = 0xF0;
+const ACTION_MASK: Byte = 0xF0;
 
 /// Una "acción" de servidor es un mensaje especial que no entra en ninguna especificaión
 /// del protocolo de Cassandra, y en su lugar es usado para acciones especiales fuera
@@ -72,6 +72,20 @@ pub enum SvAction {
 
     /// Guardar metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
     StoreMetadata,
+
+    /// Obtiene unicamente las filas de la tabla solicitada, pero con sus timestamps.
+    DirectReadRequest(Vec<Byte>),
+
+    /// Pide unicamente el valor hasheado de una query normal.
+    DigestReadRequest(Vec<Byte>),
+
+    /// Arregla la tabla mientras se realiza el read-repair.
+    ///
+    /// _(table_name, node_id, rows)_
+    RepairRows(String, Byte, Vec<Byte>),
+
+    /// Agrega una relacion de tabla con un partition value
+    AddPartitionValueToMetadata(String, String),
 }
 
 impl SvAction {
@@ -211,6 +225,29 @@ impl Byteable for SvAction {
                 bytes
             }
             Self::StoreMetadata => vec![0xF9],
+            Self::DirectReadRequest(query_bytes) => {
+                let mut bytes = vec![0xFA];
+                bytes.extend(query_bytes);
+                bytes
+            }
+            Self::DigestReadRequest(query_bytes) => {
+                let mut bytes = vec![0xFB];
+                bytes.extend(query_bytes);
+                bytes
+            }
+            Self::RepairRows(table_name, node_id, rows) => {
+                let mut bytes = vec![0xFC];
+                bytes.extend(encode_string_to_bytes(table_name));
+                bytes.push(*node_id);
+                bytes.extend(rows);
+                bytes
+            }
+            Self::AddPartitionValueToMetadata(table_name, partition_value) => {
+                let mut bytes = vec![0xFD];
+                bytes.extend(encode_string_to_bytes(table_name));
+                bytes.extend(encode_string_to_bytes(partition_value));
+                bytes
+            }
         }
     }
 }
@@ -301,6 +338,22 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xF8 => Ok(Self::InternalQuery(bytes[1..].to_vec())),
             0xF9 => Ok(Self::StoreMetadata),
+            0xFA => Ok(Self::DirectReadRequest(bytes[1..].to_vec())),
+            0xFB => Ok(Self::DigestReadRequest(bytes[1..].to_vec())),
+            0xFC => {
+                let table_name = parse_bytes_to_string(&bytes[1..], &mut i)?;
+                let node_id = bytes[table_name.len() + 1];
+                let rows = bytes[table_name.len() + 1 + 2 + 1..].to_vec();
+                Ok(Self::RepairRows(table_name, node_id, rows))
+            }
+            0xFD => {
+                let table_name = parse_bytes_to_string(&bytes[1..], &mut i)?;
+                let partition_value = parse_bytes_to_string(&bytes[(i + 1)..], &mut i)?;
+                Ok(Self::AddPartitionValueToMetadata(
+                    table_name,
+                    partition_value,
+                ))
+            }
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

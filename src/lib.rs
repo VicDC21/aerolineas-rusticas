@@ -5,7 +5,9 @@
 #![warn(missing_docs)]
 
 pub mod client;
+#[cfg(feature = "gui")]
 pub mod data;
+#[cfg(feature = "gui")]
 pub mod interface;
 pub mod parser;
 pub mod protocol;

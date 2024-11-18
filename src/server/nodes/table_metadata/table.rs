@@ -44,6 +44,11 @@ impl Table {
         &self.name
     }
 
+    /// Obtiene el nombre del keyspace al que pertenece la tabla.
+    pub fn get_keyspace(&self) -> &str {
+        &self.keyspace
+    }
+
     /// Obtiene la partition key de la tabla.
     pub fn get_partition_key(&self) -> Vec<String> {
         self.partition_key.clone()
@@ -55,6 +60,19 @@ impl Table {
             .iter()
             .map(|column| column.get_name())
             .collect()
+    }
+
+    /// Obtiene la posicion de la partition key en relacion a las demas columnas. Aclaracion, asumo que solo hay un partition key, no un vector.
+    pub fn get_position_of_partition_key(&self) -> Result<usize> {
+        // let partition_key = ;
+        for (index, column) in self.columns.iter().enumerate() {
+            if column.get_name() == self.partition_key[0] {
+                return Ok(index);
+            }
+        }
+        Err(Error::ServerError(
+            "Las columnas no tienen el partition key".to_string(),
+        ))
     }
 
     /// Obtiene los tipos de datos de las columnas de la tabla.

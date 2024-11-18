@@ -61,11 +61,11 @@ pub struct DiskHandler;
 impl DiskHandler {
     /// Crea una carpeta de almacenamiento para el nodo.
     /// Devuelve la ruta a dicho almacenamiento.
-    pub fn new_node_storage(id: NodeId) -> String {
-        DiskHandler::create_directory(STORAGE_PATH);
+    pub fn new_node_storage(id: NodeId) -> Result<String> {
+        Self::create_directory(STORAGE_PATH)?;
         let storage_addr: String = Self::get_node_storage(id);
-        DiskHandler::create_directory(&storage_addr);
-        storage_addr
+        Self::create_directory(&storage_addr)?;
+        Ok(storage_addr)
     }
 
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
@@ -74,7 +74,7 @@ impl DiskHandler {
     }
 
     /// Almacena los metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
-    pub fn store_node_metadata(id: NodeId, metadata: &[u8]) -> Result<()> {
+    pub fn store_node_metadata(id: NodeId, metadata: &[Byte]) -> Result<()> {
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -183,6 +183,7 @@ impl DiskHandler {
         statement: &CreateTable,
         storage_addr: &str,
         default_keyspace: &str,
+        node_number: Byte,
     ) -> Result<Option<Table>> {
         let (keyspace_name, table_name) =
             Self::validate_and_get_keyspace_table_names(statement, default_keyspace, storage_addr)?;
@@ -192,7 +193,13 @@ impl DiskHandler {
             .map(|c| c.get_name())
             .collect::<Vec<String>>();
 
-        Self::create_table_csv_file(storage_addr, &keyspace_name, &table_name, &columns_names)?;
+        Self::create_table_csv_file(
+            storage_addr,
+            &keyspace_name,
+            &table_name,
+            &columns_names,
+            node_number,
+        )?;
 
         let primary_key = Self::validate_and_get_primary_key(statement)?;
         let clustering_keys_and_order = Self::get_clustering_keys_and_order(statement)?;
@@ -206,23 +213,51 @@ impl DiskHandler {
         )))
     }
 
+    /// Repara las filas de la tabla con las filas pasadas por parámetro.
+    ///
+    /// **PRECAUCIÓN**: Esta función trunca todo el contenido previo de la tabla y este es irrecuperable luego de su uso, por lo que se debe
+    /// tener cuidado al utilizarla.
+    pub fn repair_rows(
+        storage_addr: &str,
+        table_name: &str,
+        keyspace_name: &str,
+        default_keyspace: &str,
+        node_number: Byte,
+        repaired_rows: &[Vec<String>],
+    ) -> Result<()> {
+        let path = TablePath::new(
+            storage_addr,
+            Some(keyspace_name.to_string()),
+            table_name,
+            default_keyspace,
+            node_number,
+        );
+
+        let table_ops = TableOperations::new(path)?;
+        table_ops.write_rows(repaired_rows)?;
+
+        Ok(())
+    }
+
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
     pub fn do_insert(
         statement: &Insert,
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        timestamp: i64,
+        node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.table.get_keyspace(),
             &statement.table.get_name(),
             default_keyspace,
+            node_number,
         );
-
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
-        let mut rows = table_ops.read_rows()?;
+        let mut rows = table_ops.read_rows(false)?;
         let values = statement.get_values();
         let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values);
 
@@ -251,21 +286,61 @@ impl DiskHandler {
         Ok(new_row)
     }
 
+    /// Devuelve las filas de la tabla como un string
+    pub fn get_rows_with_timestamp_as_string(
+        storage_addr: &str,
+        default_keyspace: &str,
+        statement: &Select,
+        node_number: Byte,
+    ) -> Result<String> {
+        let path = TablePath::new(
+            storage_addr,
+            statement.from.get_keyspace(),
+            &statement.from.get_name(),
+            default_keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+        let query_cols = vec!["*".to_string()];
+        let mut rows = table_ops.read_rows(false)?;
+        if let Some(the_where) = &statement.options.the_where {
+            rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
+        }
+
+        if let Some(order) = &statement.options.order_by {
+            order.order(&mut rows, &table_ops.columns);
+        }
+        let result_rows: Vec<Vec<String>> = rows
+            .into_iter()
+            .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols, false))
+            .collect();
+
+        let rows_as_string = result_rows
+            .iter()
+            .map(|row| row.join(","))
+            .collect::<Vec<String>>()
+            .join("\n");
+        Ok(rows_as_string)
+    }
+
     /// Selecciona filas en una tabla en el caso que corresponda.
     pub fn do_select(
         statement: &Select,
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        node_number: Byte,
     ) -> Result<Vec<Byte>> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
             &statement.from.get_name(),
             default_keyspace,
+            node_number,
         );
 
-        let table_ops = TableOperations::new(path)?;
+        let mut table_ops = TableOperations::new(path)?;
+        table_ops.remove_row_timestamp_column();
         let query_cols = statement.columns.get_columns();
 
         if query_cols.len() != 1 && query_cols[0] != "*" {
@@ -279,8 +354,7 @@ impl DiskHandler {
         //     result.push(query_cols.clone());
         // }
 
-        let mut rows = table_ops.read_rows()?;
-
+        let mut rows = table_ops.read_rows(true)?;
         if let Some(the_where) = &statement.options.the_where {
             rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
         }
@@ -291,7 +365,7 @@ impl DiskHandler {
 
         let result_rows: Vec<Vec<String>> = rows
             .into_iter()
-            .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols))
+            .map(|row| Self::generate_row_to_select(&row, &table_ops.columns, &query_cols, true))
             .collect();
 
         result.extend(result_rows);
@@ -310,17 +384,18 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.table_name.get_keyspace(),
             &statement.table_name.get_name(),
             default_keyspace,
+            node_number,
         );
-
         let table_ops = TableOperations::new(path)?;
         Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
-        let mut rows = table_ops.read_rows()?;
+        let mut rows = table_ops.read_rows(true)?;
 
         if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
             return Ok(Vec::new());
@@ -360,7 +435,7 @@ impl DiskHandler {
         }
 
         if should_write {
-            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
+            Self::order_and_save_rows(&table_ops, &mut rows, table)?;
         }
 
         Ok(updated_rows.iter().map(|row| row.join(",")).collect())
@@ -372,32 +447,34 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
             storage_addr,
             statement.from.get_keyspace(),
             &statement.from.get_name(),
             default_keyspace,
+            node_number,
         );
 
         let table_ops = TableOperations::new(path)?;
-        let rows = table_ops.read_rows()?;
+        let rows = table_ops.read_rows(true)?;
 
         if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
             return Ok(Vec::new());
         }
 
         let result = if statement.cols.is_empty() {
-            DiskHandler::process_full_row_delete(statement, &rows, &table_ops)?
+            Self::process_full_row_delete(statement, &rows, &table_ops)?
         } else {
-            DiskHandler::process_partial_row_delete(statement, &rows, &table_ops)?
+            Self::process_partial_row_delete(statement, &rows, &table_ops)?
         };
 
         let (modified_rows, deleted_data) = result;
 
         if !deleted_data.is_empty() || modified_rows.is_empty() {
             let mut rows_to_write = modified_rows.clone();
-            DiskHandler::order_and_save_rows(&table_ops, &mut rows_to_write, table)?;
+            Self::order_and_save_rows(&table_ops, &mut rows_to_write, table)?;
         }
 
         Ok(deleted_data)
@@ -407,14 +484,20 @@ impl DiskHandler {
         statement: &Insert,
         table_ops: &TableOperations,
         values: &[String],
+        timestamp: i64,
     ) -> Vec<String> {
         let table_columns: Vec<&str> = table_ops.columns.iter().map(|s| s.as_str()).collect();
 
-        Self::generate_row_to_insert(values, &statement.get_columns_names(), &table_columns)
-            .trim()
-            .split(',')
-            .map(|s| s.to_string())
-            .collect()
+        Self::generate_row_to_insert(
+            values,
+            &statement.get_columns_names(),
+            &table_columns,
+            timestamp,
+        )
+        .trim()
+        .split(',')
+        .map(|s| s.to_string())
+        .collect()
     }
 
     fn order_and_save_rows(
@@ -557,19 +640,24 @@ impl DiskHandler {
         columns: &[String],
     ) -> Result<bool> {
         for row in rows {
-            if DiskHandler::verify_row_conditions(row, conditions, columns)? {
+            if Self::verify_row_conditions(row, conditions, columns)? {
                 return Ok(true);
             }
         }
         Ok(false)
     }
 
-    fn create_directory(path: &str) {
+    fn create_directory(path: &str) -> Result<()> {
         let path_folder = Path::new(path);
         if !path_folder.exists() && !path_folder.is_dir() {
-            let err_msg = format!("No se pudo crear la carpeta de almacenamiento {}", path);
-            create_dir(path_folder).expect(&err_msg);
+            create_dir(path_folder).map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo crear la carpeta de almacenamiento {}: {}",
+                    path, e
+                ))
+            })?;
         }
+        Ok(())
     }
 
     /// Obtiene la estrategia de replicación de un keyspace.
@@ -581,7 +669,7 @@ impl DiskHandler {
                     let values = map_literal.get_values().as_slice();
                     let (term1, term2) = &values[0];
                     if term1.get_value() == "class" && term2.get_value() == "SimpleStrategy" {
-                        return DiskHandler::get_single_strategy_replication(values);
+                        return Self::get_single_strategy_replication(values);
                     } else if term1.get_value() == "class"
                         && term2.get_value() == "NetworkTopologyStrategy"
                     {
@@ -645,8 +733,12 @@ impl DiskHandler {
         keyspace_name: &str,
         table_name: &str,
         columns_names: &[String],
+        node_number: Byte,
     ) -> Result<()> {
-        let table_addr = format!("{}/{}/{}.csv", storage_addr, keyspace_name, table_name);
+        let table_addr = format!(
+            "{}/{}/{}_replica_node_{}.csv",
+            storage_addr, keyspace_name, table_name, node_number
+        );
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -658,9 +750,8 @@ impl DiskHandler {
             .write_all(columns_names.join(",").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
         writer
-            .write_all("\n".as_bytes())
+            .write_all((",row_timestamp\n").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
-
         Ok(())
     }
 
@@ -747,14 +838,17 @@ impl DiskHandler {
         values: &[String],
         query_cols: &[String],
         table_cols: &[&str],
+        timestamp: i64,
     ) -> String {
-        let mut values_to_insert: Vec<&str> = vec![""; table_cols.len()];
+        let mut values_to_insert: Vec<&str> = vec![""; table_cols.len() - 1]; // - 1 porque hay que ignorar la columna del timestamp, se agrega luego
 
         for i in 0..query_cols.len() {
             if let Some(j) = table_cols.iter().position(|c| *c == query_cols[i]) {
                 values_to_insert[j] = values[i].as_str();
             }
         }
+        let timestamp_reference = &timestamp.to_string();
+        values_to_insert.push(timestamp_reference);
 
         values_to_insert.join(",") + "\n"
     }
@@ -792,7 +886,7 @@ impl DiskHandler {
         let rows_count = result.len() as Int;
         metadata.append(&mut rows_count.to_be_bytes().to_vec());
 
-        let mut rows_content: Vec<u8> = Vec::new();
+        let mut rows_content: Vec<Byte> = Vec::new();
         for row in result {
             for value in row {
                 let value_length = value.len() as i32;
@@ -810,6 +904,7 @@ impl DiskHandler {
         table_row: &[String],
         table_cols: &[String],
         query_cols: &[String],
+        without_timestamp: bool,
     ) -> Vec<String> {
         let mut new_row: Vec<String> = Vec::new();
         if query_cols.len() == 1 && query_cols[0] == "*" {
@@ -822,6 +917,9 @@ impl DiskHandler {
                 {
                     new_row.push(table_row[j].clone());
                 }
+            }
+            if !without_timestamp {
+                new_row.push(table_row.last().unwrap_or(&"0".to_string()).to_string())
             }
         }
         new_row
@@ -885,5 +983,10 @@ impl DiskHandler {
             }
         }
         Ok(())
+    }
+
+    /// Borra todas las filas existentes, excepto la de los nombres de las columnas y inserta todas las filas pasadas por parametro
+    pub fn actualize_all_rows(_rows: &str) {
+        todo!() // ESTA SERIA LA FUNCION, HAY QUE VER LOS PARAMETROS QUE DEBERIA RECIBIR
     }
 }

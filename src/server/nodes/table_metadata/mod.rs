@@ -1,4 +1,4 @@
-//! Módulo que detalla la metadata de una tabla.
+//! Paquete para la metadata de una tabla.
 
 pub mod column_config;
 pub mod column_data_type;

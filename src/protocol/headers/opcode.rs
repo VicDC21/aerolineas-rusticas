@@ -5,6 +5,7 @@ use crate::protocol::errors::error::Error;
 use crate::protocol::traits::Byteable;
 
 /// Describe la operación a utilizar en el protocolo.
+#[derive(PartialEq)]
 pub enum Opcode {
     /// Indica una _Response_ en la que ocurrió algún tipo de error procesando una _Request_.
     RequestError,

@@ -4,10 +4,12 @@ use std::{
     collections::HashSet,
     io::{stdin, BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
+    str::FromStr,
     time::Duration,
 };
 
 use crate::{
+    client::cql_frame::frame::Frame,
     parser::{main_parser::make_parse, statements::statement::Statement},
     protocol::{
         aliases::{results::Result, types::Byte},
@@ -17,6 +19,7 @@ use crate::{
             result::{col_type::ColType, rows_flags::RowsFlag},
             result_kinds::ResultKind,
         },
+        notations::consistency::Consistency,
         traits::Byteable,
         utils::parse_bytes_to_string,
     },
@@ -30,32 +33,7 @@ use crate::{
     tokenizer::tokenizer::tokenize_query,
 };
 
-use crate::client::frame::Frame;
-
 use super::{col_data::ColData, protocol_result::ProtocolResult};
-
-/// Flags específicas para queries CQL
-#[derive(Clone, Copy)]
-pub enum QueryFlags {
-    /// Para vincular valores a la query
-    Values = 0x01,
-    /// Si se quiere saltar los metadatos en la respuesta
-    SkipMetadata = 0x02,
-    /// Tamaño deseado de la página si se setea
-    PageSize = 0x04,
-    /// Estado de paginación
-    WithPagingState = 0x08,
-    /// Consistencia serial para actualizaciones de datos condicionales
-    WithSerialConsistency = 0x10,
-    /// Timestamp por defecto (en microsegundos)
-    WithDefaultTimestamp = 0x20,
-    /// Solo tiene sentido si se usa `Values`, para tener nombres de columnas en los valores
-    WithNamesForValues = 0x40,
-    /// Keyspace donde debe ejecutarse la query
-    WithKeyspace = 0x80,
-    /// Tiempo actual en segundos
-    WithNowInSeconds = 0x100,
-}
 
 /// Estructura principal de un cliente.
 #[derive(Clone)]
@@ -65,14 +43,20 @@ pub struct Client {
 
     /// Un contador interno para llevar la cuenta de IDs de conexiones.
     requests_stream: HashSet<i16>,
+
+    /// El _Consistency Level_ de las queries.
+    consistency_level: Consistency,
 }
 
 impl Client {
     /// Crea una nueva instancia de cliente.
+    ///
+    /// El _Consistency Level_ será `Quorum` por defecto.
     pub fn new(addr_loader: AddrLoader, requests_stream: HashSet<i16>) -> Self {
         Self {
             addr_loader,
             requests_stream,
+            consistency_level: Consistency::Quorum,
         }
     }
 
@@ -91,6 +75,30 @@ impl Client {
         }
     }
 
+    /// Modifica el _Consistency Level_ de las queries.
+    ///
+    /// Tipos de _Consistency Level_ reconocidos:
+    /// - `Any` (sin uso)
+    /// - `One`
+    /// - `Two`
+    /// - `Three`
+    /// - `Quorum`
+    /// - `All`
+    /// - `LocalQuorum` (TODO)
+    /// - `EachQuorum` (TODO)
+    /// - `Serial` (sin uso)
+    /// - `LocalSerial` (sin uso)
+    /// - `LocalOne` (TODO)
+    pub fn set_consistency_level(&mut self, s: &str) -> Result<()> {
+        match Consistency::from_str(s) {
+            Ok(consistency) => {
+                self.consistency_level = consistency;
+                Ok(())
+            }
+            Err(e) => Err(Error::ConfigError(e.to_string())),
+        }
+    }
+
     /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
     ///
     /// <div class="warning">
@@ -98,7 +106,6 @@ impl Client {
     /// **Esto genera un loop infinito** hasta que el usuario ingrese `q` para salir.
     ///
     /// </div>
-
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
         tcp_stream
@@ -181,6 +188,8 @@ impl Client {
     }
 
     /// Envía una query al servidor y devuelve la respuesta del mismo.
+    ///
+    /// La query será enviada con el _Consistency Level_ actual.
     pub fn send_query(
         &mut self,
         query: &str,
@@ -195,8 +204,9 @@ impl Client {
         let result = match make_parse(&mut tokenize_query(query)) {
             Ok(statement) => {
                 let frame = match statement {
-                    Statement::DmlStatement(_) => Frame::query(stream_id, query.to_string()),
-                    Statement::DdlStatement(_) => Frame::ddl(stream_id, query.to_string()),
+                    Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
+                        Frame::new(stream_id, query, self.consistency_level)
+                    }
                     Statement::UdtStatement(_) => {
                         self.requests_stream.remove(&stream_id);
                         return Err(Error::ServerError("UDT statements no soportados".into()));
@@ -281,13 +291,12 @@ impl Client {
 
         // Establecer un deadline absoluto
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
-
         // Primero leer el header completo
         while response.len() < HEADER_SIZE {
             if std::time::Instant::now() > deadline {
                 return Err(Error::ServerError("Timeout al leer header".into()));
             }
-
+            println!("Response: {:?}", response);
             match tcp_stream.read(&mut buffer) {
                 Ok(0) => {
                     if response.is_empty() {
@@ -473,6 +482,7 @@ impl Client {
             rows.push(columns);
         }
 
+        println!("las rows son {:?}", rows);
         Ok(ProtocolResult::Rows(rows))
     }
 
@@ -494,7 +504,7 @@ impl Client {
         ])
     }
 
-    fn parse_column_value<T>(&self, request: &[u8], actual_position: &mut usize) -> Result<T>
+    fn parse_column_value<T>(&self, request: &[Byte], actual_position: &mut usize) -> Result<T>
     where
         T: std::str::FromStr,
         T::Err: std::fmt::Display,
@@ -502,7 +512,6 @@ impl Client {
         let value_len = self.get_length(request, *actual_position);
         *actual_position += 4;
         let right_position = *actual_position + value_len as usize;
-
         let str_value = std::str::from_utf8(&request[*actual_position..right_position])
             .map_err(|_| Error::TruncateError("Error al transformar bytes a utf8".to_string()))?;
 

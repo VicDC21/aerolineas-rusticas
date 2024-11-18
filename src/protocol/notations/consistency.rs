@@ -1,12 +1,17 @@
 //! Módulo para enumerar niveles de consistencia.
 
-use crate::protocol::aliases::types::{Byte, Short};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use std::{fmt, str::FromStr};
+
+use crate::protocol::{
+    aliases::{
+        results::Result,
+        types::{Byte, Short},
+    },
+    errors::error::Error,
+    traits::Byteable,
+};
 
 /// Nivela los modos de consistencia para los _read request_.
-///
-/// TODO: dejar mejores descripciones.
 #[derive(Debug, Clone, Copy)]
 pub enum Consistency {
     /// Buscar cualquier nodo
@@ -21,26 +26,47 @@ pub enum Consistency {
     /// Buscar tres nodos
     Three,
 
-    /// Decidir por mayoría
+    /// Decidir por mayoría, la mitad + 1 (51%)
     Quorum,
 
     /// Buscar TODOS los nodos disponibles
     All,
 
-    /// Decidir por mayoría local
+    /// Decidir por mayoría, en el data center local únicamente
     LocalQuorum,
 
-    /// Decidir por mayoría _#NoTengoNiIdeaDeLaDiferencia_
+    /// Decidir por mayoría, en cada data center
     EachQuorum,
 
-    /// SERIAL Variant
+    /// Bloquea la escritura hasta que la escritura se haya propagado a todos los nodos réplica
     Serial,
 
-    /// LOCAL_SERIAL Variant
+    /// Bloquea la escritura hasta que la escritura se haya propagado a todos los nodos réplica, en el data center local únicamente
     LocalSerial,
 
-    /// LOCAL_ONE Variant
+    /// Buscar un único nodo, en el data center local únicamente
     LocalOne,
+}
+
+impl Consistency {
+    /// Convierte el _Consistency Level_ a la cantidad de nodos a esperar su confirmación.
+    ///
+    /// `n` es la cantidad de réplicas.
+    pub fn as_usize(&self, n: usize) -> usize {
+        match self {
+            Self::Any => 1,
+            Self::One => 1,
+            Self::Two => 2,
+            Self::Three => 3,
+            Self::Quorum => (n / 2) + 1,
+            Self::All => n,
+            Self::LocalQuorum => (n / 2) + 1,
+            Self::EachQuorum => (n / 2) + 1,
+            Self::Serial => todo!(),
+            Self::LocalSerial => todo!(),
+            Self::LocalOne => 1,
+        }
+    }
 }
 
 impl Byteable for Consistency {
@@ -63,7 +89,8 @@ impl Byteable for Consistency {
 
 impl TryFrom<&[Byte]> for Consistency {
     type Error = Error;
-    fn try_from(short: &[Byte]) -> Result<Self, Self::Error> {
+
+    fn try_from(short: &[Byte]) -> Result<Self> {
         if short.len() < 2 {
             return Err(Error::ConfigError(
                 "El vector de bytes no tiene 2 bytes".to_string(),
@@ -90,11 +117,57 @@ impl TryFrom<&[Byte]> for Consistency {
     }
 }
 
+impl FromStr for Consistency {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s.to_ascii_uppercase().as_str() {
+            "ANY" => Ok(Consistency::Any),
+            "ONE" => Ok(Consistency::One),
+            "TWO" => Ok(Consistency::Two),
+            "THREE" => Ok(Consistency::Three),
+            "QUORUM" => Ok(Consistency::Quorum),
+            "ALL" => Ok(Consistency::All),
+            "LOCALQUORUM" => Ok(Consistency::LocalQuorum),
+            "EACHQUORUM" => Ok(Consistency::EachQuorum),
+            "SERIAL" => Ok(Consistency::Serial),
+            "LOCALSERIAL" => Ok(Consistency::LocalSerial),
+            "LOCALONE" => Ok(Consistency::LocalOne),
+            _ => Err(Error::ConfigError(format!(
+                "Consistency Level no reconocido: {}",
+                s
+            ))),
+        }
+    }
+}
+
+impl fmt::Display for Consistency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let consistency = match self {
+            Self::Any => "Any",
+            Self::One => "One",
+            Self::Two => "Two",
+            Self::Three => "Three",
+            Self::Quorum => "Quorum",
+            Self::All => "All",
+            Self::LocalQuorum => "LocalQuorum",
+            Self::EachQuorum => "EachQuorum",
+            Self::Serial => "Serial",
+            Self::LocalSerial => "LocalSerial",
+            Self::LocalOne => "LocalOne",
+        };
+
+        write!(f, "{}", consistency)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::notations::consistency::Consistency;
-    use crate::protocol::traits::Byteable;
+    use std::str::FromStr;
+
+    use crate::protocol::{
+        errors::error::Error, notations::consistency::Consistency, traits::Byteable,
+    };
 
     #[test]
     fn test_1_serializar() {
@@ -127,6 +200,26 @@ mod tests {
     #[test]
     fn test_3_deserializar_error() {
         let consistency_res = Consistency::try_from(&[0x0, 0xF][..]);
+
+        assert!(consistency_res.is_err());
+        if let Err(err) = consistency_res {
+            assert!(matches!(err, Error::ConfigError(_)));
+        }
+    }
+
+    #[test]
+    fn test_4_from_str() {
+        let consistency_res = Consistency::from_str("One");
+
+        assert!(consistency_res.is_ok());
+        if let Ok(consistency) = consistency_res {
+            assert!(matches!(consistency, Consistency::One));
+        }
+    }
+
+    #[test]
+    fn test_5_from_str_error() {
+        let consistency_res = Consistency::from_str("Invalid");
 
         assert!(consistency_res.is_err());
         if let Err(err) = consistency_res {
