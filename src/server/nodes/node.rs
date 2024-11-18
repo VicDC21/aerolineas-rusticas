@@ -1671,6 +1671,8 @@ impl Node {
                     &select,
                     request,
                     wait_response,
+                    &mut replicas_asked,
+                    replication_factor_quantity
                 )?;
                 consistency_counter += 1;
                 match self.consult_replica_nodes(
@@ -1701,6 +1703,8 @@ impl Node {
                         &select,
                         request,
                         wait_response,
+                        &mut replicas_asked,
+                        replication_factor_quantity
                     )?;
                 };
                 self.handle_result_from_node(
@@ -1720,6 +1724,8 @@ impl Node {
         select: &Select,
         request: &[u8],
         wait_response: bool,
+        replicas_asked: &mut usize,
+        replication_factor_quantity:u32
     ) -> Result<Vec<u8>> {
         let actual_result = if node_id == self.id {
             self.process_select(select, node_id)?
@@ -1729,7 +1735,7 @@ impl Node {
                 None,
                 Some(node_id),
             );
-            let result = self.send_message_and_wait_response_with_timeout(
+            let mut result = self.send_message_and_wait_response_with_timeout(
                 request_with_metadata,
                 node_id,
                 PortType::Priv,
@@ -1740,10 +1746,9 @@ impl Node {
             if result.is_empty() {
                 for i in 1..replication_factor_quantity {
                     let node_to_replicate =
-                        next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
+                        next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
                     if node_to_replicate != node_id {
-                        let request_with_metadata = self
-                            .add_metadata_to_internal_request_of_any_kind(
+                        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                                 SvAction::InternalQuery(request.to_vec()).as_bytes(),
                                 None,
                                 Some(node_to_replicate),
@@ -1756,7 +1761,7 @@ impl Node {
                                 wait_response,
                                 TIMEOUT_SECS,
                             )?;
-                        replicas_asked += 1;
+                        *replicas_asked += 1;
                         if !replica_response.is_empty() {
                             result = replica_response;
                             break;
@@ -1842,7 +1847,7 @@ impl Node {
                 None,
                 Some(node_id),
             );
-            self.send_message_and_wait_response(
+            self._send_message_and_wait_response( // uso esta funcion por ahora, solo para mergear
                 request_with_metadata,
                 node_to_consult,
                 PortType::Priv,
