@@ -65,7 +65,8 @@ use super::{
     table_metadata::table::Table,
     utils::{
         divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string, next_node_in_the_round,
-        send_to_node, send_to_node_and_wait_response, send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
+        send_to_node, send_to_node_and_wait_response, send_to_node_and_wait_response_with_timeout,
+        string_to_hashmap, string_to_hashmap_vec,
     },
 };
 
@@ -82,7 +83,7 @@ const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
 const N_THREADS: usize = 6;
 /// El tiempo de espera _(en segundos)_ por una respuesta.
-const TIMEOUT_SECS: u64 = 2;
+const TIMEOUT_SECS: u64 = 1;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 pub struct Node {
@@ -391,6 +392,13 @@ impl Node {
         Ok(())
     }
 
+    /// Actualiza el estado del nodo recibido a _Offline_.
+    fn acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
+        if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
+            endpoint_state.set_appstate_status(AppStatus::Offline);
+        }
+    }
+
     /// Consigue la información de _gossip_ que contiene este nodo.
     fn get_gossip_info(&self) -> GossipInfo {
         let mut gossip_info = GossipInfo::new();
@@ -532,8 +540,12 @@ impl Node {
             match &self.neighbours_states.get(node_id) {
                 Some(own_endpoint_state) => {
                     let own_heartbeat = own_endpoint_state.get_heartbeat();
-                    if emissor_heartbeat < own_heartbeat {
+                    if own_heartbeat > emissor_heartbeat
+                        || *own_endpoint_state.get_appstate_status() != AppStatus::Normal
+                    {
                         // El nodo propio tiene un heartbeat más nuevo que el que se recibió
+                        // o
+                        // El nodo propio no está listo para recibir queries
                         response_nodes.insert(*node_id, (*own_endpoint_state).clone());
                     } else if own_heartbeat < emissor_heartbeat {
                         // El nodo propio tiene un heartbeat más viejo que el que se recibió
@@ -1664,7 +1676,7 @@ impl Node {
                 let wait_response = true;
                 let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
-                let mut replicas_asked = 1;
+                let mut replicas_asked = 0;
 
                 let mut actual_result = self.decide_how_to_request_internal_query_select(
                     node_id,
@@ -1672,7 +1684,7 @@ impl Node {
                     request,
                     wait_response,
                     &mut replicas_asked,
-                    replication_factor_quantity
+                    replication_factor_quantity,
                 )?;
                 consistency_counter += 1;
                 match self.consult_replica_nodes(
@@ -1704,7 +1716,7 @@ impl Node {
                         request,
                         wait_response,
                         &mut replicas_asked,
-                        replication_factor_quantity
+                        replication_factor_quantity,
                     )?;
                 };
                 self.handle_result_from_node(
@@ -1725,48 +1737,33 @@ impl Node {
         request: &[u8],
         wait_response: bool,
         replicas_asked: &mut usize,
-        replication_factor_quantity:u32
+        replication_factor_quantity: u32,
     ) -> Result<Vec<u8>> {
         let actual_result = if node_id == self.id {
             self.process_select(select, node_id)?
         } else {
-            let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                None,
-                Some(node_id),
-            );
-            let mut result = self.send_message_and_wait_response_with_timeout(
-                request_with_metadata,
-                node_id,
-                PortType::Priv,
-                wait_response,
-                TIMEOUT_SECS
-            )?;
-            // Si hubo timeout al esperar la respuesta, se intenta con las replicas
-            if result.is_empty() {
-                for i in 1..replication_factor_quantity {
-                    let node_to_replicate =
-                        next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
-                    if node_to_replicate != node_id {
-                        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                                SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                                None,
-                                Some(node_to_replicate),
-                            );
-                        let replica_response = self
-                            .send_message_and_wait_response_with_timeout(
-                                SvAction::InternalQuery(request_with_metadata).as_bytes(),
-                                node_to_replicate,
-                                PortType::Priv,
-                                wait_response,
-                                TIMEOUT_SECS,
-                            )?;
-                        *replicas_asked += 1;
-                        if !replica_response.is_empty() {
-                            result = replica_response;
-                            break;
-                        }
-                    }
+            let mut result: Vec<u8> = Vec::new();
+            for i in 0..replication_factor_quantity {
+                let next_node_replica =
+                    next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
+                let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    None,
+                    Some(next_node_replica),
+                );
+                let replica_response = self.send_message_and_wait_response_with_timeout(
+                    SvAction::InternalQuery(request_with_metadata).as_bytes(),
+                    next_node_replica,
+                    PortType::Priv,
+                    wait_response,
+                    TIMEOUT_SECS,
+                )?;
+                *replicas_asked += 1;
+                if !replica_response.is_empty() {
+                    result = replica_response;
+                    break;
+                } else {
+                    self.acknowledge_offline_neighbour(next_node_replica);
                 }
             }
             result
@@ -1847,7 +1844,8 @@ impl Node {
                 None,
                 Some(node_id),
             );
-            self._send_message_and_wait_response( // uso esta funcion por ahora, solo para mergear
+            self._send_message_and_wait_response(
+                // uso esta funcion por ahora, solo para mergear
                 request_with_metadata,
                 node_to_consult,
                 PortType::Priv,
@@ -1908,7 +1906,7 @@ impl Node {
                     node_to_repair,
                     PortType::Priv,
                     false,
-                    TIMEOUT_SECS
+                    TIMEOUT_SECS,
                 )?;
             };
         }
