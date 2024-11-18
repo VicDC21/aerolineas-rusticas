@@ -226,9 +226,9 @@ impl DiskHandler {
         repaired_rows: &str,
     ) -> Result<()> {
         let rows_as_string: Vec<Vec<String>> = repaired_rows
-        .split('\n')
-        .map(|row| row.split(',').map(|s| s.to_string()).collect())
-        .collect();
+            .split('\n')
+            .map(|row| row.split(',').map(|s| s.to_string()).collect())
+            .collect();
 
         let path = TablePath::new(
             storage_addr,
@@ -239,7 +239,6 @@ impl DiskHandler {
         );
 
         let table_ops = TableOperations::new(path)?;
-        println!("Las filas siguen siendo {:?}", rows_as_string);
         table_ops.write_rows(&rows_as_string)?;
 
         Ok(())
