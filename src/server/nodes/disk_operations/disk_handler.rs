@@ -371,6 +371,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
+        timestamp: i64,
         node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
@@ -382,7 +383,7 @@ impl DiskHandler {
         );
         let table_ops = TableOperations::new(path)?;
         Self::validate_update_columns(&table_ops, &statement.set_parameter)?;
-        let mut rows = table_ops.read_rows(true)?;
+        let mut rows = table_ops.read_rows(false)?;
 
         if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
             return Ok(Vec::new());
@@ -403,8 +404,6 @@ impl DiskHandler {
                 should_write = true;
             }
         }
-
-        let mut modified_rows = Vec::new();
         for row in rows.iter_mut() {
             if RowOperations::should_process_row(
                 row,
@@ -415,16 +414,16 @@ impl DiskHandler {
                 for assignment in &statement.set_parameter {
                     Self::update_row_value(row, assignment, &table_ops.columns)?;
                 }
+                row.pop();
+                row.push(timestamp.to_string());
                 updated_rows.push(row.clone());
                 should_write = true;
             }
-            modified_rows.push(row.clone());
         }
 
         if should_write {
             Self::order_and_save_rows(&table_ops, &mut rows, table)?;
         }
-
         Ok(updated_rows.iter().map(|row| row.join(",")).collect())
     }
 
@@ -445,8 +444,9 @@ impl DiskHandler {
         );
 
         let table_ops = TableOperations::new(path)?;
-        let rows = table_ops.read_rows(true)?;
+        let rows = table_ops.read_rows(false)?;
 
+        // println!("las filas originales son {:?}", rows);
         if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
             return Ok(Vec::new());
         }
@@ -458,6 +458,7 @@ impl DiskHandler {
         };
 
         let (modified_rows, deleted_data) = result;
+        // println!("las filas modificadas son {:?}", modified_rows);
 
         if !deleted_data.is_empty() || modified_rows.is_empty() {
             let mut rows_to_write = modified_rows.clone();
