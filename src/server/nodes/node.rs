@@ -1697,6 +1697,7 @@ impl Node {
                 let wait_response = true;
                 let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
+                let mut replicas_asked = 1;
                 let mut actual_result = if node_id == self.id {
                     self.process_select(&select, node_id)?
                 } else {
@@ -1705,17 +1706,46 @@ impl Node {
                         None,
                         Some(node_id),
                     );
-                    self.send_message_and_wait_response_with_timeout(
+                    let mut result = self.send_message_and_wait_response_with_timeout(
                         request_with_metadata,
                         node_id,
                         PortType::Priv,
                         wait_response,
                         TIMEOUT_SECS,
-                    )?
+                    )?;
+                    // Si hubo timeout al esperar la respuesta, se intenta con las replicas
+                    if result.is_empty() {
+                        for i in 1..replication_factor_quantity {
+                            let node_to_replicate =
+                                next_node_to_replicate_data(node_id, i as Byte, START_ID, LAST_ID);
+                            if node_to_replicate != node_id {
+                                let request_with_metadata = self
+                                    .add_metadata_to_internal_request_of_any_kind(
+                                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                                        None,
+                                        Some(node_to_replicate),
+                                    );
+                                let replica_response = self
+                                    .send_message_and_wait_response_with_timeout(
+                                        SvAction::InternalQuery(request_with_metadata).as_bytes(),
+                                        node_to_replicate,
+                                        PortType::Priv,
+                                        wait_response,
+                                        TIMEOUT_SECS,
+                                    )?;
+                                replicas_asked += 1;
+                                if !replica_response.is_empty() {
+                                    result = replica_response;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    result
                 };
                 consistency_counter += 1;
                 match self.consult_replica_nodes(
-                    node_id,
+                    (node_id, replicas_asked),
                     request,
                     &mut consistency_counter,
                     consistency_number,
@@ -1785,19 +1815,20 @@ impl Node {
     /// Devuelve un booleano indicando si _read-repair_ fue ejecutado o no.
     fn consult_replica_nodes(
         &mut self,
-        node_id: u8,
+        id_and_replicas_asked: (u8, usize),
         request: &[Byte],
         consistency_counter: &mut usize,
         consistency_number: usize,
-        response_from_first_replica: &[Byte],
+        response_from_first_responsive_replica: &[Byte],
         table_name: &str,
     ) -> Result<bool> {
         if consistency_number == 1 {
             return Ok(false);
         }
-        let first_hashed_value = hash_value(response_from_first_replica);
+        let (node_id, replicas_asked) = id_and_replicas_asked;
+        let first_hashed_value = hash_value(response_from_first_responsive_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
-        for i in 1..consistency_number {
+        for i in replicas_asked..consistency_number {
             let node_to_consult = next_node_to_replicate_data(node_id, i as u8, START_ID, LAST_ID);
             let request_with_metadata = self.add_metadata_to_internal_request_of_any_kind(
                 SvAction::DigestReadRequest(request.to_vec()).as_bytes(),
