@@ -201,8 +201,8 @@ impl FlightsLoader {
     }
 
     /// Sincroniza el cliente.
-    pub fn sync_client(&mut self, new_client: Client) -> &mut Self {
-        self.client = Arc::new(Mutex::new(new_client));
+    pub fn sync_client(&mut self, new_client: Arc<Mutex<Client>>) -> &mut Self {
+        self.client = new_client;
         self
     }
 
