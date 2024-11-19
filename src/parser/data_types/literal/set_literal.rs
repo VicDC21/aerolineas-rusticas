@@ -1,2 +1,2 @@
-/// TODO: Desc básica
+/// Literal de un conjunto.
 pub struct SetLiteral {}

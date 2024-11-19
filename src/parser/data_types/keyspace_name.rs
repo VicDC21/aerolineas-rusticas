@@ -7,9 +7,9 @@ use super::unquoted_name::UnquotedName;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum KeyspaceName {
-    /// TODO: Desc básica
+    /// Nombre de keyspace sin comillas.
     UnquotedName(UnquotedName),
-    /// TODO: Desc básica
+    /// Nombre de keyspace con comillas.
     QuotedName(UnquotedName),
 }
 
@@ -20,7 +20,8 @@ impl Default for KeyspaceName {
 }
 
 impl KeyspaceName {
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es un nombre de keyspace. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso de no cumplir con el protocolo.
     pub fn check_kind_of_name(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         if lista.is_empty() {
             return Err(Error::SyntaxError("Faltan argumentos".to_string()));

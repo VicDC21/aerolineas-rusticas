@@ -6,15 +6,18 @@ use crate::{
 };
 
 #[allow(dead_code)]
+/// Literal de tipo tupla.
+///
 /// tuple_literal::= '(' term( ',' term )* ')'
 #[derive(Debug)]
 pub struct TupleLiteral {
-    /// TODO: Desc básica
+    /// Elementos de la tupla, términos.
     pub items: Vec<Term>,
 }
 
 impl TupleLiteral {
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es una tupla de términos. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso de no cumplir con la sintaxis.
     pub fn check_tuple_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         let mut items: Vec<Term> = Vec::new();
         if check_words(lista, "(") {
@@ -35,7 +38,7 @@ impl TupleLiteral {
         }
     }
 
-    /// TODO: Desc básica
+    /// Obtiene la longitud de la tupla.
     pub fn size(&self) -> usize {
         self.items.len()
     }

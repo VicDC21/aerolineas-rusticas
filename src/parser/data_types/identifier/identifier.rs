@@ -4,18 +4,19 @@ use super::quoted_identifier::QuotedIdentifier;
 use super::unquoted_identifier::UnquotedIdentifier;
 
 /// column_name::= identifier
+///
 /// identifier::= unquoted_identifier | quoted_identifier
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Identifier {
-    /// TODO: Desc básica
+    /// Identificador sin comillas.
     UnquotedIdentifier(UnquotedIdentifier),
-    /// TODO: Desc básica
+    /// Identificador con comillas.
     QuotedIdentifier(QuotedIdentifier),
 }
 
 impl Identifier {
-    /// TODO: Desc básica
+    /// Crea un nuevo identificador.
     pub fn new(string: String) -> Self {
         if UnquotedIdentifier::check_unquoted_identifier(&string) {
             Identifier::UnquotedIdentifier(UnquotedIdentifier::new(string))
@@ -24,7 +25,7 @@ impl Identifier {
         }
     }
 
-    /// TODO: Desc básica
+    /// Obtiene el nombre del identificador.
     pub fn get_name(&self) -> &str {
         match self {
             Identifier::QuotedIdentifier(id) => id.get_name(),
@@ -32,7 +33,8 @@ impl Identifier {
         }
     }
 
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es un identificador. Si lo es, lo retorna.
+    /// Si no lo es, retorna None.
     pub fn check_identifier(lista: &mut Vec<String>) -> Result<Option<Identifier>, Error> {
         if UnquotedIdentifier::check_unquoted_identifier(&lista[0]) {
             let string = lista.remove(0);

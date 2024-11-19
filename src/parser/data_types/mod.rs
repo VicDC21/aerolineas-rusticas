@@ -1,20 +1,22 @@
-/// TODO: Desc básica
+//! Paquete de módulos que contienen los tipos de datos que se pueden utilizar en la gramática de CQL.
+
+/// Módulo que contiene el tipo de dato `Constant`.
 pub mod constant;
-/// TODO: Desc básica
+/// Módulo que contiene los tipos de _CQL_.
 pub mod cql_type;
-/// TODO: Desc básica
+/// Módulo que contiene los identificadores.
 pub mod identifier;
-/// TODO: Desc básica
+/// Módulo que contiene el tipo de dato `KeyspaceName`.
 pub mod keyspace_name;
-/// TODO: Desc básica
+/// Módulo que contiene los literales.
 pub mod literal;
-/// TODO: Desc básica
+/// Módulo que contiene los nombres con comillas.
 pub mod quoted_name;
-/// TODO: Desc básica
+/// Módulo que contiene los términos.
 pub mod term;
-/// TODO: Desc básica
+/// Módulo que contiene literales de tipo _UDT_.
 pub mod udt_literal;
-/// TODO: Desc básica
+/// Módulo que contiene los nombres sin comillas.
 pub mod unquoted_name;
-/// TODO: Desc básica
+/// Módulo que contiene los tipos de datos definidos por el usuario.
 pub mod user_defined_type;

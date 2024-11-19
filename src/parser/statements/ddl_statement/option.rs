@@ -17,13 +17,14 @@ pub enum Options {
     /// Representa un término constante.
     /// Ejemplo: `keyspace_name = 'keyspace'`
     Constant(Term),
-    /// Representa un literal de mapa.
+    /// Representa un literal de un mapa.
     /// Ejemplo: `keyspace_name = {'keyspace': 'value'}`
     MapLiteral(MapLiteral),
 }
 
 impl Options {
-    /// Verifica si la lista de tokens es un literal de mapa.
+    /// Verifica si la lista de tokens es un literal de un mapa.
+    /// Si lo es, lo retorna, caso contrario retorna un error de sintaxis.
     pub fn check_options(lista: &mut Vec<String>) -> Result<Self, Error> {
         if let Some(identifier) = Identifier::check_identifier(lista)? {
             return Ok(Options::Identifier(identifier));

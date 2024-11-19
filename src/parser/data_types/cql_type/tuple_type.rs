@@ -1,17 +1,20 @@
 use super::cql_type::CQLType;
 use crate::parser::data_types::cql_type::collection_type::expect_token;
-/// tuple_type::= TUPLE '<' cql_type( ',' cql_type)* '>'
+
 use crate::protocol::errors::error::Error;
 
-/// TODO: Desc básica
+/// Tipo de tupla.
+///
+/// tuple_type::= TUPLE '<' cql_type( ',' cql_type)* '>'
 #[derive(Debug, PartialEq)]
 pub enum TupleType {
-    /// TODO: Desc básica
+    /// Tupla de tipos de datos.
     Tuple(Box<Vec<CQLType>>),
 }
 
 impl TupleType {
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es un tipo de tupla. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso de no poder parsearla.
     pub fn parse_tuple_type(tokens: &mut Vec<String>) -> Result<Option<TupleType>, Error> {
         expect_token(tokens, "(")?;
         let mut values = Vec::new();

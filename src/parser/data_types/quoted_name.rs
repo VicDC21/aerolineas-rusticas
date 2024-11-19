@@ -3,14 +3,14 @@ use crate::protocol::errors::error::Error;
 #[allow(dead_code)]
 /// '"' unquoted_name '"'
 pub struct QuotedName {
-    /// TODO: Desc básica
+    /// Nombre con comillas.
     name: String,
 }
 
 impl QuotedName {
-    /// TODO: Desc básica
+    /// Crea un nuevo nombre con comillas.
     pub fn new(word: String) -> Result<Self, Error> {
-        // verificaciones
+        // TODO: Verificaciones
         Ok(QuotedName { name: word })
     }
 }

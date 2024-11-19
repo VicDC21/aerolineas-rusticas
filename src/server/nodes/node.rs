@@ -2172,7 +2172,7 @@ impl Node {
                 return Err(Error::ServerError(
                     "No se usa una estrategia de replicacion simple".to_string(),
                 ))
-            } // TODO: Soportar el otro tipo de replicación
+            }
         };
         Ok(replicas)
     }

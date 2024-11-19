@@ -2,78 +2,79 @@ use crate::protocol::errors::error::Error;
 
 #[derive(PartialEq)]
 
-/// Native types are the basic data types that are supported by Cassandra.
+/// Tipos de datos nativos de CQL.
 #[derive(Debug)]
 pub enum NativeType {
-    /// ASCII character string
+    /// Caracter de tipo ASCII.
     Ascii,
 
-    /// 64-bit signed long
+    /// Número con signo de 64 bits.
     Bigint,
 
-    /// Arbitrary bytes (no validation)
+    /// Bytes arbitrarios (sin validación).
     Blob,
 
-    /// Either true or false
+    /// Un booleano, true o false.
     Boolean,
 
-    /// Counter column (64-bit signed value). See counters for details.
+    /// Columna de tipo contador (número con signo de 64 bits).
     Counter,
 
-    /// A date (with no corresponding time value). See dates below for details.
+    /// Una fecha (sin el valor de tiempo correspondiente).
     Date,
 
-    /// Variable-precision decimal
+    /// Número decimal de precisión variable.
     Decimal,
 
-    /// 64-bit IEEE-754 floating point
+    /// Número de punto flotante de 64 bits IEEE-754.
     Double,
 
-    /// A duration with nanosecond precision. See durations below for details.
+    /// Una duración con precisión de nanosegundos.
     Duration,
 
-    /// 32-bit IEEE-754 floating point
+    /// Número de punto flotante de 32 bits IEEE-754.
     Float,
 
-    /// An IP address, either IPv4 (4 bytes long) or IPv6 (16 bytes long). Note that there is no inet constant, IP address should be input as strings.
+    /// Una dirección IP, ya sea IPv4 (4 bytes de largo) o IPv6 (16 bytes de largo). No hay una constante Inet, la dirección IP debe ingresarse como un string.
     Inet,
 
-    /// 32-bit signed int
+    /// Número con signo de 32 bits.
     Int,
 
-    /// 16-bit signed int
+    /// Número con signo de 16 bits.
     SmallInt,
 
-    /// UTF8 encoded string
+    /// String codificado en UTF8.
     Text,
 
-    /// A time (with no corresponding date value) with nanosecond precision. See times below for details.
+    /// Una hora (sin el valor de fecha correspondiente) con precisión de nanosegundos.
     Time,
 
-    /// A timestamp (date and time) with millisecond precision. See timestamps below for details.
+    /// Un timestamp (fecha y hora) con precisión de milisegundos.
     TimeStamp,
 
-    /// Version 1 UUID, generally used as a “conflict-free” timestamp. Also see timeuuid-functions.
+    /// Un UUID de la versión 1, generalmente utilizado como un timestamp "libre de conflictos".
     TimeUuid,
 
-    /// 8-bit signed int
+    /// Número con signo de 8 bits.
     TinyInt,
 
-    /// A UUID (of any version)
+    /// Un UUID (de cualquier versión).
     Uuid,
 
-    /// UTF8 encoded string
+    /// String codificado en UTF8.
     Varchar,
 
-    /// Arbitrary-precision integer
+    /// Número entero de precisión arbitraria.
     Varint,
 
-    /// A fixed length non-null, flattened array of float values CASSANDRA-18504 added this data type to Cassandra 5.0.
+    /// Vector de valores de punto flotante de longitud fija, no nula y aplanada.
     Vector,
 }
 
 impl NativeType {
-    /// Parse a data type from a list of tokens.
+    /// Verifica si la lista de tokens es un tipo de dato nativo. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso estar vacía la lista.
     pub fn parse_data_type(tokens: &mut Vec<String>) -> Result<Option<NativeType>, Error> {
         if tokens.is_empty() {
             return Err(Error::SyntaxError("Expected data type".to_string()));

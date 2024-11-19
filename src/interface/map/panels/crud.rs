@@ -24,7 +24,7 @@ pub fn insert_flight(
     let flight_id = cur_airport.id + ex_airport.id + timestamp as usize;
 
     let incoming_client = Arc::clone(&client);
-    // TODO: calcular el tiempo estimado por distancia en vez de asumir que el vuelo es instantáneo.
+    // TODO: Calcular el tiempo estimado por distancia en vez de asumir que el vuelo es instantáneo.
     let incoming_query = format!(
         "INSERT INTO vuelos_entrantes (id, dest, llegada, pos_lat, pos_lon, estado) VALUES ({}, '{}', {}, {}, {}, '{}');",
         flight_id as Int, ex_airport.ident, timestamp, cur_airport.position.lat(), cur_airport.position.lon(), FlightState::InCourse

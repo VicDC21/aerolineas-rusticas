@@ -4,17 +4,18 @@ use crate::protocol::errors::error::Error;
 /// re('[a-zA-Z_0-9]\{1, 48}')
 #[derive(Default, Debug, PartialEq, Clone)]
 pub struct UnquotedName {
-    /// TODO: Desc básica
+    /// Nombre sin comillas.
     name: String,
 }
 
 impl UnquotedName {
-    /// TODO: Desc básica
+    /// Crea un nuevo nombre sin comillas.
     pub fn new(word: String) -> Result<Self, Error> {
         Ok(UnquotedName { name: word })
     }
 
-    /// TODO: Desc básica
+    /// Verifica si la palabra recibida es un nombre sin comillas.
+    /// Si lo es retorna true, de lo contrario retorna false.
     pub fn is_unquoted_name(word: &str) -> bool {
         let length = word.chars().count();
         if !(1..=48).contains(&length) {

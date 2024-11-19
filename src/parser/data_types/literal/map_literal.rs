@@ -6,16 +6,17 @@ use crate::{
 use super::super::term::Term;
 
 #[allow(dead_code)]
-/// TODO: Desc básica
+/// Literal de tipo mapa.
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct MapLiteral {
-    /// TODO: Desc básica
+    /// Valores del mapa, pares de términos.
     pub values: Vec<(Term, Term)>,
 }
 
 impl MapLiteral {
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es un mapa de términos. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso de no cumplir con la sintaxis.
     pub fn check_map_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         let mut values: Vec<(Term, Term)> = Vec::new();
         if check_words(lista, "{") {
@@ -47,7 +48,7 @@ impl MapLiteral {
         Ok(Some(MapLiteral { values }))
     }
 
-    /// TODO: Desc básica
+    /// Obtiene los valores del mapa.
     pub fn get_values(&self) -> &Vec<(Term, Term)> {
         &self.values
     }

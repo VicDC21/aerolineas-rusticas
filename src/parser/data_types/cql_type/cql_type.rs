@@ -4,23 +4,24 @@ use super::tuple_type::TupleType;
 use crate::parser::data_types::user_defined_type::UserDefinedType;
 use crate::protocol::errors::error::Error;
 
-/// TODO: Desc básica
+/// Tipo de dato de CQL.
 #[derive(Debug, PartialEq)]
 pub enum CQLType {
-    /// TODO: Desc básica
+    /// Tipo de dato nativo.
     NativeType(NativeType),
-    /// TODO: Desc básica
+    /// Tipo de colección.
     CollectionType(CollectionType),
-    /// TODO: Desc básica
+    /// Tipo de dato definido por el usuario.
     UserDefinedType(UserDefinedType),
-    /// TODO: Desc básica
+    /// Tipo de tupla.
     TupleType(TupleType),
-    /// TODO: Desc básica
+    /// Tipo de dato personalizado.
     CustomType(String),
 }
 
 impl CQLType {
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es un tipo de dato de CQL. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso de no poder parsearla.
     pub fn check_kind_of_type(list: &mut Vec<String>) -> Result<Option<Self>, Error> {
         if let Some(value) = NativeType::parse_data_type(list)? {
             return Ok(Some(CQLType::NativeType(value)));

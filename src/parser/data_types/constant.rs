@@ -33,7 +33,7 @@ pub enum Constant {
 }
 
 impl Constant {
-    /// TODO: Desc básica
+    /// Obtiene el valor de la constante.
     pub fn get_value(&self) -> String {
         match self {
             Constant::String(s) => s.to_string(),
@@ -46,7 +46,21 @@ impl Constant {
         }
     }
 
-    /// TODO: Desc básica
+    /// Devuelve el valor de la constante como un _String_.
+    pub fn get_value_as_string(&self) -> String {
+        match self {
+            Constant::String(value) => value.to_string(),
+            Constant::Integer(value) => value.to_string(),
+            Constant::Double(value) => value.to_string(),
+            Constant::Boolean(value) => value.to_string(),
+            Constant::Uuid(value) => value.to_string(),
+            Constant::Blob(value) => value.to_string(),
+            Constant::NULL => "".to_string(),
+        }
+    }
+
+    /// Recibe un vector de tokens y verifica si es una constante, si lo es, la retorna.
+    /// Si no es una constante, retorna None, o Error en caso de no poder parsearlo.
     pub fn is_constant(lista: &mut Vec<String>) -> Result<Option<Constant>, Error> {
         if lista.len() > 2 && Constant::check_string(&lista[0], &lista[2]) {
             lista.remove(0);
@@ -85,6 +99,7 @@ impl Constant {
         };
         Ok(Constant::Integer(int))
     }
+
     fn new_double(double_string: String) -> Result<Self, Error> {
         let double = match double_string.parse::<Double>() {
             Ok(value) => value,
@@ -92,6 +107,7 @@ impl Constant {
         };
         Ok(Constant::Double(double))
     }
+
     fn new_boolean(bool_string: String) -> Result<Self, Error> {
         if bool_string == "TRUE" {
             Ok(Constant::Boolean(true))
@@ -99,6 +115,7 @@ impl Constant {
             Ok(Constant::Boolean(false))
         }
     }
+
     fn new_uuid(mut uuid: String) -> Result<Self, Error> {
         uuid.remove(8);
         uuid.remove(12);
@@ -166,19 +183,6 @@ impl Constant {
             return false;
         };
         Int::from_str_radix(&value[2..], (value.len() - 2) as u32).is_ok()
-    }
-
-    /// Devuelve el valor de la constante como un String.
-    pub fn get_value_as_string(&self) -> String {
-        match self {
-            Constant::String(value) => value.to_string(),
-            Constant::Integer(value) => value.to_string(),
-            Constant::Double(value) => value.to_string(),
-            Constant::Boolean(value) => value.to_string(),
-            Constant::Uuid(value) => value.to_string(),
-            Constant::Blob(value) => value.to_string(),
-            Constant::NULL => "".to_string(),
-        }
     }
 }
 
