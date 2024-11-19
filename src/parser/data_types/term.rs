@@ -2,11 +2,10 @@ use super::constant::Constant;
 use crate::protocol::errors::error::Error;
 use std::cmp::Ordering;
 
-#[allow(dead_code)]
-/// TODO: Desc básica
+/// Término de una expresión.
 #[derive(Debug, Clone)]
 pub enum Term {
-    /// TODO: Desc básica
+    /// Constante.
     Constant(Constant),
 }
 
@@ -19,14 +18,15 @@ impl PartialEq for Term {
 }
 
 impl Term {
-    /// TODO: Desc básica
+    /// Obtiene el valor del término.
     pub fn get_value(&self) -> String {
         match self {
             Term::Constant(c) => c.get_value(),
         }
     }
 
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es un término. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso de no poder parsearla.
     pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error> {
         if let Some(constant) = Constant::is_constant(lista)? {
             return Ok(Some(Term::Constant(constant)));

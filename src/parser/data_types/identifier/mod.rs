@@ -1,7 +1,9 @@
+//! Paquete de módulos que contienen los identificadores.
+
 #[allow(clippy::module_inception)]
-/// TODO: Desc básica
+/// Módulo que contiene los identificadores.
 pub mod identifier;
-/// TODO: Desc básica
+/// Módulo que contiene los identificadores con comillas.
 pub mod quoted_identifier;
-/// TODO: Desc básica
+/// Módulo que contiene los identificadores sin comillas.
 pub mod unquoted_identifier;

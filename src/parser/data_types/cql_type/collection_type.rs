@@ -2,7 +2,7 @@ use crate::protocol::errors::error::Error;
 
 use super::cql_type::CQLType;
 
-/// TODO: Desc básica
+/// Tipo de colección.
 #[derive(Debug, PartialEq)]
 pub enum CollectionType {
     /// MAP '<' cql_type',' cql_type'>'
@@ -16,7 +16,8 @@ pub enum CollectionType {
 }
 
 impl CollectionType {
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es un tipo de colección. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso de no poder parsearla.
     pub fn parse_collection_type(
         tokens: &mut Vec<String>,
     ) -> Result<Option<CollectionType>, Error> {
@@ -65,7 +66,7 @@ impl CollectionType {
     }
 }
 
-/// TODO: Desc básica
+/// Verifica si el token actual es el esperado. Si no es el esperado, retorna un error.
 pub fn expect_token(tokens: &mut Vec<String>, expected: &str) -> Result<(), Error> {
     if tokens.is_empty() || tokens[0] != expected {
         Err(Error::SyntaxError(format!("Expected token: {}", expected)))

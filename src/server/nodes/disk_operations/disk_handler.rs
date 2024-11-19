@@ -679,7 +679,8 @@ impl DiskHandler {
                     } else if term1.get_value() == "class"
                         && term2.get_value() == "NetworkTopologyStrategy"
                     {
-                        // Aca estaria el caso de NetworkTopologyStrategy
+                        // TODO: Aca estaria el caso de NetworkTopologyStrategy
+                        // UPDATE: No es necesario implementar NetworkTopologyStrategy
                         todo!()
                     }
                 }

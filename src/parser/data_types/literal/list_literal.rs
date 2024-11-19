@@ -6,15 +6,16 @@ use crate::{
 };
 
 #[allow(dead_code)]
-/// TODO: Desc básica
+/// Literal de tipo lista.
 #[derive(Debug)]
 pub struct ListLiteral {
-    /// TODO: Desc básica
+    /// Valores de la lista, términos.
     values: Vec<Term>,
 }
 
 impl ListLiteral {
-    /// TODO: Desc básica
+    /// Verifica si la lista de tokens es una lista de literales. Si lo es, lo retorna.
+    /// Si no lo es, retorna None, o Error en caso de no cumplir con la sintaxis.
     pub fn check_list_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
         let mut values: Vec<Term> = Vec::new();
         if check_words(lista, "[") {

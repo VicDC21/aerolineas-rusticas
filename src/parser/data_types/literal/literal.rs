@@ -3,14 +3,16 @@ use super::collection_literal::CollectionLiteral;
 use super::tuple_literal::TupleLiteral;
 use super::vector_literal::VectorLiteral;
 
+/// Literal de CQL.
+///
 /// collection_literal | vector_literal | udt_literal | tuple_literal
 pub enum Literal {
-    /// TODO: Desc básica
+    /// Literal de una colección.
     CollectionLiteral(CollectionLiteral),
-    /// TODO: Desc básica
+    /// Literal de un vector.
     VectorLiteral(VectorLiteral),
-    /// TODO: Desc básica
+    /// Literal de tipo _UDT_.
     UdtLiteral(UdtLiteral),
-    /// TODO: Desc básica
+    /// Literal de una tupla.
     TupleLiteral(TupleLiteral),
 }
