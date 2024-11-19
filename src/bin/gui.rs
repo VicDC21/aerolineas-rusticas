@@ -10,5 +10,5 @@ fn main() {
     }
 
     #[cfg(not(feature = "gui"))]
-    println!("Se quizo ejecutar 'gui', pero la feature relevante no está activada. Prueba con:\n\ncargo run --features \"gui\" gui\n")
+    println!("Se quizo ejecutar el binario 'gui', pero la feature relevante no está activada. Prueba con:\n\ncargo run --features \"gui\" --bin gui\n")
 }
