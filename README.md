@@ -37,10 +37,11 @@ además de _lintear_ y formatear el mismo.
 
 ## Compilación
 
-El proyecto se compila haciendo:
+El proyecto se compila dependiendo de la _feature_ que [sea necesaria](#cómo-correr), pero una
+compilación general alcanza con:
 
 ```console
-$ cargo build
+$ cargo build --all-features
 ```
 
 ## Cómo correr
@@ -175,7 +176,7 @@ $ cargo run --bin sim
 Los tests, siendo que se desee ejecutarlos manualmente, se puede con:
 
 ```console
-$ cargo test
+$ cargo test --all-features
 ```
 
 # Cómo contribuir
