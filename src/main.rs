@@ -1,12 +1,12 @@
-use aerolineas::simulator::flight_simulator::run_sim;
-use aerolineas::{
+use std::env::args;
+
+use aerolineas_rusticas::{
     client::cli::Client, protocol::aliases::results::Result, server::nodes::graph::NodesGraph,
+    simulator::flight_simulator::run_sim,
 };
 
 #[cfg(feature = "gui")]
-use aerolineas::interface::run::run_app;
-
-use std::env::args;
+use aerolineas_rusticas::interface::run::run_app;
 
 /// Imprime por pantalla el error
 fn print_err(res: Result<()>) {
@@ -17,8 +17,9 @@ fn print_err(res: Result<()>) {
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
+    let how_to_use = "Uso:\n\ncargo run [cli | --features \"gui\" gui | sim | sv [echo]]\n";
     if argv.len() < 2 {
-        println!("ERROR: Hay menos de 2 argumentos...");
+        println!("{}", how_to_use);
         return;
     }
 
@@ -47,10 +48,7 @@ fn main() {
             print_err(run_sim(client));
         }
         _ => {
-            println!(
-                "Se debe elegir 'sv', 'cli', 'gui' o 'sim', pero no '{}'...",
-                argv[1]
-            );
+            println!("{}", how_to_use);
         }
     }
 }

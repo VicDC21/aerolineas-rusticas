@@ -10,9 +10,9 @@ use crate::protocol::traits::{Byteable, Maskable};
 /// son aquí omitidas porque no tienen sentido en el contexto de un BATCH.
 ///
 /// ```rust
-/// # use aerolineas::protocol::messages::requests::batch_flags::BatchFlag;
-/// # use aerolineas::protocol::traits::Maskable;
-/// # use aerolineas::protocol::aliases::types::Int;
+/// # use aerolineas_rusticas::protocol::messages::requests::batch_flags::BatchFlag;
+/// # use aerolineas_rusticas::protocol::traits::Maskable;
+/// # use aerolineas_rusticas::protocol::aliases::types::Int;
 /// let b_flags = [&BatchFlag::WithSerialConsistency, &BatchFlag::WithKeyspace];
 /// let expected: Int = 0b10010000; // 00010000 | 10000000 = 10010000
 /// assert_eq!(BatchFlag::accumulate(&b_flags[..]), expected);

@@ -18,7 +18,7 @@ use crate::protocol::{
 /// [String], en donde cada _byte_ representa un carácter UTF-8.
 ///
 /// ```rust
-/// # use aerolineas::protocol::utils::encode_string_to_bytes;
+/// # use aerolineas_rusticas::protocol::utils::encode_string_to_bytes;
 /// let bytes = encode_string_to_bytes(&"Hello");
 ///
 /// assert_eq!(bytes, vec![0x0, 0x5, /* <- longitud | contenido -> */ 0x48, 0x65, 0x6C, 0x6C, 0x6F]);
@@ -44,7 +44,7 @@ pub fn encode_string_to_bytes(string: &str) -> Vec<Byte> {
 /// [String], en donde cada _byte_ representa un carácter UTF-8.
 ///
 /// ```rust
-/// # use aerolineas::protocol::utils::encode_long_string_to_bytes;
+/// # use aerolineas_rusticas::protocol::utils::encode_long_string_to_bytes;
 /// let bytes = encode_long_string_to_bytes(&"Hello");
 ///
 /// assert_eq!(bytes, vec![0x0, 0x0, 0x0, 0x5, /* <- longitud | contenido -> */ 0x48, 0x65, 0x6C, 0x6C, 0x6F]);
@@ -71,7 +71,7 @@ pub fn encode_long_string_to_bytes(string: &str) -> Vec<Byte> {
 /// tiene longitud variable.
 ///
 /// ```rust
-/// # use aerolineas::protocol::utils::encode_ipaddr_to_bytes;
+/// # use aerolineas_rusticas::protocol::utils::encode_ipaddr_to_bytes;
 /// # use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 /// let ipv4 = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 10));
 /// let ipv6 = IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 10));
@@ -101,8 +101,8 @@ pub fn encode_ipaddr_to_bytes(ipaddr: &IpAddr) -> Vec<Byte> {
 /// ```rust
 /// # use std::collections::HashMap;
 /// # use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-/// # use aerolineas::protocol::aliases::types::Short;
-/// # use aerolineas::protocol::utils::encode_reasonmap_to_bytes;
+/// # use aerolineas_rusticas::protocol::aliases::types::Short;
+/// # use aerolineas_rusticas::protocol::utils::encode_reasonmap_to_bytes;
 /// let reasonmap = HashMap::from([
 ///     (IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0x1400),
 ///     (IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)), 0x1001)
@@ -154,7 +154,7 @@ pub fn encode_reasonmap_to_bytes(hashmap: &ReasonMap) -> Vec<Byte> {
 /// el contenido de [Byte]s tal cual.
 ///
 /// ```rust
-/// # use aerolineas::protocol::utils::encode_bytes_collection_to_bytes;
+/// # use aerolineas_rusticas::protocol::utils::encode_bytes_collection_to_bytes;
 /// let bytes = [0x1, 0x2, 0x3, 0x4, 0x5, 0xF];
 ///
 /// assert_eq!(encode_bytes_collection_to_bytes(&bytes[..]), vec![0x0, 0x0, 0x0, 0x6,
@@ -188,7 +188,7 @@ pub fn encode_bytes_collection_to_bytes(bytes: &[Byte]) -> Vec<Byte> {
 /// </div>
 ///
 /// ```rust
-/// # use aerolineas::protocol::utils::encode_iter_to_bytes;
+/// # use aerolineas_rusticas::protocol::utils::encode_iter_to_bytes;
 /// let iter_bytes = [vec![0x1, 0x2, 0x3, 0x4, 0x5, 0xF],
 ///                  vec![0x6, 0x7, 0x8, 0x8, 0xE],
 ///                  vec![0xA, 0xB, 0xC]].into_iter();
@@ -221,8 +221,8 @@ pub fn encode_iter_to_bytes(iterator: impl Iterator<Item = Vec<Byte>>) -> Vec<By
 /// Esta es la operación recíproca a [encodearlos](encode_string_to_bytes).
 ///
 /// ```rust
-/// # use aerolineas::protocol::utils::parse_bytes_to_string;
-/// # use aerolineas::protocol::aliases::results::Result;
+/// # use aerolineas_rusticas::protocol::utils::parse_bytes_to_string;
+/// # use aerolineas_rusticas::protocol::aliases::results::Result;
 /// let string = "World!".to_string();
 ///
 /// let mut i_1: usize = 0;
@@ -264,8 +264,8 @@ pub fn parse_bytes_to_string(bytes_vec: &[Byte], i: &mut usize) -> Result<String
 /// Esta es la operación recíproca a [encodearlos](encode_long_string_to_bytes).
 ///
 /// ```rust
-/// # use aerolineas::protocol::utils::parse_bytes_to_long_string;
-/// # use aerolineas::protocol::aliases::results::Result;
+/// # use aerolineas_rusticas::protocol::utils::parse_bytes_to_long_string;
+/// # use aerolineas_rusticas::protocol::aliases::results::Result;
 /// let string = "World!".to_string();
 ///
 /// let mut i_1: usize = 0;
@@ -345,8 +345,8 @@ pub fn parse_bytes_to_ipaddr(bytes: &[Byte], i: &mut usize) -> Result<IpAddr> {
 ///
 /// ```rust
 /// # use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-/// # use aerolineas::protocol::utils::parse_bytes_to_reasonmap;
-/// # use aerolineas::protocol::aliases::results::Result;
+/// # use aerolineas_rusticas::protocol::utils::parse_bytes_to_reasonmap;
+/// # use aerolineas_rusticas::protocol::aliases::results::Result;
 /// let bytes = vec![
 ///     0x0, 0x0, 0x0, 0x3, // longitud del mensaje
 ///     0x4, /* longitud */ 0x7F, 0x0, 0x0, 0x1, /* ipv4 */ 0x14, 0x0, /* código de error */

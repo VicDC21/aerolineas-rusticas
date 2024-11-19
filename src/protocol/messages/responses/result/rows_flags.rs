@@ -6,9 +6,9 @@ use crate::protocol::traits::{Byteable, Maskable};
 
 /// Las flags a ser incluidas en el mensaje de una _response_ RESULT de tipo [ROWS](crate::protocol::messages::responses::result_kinds::ResultKind::Rows).
 /// ```rust
-/// # use aerolineas::protocol::messages::responses::result::rows_flags::RowsFlag;
-/// # use aerolineas::protocol::traits::Maskable;
-/// # use aerolineas::protocol::aliases::types::Int;
+/// # use aerolineas_rusticas::protocol::messages::responses::result::rows_flags::RowsFlag;
+/// # use aerolineas_rusticas::protocol::traits::Maskable;
+/// # use aerolineas_rusticas::protocol::aliases::types::Int;
 /// let b_flags = [&RowsFlag::GlobalTablesSpec, &RowsFlag::HasMorePages];
 /// let expected: Int = 0b00000011; // 00000001 | 00000010 = 00000011
 /// assert_eq!(RowsFlag::accumulate(&b_flags[..]), expected);

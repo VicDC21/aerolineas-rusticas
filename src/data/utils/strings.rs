@@ -5,7 +5,7 @@ use crate::protocol::aliases::results::Result;
 /// Saca el caracter **LF** (`"\n"`), o de ser posible **CRLF** (`"\r\n"`).
 ///
 /// ```rust
-/// use aerolineas::data::utils::strings::trim_newline;
+/// use aerolineas_rusticas::data::utils::strings::trim_newline;
 ///
 /// assert_eq!("hola\tmundo!".to_string(), trim_newline("hola\tmundo!\r\n"))
 /// ```
@@ -16,7 +16,7 @@ pub fn trim_newline(string: &str) -> String {
 /// Saca comillas dobles (`"`).
 ///
 /// ```rust
-/// use aerolineas::data::utils::strings::trim_quotes;
+/// use aerolineas_rusticas::data::utils::strings::trim_quotes;
 ///
 /// assert_eq!("hola\tmundo!".to_string(), trim_quotes("\"hola\tmundo!\""))
 /// ```
@@ -30,7 +30,7 @@ pub fn trim_quotes(string: &str) -> String {
 /// Combina las operaciones de [trim_newline()] y [trim_quotes()].
 ///
 /// ```rust
-/// use aerolineas::data::utils::strings::sanitize;
+/// use aerolineas_rusticas::data::utils::strings::sanitize;
 ///
 /// assert_eq!("hola\tmundo!".to_string(), sanitize("\"hola\tmundo!\"\r\n"))
 /// ```
@@ -46,7 +46,7 @@ pub fn sanitize(string: &str) -> String {
 /// [Sanitiza](sanitize()) un [String] y lo descompone en partes.
 ///
 /// ```rust
-/// use aerolineas::data::utils::strings::breakdown;
+/// use aerolineas_rusticas::data::utils::strings::breakdown;
 ///
 /// assert_eq!(vec!["hola".to_string(), "mundo".to_string(), "!".to_string()], breakdown("\"hola,mundo,!\"\r\t\n", ','));
 /// ```
@@ -63,7 +63,7 @@ pub fn breakdown(string: &str, delimiter: char) -> Vec<String> {
 /// * Cualquier otro caso devuelve [Option::Some]\([str].to_string())
 ///
 /// ```rust
-/// use aerolineas::data::utils::strings::to_option;
+/// use aerolineas_rusticas::data::utils::strings::to_option;
 ///
 /// let empty = to_option("");
 /// let example = to_option("hola mundo!");
@@ -84,7 +84,7 @@ pub fn to_option(string: &str) -> Option<String> {
 /// Une strings que empiezan y terminan en comillas en uno sólo.
 ///
 /// ```rust
-/// use aerolineas::data::utils::strings::unify_quotes_tokens;
+/// use aerolineas_rusticas::data::utils::strings::unify_quotes_tokens;
 ///
 /// let first_res = unify_quotes_tokens(vec!["a", "\"b", "c", "d\"", "e"]);
 /// assert!(first_res.is_ok());

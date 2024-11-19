@@ -8,9 +8,9 @@ use crate::protocol::traits::{Byteable, Maskable};
 ///
 /// También se puede acumular las flags en un sólo byte:
 /// ```rust
-/// # use aerolineas::protocol::headers::flags::Flag;
-/// # use aerolineas::protocol::traits::Maskable;
-/// # use aerolineas::protocol::aliases::types::Byte;
+/// # use aerolineas_rusticas::protocol::headers::flags::Flag;
+/// # use aerolineas_rusticas::protocol::traits::Maskable;
+/// # use aerolineas_rusticas::protocol::aliases::types::Byte;
 /// let flags = [&Flag::Compression, &Flag::Tracing, &Flag::Beta];
 /// let expected: Byte = 0b00010011; // 00000001 | 00000010 | 00010000 = 00010011
 /// assert_eq!(Flag::accumulate(&flags[..]), expected);
