@@ -1,6 +1,18 @@
-# Taller de Programacion - "Los Aldeanos Panas"
 
-## Integrantes
+░█████╗░███████╗██████╗░░█████╗░██╗░░░░░██╗███╗░░██╗███████╗░█████╗░░██████╗
+██╔══██╗██╔════╝██╔══██╗██╔══██╗██║░░░░░██║████╗░██║██╔════╝██╔══██╗██╔════╝
+███████║█████╗░░██████╔╝██║░░██║██║░░░░░██║██╔██╗██║█████╗░░███████║╚█████╗░
+██╔══██║██╔══╝░░██╔══██╗██║░░██║██║░░░░░██║██║╚████║██╔══╝░░██╔══██║░╚═══██╗
+██║░░██║███████╗██║░░██║╚█████╔╝███████╗██║██║░╚███║███████╗██║░░██║██████╔╝
+╚═╝░░╚═╝╚══════╝╚═╝░░╚═╝░╚════╝░╚══════╝╚═╝╚═╝░░╚══╝╚══════╝╚═╝░░╚═╝╚═════╝░
+       ██████╗░██╗░░░██╗░██████╗████████╗██╗░█████╗░░█████╗░░██████╗
+       ██╔══██╗██║░░░██║██╔════╝╚══██╔══╝██║██╔══██╗██╔══██╗██╔════╝
+       ██████╔╝██║░░░██║╚█████╗░░░░██║░░░██║██║░░╚═╝███████║╚█████╗░
+       ██╔══██╗██║░░░██║░╚═══██╗░░░██║░░░██║██║░░██╗██╔══██║░╚═══██╗
+       ██║░░██║╚██████╔╝██████╔╝░░░██║░░░██║╚█████╔╝██║░░██║██████╔╝
+       ╚═╝░░╚═╝░╚═════╝░╚═════╝░░░░╚═╝░░░╚═╝░╚════╝░╚═╝░░╚═╝╚═════╝░
+
+# Integrantes
 
 | <center>Integrante</center> | <center>Padrón</center> | <center>Mail</center> | <center>GitHub</center> |
 |:------------------------|:-----------------------:|:----------------------|:------------------------|
@@ -9,7 +21,7 @@
 | **Francisco Antonio Pereyra** | 105666 | fpereyra@fi.uba.ar | <img align="center" src="https://github.com/fapereyra.png" height=32 width=32 /> [fapereyra](https://github.com/fapereyra) |
 | **Victor Daniel Cipriano Sequera** | 106593 | vcipriano@fi.uba.ar | <img align="center" src="https://github.com/VicDC21.png" height=32 width=32 /> [VicDC21](https://github.com/VicDC21) |
 
-## Como usar 
+# Como usar 
 
 A continuación se detallan los pasos para compilar y ejecutar el programa.
 
@@ -18,7 +30,7 @@ además de _lintear_ y formatear el mismo.
 
 > **Nota:** _Se sobreentiende que los siguientes comandos se ejecutan en un entorno Linux/UNIX._
 
-### Compilación
+## Compilación
 
 El proyecto se compila haciendo:
 
@@ -26,36 +38,134 @@ El proyecto se compila haciendo:
 $ cargo build
 ```
 
-### Cómo correr
+## Cómo correr
 
 El proyecto tiene soporte para correr sus diferentes partes.
-
-#### Servidor
-
-También conocido como los "nodos", se invocan con:
+Si se desea correr una sóla parte a la vez, basta con correr la sintaxis simple:
 
 ```console
-$ cargo run sv
+$ cargo run [cli | --features "gui" gui | sim | sv [echo]]
 ```
 
-#### Cliente
+o, si se desea correr por ejemplo `sv` _y luego_ `gui`, el proyecto puede ejecutar sus partes
+en binarios separados:
 
-Una instancia de cliente en consola se puede invocar con:
+```console
+$ --bin [cli | gui | sim | sv]
+```
+
+ya que sino, se tratará de construir dos veces el mismo ejecutable, lo cual no siempre es posible.
+
+### Cliente
+
+Se puede invocar un cliente simple por consola.
+
+<details>
+    <summary>
+        <b>Forma simple</b>
+    </summary>
 
 ```console
 $ cargo run cli
 ```
 
-#### Interfaz de Usuario
+</details>
+
+<details>
+    <summary>
+        <b>Binario Separado</b>
+    </summary>
+
+```console
+$ cargo run --bin cli
+```
+
+</details>
+
+### Servidor
+
+También conocido como los "nodos".
+
+<details>
+    <summary>
+        <b>Forma simple</b>
+    </summary>
+
+```console
+$ cargo run sv
+```
+
+</details>
+
+<details>
+    <summary>
+        <b>Binario Separado</b>
+    </summary>
+
+```console
+$ cargo run --bin sv
+```
+
+</details>
+
+### Interfaz de Usuario
 
 La interfaz de usuario incluye muchas dependencias y por lo tanto, se compila
-con una _feature_ aparte. El comando es:
+con una _feature_ aparte con la forma `--features "gui"` o `--features gui`.
+
+<details>
+    <summary>
+        <b>Forma simple</b>
+    </summary>
 
 ```console
 $ cargo run --features "gui" gui
 ```
 
-## Cómo testear
+</details>
+
+<details>
+    <summary>
+        <b>Binario Separado</b>
+    </summary>
+
+```console
+$ cargo run --features "gui" --bin gui
+```
+
+</details>
+
+> **Nota:** Como `gui` es la única _feature_ que tiene el proyecto, `--features "gui"` se puede
+> reemplazar por `--all-features`
+
+### Simulador de Vuelos
+
+El simulador cada tanto va insertando datos en los lugares relevantes para simular la creación
+de vuelos en curso.
+
+<details>
+    <summary>
+        <b>Forma simple</b>
+    </summary>
+
+```console
+$ cargo run sim
+```
+
+</details>
+
+<details>
+    <summary>
+        <b>Binario Separado</b>
+    </summary>
+
+```console
+$ cargo run --bin sim
+```
+
+</details>
+
+# Cómo testear
 
 Los tests, siendo que se desee ejecutarlos manualmente, se puede con:
 
@@ -63,7 +173,7 @@ Los tests, siendo que se desee ejecutarlos manualmente, se puede con:
 $ cargo test
 ```
 
-## Cómo contribuir
+# Cómo contribuir
 
 Las convenciones generales a seguir para contribuir en el proyecto quedan exhaustivamente
 explicitadas en el [manifiesto](./CONTRIBUTING.md) relevante, y de otra forma dejadas a
