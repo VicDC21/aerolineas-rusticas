@@ -1,9 +1,9 @@
 [package]
-name = "aerolineas"
+name = "aerolineas_rusticas"
 version = "0.1.0"
 edition = "2021"
 # Para que funcione el `cargo run` por sí solo, y llame al binario principal.
-default-run = "aerolineas"
+default-run = "aerolineas_rusticas"
 
 [features]
 # La interfaz incorpora muchísimas dependencias. De ser posible, evitar compilarlo salvo

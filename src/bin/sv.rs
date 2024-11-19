@@ -2,7 +2,7 @@
 
 use std::env::args;
 
-use aerolineas::server::nodes::graph::NodesGraph;
+use aerolineas_rusticas::server::nodes::graph::NodesGraph;
 
 fn main() {
     let argv = args().collect::<Vec<String>>();

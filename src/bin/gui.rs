@@ -1,7 +1,7 @@
 //! Módulo para correr la interfaz.
 
 #[cfg(feature = "gui")]
-use aerolineas::interface::run::run_app;
+use aerolineas_rusticas::interface::run::run_app;
 
 fn main() {
     #[cfg(feature = "gui")]

@@ -8,9 +8,9 @@ use crate::protocol::traits::{Byteable, Maskable};
 ///
 /// Como flags que son, se pueden acumular en un sólo número:
 /// ```rust
-/// # use aerolineas::protocol::messages::requests::query_flags::QueryFlag;
-/// # use aerolineas::protocol::traits::Maskable;
-/// # use aerolineas::protocol::aliases::types::Int;
+/// # use aerolineas_rusticas::protocol::messages::requests::query_flags::QueryFlag;
+/// # use aerolineas_rusticas::protocol::traits::Maskable;
+/// # use aerolineas_rusticas::protocol::aliases::types::Int;
 /// let q_flags = [&QueryFlag::Values, &QueryFlag::SkipMetadata, &QueryFlag::WithKeyspace];
 /// let expected: Int = 0b10000011; // 00000001 | 00000010 | 10000000 = 10000011
 /// assert_eq!(QueryFlag::accumulate(&q_flags[..]), expected);

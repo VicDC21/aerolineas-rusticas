@@ -1,12 +1,12 @@
 use std::env::args;
 
-use aerolineas::{
+use aerolineas_rusticas::{
     client::cli::Client, protocol::aliases::results::Result, server::nodes::graph::NodesGraph,
     simulator::flight_simulator::run_sim,
 };
 
 #[cfg(feature = "gui")]
-use aerolineas::interface::run::run_app;
+use aerolineas_rusticas::interface::run::run_app;
 
 /// Imprime por pantalla el error
 fn print_err(res: Result<()>) {
