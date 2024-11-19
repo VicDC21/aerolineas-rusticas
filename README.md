@@ -57,7 +57,7 @@ o, si se desea correr por ejemplo `sv` _y luego_ `gui`, el proyecto puede ejecut
 en binarios separados:
 
 ```console
-$ --bin [cli | gui | sim | sv]
+$ cargo run --bin [cli | gui | sim | sv]
 ```
 
 ya que sino, se tratará de construir dos veces el mismo ejecutable, lo cual no siempre es posible.
