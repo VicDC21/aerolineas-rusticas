@@ -8,7 +8,7 @@ use crate::data::utils::{
     paths::{get_tokens, reader_from},
     strings::{breakdown, to_option},
 };
-use crate::data::{airport_types::AirportType, continent_types::ContinentType};
+use crate::data::{airports::types::AirportType, continent_types::ContinentType};
 use crate::protocol::aliases::results::Result;
 use crate::protocol::errors::error::Error;
 

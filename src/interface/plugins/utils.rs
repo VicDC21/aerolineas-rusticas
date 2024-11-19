@@ -6,7 +6,7 @@ use eframe::egui::{ColorImage, Context};
 use image::{ImageError, ImageReader};
 use walkers::{extras::Image, Texture};
 
-use crate::data::{airport_types::AirportType, airports::Airport};
+use crate::data::airports::{airp::Airport, types::AirportType};
 use crate::protocol::{aliases::results::Result, errors::error::Error};
 
 /// Intenta cargar una [imagen](eframe::egui::ColorImage) de EGUI.

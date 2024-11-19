@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     client::{cli::Client, protocol_result::ProtocolResult},
-    data::{airports::Airport, flights::states::FlightState},
+    data::{airports::airp::Airport, flights::states::FlightState},
     protocol::{
         aliases::{
             results::Result,

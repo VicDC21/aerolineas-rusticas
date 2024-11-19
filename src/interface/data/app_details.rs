@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use crate::data::{
-    airports::Airport,
+    airports::airp::Airport,
     flights::{departing::DepartingFlight, incoming::IncomingFlight},
 };
 

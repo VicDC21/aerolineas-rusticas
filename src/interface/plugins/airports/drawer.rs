@@ -7,7 +7,8 @@ use eframe::egui::{Context, Painter, Pos2, Response, Rgba, Stroke};
 use walkers::{extras::Image, Plugin, Projector, Texture};
 
 use crate::data::{
-    airport_types::AirportType, airports::Airport, utils::distances::distance_euclidean_pos2,
+    airports::{airp::Airport, types::AirportType},
+    utils::distances::distance_euclidean_pos2,
 };
 use crate::interface::plugins::utils::{load_egui_img, zoom_is_showable};
 

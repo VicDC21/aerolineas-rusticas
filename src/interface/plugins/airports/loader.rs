@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use eframe::egui::{Painter, Response, Vec2};
 use walkers::{Plugin, Position, Projector};
 
-use crate::data::airports::Airport;
+use crate::data::airports::airp::Airport;
 use crate::protocol::aliases::results::Result;
 
 /// Un hilo destinado a procesos paralelos, tal que no bloquee el flujo sincrónico

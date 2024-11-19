@@ -16,7 +16,7 @@ use walkers::{Plugin, Projector};
 use crate::{
     client::cli::Client,
     data::{
-        airports::Airport,
+        airports::airp::Airport,
         flights::{
             departing::DepartingFlight, flight_type::FlightType, incoming::IncomingFlight,
             traits::Flight,

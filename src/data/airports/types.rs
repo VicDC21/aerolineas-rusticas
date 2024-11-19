@@ -67,7 +67,7 @@ impl TryFrom<&str> for AirportType {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::airport_types::AirportType;
+    use crate::data::airports::types::AirportType;
     use crate::protocol::errors::error::Error;
 
     #[test]

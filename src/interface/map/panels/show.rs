@@ -13,7 +13,7 @@ use eframe::egui::{
 use crate::{
     client::cli::Client,
     data::{
-        airports::Airport,
+        airports::airp::Airport,
         flights::{departing::DepartingFlight, incoming::IncomingFlight, traits::Flight},
     },
     interface::map::panels::crud::{delete_flight_by_id, insert_flight},
