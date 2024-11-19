@@ -1,9 +1,21 @@
-╭━━━╮╱╱╱╱╱╱╱╭╮╱╱╱╱╱╱╱╱╱╱╱╱╱╱╭━━━╮╱╱╱╱╱╭╮
-┃╭━╮┃╱╱╱╱╱╱╱┃┃╱╱╱╱╱╱╱╱╱╱╱╱╱╱┃╭━╮┃╱╱╱╱╭╯╰╮
-┃┃╱┃┣━━┳━┳━━┫┃╭┳━╮╭━━┳━━┳━━╮┃╰━╯┣╮╭┳━┻╮╭╋┳━━┳━━┳━━╮
-┃╰━╯┃┃━┫╭┫╭╮┃┃┣┫╭╮┫┃━┫╭╮┃━━┫┃╭╮╭┫┃┃┃━━┫┃┣┫╭━┫╭╮┃━━┫
-┃╭━╮┃┃━┫┃┃╰╯┃╰┫┃┃┃┃┃━┫╭╮┣━━┃┃┃┃╰┫╰╯┣━━┃╰┫┃╰━┫╭╮┣━━┃
-╰╯╱╰┻━━┻╯╰━━┻━┻┻╯╰┻━━┻╯╰┻━━╯╰╯╰━┻━━┻━━┻━┻┻━━┻╯╰┻━━╯
+<img align="center" src="./media/img/logo/logo.png" width=560 height=130 />
+
+<br/><br/><br/>
+
+<hr style="width:35%" />
+
+* [Integrantes](#integrantes)
+* [Cómo Usar](#como-usar)
+    - [Compilación](#compilación)
+    - [Ejecución](#cómo-correr)
+        * [Cliente](#cliente)
+        * [Servidor](#servidor)
+        * [Interfaz Gráfica](#interfaz-de-usuario)
+        * [Simulador de Vuelos](#simulador-de-vuelos)
+* [Cómo Testear](#cómo-testear)
+* [Cómo Contribuir](#cómo-contribuir)
+
+<hr style="width:35%" />
 
 # Integrantes
 
@@ -158,7 +170,7 @@ $ cargo run --bin sim
 
 </details>
 
-# Cómo testear
+# Cómo Testear
 
 Los tests, siendo que se desee ejecutarlos manualmente, se puede con:
 
