@@ -2,7 +2,7 @@
 
 use std::io::{BufRead, Result as IOResult};
 
-use crate::data::continent_types::ContinentType;
+use crate::data::continents::types::ContinentType;
 use crate::data::utils::{
     paths::{get_tokens, reader_from},
     strings::{breakdown, to_option},

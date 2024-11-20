@@ -1,4 +1,4 @@
-//! Paquete para módulo de aeropuertos.
+//! Paquete para módulo de datos de aeropuertos.
 
 pub mod airp;
 pub mod types;

@@ -2,7 +2,7 @@
 //! pre-cargados.
 
 pub mod airports;
-pub mod continent_types;
+pub mod continents;
 pub mod countries;
 pub mod flights;
 pub mod regions;

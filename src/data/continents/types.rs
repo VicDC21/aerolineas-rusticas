@@ -67,7 +67,7 @@ impl TryFrom<&str> for ContinentType {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::continent_types::ContinentType;
+    use crate::data::continents::types::ContinentType;
     use crate::protocol::errors::error::Error;
 
     #[test]
