@@ -5,5 +5,4 @@ pub mod airports;
 pub mod continents;
 pub mod countries;
 pub mod flights;
-pub mod regions;
 pub mod utils;
