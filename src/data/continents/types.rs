@@ -32,6 +32,21 @@ pub enum ContinentType {
     SouthAmerica,
 }
 
+impl ContinentType {
+    /// Devuelve el nombre completo del continent, en inglés.
+    pub fn full_name(&self) -> &str {
+        match self {
+            Self::Africa => "Africa",
+            Self::Antarctica => "Antarctica",
+            Self::Asia => "Asia",
+            Self::Europe => "Europe",
+            Self::NorthAmerica => "North America",
+            Self::Oceania => "Oceania",
+            Self::SouthAmerica => "South America",
+        }
+    }
+}
+
 impl Display for ContinentType {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
