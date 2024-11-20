@@ -225,6 +225,10 @@ impl Node {
         }
     }
 
+    /// Si se elige un keyspace preferido, se verifica que éste exista y devuelve su nombre.
+    /// En caso contrario, devuelve el nombre del keyspace por defecto.
+    ///
+    /// Devuelve error si alguno de los dos no existe.
     fn choose_available_keyspace_name(
         &self,
         preferred_keyspace_name: Option<String>,
@@ -396,6 +400,7 @@ impl Node {
         Ok(())
     }
 
+    /// Consulta si un nodo vecino está listo para recibir _queries_.
     fn neighbour_is_responsive(&self, node_id: NodeId) -> bool {
         if let Some(endpoint_state) = self.neighbours_states.get(&node_id) {
             return *endpoint_state.get_appstate_status() == AppStatus::Normal;
@@ -479,8 +484,8 @@ impl Node {
 
         self.classify_nodes_in_gossip(
             &emissor_gossip_info,
-            &mut response_nodes,
             &mut own_gossip_info,
+            &mut response_nodes,
         );
 
         // Ahora rondamos nuestros vecinos para ver si tenemos uno que el nodo emisor no
@@ -503,11 +508,13 @@ impl Node {
         Ok(())
     }
 
+    /// Clasifica los nodos en el _SYN_ recibido. Determina cuales deben ser pedidos (_own_gossip_info_) y cuales
+    /// deben ser compartidos _(response_nodes)_.
     fn classify_nodes_in_gossip(
         &mut self,
         emissor_gossip_info: &HashMap<Byte, HeartbeatState>,
+        own_gossip_info: &mut HashMap<Byte, HeartbeatState>,
         response_nodes: &mut HashMap<Byte, EndpointState>,
-        own_gossip: &mut HashMap<Byte, HeartbeatState>,
     ) {
         for (node_id, emissor_heartbeat) in emissor_gossip_info {
             match &self.neighbours_states.get(node_id) {
@@ -522,12 +529,12 @@ impl Node {
                         response_nodes.insert(*node_id, (*own_endpoint_state).clone());
                     } else if own_heartbeat < emissor_heartbeat {
                         // El nodo propio tiene un heartbeat más viejo que el que se recibió
-                        own_gossip.insert(*node_id, own_heartbeat.clone());
+                        own_gossip_info.insert(*node_id, own_heartbeat.clone());
                     }
                 }
                 None => {
                     // Se trata de un vecino que no conocemos aún
-                    own_gossip.insert(*node_id, HeartbeatState::minimal());
+                    own_gossip_info.insert(*node_id, HeartbeatState::minimal());
                 }
             }
         }
@@ -545,12 +552,13 @@ impl Node {
         for (node_id, receptor_heartbeat) in &receptor_gossip_info {
             let own_endpoint_state = &self.neighbours_states[node_id];
             if own_endpoint_state.get_heartbeat() > receptor_heartbeat {
-                // hacemos doble chequeo que efectivamente tenemos información más nueva
+                // Hacemos doble chequeo que efectivamente tenemos información más nueva
                 nodes_for_receptor.insert(*node_id, own_endpoint_state.clone());
             }
         }
 
         // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
+        // Asumimos que es más nueva ya que fue previamente verificada
         self.update_neighbours(response_nodes)?;
 
         if let Err(err) = send_to_node(
