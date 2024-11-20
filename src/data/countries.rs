@@ -23,7 +23,7 @@ const MIN_COUNTRIES_ELEMS: usize = 6;
 /// Estructura que representa un país.
 ///
 /// Este modelo está inspirado en las definiciones de [OurAirports](https://ourairports.com/help/data-dictionary.html#countries).
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Country {
     /// El ID interno que el proveedor usa para este país.
     pub id: usize,

@@ -3,6 +3,7 @@
 use std::{
     collections::HashMap,
     io::{BufRead, Result as IOResult},
+    sync::mpsc::Sender,
 };
 use walkers::Position;
 
@@ -32,7 +33,7 @@ const MIN_AIRPORTS_ELEMS: usize = 17;
 /// Estructura que representa un aeropuerto.
 ///
 /// Este modelo está inspirado en las definiciones de [OurAirports](https://ourairports.com/help/data-dictionary.html#airports).
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Airport {
     /// El ID del aeropuerto. Éste es constante aún si el código de aeropuerto cambia.
     pub id: usize,
@@ -325,5 +326,38 @@ impl Airport {
         }
 
         Ok(airports)
+    }
+
+    /// Carga los aeropuertos y los manda cada tanto a un canal por partes.
+    ///
+    /// <div class="warning">
+    ///
+    /// _Idealmente, esta función se debería llamar lo menos posible, ya que levanta todo
+    /// el dataset en memoria._
+    ///
+    /// </div>
+    pub fn get_all_channel(sender: Sender<AirportsMap>) -> Result<()> {
+        let mut airports = AirportsMap::new();
+        let countries_cache = Country::get_all()?;
+        let reader = reader_from(AIRPORTS_PATH, true)?;
+        let sendable_step = 500; // mandar cada 100 iteraciones
+
+        for (i, line) in reader.lines().map_while(IOResult::ok).enumerate() {
+            let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
+            airports.insert(
+                tokens[1].to_string(),
+                Self::from_tokens(tokens, &countries_cache)?,
+            );
+            if i % sendable_step == 0 {
+                let _ = sender.send(airports.clone());
+                airports.clear();
+            }
+        }
+
+        if !airports.is_empty() {
+            let _ = sender.send(airports.clone());
+        }
+
+        Ok(())
     }
 }

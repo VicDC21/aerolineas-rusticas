@@ -6,8 +6,7 @@ use std::{
 };
 
 use eframe::egui::{
-    Button, Color32, Context, Frame, Margin, Response, RichText, ScrollArea, Separator, SidePanel,
-    Ui,
+    Button, Color32, Frame, Margin, Response, RichText, ScrollArea, Separator, SidePanel, Ui,
 };
 
 use crate::{
@@ -26,7 +25,7 @@ pub type DeleteQueue = HashSet<Int>;
 /// Muestra por un panel lateral los detalles del aeropuerto actualmente seleccionado.
 pub fn cur_airport_info(
     client: Arc<Mutex<Client>>,
-    ctx: &Context,
+    ui: &Ui,
     cur_airport: &Option<Airport>,
     incoming_flights: Arc<Vec<IncomingFlight>>,
     show_incoming: &bool,
@@ -36,6 +35,7 @@ pub fn cur_airport_info(
     let mut must_show_incoming = *show_incoming;
     let mut must_show_departing = *show_departing;
     let mut delete_queue = DeleteQueue::new();
+    let ctx = ui.ctx();
     let panel_width = ctx.screen_rect().width() / 3.0;
 
     let panel_frame = Frame {
@@ -75,7 +75,6 @@ pub fn cur_airport_info(
         });
 
         must_show_incoming = show_incoming_flights(
-            ctx,
             ui,
             &buttons["incoming"],
             show_incoming,
@@ -83,7 +82,6 @@ pub fn cur_airport_info(
             &mut delete_queue,
         );
         must_show_departing = show_departing_flights(
-            ctx,
             ui,
             &buttons["departing"],
             show_departing,
@@ -104,7 +102,7 @@ pub fn cur_airport_info(
 /// Muestra por un panel lateral los detalles del aeropuerto extra.
 pub fn extra_airport_info(
     client: Arc<Mutex<Client>>,
-    ctx: &Context,
+    ui: &Ui,
     selected_airport: &Option<Airport>,
     extra_airport: &Option<Airport>,
     timestamp: Long,
@@ -114,6 +112,7 @@ pub fn extra_airport_info(
         inner_margin: Margin::ZERO,
         ..Default::default()
     };
+    let ctx = ui.ctx();
     let info_panel = SidePanel::right("extra_airport_info")
         .resizable(false)
         .exact_width(ctx.screen_rect().width() / 3.0)
@@ -180,7 +179,6 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
 
 /// Muestra lso vuelos entrantes.
 fn show_incoming_flights(
-    ctx: &Context,
     ui: &mut Ui,
     incoming_button_response: &Response,
     show_incoming: &bool,
@@ -188,6 +186,7 @@ fn show_incoming_flights(
     delete_queue: &mut DeleteQueue,
 ) -> bool {
     let mut must_show_incoming = *show_incoming;
+    let ctx = ui.ctx();
     if must_show_incoming {
         ScrollArea::vertical()
             .max_height(100.0)
@@ -253,13 +252,13 @@ fn show_incoming_flights(
 
 /// Muestra los vuelos salientes.
 fn show_departing_flights(
-    ctx: &Context,
     ui: &mut Ui,
     departing_button_response: &Response,
     show_departing: &bool,
     departing_flights: Arc<Vec<DepartingFlight>>,
     delete_queue: &mut DeleteQueue,
 ) -> bool {
+    let ctx = ui.ctx();
     let mut must_show_departing = *show_departing;
     if must_show_departing {
         ScrollArea::vertical()

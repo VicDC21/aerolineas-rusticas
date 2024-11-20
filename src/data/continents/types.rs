@@ -8,7 +8,7 @@ use crate::protocol::errors::error::Error;
 /// El tipo de un continente.
 ///
 /// Las definiciones están inspiradas en la de [OurAirports](https://ourairports.com/help/data-dictionary.html#airports).
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ContinentType {
     /// Continente de África.
     Africa,

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use eframe::egui::{Painter, Response, Vec2};
 use walkers::{Plugin, Position, Projector};
 
-use crate::data::airports::airp::Airport;
+use crate::data::airports::airp::{Airport, AirportsMap};
 use crate::protocol::aliases::results::Result;
 
 /// Un hilo destinado a procesos paralelos, tal que no bloquee el flujo sincrónico
@@ -22,6 +22,8 @@ pub type PosRect = (Position, Position);
 
 /// Intervalo (en segundos) antes de cargar los aeropuertos de nuevo, como mínimo.
 const AIRPORTS_INTERVAL_SECS: u64 = 1;
+/// Cantidad máxima _(hardcodeada)_ de aeropuertos.
+const MAX_AIRPORTS: usize = 80864;
 
 /// Cargador de aeropuertos.
 pub struct AirportsLoader {
@@ -33,17 +35,20 @@ pub struct AirportsLoader {
     last_checked: Instant,
 
     /// Extremo de canal que recibe actualizaciones a los aeropuertos.
-    receiver: Receiver<Vec<Airport>>,
+    receiver: Receiver<(Vec<Airport>, usize)>,
 
     /// Hilo hijo, para cargar aeropuertos en área.
     area_child: AreaChild,
+
+    /// Cantidad de aeropuertos cargados hasta ahora.
+    loaded_airps: usize,
 }
 
 impl AirportsLoader {
     /// Crea una nueva instancia del cargador de aeropuertos.
     pub fn new(
         airports: Option<Vec<Airport>>,
-        receiver: Receiver<Vec<Airport>>,
+        receiver: Receiver<(Vec<Airport>, usize)>,
         last_checked: Instant,
         area_child: AreaChild,
     ) -> Self {
@@ -52,15 +57,24 @@ impl AirportsLoader {
             receiver,
             last_checked,
             area_child,
+            loaded_airps: 0,
         }
     }
 
+    /// Genera el hilo de carga de datos.
+    fn gen_airp_load(sender: Sender<AirportsMap>) -> JoinHandle<Result<()>> {
+        spawn(move || Airport::get_all_channel(sender))
+    }
+
     /// Genera el hilo cargador de área.
-    fn gen_area_child(to_parent: Sender<Vec<Airport>>) -> AreaChild {
+    fn gen_area_child(to_parent: Sender<(Vec<Airport>, usize)>) -> AreaChild {
         let (area_sender, area_receiver) = channel::<PosRect>();
-        let mut cache = Airport::get_all().unwrap_or_default();
+        let (load_sender, load_receiver) = channel::<AirportsMap>();
+        let mut cache = AirportsMap::new();
+
         let area_handle = spawn(move || {
             let equator_pos = Position::from_lat_lon(0.0, 0.0);
+            let mut loading_handle = Self::gen_airp_load(load_sender.clone());
 
             loop {
                 match area_receiver.recv() {
@@ -69,14 +83,19 @@ impl AirportsLoader {
                             break;
                         }
 
-                        if cache.is_empty() {
-                            // tratar de recargar los aeropuertos
-                            cache = Airport::get_all().unwrap_or_default();
+                        // tratar de recargar los aeropuertos
+                        if cache.is_empty() && loading_handle.is_finished() {
+                            let _ = loading_handle.join(); // por las dudas
+                            loading_handle = Self::gen_airp_load(load_sender.clone());
+                        }
+
+                        for airp in load_receiver.try_iter() {
+                            cache.extend(airp);
                         }
 
                         let airports = Airport::by_area_cache((&pos_min, &pos_max), &cache);
 
-                        if let Err(err) = to_parent.send(airports) {
+                        if let Err(err) = to_parent.send((airports, cache.len())) {
                             println!(
                                 "Error al mandar a hilo principal los aeropuertos:\n\n{}",
                                 err
@@ -90,6 +109,7 @@ impl AirportsLoader {
                 }
             }
 
+            let _ = loading_handle.join();
             Ok(())
         });
 
@@ -102,6 +122,11 @@ impl AirportsLoader {
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_airports(&mut self) -> Vec<Airport> {
         self.airports.take().unwrap_or_default()
+    }
+
+    /// Consigue la cantidad de aeropuertos cargados hasta ahora, comparados a los totales.
+    pub fn get_loading_progress(&self) -> (usize, usize) {
+        (self.loaded_airps, MAX_AIRPORTS)
     }
 
     /// Resetea el chequeo al [Instant] actual.
@@ -138,7 +163,7 @@ impl AirportsLoader {
 
 impl Default for AirportsLoader {
     fn default() -> Self {
-        let (main_sender, main_receiver) = channel::<Vec<Airport>>();
+        let (main_sender, main_receiver) = channel::<(Vec<Airport>, usize)>();
 
         Self::new(
             Some(Vec::new()),
@@ -179,7 +204,8 @@ impl Plugin for &mut AirportsLoader {
             }
         }
         // y luego le pedimos si terminó (puede no ser en este frame)
-        if let Ok(new_airports) = self.receiver.try_recv() {
+        if let Ok((new_airports, new_len)) = self.receiver.try_recv() {
+            self.loaded_airps = new_len;
             if !new_airports.is_empty() {
                 self.airports = Some(new_airports);
             }

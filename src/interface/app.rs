@@ -15,7 +15,7 @@ use crate::interface::{
     data::app_details::AirlinesDetails,
     map::{
         panels::show::{cur_airport_info, extra_airport_info},
-        windows::{clock_selector, date_selector, go_to_my_position, zoom},
+        windows::{airports_progress, clock_selector, date_selector, go_to_my_position, zoom},
     },
     plugins::{
         airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
@@ -119,6 +119,8 @@ impl App for AerolineasApp {
                 .sync_airports(self.airlines_details.get_airports())
                 .sync_zoom(zoom_lvl);
 
+            let (airps_start, airps_end) = self.airports_loader.get_loading_progress();
+
             // necesariamente antes de agregar al mapa
             if let Some(cur_airport) = self.screen_clicker.take_cur_airport() {
                 // preferiblemente después de asignar las lsitas de vuelos
@@ -143,35 +145,39 @@ impl App for AerolineasApp {
 
             zoom(ui, &mut self.map_memory);
             go_to_my_position(ui, &mut self.map_memory);
+
+            if let Some(valid_date) = date_selector(ui, &mut self.datetime) {
+                self.datetime = valid_date;
+            }
+            if let Some(valid_time) = clock_selector(ui, &mut self.datetime) {
+                self.datetime = valid_time;
+            }
+            let (show_incoming, show_departing) = cur_airport_info(
+                Arc::clone(&self.client),
+                ui,
+                self.airlines_details.get_ref_selected_airport(),
+                self.airlines_details.get_incoming_flights(),
+                self.airlines_details.get_show_incoming_flights(),
+                self.airlines_details.get_departing_flights(),
+                self.airlines_details.get_show_departing_flights(),
+            );
+            self.airlines_details
+                .set_show_incoming_flights(show_incoming);
+            self.airlines_details
+                .set_show_departing_flights(show_departing);
+
+            extra_airport_info(
+                Arc::clone(&self.client),
+                ui,
+                self.airlines_details.get_ref_selected_airport(),
+                self.airlines_details.get_ref_extra_airport(),
+                self.datetime.timestamp(),
+            );
+
+            if airps_start < airps_end {
+                airports_progress(ui, airps_start, airps_end);
+            }
         });
-
-        if let Some(valid_date) = date_selector(ctx, &mut self.datetime) {
-            self.datetime = valid_date;
-        }
-        if let Some(valid_time) = clock_selector(ctx, &mut self.datetime) {
-            self.datetime = valid_time;
-        }
-        let (show_incoming, show_departing) = cur_airport_info(
-            Arc::clone(&self.client),
-            ctx,
-            self.airlines_details.get_ref_selected_airport(),
-            self.airlines_details.get_incoming_flights(),
-            self.airlines_details.get_show_incoming_flights(),
-            self.airlines_details.get_departing_flights(),
-            self.airlines_details.get_show_departing_flights(),
-        );
-        self.airlines_details
-            .set_show_incoming_flights(show_incoming);
-        self.airlines_details
-            .set_show_departing_flights(show_departing);
-
-        extra_airport_info(
-            Arc::clone(&self.client),
-            ctx,
-            self.airlines_details.get_ref_selected_airport(),
-            self.airlines_details.get_ref_extra_airport(),
-            self.datetime.timestamp(),
-        );
     }
 }
 
