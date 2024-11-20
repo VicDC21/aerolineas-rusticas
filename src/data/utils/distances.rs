@@ -6,7 +6,7 @@ use walkers::Position;
 /// Calcula la distancia teniendo en cuenta una geometría euclideana.
 ///
 /// Como normalmente observamos un mapa plano, esto es suficiente.
-pub fn distance_euclidean_wpos(pos_1: &Position, pos_2: &Position) -> f64 {
+pub fn distance_euclidean_pos(pos_1: &Position, pos_2: &Position) -> f64 {
     distance_euclidean(pos_1.lon(), pos_1.lat(), pos_2.lon(), pos_2.lat())
 }
 

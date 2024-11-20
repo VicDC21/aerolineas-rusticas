@@ -169,7 +169,11 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
         ui.label(RichText::new(format!("\tContinent:\t{}", &airport.continent)).color(text_color));
 
         ui.label(
-            RichText::new(format!("\tCountry (ISO):\t{}", &airport.iso_country)).color(text_color),
+            RichText::new(format!(
+                "\tCountry:\t{} ({})",
+                &airport.country.name, &airport.country.code
+            ))
+            .color(text_color),
         );
     }
 }

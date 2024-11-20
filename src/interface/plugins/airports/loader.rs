@@ -21,7 +21,7 @@ pub type AreaChild = (Option<ChildHandle>, Sender<PosRect>);
 pub type PosRect = (Position, Position);
 
 /// Intervalo (en segundos) antes de cargar los aeropuertos de nuevo, como mínimo.
-const AIRPORTS_INTERVAL_SECS: u64 = 5;
+const AIRPORTS_INTERVAL_SECS: u64 = 1;
 
 /// Cargador de aeropuertos.
 pub struct AirportsLoader {
@@ -58,6 +58,7 @@ impl AirportsLoader {
     /// Genera el hilo cargador de área.
     fn gen_area_child(to_parent: Sender<Vec<Airport>>) -> AreaChild {
         let (area_sender, area_receiver) = channel::<PosRect>();
+        let mut cache = Airport::get_all().unwrap_or_default();
         let area_handle = spawn(move || {
             let equator_pos = Position::from_lat_lon(0.0, 0.0);
 
@@ -68,13 +69,12 @@ impl AirportsLoader {
                             break;
                         }
 
-                        let airports = match Airport::by_area((&pos_min, &pos_max)) {
-                            Ok(loaded) => loaded,
-                            Err(err) => {
-                                println!("Error cargando los aeropuertos:\n\n{}", err);
-                                Vec::new()
-                            }
-                        };
+                        if cache.is_empty() {
+                            // tratar de recargar los aeropuertos
+                            cache = Airport::get_all().unwrap_or_default();
+                        }
+
+                        let airports = Airport::by_area_cache((&pos_min, &pos_max), &cache);
 
                         if let Err(err) = to_parent.send(airports) {
                             println!(
