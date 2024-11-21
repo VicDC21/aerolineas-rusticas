@@ -13,6 +13,25 @@ use std::{
     vec::IntoIter,
 };
 
+use crate::client::cql_frame::query_body::QueryBody;
+use crate::parser::{
+    data_types::keyspace_name::KeyspaceName,
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::{
+            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+            create_table::CreateTable, ddl_statement_parser::DdlStatement,
+            drop_keyspace::DropKeyspace,
+        },
+        dml_statement::{
+            dml_statement_parser::DmlStatement,
+            main_statements::{
+                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
+            },
+        },
+        statement::Statement,
+    },
+};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -27,32 +46,10 @@ use crate::protocol::{
 use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
+    pool::threadpool::ThreadPool,
     traits::Serializable,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
-use crate::{
-    parser::{
-        data_types::keyspace_name::KeyspaceName,
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::{
-                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-                create_table::CreateTable, ddl_statement_parser::DdlStatement,
-                drop_keyspace::DropKeyspace,
-            },
-            dml_statement::{
-                dml_statement_parser::DmlStatement,
-                main_statements::{
-                    delete::Delete, insert::Insert, select::select_operation::Select,
-                    update::Update,
-                },
-            },
-            statement::Statement,
-        },
-    },
-    server::utils::store_json,
-};
 
 use super::{
     addr::loader::AddrLoader,
@@ -159,6 +156,20 @@ impl Node {
             pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
         })
+    }
+
+    /// Setea el valor por defecto de los campos que no son guardados en su archivo JSON.
+    ///
+    /// Se asume que esta función se llama sobre un nodo que fue cargado recientemente de su archivo JSON.
+    pub fn set_default_fields(&mut self, id: NodeId) -> Result<()> {
+        self.neighbours_states = HashMap::new();
+        self.endpoint_state = EndpointState::with_id(id);
+        self.storage_addr = DiskHandler::get_node_storage(id);
+        self.nodes_ranges = divide_range(0, 18446744073709551615, N_NODES as usize);
+        self.pool = ThreadPool::build(N_THREADS)?;
+        self.open_connections = OpenConnectionsMap::new();
+
+        Ok(())
     }
 
     fn add_table(&mut self, table: Table) {
@@ -713,7 +724,7 @@ impl Node {
                         &self.id, e
                     )));
                 }*/
-                store_json(&self, &format!("node_{}_metadata.json", self.id))?;
+                DiskHandler::store_node_metadata_json(self)?;
             }
             SvAction::DirectReadRequest(bytes) => {
                 let res = self.exec_direct_read_request(bytes)?;

@@ -1,42 +1,44 @@
 //! Módulo para manejo del almacenamiento en disco.
 
+use crate::parser::{
+    assignment::Assignment,
+    data_types::{constant::Constant, term::Term},
+    primary_key::PrimaryKey,
+    statements::{
+        ddl_statement::{
+            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+        },
+        dml_statement::{
+            if_condition::{Condition, IfCondition},
+            main_statements::{
+                delete::Delete,
+                insert::Insert,
+                select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
+                update::Update,
+            },
+            r#where::operator::Operator,
+        },
+    },
+};
 use crate::protocol::{
-    aliases::{results::Result, types::Byte},
+    aliases::{
+        results::Result,
+        types::{Byte, Int},
+    },
     errors::error::Error,
     messages::responses::result::col_type::ColType,
     traits::Byteable,
     utils::encode_string_to_bytes,
 };
-use crate::server::nodes::{
-    graph::NODES_PATH,
-    keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
-    node::NodeId,
-    table_metadata::table::Table,
-};
-use crate::{
-    parser::{
-        assignment::Assignment,
-        data_types::{constant::Constant, term::Term},
-        primary_key::PrimaryKey,
-        statements::{
-            ddl_statement::{
-                create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
-            },
-            dml_statement::{
-                if_condition::{Condition, IfCondition},
-                main_statements::{
-                    delete::Delete,
-                    insert::Insert,
-                    select::{
-                        order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
-                    },
-                    update::Update,
-                },
-                r#where::operator::Operator,
-            },
-        },
+use crate::server::{
+    nodes::{
+        graph::NODES_PATH,
+        keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
+        node::Node,
+        node::NodeId,
+        table_metadata::table::Table,
     },
-    protocol::aliases::types::Int,
+    utils::store_json,
 };
 
 use std::{
@@ -54,6 +56,10 @@ use super::{
 pub const STORAGE_PATH: &str = "storage";
 /// El nombre individual del directorio de un nodo.
 pub const STORAGE_NODE_PATH: &str = "storage_node";
+/// La carpeta donde se almacenan los metadatos de los nodos.
+pub const NODE_METADATA_FOLDER: &str = "node_metadata";
+/// El nombre del archivo de metadatos de un nodo.
+pub const NODE_METADATA_FILE: &str = "metadata_node";
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
@@ -71,6 +77,45 @@ impl DiskHandler {
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
     pub fn get_node_storage(id: NodeId) -> String {
         format!("{}/{}_{}", STORAGE_PATH, STORAGE_NODE_PATH, id)
+    }
+
+    fn create_directory(path: &str) -> Result<()> {
+        let path_folder = Path::new(path);
+        if !path_folder.exists() && !path_folder.is_dir() {
+            create_dir(path_folder).map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo crear la carpeta de almacenamiento {}: {}",
+                    path, e
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Obtiene la ruta de almacenamiento de los metadatos de un nodo dado su ID.
+    pub fn get_node_metadata_path(id: NodeId) -> String {
+        format!("{}/{}_{}.json", NODE_METADATA_FOLDER, NODE_METADATA_FILE, id)
+    }
+
+    /// Almacena los metadatos de un nodo en un archivo JSON.
+    pub fn store_node_metadata_json(node: &Node) -> Result<()> {
+        let folder_path = Path::new(NODE_METADATA_FOLDER);
+        if !folder_path.exists() {
+            create_dir(folder_path).map_err(|e| {
+                Error::ServerError(format!(
+                    "Error al crear el directorio de metadatos de un nodo: {}",
+                    e
+                ))
+            })?;
+        }
+
+        if folder_path.is_dir() {
+            store_json(node, &Self::get_node_metadata_path(node.get_id()))
+        } else {
+            Err(Error::ServerError(
+                "El directorio de metadatos de nodos no es un directorio".to_string(),
+            ))
+        }
     }
 
     /// Almacena los metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
@@ -211,6 +256,33 @@ impl DiskHandler {
             primary_key.partition_key,
             clustering_keys_and_order,
         )))
+    }
+
+    fn create_table_csv_file(
+        storage_addr: &str,
+        keyspace_name: &str,
+        table_name: &str,
+        columns_names: &[String],
+        node_number: Byte,
+    ) -> Result<()> {
+        let table_addr = format!(
+            "{}/{}/{}_replica_node_{}.csv",
+            storage_addr, keyspace_name, table_name, node_number
+        );
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&table_addr)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        let mut writer = BufWriter::new(&file);
+        writer
+            .write_all(columns_names.join(",").as_bytes())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        writer
+            .write_all((",row_timestamp\n").as_bytes())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        Ok(())
     }
 
     /// Repara las filas de la tabla con las filas pasadas por parámetro.
@@ -653,19 +725,6 @@ impl DiskHandler {
         Ok(false)
     }
 
-    fn create_directory(path: &str) -> Result<()> {
-        let path_folder = Path::new(path);
-        if !path_folder.exists() && !path_folder.is_dir() {
-            create_dir(path_folder).map_err(|e| {
-                Error::ServerError(format!(
-                    "No se pudo crear la carpeta de almacenamiento {}: {}",
-                    path, e
-                ))
-            })?;
-        }
-        Ok(())
-    }
-
     /// Obtiene la estrategia de replicación de un keyspace.
     pub fn get_keyspace_replication(options: &[Options]) -> Result<Option<ReplicationStrategy>> {
         let mut i = 0;
@@ -733,33 +792,6 @@ impl DiskHandler {
         }
 
         Ok((keyspace_name, table_name))
-    }
-
-    fn create_table_csv_file(
-        storage_addr: &str,
-        keyspace_name: &str,
-        table_name: &str,
-        columns_names: &[String],
-        node_number: Byte,
-    ) -> Result<()> {
-        let table_addr = format!(
-            "{}/{}/{}_replica_node_{}.csv",
-            storage_addr, keyspace_name, table_name, node_number
-        );
-        let file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&table_addr)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        let mut writer = BufWriter::new(&file);
-        writer
-            .write_all(columns_names.join(",").as_bytes())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-        writer
-            .write_all((",row_timestamp\n").as_bytes())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-        Ok(())
     }
 
     fn validate_and_get_primary_key(statement: &CreateTable) -> Result<PrimaryKey> {
