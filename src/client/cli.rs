@@ -482,7 +482,10 @@ impl Client {
             rows.push(columns);
         }
 
-        println!("las rows son {:?}", rows);
+        println!("Las rows son:");
+        for row in &rows {
+            println!("{:?}", row);
+        }
         Ok(ProtocolResult::Rows(rows))
     }
 

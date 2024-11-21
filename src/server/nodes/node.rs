@@ -225,6 +225,10 @@ impl Node {
         }
     }
 
+    /// Si se elige un keyspace preferido, se verifica que éste exista y devuelve su nombre.
+    /// En caso contrario, devuelve el nombre del keyspace por defecto.
+    ///
+    /// Devuelve error si alguno de los dos no existe.
     fn choose_available_keyspace_name(
         &self,
         preferred_keyspace_name: Option<String>,
@@ -257,12 +261,12 @@ impl Node {
     }
 
     /// Consulta los IDs de los vecinos, incluyendo el propio.
-    pub fn get_neighbours_ids(&self) -> Vec<NodeId> {
+    fn get_neighbours_ids(&self) -> Vec<NodeId> {
         self.neighbours_states.keys().copied().collect()
     }
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
-    pub fn select_node(&self, value: &str) -> NodeId {
+    fn select_node(&self, value: &str) -> NodeId {
         let hash_val = hash_value(value);
 
         let mut i = 0;
@@ -275,6 +279,7 @@ impl Node {
         START_ID + (i) as NodeId
     }
 
+    /// Manda un mensaje a un nodo específico y espera por la respuesta de este.
     fn _send_message_and_wait_response(
         &self,
         bytes: Vec<Byte>,
@@ -285,6 +290,10 @@ impl Node {
         send_to_node_and_wait_response(node_id, bytes, port_type, wait_response)
     }
 
+    /// Manda un mensaje a un nodo específico y espera por la respuesta de este, con un timeout.
+    /// Si el timeout se alcanza, se devuelve un buffer vacío.
+    ///
+    /// `timeout` es medido en segundos.
     fn send_message_and_wait_response_with_timeout(
         &self,
         bytes: Vec<Byte>,
@@ -303,7 +312,7 @@ impl Node {
     }
 
     /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
-    pub fn send_message(
+    fn _send_message(
         &mut self,
         bytes: Vec<Byte>,
         value: String,
@@ -391,8 +400,16 @@ impl Node {
         Ok(())
     }
 
+    /// Consulta si un nodo vecino está listo para recibir _queries_.
+    fn neighbour_is_responsive(&self, node_id: NodeId) -> bool {
+        if let Some(endpoint_state) = self.neighbours_states.get(&node_id) {
+            return *endpoint_state.get_appstate_status() == AppStatus::Normal;
+        }
+        false
+    }
+
     /// Actualiza el estado del nodo recibido a _Offline_.
-    fn _acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
+    fn acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
         if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
             endpoint_state.set_appstate_status(AppStatus::Offline);
         }
@@ -467,8 +484,8 @@ impl Node {
 
         self.classify_nodes_in_gossip(
             &emissor_gossip_info,
-            &mut response_nodes,
             &mut own_gossip_info,
+            &mut response_nodes,
         );
 
         // Ahora rondamos nuestros vecinos para ver si tenemos uno que el nodo emisor no
@@ -491,6 +508,38 @@ impl Node {
         Ok(())
     }
 
+    /// Clasifica los nodos en el _SYN_ recibido. Determina cuales deben ser pedidos (_own_gossip_info_) y cuales
+    /// deben ser compartidos _(response_nodes)_.
+    fn classify_nodes_in_gossip(
+        &mut self,
+        emissor_gossip_info: &HashMap<Byte, HeartbeatState>,
+        own_gossip_info: &mut HashMap<Byte, HeartbeatState>,
+        response_nodes: &mut HashMap<Byte, EndpointState>,
+    ) {
+        for (node_id, emissor_heartbeat) in emissor_gossip_info {
+            match &self.neighbours_states.get(node_id) {
+                Some(own_endpoint_state) => {
+                    let own_heartbeat = own_endpoint_state.get_heartbeat();
+                    if own_heartbeat > emissor_heartbeat
+                        || *own_endpoint_state.get_appstate_status() == AppStatus::Offline
+                    {
+                        // El nodo propio tiene un heartbeat más nuevo que el que se recibió
+                        // o
+                        // El nodo propio no está listo para recibir queries
+                        response_nodes.insert(*node_id, (*own_endpoint_state).clone());
+                    } else if own_heartbeat < emissor_heartbeat {
+                        // El nodo propio tiene un heartbeat más viejo que el que se recibió
+                        own_gossip_info.insert(*node_id, own_heartbeat.clone());
+                    }
+                }
+                None => {
+                    // Se trata de un vecino que no conocemos aún
+                    own_gossip_info.insert(*node_id, HeartbeatState::minimal());
+                }
+            }
+        }
+    }
+
     /// Se recibe un mensaje [ACK](crate::server::actions::opcode::SvAction::Ack).
     fn ack(
         &mut self,
@@ -503,12 +552,13 @@ impl Node {
         for (node_id, receptor_heartbeat) in &receptor_gossip_info {
             let own_endpoint_state = &self.neighbours_states[node_id];
             if own_endpoint_state.get_heartbeat() > receptor_heartbeat {
-                // hacemos doble chequeo que efectivamente tenemos información más nueva
+                // Hacemos doble chequeo que efectivamente tenemos información más nueva
                 nodes_for_receptor.insert(*node_id, own_endpoint_state.clone());
             }
         }
 
         // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
+        // Asumimos que es más nueva ya que fue previamente verificada
         self.update_neighbours(response_nodes)?;
 
         if let Err(err) = send_to_node(
@@ -527,36 +577,6 @@ impl Node {
     /// Se recibe un mensaje [ACK2](crate::server::actions::opcode::SvAction::Ack2).
     fn ack2(&mut self, nodes_map: NodesMap) -> Result<()> {
         self.update_neighbours(nodes_map)
-    }
-
-    fn classify_nodes_in_gossip(
-        &mut self,
-        emissor_gossip_info: &HashMap<Byte, HeartbeatState>,
-        response_nodes: &mut HashMap<Byte, EndpointState>,
-        own_gossip: &mut HashMap<Byte, HeartbeatState>,
-    ) {
-        for (node_id, emissor_heartbeat) in emissor_gossip_info {
-            match &self.neighbours_states.get(node_id) {
-                Some(own_endpoint_state) => {
-                    let own_heartbeat = own_endpoint_state.get_heartbeat();
-                    if own_heartbeat > emissor_heartbeat
-                        || *own_endpoint_state.get_appstate_status() == AppStatus::Offline
-                    {
-                        // El nodo propio tiene un heartbeat más nuevo que el que se recibió
-                        // o
-                        // El nodo propio no está listo para recibir queries
-                        response_nodes.insert(*node_id, (*own_endpoint_state).clone());
-                    } else if own_heartbeat < emissor_heartbeat {
-                        // El nodo propio tiene un heartbeat más viejo que el que se recibió
-                        own_gossip.insert(*node_id, own_heartbeat.clone());
-                    }
-                }
-                None => {
-                    // Se trata de un vecino que no conocemos aún
-                    own_gossip.insert(*node_id, HeartbeatState::minimal());
-                }
-            }
-        }
     }
 
     /// Limpia las conexiones cerradas.
@@ -1771,35 +1791,49 @@ impl Node {
                 None,
                 Some(node_id),
             );
-            let mut result = self.send_message_and_wait_response_with_timeout(
-                request_with_metadata,
-                node_id,
-                PortType::Priv,
-                wait_response,
-                TIMEOUT_SECS,
-            )?;
+            let mut result: Vec<u8> = Vec::new();
+            if self.neighbour_is_responsive(node_id) {
+                result = self.send_message_and_wait_response_with_timeout(
+                    request_with_metadata,
+                    node_id,
+                    PortType::Priv,
+                    wait_response,
+                    TIMEOUT_SECS,
+                )?;
+            }
+            *replicas_asked += 1;
+
             // Si hubo timeout al esperar la respuesta, se intenta con las replicas
             if result.is_empty() {
+                self.acknowledge_offline_neighbour(node_id);
                 for i in 1..replication_factor_quantity {
                     let node_to_replicate =
                         next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
                     if node_to_replicate != node_id {
-                        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                            None,
-                            Some(node_to_replicate),
-                        );
-                        let replica_response = self.send_message_and_wait_response_with_timeout(
-                            SvAction::InternalQuery(request_with_metadata).as_bytes(),
-                            node_to_replicate,
-                            PortType::Priv,
-                            wait_response,
-                            TIMEOUT_SECS,
-                        )?;
-                        *replicas_asked += 1;
-                        if !replica_response.is_empty() {
-                            result = replica_response;
-                            break;
+                        if self.neighbour_is_responsive(node_to_replicate) {
+                            let request_with_metadata =
+                                add_metadata_to_internal_request_of_any_kind(
+                                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                                    None,
+                                    Some(node_id),
+                                );
+                            let replica_response = self
+                                .send_message_and_wait_response_with_timeout(
+                                    SvAction::InternalQuery(request_with_metadata).as_bytes(),
+                                    node_to_replicate,
+                                    PortType::Priv,
+                                    wait_response,
+                                    TIMEOUT_SECS,
+                                )?;
+                            *replicas_asked += 1;
+                            if replica_response.is_empty() {
+                                self.acknowledge_offline_neighbour(node_to_replicate);
+                            } else {
+                                result = replica_response;
+                                break;
+                            }
+                        } else {
+                            *replicas_asked += 1;
                         }
                     }
                 }
@@ -1882,12 +1916,12 @@ impl Node {
                 None,
                 Some(node_id),
             );
-            self._send_message_and_wait_response(
-                // uso esta funcion por ahora, solo para mergear
+            self.send_message_and_wait_response_with_timeout(
                 request_with_metadata,
                 node_to_consult,
                 PortType::Priv,
                 true,
+                TIMEOUT_SECS,
             )?
         };
         Ok(opcode_with_hashed_value)
