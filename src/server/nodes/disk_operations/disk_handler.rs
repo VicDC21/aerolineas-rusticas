@@ -94,7 +94,10 @@ impl DiskHandler {
 
     /// Obtiene la ruta de almacenamiento de los metadatos de un nodo dado su ID.
     pub fn get_node_metadata_path(id: NodeId) -> String {
-        format!("{}/{}_{}.json", NODE_METADATA_FOLDER, NODE_METADATA_FILE, id)
+        format!(
+            "{}/{}_{}.json",
+            NODE_METADATA_FOLDER, NODE_METADATA_FILE, id
+        )
     }
 
     /// Almacena los metadatos de un nodo en un archivo JSON.

@@ -137,8 +137,6 @@ pub struct Node {
 impl Node {
     /// Crea un nuevo nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Result<Self> {
-        let storage_addr = DiskHandler::new_node_storage(id)?;
-        let nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
         neighbours_states.insert(id, endpoint_state.clone());
@@ -147,11 +145,11 @@ impl Node {
             id,
             neighbours_states,
             endpoint_state,
-            storage_addr,
+            storage_addr: DiskHandler::new_node_storage(id)?,
             default_keyspace_name: "".to_string(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
-            nodes_ranges,
+            nodes_ranges: divide_range(0, NODES_RANGE_END, N_NODES as usize),
             tables_and_partitions_keys_values: HashMap::new(),
             pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
@@ -161,9 +159,13 @@ impl Node {
     /// Setea el valor por defecto de los campos que no son guardados en su archivo JSON.
     ///
     /// Se asume que esta función se llama sobre un nodo que fue cargado recientemente de su archivo JSON.
-    pub fn set_default_fields(&mut self, id: NodeId) -> Result<()> {
-        self.neighbours_states = HashMap::new();
-        self.endpoint_state = EndpointState::with_id(id);
+    pub fn set_default_fields(&mut self, id: NodeId, mode: ConnectionMode) -> Result<()> {
+        let mut neighbours_states = NodesMap::new();
+        let endpoint_state = EndpointState::with_id_and_mode(id, mode);
+        neighbours_states.insert(id, endpoint_state.clone());
+
+        self.neighbours_states = neighbours_states;
+        self.endpoint_state = endpoint_state;
         self.storage_addr = DiskHandler::get_node_storage(id);
         self.nodes_ranges = divide_range(0, 18446744073709551615, N_NODES as usize);
         self.pool = ThreadPool::build(N_THREADS)?;
