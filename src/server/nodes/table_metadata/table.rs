@@ -98,7 +98,7 @@ impl fmt::Display for Table {
 
         for column in &self.columns {
             res.push_str(&column.to_string());
-            res.push('_');
+            res.push('~');
         }
 
         res.pop();
@@ -106,7 +106,7 @@ impl fmt::Display for Table {
 
         for key in &self.partition_key {
             res.push_str(key);
-            res.push('_');
+            res.push('~');
         }
 
         res.pop();
@@ -116,8 +116,10 @@ impl fmt::Display for Table {
             for (key, order) in clustering_key_and_order {
                 res.push_str(key);
                 res.push_str(&order.to_string());
-                res.push('_');
+                res.push('~');
             }
+            res.pop();
+        } else {
             res.pop();
         }
 
@@ -140,16 +142,16 @@ impl FromStr for Table {
         let keyspace: String = parts[1].to_string();
 
         let columns: Vec<ColumnConfig> = parts[2]
-            .split('_')
+            .split('~')
             .map(|column| column.parse())
             .collect::<Result<Vec<ColumnConfig>>>()?;
 
-        let partition_key: Vec<String> = parts[3].split('_').map(|key| key.to_string()).collect();
+        let partition_key: Vec<String> = parts[3].split('~').map(|key| key.to_string()).collect();
 
         let clustering_key_and_order: Option<Vec<(String, ProtocolOrdering)>> = if parts.len() == 5
         {
             let clustering_key_and_order = parts[4]
-                .split('_')
+                .split('~')
                 .map(|key_and_order| {
                     let (key, order_str) = key_and_order.split_at(key_and_order.len() - 1);
                     let key = key.to_string();

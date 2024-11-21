@@ -27,14 +27,15 @@ pub fn deserialize_vec<T: Serializable>(data: &[Byte]) -> Result<Vec<T>> {
 pub fn store_serializable<T: Serializable>(serializable: &T, path: &str) -> Result<()> {
     let data: Vec<Byte> = serializable.serialize();
 
-    write(path, data).map_err(|_| Error::ServerError("Error escribiendo datos".to_string()))
+    write(path, data).map_err(|e| Error::ServerError(format!("Error escribiendo datos: {}", e)))
 }
 
 /// Toma la ruta al nombre de un archivo, cuyo contenido es serializable,
 /// lo deserealiza y devuelve el contenido
 pub fn load_serializable<T: Serializable>(path: &str) -> Result<T> {
     let data: Vec<Byte> =
-        read(path).map_err(|_| Error::ServerError("Error leyendo datos".to_string()))?;
+        read(path).map_err(|e| Error::ServerError(format!("Error leyendo datos: {}", e)))?;
 
-    T::deserialize(&data).map_err(|_| Error::ServerError("Error deserializando datos".to_string()))
+    T::deserialize(&data)
+        .map_err(|e| Error::ServerError(format!("Error deserializando datos: {}", e)))
 }

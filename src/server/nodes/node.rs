@@ -2457,8 +2457,9 @@ impl Serializable for Node {
     }
 
     fn deserialize(data: &[Byte]) -> Result<Self> {
-        let line: String = String::from_utf8(data.to_vec())
-            .map_err(|_| Error::ServerError("No se pudieron deserializar los datos".to_string()))?;
+        let line: String = String::from_utf8(data.to_vec()).map_err(|e| {
+            Error::ServerError(format!("No se pudieron deserializar los datos: {}", e))
+        })?;
         let mut parameters: IntoIter<String> = line
             .split(",")
             .map(|s| s.to_string())
@@ -2471,7 +2472,7 @@ impl Serializable for Node {
                 "No se pudo obtener el ID del nodo".to_string(),
             ))?
             .parse()
-            .map_err(|_| Error::ServerError("No se pudo parsear el ID del nodo".to_string()))?;
+            .map_err(|e| Error::ServerError(format!("No se pudo parsear el ID del nodo: {}", e)))?;
 
         let default_keyspace_name: String = parameters
             .next()
@@ -2479,24 +2480,28 @@ impl Serializable for Node {
                 "No se pudo obtener el keyspace por defecto del nodo".to_string(),
             ))?
             .parse()
-            .map_err(|_| {
-                Error::ServerError(
-                    "No se pudo parsear el keyspace por defecto del nodo".to_string(),
-                )
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo parsear el keyspace por defecto del nodo: {}",
+                    e
+                ))
             })?;
 
         let keyspaces: String = parameters.next().ok_or(Error::ServerError(
             "No se pudo obtener los keyspaces del nodo".to_string(),
         ))?;
-        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|_| {
-            Error::ServerError("No se pudieron parsear los keyspaces del nodo".to_string())
+        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudieron parsear los keyspaces del nodo: {}",
+                e
+            ))
         })?;
 
         let tables: String = parameters.next().ok_or(Error::ServerError(
             "No se pudo obtener las tablas del nodo".to_string(),
         ))?;
-        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|_| {
-            Error::ServerError("No se pudieron parsear las tablas del nodo".to_string())
+        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|e| {
+            Error::ServerError(format!("No se pudieron parsear las tablas del nodo: {}", e))
         })?;
 
         let tables_and_partitions_keys_values: String =
@@ -2504,10 +2509,11 @@ impl Serializable for Node {
                 "No se pudo obtener las tablas y sus particiones del nodo".to_string(),
             ))?;
         let tables_and_partitions_keys_values: HashMap<String, Vec<String>> =
-            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|_| {
-                Error::ServerError(
-                    "No se pudieron parsear las tablas y sus particiones del nodo".to_string(),
-                )
+            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudieron parsear las tablas y sus particiones del nodo: {}",
+                    e
+                ))
             })?;
 
         Ok(Node {

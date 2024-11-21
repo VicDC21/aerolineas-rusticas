@@ -37,7 +37,7 @@ impl fmt::Display for ReplicationStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ReplicationStrategy::SimpleStrategy(replicas) => {
-                write!(f, "SimpleStrategy_{}", replicas)
+                write!(f, "SimpleStrategy~{}", replicas)
             }
             ReplicationStrategy::NetworkTopologyStrategy(_datacenter_and_replicas) => {
                 todo!()
@@ -50,7 +50,7 @@ impl FromStr for ReplicationStrategy {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self> {
-        let parts: Vec<&str> = s.split('_').collect();
+        let parts: Vec<&str> = s.split('~').collect();
         if parts.len() != 2 {
             return Err(Error::ServerError(
                 "No se pudo parsear la estrategia de replicación".to_string(),
