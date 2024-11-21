@@ -1,8 +1,10 @@
-use crate::protocol::{aliases::results::Result, errors::error::Error};
+use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
+use crate::protocol::{aliases::results::Result, errors::error::Error};
+
 /// Representa la dirección de ordenación en una cláusula ORDER BY.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ProtocolOrdering {
     /// Orden ascendente.
     Asc,

@@ -1,10 +1,12 @@
 //! Módulo que detalla una estrategia de replicación de un keyspace.
 
+use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
 use crate::protocol::{aliases::results::Result, errors::error::Error};
 
 /// Representa una estrategia de replicación.
+#[derive(Serialize, Deserialize)]
 pub enum ReplicationStrategy {
     /// SimpleStrategy(replicas)
     SimpleStrategy(u32),

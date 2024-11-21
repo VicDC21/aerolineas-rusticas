@@ -1,5 +1,6 @@
 //! Módulo que detalla la configuración de una columna.
 
+use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
 use crate::protocol::{aliases::results::Result, errors::error::Error};
@@ -7,7 +8,7 @@ use crate::protocol::{aliases::results::Result, errors::error::Error};
 use super::column_data_type::ColumnDataType;
 
 /// Representa la configuración de una columna.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ColumnConfig {
     /// Nombre de la columna.
     pub name: String,

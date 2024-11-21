@@ -1,5 +1,7 @@
 //! Módulo de nodos.
+
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
@@ -11,24 +13,6 @@ use std::{
     vec::IntoIter,
 };
 
-use crate::parser::{
-    data_types::keyspace_name::KeyspaceName,
-    main_parser::make_parse,
-    statements::{
-        ddl_statement::{
-            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-            create_table::CreateTable, ddl_statement_parser::DdlStatement,
-            drop_keyspace::DropKeyspace,
-        },
-        dml_statement::{
-            dml_statement_parser::DmlStatement,
-            main_statements::{
-                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
-            },
-        },
-        statement::Statement,
-    },
-};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -47,6 +31,28 @@ use crate::server::{
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
+use crate::{
+    parser::{
+        data_types::keyspace_name::KeyspaceName,
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::{
+                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+                create_table::CreateTable, ddl_statement_parser::DdlStatement,
+                drop_keyspace::DropKeyspace,
+            },
+            dml_statement::{
+                dml_statement_parser::DmlStatement,
+                main_statements::{
+                    delete::Delete, insert::Insert, select::select_operation::Select,
+                    update::Update,
+                },
+            },
+            statement::Statement,
+        },
+    },
+    server::utils::store_json,
+};
 
 use super::{
     addr::loader::AddrLoader,
@@ -85,6 +91,7 @@ const N_THREADS: usize = 6;
 const TIMEOUT_SECS: u64 = 2;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
+#[derive(Serialize, Deserialize)]
 pub struct Node {
     /// El ID del nodo mismo.
     id: NodeId,
@@ -92,12 +99,15 @@ pub struct Node {
     /// Los estados de los nodos vecinos, incluyendo este mismo.
     ///
     /// No necesariamente serán todos los otros nodos del grafo, sólo los que este nodo conoce.
+    #[serde(skip)]
     neighbours_states: NodesMap,
 
     /// Estado actual del nodo.
+    #[serde(skip)]
     endpoint_state: EndpointState,
 
     /// Dirección de almacenamiento en disco.
+    #[serde(skip)]
     storage_addr: String,
 
     /// Nombre del keyspace por defecto.
@@ -112,15 +122,18 @@ pub struct Node {
     tables: HashMap<String, Table>,
 
     /// Rangos asignados a cada nodo para determinar la partición de los datos.
+    #[serde(skip)]
     nodes_ranges: Vec<(u64, u64)>,
 
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
     tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 
     /// El [ThreadPool] de tareas disponibles.
+    #[serde(skip)]
     pub pool: ThreadPool,
 
     /// Mapa de conexiones abiertas entre el nodo y otros clientes.
+    #[serde(skip)]
     open_connections: OpenConnectionsMap,
 }
 
@@ -143,7 +156,7 @@ impl Node {
             tables: HashMap::new(),
             nodes_ranges,
             tables_and_partitions_keys_values: HashMap::new(),
-            pool: ThreadPool::build(N_THREADS).unwrap(),
+            pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
         })
     }
@@ -693,12 +706,14 @@ impl Node {
                 };
             }
             SvAction::StoreMetadata => {
+                /*
                 if let Err(e) = DiskHandler::store_node_metadata(self.id, &self.serialize()) {
                     return Err(Error::ServerError(format!(
                         "Error guardando metadata del nodo {}: {}",
                         &self.id, e
                     )));
-                }
+                }*/
+                store_json(&self, &format!("node_{}_metadata.json", self.id))?;
             }
             SvAction::DirectReadRequest(bytes) => {
                 let res = self.exec_direct_read_request(bytes)?;

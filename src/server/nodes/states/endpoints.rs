@@ -149,3 +149,13 @@ impl TryFrom<&[Byte]> for EndpointState {
         Ok(Self::new(ipaddr, heartbeat, application))
     }
 }
+
+impl Default for EndpointState {
+    fn default() -> Self {
+        Self::new(
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 9)),
+            HeartbeatState::default(),
+            AppState::default(),
+        )
+    }
+}

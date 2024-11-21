@@ -6,10 +6,12 @@ use crate::protocol::aliases::results::Result;
 pub type Job = Box<dyn FnOnce() -> Result<()> + Send + 'static>;
 
 /// Un tipo específico de tarea a realizar.
+#[derive(Default)]
 pub enum JobType {
     /// Ejecutar una nueva tarea.
     NewTask(Job),
 
     /// Terminar la ejecución del [Worker](crate::server::pool::worker::Worker).
+    #[default]
     Exit,
 }
