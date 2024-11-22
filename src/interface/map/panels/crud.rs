@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     client::{cli::Client, protocol_result::ProtocolResult},
-    data::{airports::airp::Airport, flights::states::FlightState},
+    data::{airports::airp::Airport, flights::states::FlightState, utils::distances::distance_eta},
     protocol::{
         aliases::{
             results::Result,
@@ -24,16 +24,17 @@ pub fn insert_flight(
     let flight_id = cur_airport.id + ex_airport.id + timestamp as usize;
 
     let incoming_client = Arc::clone(&client);
-    // TODO: Calcular el tiempo estimado por distancia en vez de asumir que el vuelo es instantáneo.
+    let flight_duration = distance_eta(&cur_airport.position, &ex_airport.position, None, None);
+    let eta = (timestamp as u64 + flight_duration.as_secs()) as i64;
     let incoming_query = format!(
-        "INSERT INTO vuelos_entrantes (id, dest, llegada, pos_lat, pos_lon, estado) VALUES ({}, '{}', {}, {}, {}, '{}');",
-        flight_id as Int, ex_airport.ident, timestamp, cur_airport.position.lat(), cur_airport.position.lon(), FlightState::InCourse
+        "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES ({}, '{}', '{}', {}, '{}');",
+        flight_id as Int, cur_airport.ident, ex_airport.ident, eta, FlightState::InCourse
     );
 
     let departing_client = Arc::clone(&client);
     let departing_query = format!(
-        "INSERT INTO vuelos_salientes (id, orig, salida, pos_lat, pos_lon, estado) VALUES ({}, '{}', {}, {}, {}, '{}');",
-        flight_id as Int, cur_airport.ident, timestamp, cur_airport.position.lat(), cur_airport.position.lon(), FlightState::InCourse
+        "INSERT INTO vuelos_salientes (id, orig, dest, salida, estado) VALUES ({}, '{}', '{}', {}, '{}');",
+        flight_id as Int, cur_airport.ident, cur_airport.ident, timestamp, FlightState::InCourse
     );
 
     send_client_query(incoming_client, incoming_query.as_str())?;

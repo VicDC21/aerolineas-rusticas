@@ -1,7 +1,14 @@
 //! Módulo de distancias entre dos puntos.
 
+use std::time::Duration;
+
 use eframe::egui::Pos2;
 use walkers::Position;
+
+/// Velocidad promedio de un avión (en km/h).
+const AIRPLANE_AVG_SPD: f64 = 900.;
+/// Distancia aproximada entre un "grado" de latitud/longitud (en km).
+const DEG_DIST: f64 = 111.;
 
 /// Calcula la distancia teniendo en cuenta una geometría euclideana.
 ///
@@ -33,4 +40,31 @@ pub fn inside_area(pos: &Position, area: (&Position, &Position)) -> bool {
 
     ((area_min.lat() <= pos.lat()) && (pos.lat() <= area_max.lat()))
         && ((area_min.lon() <= pos.lon()) && (pos.lon() <= area_max.lon()))
+}
+
+/// Calcula el tiempo entre dos posiciones, asumiendo la velocidad y
+/// medición de grados dada.
+///
+/// Si las mediciones no son proporcionadas, asumimos que cada "grado" de latitud/longitud
+/// mide 111 km y que se viaja a una velocidad de 900 km/h.
+pub fn distance_eta(
+    pos_1: &Position,
+    pos_2: &Position,
+    avg_spd_opt: Option<f64>,
+    deg_dist_opt: Option<f64>,
+) -> Duration {
+    let avg_spd = match avg_spd_opt {
+        Some(valid) => valid,
+        None => AIRPLANE_AVG_SPD,
+    };
+    let deg_dist = match deg_dist_opt {
+        Some(valid) => valid,
+        None => DEG_DIST,
+    };
+
+    let dist_in_km = distance_euclidean_pos(pos_1, pos_2) * deg_dist;
+    let duration_in_hours = dist_in_km / avg_spd;
+    let hour_in_secs: f64 = 3600.;
+
+    Duration::from_secs_f64(duration_in_hours * hour_in_secs)
 }

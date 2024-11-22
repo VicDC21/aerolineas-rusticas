@@ -209,6 +209,11 @@ fn show_incoming_flights(
                             .color(Color32::from_rgb(255, 255, 255)),
                     );
                     scroll_ui.label(
+                        RichText::new(format!("\tOrigen: {}", incoming_flight.orig))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
+                    );
+                    scroll_ui.label(
                         RichText::new(format!("\tDestino: {}", incoming_flight.dest))
                             .italics()
                             .color(Color32::from_rgb(255, 255, 255)),
@@ -217,14 +222,6 @@ fn show_incoming_flights(
                         RichText::new(format!("\tETA: {}", potential_date))
                             .italics()
                             .color(Color32::from_rgb(255, 255, 255)),
-                    );
-                    scroll_ui.label(
-                        RichText::new(format!(
-                            "\tPosición (lat, lon): {:?}",
-                            (incoming_flight.pos.lat(), incoming_flight.pos.lon())
-                        ))
-                        .italics()
-                        .color(Color32::from_rgb(255, 255, 255)),
                     );
                     scroll_ui.label(
                         RichText::new(format!("\testado: {}", incoming_flight.state))
@@ -287,17 +284,14 @@ fn show_departing_flights(
                             .color(Color32::from_rgb(255, 255, 255)),
                     );
                     scroll_ui.label(
-                        RichText::new(format!("\tDespegue: {}", potential_date))
+                        RichText::new(format!("\tDestino: {}", departing_flight.dest))
                             .italics()
                             .color(Color32::from_rgb(255, 255, 255)),
                     );
                     scroll_ui.label(
-                        RichText::new(format!(
-                            "\tPosición (lat, lon): {:?}",
-                            (departing_flight.pos.lat(), departing_flight.pos.lon())
-                        ))
-                        .italics()
-                        .color(Color32::from_rgb(255, 255, 255)),
+                        RichText::new(format!("\tDespegue: {}", potential_date))
+                            .italics()
+                            .color(Color32::from_rgb(255, 255, 255)),
                     );
                     scroll_ui.label(
                         RichText::new(format!("\testado: {}", departing_flight.state))
