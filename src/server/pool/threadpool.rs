@@ -69,3 +69,9 @@ impl Drop for ThreadPool {
         // Los workers se dropean solos al salir de scope.
     }
 }
+
+impl Default for ThreadPool {
+    fn default() -> Self {
+        Self::new(Vec::new(), channel().0)
+    }
+}

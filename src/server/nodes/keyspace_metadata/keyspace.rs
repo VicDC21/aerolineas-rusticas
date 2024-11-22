@@ -1,5 +1,6 @@
 //! Módulo que detalla un keyspace.
 
+use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
 use crate::protocol::{aliases::results::Result, errors::error::Error};
@@ -7,6 +8,7 @@ use crate::protocol::{aliases::results::Result, errors::error::Error};
 use super::replication_strategy::ReplicationStrategy;
 
 /// Representa un keyspace en CQL.
+#[derive(Serialize, Deserialize)]
 pub struct Keyspace {
     /// Nombre del keyspace.
     pub name: String,

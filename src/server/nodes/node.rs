@@ -1,5 +1,7 @@
 //! Módulo de nodos.
+
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
@@ -11,6 +13,7 @@ use std::{
     vec::IntoIter,
 };
 
+use crate::client::cql_frame::query_body::QueryBody;
 use crate::parser::{
     data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
@@ -43,10 +46,10 @@ use crate::protocol::{
 use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
+    pool::threadpool::ThreadPool,
     traits::Serializable,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
 
 use super::{
     addr::loader::AddrLoader,
@@ -81,10 +84,11 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
 const N_THREADS: usize = 6;
-/// El tiempo de espera _(en segundos)_ por una respuesta.
+/// El tiempo _(en segundos)_ que espera un nodo por una respuesta.
 const TIMEOUT_SECS: u64 = 2;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
+#[derive(Serialize, Deserialize)]
 pub struct Node {
     /// El ID del nodo mismo.
     id: NodeId,
@@ -92,12 +96,15 @@ pub struct Node {
     /// Los estados de los nodos vecinos, incluyendo este mismo.
     ///
     /// No necesariamente serán todos los otros nodos del grafo, sólo los que este nodo conoce.
+    #[serde(skip)]
     neighbours_states: NodesMap,
 
     /// Estado actual del nodo.
+    #[serde(skip)]
     endpoint_state: EndpointState,
 
     /// Dirección de almacenamiento en disco.
+    #[serde(skip)]
     storage_addr: String,
 
     /// Nombre del keyspace por defecto.
@@ -112,23 +119,24 @@ pub struct Node {
     tables: HashMap<String, Table>,
 
     /// Rangos asignados a cada nodo para determinar la partición de los datos.
+    #[serde(skip)]
     nodes_ranges: Vec<(u64, u64)>,
 
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
     tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 
     /// El [ThreadPool] de tareas disponibles.
+    #[serde(skip)]
     pub pool: ThreadPool,
 
     /// Mapa de conexiones abiertas entre el nodo y otros clientes.
+    #[serde(skip)]
     open_connections: OpenConnectionsMap,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Result<Self> {
-        let storage_addr = DiskHandler::new_node_storage(id)?;
-        let nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
         neighbours_states.insert(id, endpoint_state.clone());
@@ -137,15 +145,33 @@ impl Node {
             id,
             neighbours_states,
             endpoint_state,
-            storage_addr,
+            storage_addr: DiskHandler::new_node_storage(id)?,
             default_keyspace_name: "".to_string(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
-            nodes_ranges,
+            nodes_ranges: divide_range(0, NODES_RANGE_END, N_NODES as usize),
             tables_and_partitions_keys_values: HashMap::new(),
-            pool: ThreadPool::build(N_THREADS).unwrap(),
+            pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
         })
+    }
+
+    /// Setea el valor por defecto de los campos que no son guardados en su archivo JSON.
+    ///
+    /// Se asume que esta función se llama sobre un nodo que fue cargado recientemente de su archivo JSON.
+    pub fn set_default_fields(&mut self, id: NodeId, mode: ConnectionMode) -> Result<()> {
+        let mut neighbours_states = NodesMap::new();
+        let endpoint_state = EndpointState::with_id_and_mode(id, mode);
+        neighbours_states.insert(id, endpoint_state.clone());
+
+        self.neighbours_states = neighbours_states;
+        self.endpoint_state = endpoint_state;
+        self.storage_addr = DiskHandler::get_node_storage(id);
+        self.nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
+        self.pool = ThreadPool::build(N_THREADS)?;
+        self.open_connections = OpenConnectionsMap::new();
+
+        Ok(())
     }
 
     fn add_table(&mut self, table: Table) {
@@ -381,6 +407,19 @@ impl Node {
         self.neighbours_states.contains_key(node_id)
     }
 
+    /// Consulta si el nodo todavía esta booteando.
+    pub fn is_bootstraping(&self) -> bool {
+        matches!(
+            self.endpoint_state.get_appstate().get_status(),
+            AppStatus::Bootstrap
+        )
+    }
+
+    /// Consulta el modo de conexión del nodo.
+    fn mode(&self) -> &ConnectionMode {
+        self.endpoint_state.get_appstate().get_mode()
+    }
+
     fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
         let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
         if !self.has_endpoint_state_by_id(&guessed_id) {
@@ -415,29 +454,6 @@ impl Node {
         }
     }
 
-    /// Consigue la información de _gossip_ que contiene este nodo.
-    fn get_gossip_info(&self) -> GossipInfo {
-        let mut gossip_info = GossipInfo::new();
-        for (node_id, endpoint_state) in &self.neighbours_states {
-            gossip_info.insert(node_id.to_owned(), endpoint_state.clone_heartbeat());
-        }
-
-        gossip_info
-    }
-
-    /// Consulta el modo de conexión del nodo.
-    fn mode(&self) -> &ConnectionMode {
-        self.endpoint_state.get_appstate().get_mode()
-    }
-
-    /// Consulta si el nodo todavía esta booteando.
-    pub fn is_bootstraping(&self) -> bool {
-        matches!(
-            self.endpoint_state.get_appstate().get_status(),
-            AppStatus::Bootstrap
-        )
-    }
-
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&mut self) {
         if self.neighbours_states.len() == N_NODES as usize {
@@ -456,6 +472,16 @@ impl Node {
         self.neighbours_states
             .insert(self.id, self.endpoint_state.clone());
         self.get_beat().1
+    }
+
+    /// Consigue la información de _gossip_ que contiene este nodo.
+    fn get_gossip_info(&self) -> GossipInfo {
+        let mut gossip_info = GossipInfo::new();
+        for (node_id, endpoint_state) in &self.neighbours_states {
+            gossip_info.insert(node_id.to_owned(), endpoint_state.clone_heartbeat());
+        }
+
+        gossip_info
     }
 
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
@@ -693,10 +719,10 @@ impl Node {
                 };
             }
             SvAction::StoreMetadata => {
-                if let Err(e) = DiskHandler::store_node_metadata(self.id, &self.serialize()) {
+                if let Err(err) = DiskHandler::store_node_metadata(self) {
                     return Err(Error::ServerError(format!(
                         "Error guardando metadata del nodo {}: {}",
-                        &self.id, e
+                        &self.id, err
                     )));
                 }
             }
@@ -2120,16 +2146,34 @@ impl Node {
         let final_length = (results_from_another_nodes.len() as u32) - 9;
         results_from_another_nodes[5..9].copy_from_slice(&final_length.to_be_bytes());
 
-        // No funciona, las filas no son un string largo, el formato es [largo del string][string], entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
-        // let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
-        //     results_from_another_nodes,
-        //     total_length_until_end_of_metadata,
-        //     select,
-        // )?;
+        /*No funciona, las filas no son un string largo, el formato es [largo del string][string],
+        entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
 
-        // le agrego el body de las filas a las que ya tenia
-        // results_from_another_nodes.truncate(total_length_until_end_of_metadata);
-        // results_from_another_nodes.append(&mut new_ordered_res_bytes);
+        let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
+            results_from_another_nodes,
+            total_length_until_end_of_metadata,
+            select,
+        )?;
+
+        le agrego el body de las filas a las que ya tenia
+        results_from_another_nodes.truncate(total_length_until_end_of_metadata);
+        results_from_another_nodes.append(&mut new_ordered_res_bytes);*/
+
+        /*Esta comprobacion podriamos usarla en handle_result_from_node:
+
+        match Opcode::try_from(res[4])? {
+            Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+            Opcode::Result => self.handle_result_from_node(
+                &mut results_from_another_nodes,
+                res,
+                &select,
+            )?,
+            _ => {
+                return Err(Error::ServerError(
+                    "Nodo manda opcode inesperado".to_string(),
+                ))
+            }
+        };*/
 
         Ok(())
     }
@@ -2457,8 +2501,9 @@ impl Serializable for Node {
     }
 
     fn deserialize(data: &[Byte]) -> Result<Self> {
-        let line: String = String::from_utf8(data.to_vec())
-            .map_err(|_| Error::ServerError("No se pudieron deserializar los datos".to_string()))?;
+        let line: String = String::from_utf8(data.to_vec()).map_err(|e| {
+            Error::ServerError(format!("No se pudieron deserializar los datos: {}", e))
+        })?;
         let mut parameters: IntoIter<String> = line
             .split(",")
             .map(|s| s.to_string())
@@ -2471,7 +2516,7 @@ impl Serializable for Node {
                 "No se pudo obtener el ID del nodo".to_string(),
             ))?
             .parse()
-            .map_err(|_| Error::ServerError("No se pudo parsear el ID del nodo".to_string()))?;
+            .map_err(|e| Error::ServerError(format!("No se pudo parsear el ID del nodo: {}", e)))?;
 
         let default_keyspace_name: String = parameters
             .next()
@@ -2479,24 +2524,28 @@ impl Serializable for Node {
                 "No se pudo obtener el keyspace por defecto del nodo".to_string(),
             ))?
             .parse()
-            .map_err(|_| {
-                Error::ServerError(
-                    "No se pudo parsear el keyspace por defecto del nodo".to_string(),
-                )
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo parsear el keyspace por defecto del nodo: {}",
+                    e
+                ))
             })?;
 
         let keyspaces: String = parameters.next().ok_or(Error::ServerError(
             "No se pudo obtener los keyspaces del nodo".to_string(),
         ))?;
-        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|_| {
-            Error::ServerError("No se pudieron parsear los keyspaces del nodo".to_string())
+        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudieron parsear los keyspaces del nodo: {}",
+                e
+            ))
         })?;
 
         let tables: String = parameters.next().ok_or(Error::ServerError(
             "No se pudo obtener las tablas del nodo".to_string(),
         ))?;
-        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|_| {
-            Error::ServerError("No se pudieron parsear las tablas del nodo".to_string())
+        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|e| {
+            Error::ServerError(format!("No se pudieron parsear las tablas del nodo: {}", e))
         })?;
 
         let tables_and_partitions_keys_values: String =
@@ -2504,10 +2553,11 @@ impl Serializable for Node {
                 "No se pudo obtener las tablas y sus particiones del nodo".to_string(),
             ))?;
         let tables_and_partitions_keys_values: HashMap<String, Vec<String>> =
-            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|_| {
-                Error::ServerError(
-                    "No se pudieron parsear las tablas y sus particiones del nodo".to_string(),
-                )
+            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudieron parsear las tablas y sus particiones del nodo: {}",
+                    e
+                ))
             })?;
 
         Ok(Node {
@@ -2518,25 +2568,10 @@ impl Serializable for Node {
             default_keyspace_name,
             keyspaces,
             tables,
-            nodes_ranges: divide_range(0, 18446744073709551615, N_NODES as usize),
+            nodes_ranges: divide_range(0, NODES_RANGE_END, N_NODES as usize),
             tables_and_partitions_keys_values,
             pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
         })
     }
 }
-
-// esta comprobacion podriamos usarla en handle_result_from_node
-// match Opcode::try_from(res[4])? {
-//     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-//     Opcode::Result => self.handle_result_from_node(
-//         &mut results_from_another_nodes,
-//         res,
-//         &select,
-//     )?,
-//     _ => {
-//         return Err(Error::ServerError(
-//             "Nodo manda opcode inesperado".to_string(),
-//         ))
-//     }
-// };

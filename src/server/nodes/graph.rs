@@ -16,25 +16,27 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    client::cql_frame::frame::Frame,
-    parser::{main_parser::make_parse, statements::statement::Statement},
-    protocol::{aliases::results::Result, errors::error::Error, traits::Byteable},
-    tokenizer::tokenizer::tokenize_query,
+use crate::client::cql_frame::frame::Frame;
+use crate::parser::{main_parser::make_parse, statements::statement::Statement};
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    notations::consistency::Consistency,
+    traits::Byteable,
 };
-use crate::{
-    protocol::{aliases::types::Byte, notations::consistency::Consistency},
-    server::{
-        actions::opcode::SvAction,
-        modes::ConnectionMode,
-        nodes::{
-            node::{Node, NodeId},
-            port_type::PortType,
-            utils::{load_init_queries, send_to_node},
-        },
-        utils::load_serializable,
+use crate::server::{
+    actions::opcode::SvAction,
+    modes::ConnectionMode,
+    nodes::{
+        node::{Node, NodeId},
+        port_type::PortType,
+        utils::{load_init_queries, send_to_node},
     },
+    utils::load_json,
 };
+use crate::tokenizer::tokenizer::tokenize_query;
+
+use super::disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH};
 
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
@@ -49,8 +51,6 @@ pub const LAST_ID: NodeId = START_ID + N_NODES;
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// La cantidad de nodos que comenzarán su intercambio de _gossip_ con otros [n](crate::server::nodes::graph::HANDSHAKE_NEIGHBOURS) nodos.
 const SIMULTANEOUS_GOSSIPERS: Byte = 3;
-/// El archivo donde se guardan los nodos.
-pub const NODES_PATH: &str = "nodes.csv";
 
 /// Un grafo es una colección de nodos.
 ///
@@ -115,11 +115,12 @@ impl NodesGraph {
 
         self.handlers.extend(nodes);
 
-        // Paramos los handlers especiales primero
-        //let _ = beat_stopper.send(true);
-        //let _ = beater.join();
-        //let _ = gossip_stopper.send(true);
-        //let _ = gossiper.join();
+        /*Paramos los handlers especiales primero
+        let _ = beat_stopper.send(true);
+        let _ = beater.join();
+
+        let _ = gossip_stopper.send(true);
+        let _ = gossiper.join();*/
 
         // Corremos los scripts iniciales
         if let Err(err) = self.send_init_queries() {
@@ -179,9 +180,9 @@ impl NodesGraph {
     ///
     /// * `n` es la cantidad de nodos a crear en el proceso.
     fn bootup_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
-        let nodes_path = Path::new(NODES_PATH);
-        if nodes_path.exists() {
-            self.bootup_existing_nodes()
+        let nodes_folder = Path::new(&NODES_METADATA_PATH);
+        if nodes_folder.exists() && nodes_folder.is_dir() {
+            self.bootup_existing_nodes(n)
         } else {
             self.bootup_new_nodes(n)
         }
@@ -218,40 +219,45 @@ impl NodesGraph {
     }
 
     /// Inicializa nodos existentes.
-    fn bootup_existing_nodes(&mut self) -> Result<Vec<Option<NodeHandle>>> {
+    fn bootup_existing_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
-        let nodes: Vec<Node> = load_serializable(NODES_PATH)?;
 
-        let existing_ids: Vec<NodeId> = nodes.iter().map(|node| node.get_id()).collect();
-        self.prox_id = match existing_ids.iter().max() {
-            Some(max) => max + 1,
-            None => START_ID,
-        };
+        for i in 0..n {
+            let current_id = self.add_node_id();
+            let node_path = DiskHandler::get_node_metadata_path(current_id);
+            let path = Path::new(&node_path);
+            if path.exists() {
+                let mut node: Node = load_json(&node_path)?;
+                node.set_default_fields(current_id, self.preferred_mode.clone())?;
 
-        for (i, node) in nodes.into_iter().enumerate() {
-            let node_id = node.get_id();
-            self.node_ids.push(node_id);
-            if node_id == START_ID {
-                self.node_weights.push(3);
+                if current_id == START_ID {
+                    // El primer nodo tiene el triple de probabilidades de ser elegido.
+                    self.node_weights.push(3);
+                } else {
+                    self.node_weights.push(1);
+                }
+
+                let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
+
+                let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
+                let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
+
+                create_client_and_private_conexion(
+                    current_id,
+                    cli_socket,
+                    &mut node_listeners,
+                    i as Byte,
+                    priv_socket,
+                    node,
+                )?;
+
+                handlers.append(&mut node_listeners);
             } else {
-                self.node_weights.push(1);
+                return Err(Error::ServerError(format!(
+                    "No se encontró el archivo de metadata del nodo {}",
+                    current_id
+                )));
             }
-
-            let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
-
-            let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
-            let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
-
-            create_client_and_private_conexion(
-                node_id,
-                cli_socket,
-                &mut node_listeners,
-                i as Byte,
-                priv_socket,
-                node,
-            )?;
-
-            handlers.append(&mut node_listeners);
         }
         // Llenamos de información al nodo "seed".
         self.send_states_to_node(self.max_weight());
@@ -402,12 +408,12 @@ fn increase_heartbeat_and_store_nodes(
                     node_id
                 )));
             }
-            //if send_to_node(*node_id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
-            //    return Err(Error::ServerError(format!(
-            //        "Error enviando mensaje de almacenamiento de metadata a nodo {}",
-            //        node_id
-            //    )));
-            //}
+            if send_to_node(*node_id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
+                return Err(Error::ServerError(format!(
+                    "Error enviando mensaje de almacenamiento de metadata a nodo {}",
+                    node_id
+                )));
+            }
         }
     }
     Ok(())
