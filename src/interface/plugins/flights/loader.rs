@@ -35,7 +35,7 @@ type ChildHandle = JoinHandle<Result<()>>;
 type DateChild = (Option<ChildHandle>, Sender<(Arc<Option<Airport>>, Long)>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
-const FLIGHTS_INTERVAL_SECS: u64 = 5;
+const FLIGHTS_INTERVAL_SECS: u64 = 2;
 
 /// Un día en segundos.
 const DAY_IN_SECONDS: i64 = 86400;

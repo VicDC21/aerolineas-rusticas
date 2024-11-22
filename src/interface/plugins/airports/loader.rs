@@ -23,7 +23,7 @@ pub type PosRect = (Position, Position);
 /// Intervalo (en segundos) antes de cargar los aeropuertos de nuevo, como mínimo.
 const AIRPORTS_INTERVAL_SECS: u64 = 1;
 /// Cantidad máxima _(hardcodeada)_ de aeropuertos.
-const MAX_AIRPORTS: usize = 80864;
+const MAX_AIRPORTS: usize = 6435;
 
 /// Cargador de aeropuertos.
 pub struct AirportsLoader {
