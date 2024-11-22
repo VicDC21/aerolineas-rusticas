@@ -36,7 +36,7 @@ use crate::server::{
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 
-use super::disk_operations::disk_handler::{DiskHandler, NODE_METADATA_FOLDER};
+use super::disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH};
 
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
@@ -51,8 +51,6 @@ pub const LAST_ID: NodeId = START_ID + N_NODES;
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// La cantidad de nodos que comenzarán su intercambio de _gossip_ con otros [n](crate::server::nodes::graph::HANDSHAKE_NEIGHBOURS) nodos.
 const SIMULTANEOUS_GOSSIPERS: Byte = 3;
-/// El archivo donde se guardan los nodos.
-pub const NODES_PATH: &str = "nodes.csv";
 
 /// Un grafo es una colección de nodos.
 ///
@@ -117,11 +115,12 @@ impl NodesGraph {
 
         self.handlers.extend(nodes);
 
-        // Paramos los handlers especiales primero
-        //let _ = beat_stopper.send(true);
-        //let _ = beater.join();
-        //let _ = gossip_stopper.send(true);
-        //let _ = gossiper.join();
+        /*Paramos los handlers especiales primero
+        let _ = beat_stopper.send(true);
+        let _ = beater.join();
+
+        let _ = gossip_stopper.send(true);
+        let _ = gossiper.join();*/
 
         // Corremos los scripts iniciales
         if let Err(err) = self.send_init_queries() {
@@ -181,13 +180,7 @@ impl NodesGraph {
     ///
     /// * `n` es la cantidad de nodos a crear en el proceso.
     fn bootup_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
-        /*let nodes_path = Path::new(NODES_PATH);
-        if nodes_path.exists() {
-            self.bootup_existing_nodes()
-        } else {
-            self.bootup_new_nodes(n)
-        }*/
-        let nodes_folder = Path::new(&NODE_METADATA_FOLDER);
+        let nodes_folder = Path::new(&NODES_METADATA_PATH);
         if nodes_folder.exists() && nodes_folder.is_dir() {
             self.bootup_existing_nodes(n)
         } else {
@@ -228,13 +221,6 @@ impl NodesGraph {
     /// Inicializa nodos existentes.
     fn bootup_existing_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
-        /*let nodes: Vec<Node> = load_serializable(NODES_PATH)?;
-
-        let existing_ids: Vec<NodeId> = nodes.iter().map(|node| node.get_id()).collect();
-        self.prox_id = match existing_ids.iter().max() {
-            Some(max) => max + 1,
-            None => START_ID,
-        };*/
 
         for i in 0..n {
             let current_id = self.add_node_id();
@@ -244,7 +230,6 @@ impl NodesGraph {
                 let mut node: Node = load_json(&node_path)?;
                 node.set_default_fields(current_id, self.preferred_mode.clone())?;
 
-                //self.node_ids.push(node_id);
                 if current_id == START_ID {
                     // El primer nodo tiene el triple de probabilidades de ser elegido.
                     self.node_weights.push(3);

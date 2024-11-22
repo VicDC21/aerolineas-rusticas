@@ -32,7 +32,6 @@ use crate::protocol::{
 };
 use crate::server::{
     nodes::{
-        graph::NODES_PATH,
         keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
         node::Node,
         node::NodeId,
@@ -43,7 +42,7 @@ use crate::server::{
 
 use std::{
     fs::{create_dir, OpenOptions},
-    io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
+    io::{BufWriter, Write},
     path::Path,
     str::FromStr,
 };
@@ -52,20 +51,20 @@ use super::{
     row_operations::RowOperations, table_operations::TableOperations, table_path::TablePath,
 };
 
-/// La ruta para el almacenamiento de los nodos.
-pub const STORAGE_PATH: &str = "storage";
+/// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
+const STORAGE_PATH: &str = "storage";
 /// El nombre individual del directorio de un nodo.
-pub const STORAGE_NODE_PATH: &str = "storage_node";
-/// La carpeta donde se almacenan los metadatos de los nodos.
-pub const NODE_METADATA_FOLDER: &str = "node_metadata";
-/// El nombre del archivo de metadatos de un nodo.
-pub const NODE_METADATA_FILE: &str = "metadata_node";
+const STORAGE_NODE_PATH: &str = "storage_node";
+/// La ruta para el almacenamiento de los metadatos de los nodos.
+pub const NODES_METADATA_PATH: &str = "nodes_metadata";
+/// El nombre individual del directorio de metadatos de un nodo.
+const NODE_METADATA_PATH: &str = "metadata_node";
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
 
 impl DiskHandler {
-    /// Crea una carpeta de almacenamiento para el nodo.
+    /// Crea una carpeta de almacenamiento para las keyspaces y tablas del nodo.
     /// Devuelve la ruta a dicho almacenamiento.
     pub fn new_node_storage(id: NodeId) -> Result<String> {
         Self::create_directory(STORAGE_PATH)?;
@@ -94,17 +93,14 @@ impl DiskHandler {
 
     /// Obtiene la ruta de almacenamiento de los metadatos de un nodo dado su ID.
     pub fn get_node_metadata_path(id: NodeId) -> String {
-        format!(
-            "{}/{}_{}.json",
-            NODE_METADATA_FOLDER, NODE_METADATA_FILE, id
-        )
+        format!("{}/{}_{}.json", NODES_METADATA_PATH, NODE_METADATA_PATH, id)
     }
 
     /// Almacena los metadatos de un nodo en un archivo JSON.
-    pub fn store_node_metadata_json(node: &Node) -> Result<()> {
-        let folder_path = Path::new(NODE_METADATA_FOLDER);
-        if !folder_path.exists() {
-            create_dir(folder_path).map_err(|e| {
+    pub fn store_node_metadata(node: &Node) -> Result<()> {
+        let path_folder = Path::new(NODES_METADATA_PATH);
+        if !path_folder.exists() {
+            create_dir(path_folder).map_err(|e| {
                 Error::ServerError(format!(
                     "Error al crear el directorio de metadatos de un nodo: {}",
                     e
@@ -112,66 +108,13 @@ impl DiskHandler {
             })?;
         }
 
-        if folder_path.is_dir() {
+        if path_folder.is_dir() {
             store_json(node, &Self::get_node_metadata_path(node.get_id()))
         } else {
             Err(Error::ServerError(
                 "El directorio de metadatos de nodos no es un directorio".to_string(),
             ))
         }
-    }
-
-    /// Almacena los metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
-    pub fn store_node_metadata(id: NodeId, metadata: &[Byte]) -> Result<()> {
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(false)
-            .read(true)
-            .open(NODES_PATH)
-            .map_err(|e| {
-                Error::ServerError(format!("Error abriendo el archivo de metadata: {}", e))
-            })?;
-        let mut reader = BufReader::new(&file);
-
-        let mut id_exists = false;
-        let mut buf = Vec::new();
-        let mut pos = 0;
-        // Leo línea por línea y verifico si el ID del nodo ya existe
-        while let Some(Ok(line)) = reader.by_ref().lines().next() {
-            if line.starts_with(&id.to_string()) {
-                id_exists = true;
-                break;
-            }
-            pos += line.len() + 1; // Actualizo la posicion a sobreescribir si existe el ID
-            buf.push(line);
-        }
-
-        // Abro el archivo nuevamente para escribir
-        let mut writer = OpenOptions::new()
-            .write(true)
-            .open(NODES_PATH)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
-        if id_exists {
-            // Si el ID ya existia, sobrescribo la linea
-            writer
-                .seek(SeekFrom::Start(pos as u64))
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-            writer
-                .write_all(metadata)
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-        } else {
-            // Si no existia el ID, escribo al final del archivo
-            writer
-                .seek(SeekFrom::End(0))
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-            writer
-                .write_all(metadata)
-                .map_err(|e| Error::ServerError(e.to_string()))?;
-        }
-
-        Ok(())
     }
 
     /// Crea un nuevo keyspace en el caso que corresponda.
