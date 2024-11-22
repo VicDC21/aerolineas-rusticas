@@ -18,7 +18,7 @@ use crate::{
     data::{
         airports::airp::Airport,
         flights::{
-            departing::DepartingFlight, flight_type::FlightType, incoming::IncomingFlight,
+            departing::DepartingFlight, types::FlightType, incoming::IncomingFlight,
             traits::Flight,
         },
     },
