@@ -8,7 +8,7 @@ use crate::protocol::errors::error::Error;
 /// El tipo de un continente.
 ///
 /// Las definiciones están inspiradas en la de [OurAirports](https://ourairports.com/help/data-dictionary.html#airports).
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ContinentType {
     /// Continente de África.
     Africa,
@@ -30,6 +30,21 @@ pub enum ContinentType {
 
     /// Continente de América del Sur.
     SouthAmerica,
+}
+
+impl ContinentType {
+    /// Devuelve el nombre completo del continent, en inglés.
+    pub fn full_name(&self) -> &str {
+        match self {
+            Self::Africa => "Africa",
+            Self::Antarctica => "Antarctica",
+            Self::Asia => "Asia",
+            Self::Europe => "Europe",
+            Self::NorthAmerica => "North America",
+            Self::Oceania => "Oceania",
+            Self::SouthAmerica => "South America",
+        }
+    }
 }
 
 impl Display for ContinentType {
@@ -67,7 +82,7 @@ impl TryFrom<&str> for ContinentType {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::continent_types::ContinentType;
+    use crate::data::continents::types::ContinentType;
     use crate::protocol::errors::error::Error;
 
     #[test]

@@ -8,7 +8,7 @@ use crate::protocol::errors::error::Error;
 /// El tipo de un aeropuerto.
 ///
 /// Las definiciones se inspiran en las de [OurAirports](https://ourairports.com/help/#airports).
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum AirportType {
     /// Un gran aeropuerto con un tráfico anual en millones de personas, o una base militar importante.
     LargeAirport,
@@ -67,7 +67,7 @@ impl TryFrom<&str> for AirportType {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::airport_types::AirportType;
+    use crate::data::airports::types::AirportType;
     use crate::protocol::errors::error::Error;
 
     #[test]

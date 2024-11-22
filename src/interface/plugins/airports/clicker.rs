@@ -5,7 +5,7 @@ use std::sync::Arc;
 use eframe::egui::{Painter, PointerButton, Response};
 use walkers::{Plugin, Projector};
 
-use crate::data::{airports::Airport, utils::distances::distance_euclidean_pos2};
+use crate::data::{airports::airp::Airport, utils::distances::distance_euclidean_pos2};
 use crate::interface::plugins::utils::zoom_is_showable;
 
 // Distancia mínima para un potencial click.

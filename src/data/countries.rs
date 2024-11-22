@@ -1,14 +1,18 @@
 //! Módulo para estructuras de países.
 
+use std::collections::HashMap;
 use std::io::{BufRead, Result as IOResult};
 
-use crate::data::continent_types::ContinentType;
+use crate::data::continents::types::ContinentType;
 use crate::data::utils::{
     paths::{get_tokens, reader_from},
     strings::breakdown,
 };
 use crate::protocol::aliases::results::Result;
 use crate::protocol::errors::error::Error;
+
+/// Un mapa de países.
+pub type CountriesMap = HashMap<String, Country>;
 
 /// La dirección por defecto del dataset de países.
 const COUNTRIES_PATH: &str = "./datasets/airports/countries.csv";
@@ -19,6 +23,7 @@ const MIN_COUNTRIES_ELEMS: usize = 6;
 /// Estructura que representa un país.
 ///
 /// Este modelo está inspirado en las definiciones de [OurAirports](https://ourairports.com/help/data-dictionary.html#countries).
+#[derive(Clone, Debug, PartialEq)]
 pub struct Country {
     /// El ID interno que el proveedor usa para este país.
     pub id: usize,
@@ -42,6 +47,18 @@ pub struct Country {
 }
 
 impl Country {
+    /// Crea una entidad vacía para _matchear_.
+    pub fn dummy() -> Self {
+        Self {
+            id: 0,
+            code: "".to_string(),
+            name: "".to_string(),
+            continent: ContinentType::Antarctica,
+            wikipedia_link: "".to_string(),
+            keywords: Vec::<String>::new(),
+        }
+    }
+
     /// Crea una instancia a partir de una lista de tokens.
     ///
     /// Se asume que dicha lista tiene suficientes elementos.
@@ -89,5 +106,27 @@ impl Country {
             "No hay un país con código '{}' entre los datos.",
             country_code
         )))
+    }
+
+    /// Crea un mapa gigante de todos los países disponibles.
+    ///
+    /// <div class="warning">
+    ///
+    /// _Idealmente, esta función se debería llamar lo menos posible, ya que levanta todo
+    /// el dataset en memoria._
+    ///
+    /// </div>
+    pub fn get_all() -> Result<CountriesMap> {
+        let reader = reader_from(COUNTRIES_PATH, true)?;
+        let mut countries = CountriesMap::new();
+
+        for line in reader.lines().map_while(IOResult::ok) {
+            let tokens = get_tokens(&line, ',', MIN_COUNTRIES_ELEMS)?;
+
+            let code = tokens[1].to_string();
+            countries.insert(code, Self::from_tokens(tokens)?);
+        }
+
+        Ok(countries)
     }
 }

@@ -3,7 +3,7 @@
 //! Al ser "ventanas" flotantes, se pueden mostrar por encima del mapa.
 
 use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
-use eframe::egui::{Align2, ComboBox, Context, RichText, Ui, Window};
+use eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window};
 use egui_extras::DatePickerButton;
 use walkers::MapMemory;
 
@@ -44,14 +44,14 @@ pub fn go_to_my_position(ui: &Ui, map_memory: &mut MapMemory) {
 }
 
 /// Seleccionar la fecha actual.
-pub fn date_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
+pub fn date_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
     let mut date = datetime.date_naive();
     Window::new("Date Selector")
         .collapsible(false)
         .resizable(false)
         .title_bar(false)
         .anchor(Align2::LEFT_BOTTOM, [100., -10.])
-        .show(ctx, |ui| {
+        .show(ui.ctx(), |ui| {
             ui.add(DatePickerButton::new(&mut date).id_salt("date_selector"));
         });
 
@@ -62,7 +62,7 @@ pub fn date_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<Da
 }
 
 /// Seleccionar la hora actual.
-pub fn clock_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
+pub fn clock_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
     let mut hour = datetime.hour();
     let mut minute = datetime.minute();
     let mut second = datetime.second();
@@ -72,7 +72,7 @@ pub fn clock_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<D
         .resizable(false)
         .title_bar(false)
         .anchor(Align2::LEFT_BOTTOM, [220., -10.])
-        .show(ctx, |ui| {
+        .show(ui.ctx(), |ui| {
             ui.collapsing(
                 RichText::new(format!("{:0>2}:{:0>2}:{:0>2}", &hour, &minute, &second)),
                 |ui| {
@@ -105,4 +105,27 @@ pub fn clock_selector(ctx: &Context, datetime: &mut DateTime<Local>) -> Option<D
     } else {
         None
     }
+}
+
+/// Crea una barra de progreso que indica la cantidad de aeropuertos por cargar.
+pub fn airports_progress(ui: &Ui, start: usize, end: usize) {
+    let ctx = ui.ctx();
+    Window::new("Airports Loading Progress")
+        .collapsible(false)
+        .resizable(false)
+        .title_bar(false)
+        .anchor(Align2::CENTER_TOP, [0., 25.])
+        .show(ctx, |ui| {
+            let progress = start as f32 / end as f32;
+            let progress_bar = ProgressBar::new(progress)
+                .desired_width(ctx.screen_rect().width() / 5.)
+                .animate(true)
+                .text(format!(
+                    "Cargando aeropuertos: {} / {} ({:.2}%)",
+                    start,
+                    end,
+                    progress * 100.
+                ));
+            ui.add(progress_bar);
+        });
 }

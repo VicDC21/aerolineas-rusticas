@@ -1,19 +1,31 @@
 //! Módulo para manejar los datos de un aeropuerto.
 
-use std::io::{BufRead, Result as IOResult};
+use std::{
+    collections::HashMap,
+    io::{BufRead, Result as IOResult},
+    sync::mpsc::Sender,
+};
 use walkers::Position;
 
-use crate::data::utils::{
-    distances::{distance_euclidean_wpos, inside_area},
-    paths::{get_tokens, reader_from},
-    strings::{breakdown, to_option},
+use crate::data::{
+    airports::types::AirportType, continents::types::ContinentType, countries::Country,
 };
-use crate::data::{airport_types::AirportType, continent_types::ContinentType};
+use crate::data::{
+    countries::CountriesMap,
+    utils::{
+        distances::{distance_euclidean_pos, inside_area},
+        paths::{get_tokens, reader_from},
+        strings::{breakdown, to_option},
+    },
+};
 use crate::protocol::aliases::results::Result;
 use crate::protocol::errors::error::Error;
 
+/// Un mapa de aeropuertos.
+pub type AirportsMap = HashMap<String, Airport>;
+
 /// La dirección por defecto del dataset de aeropuertos.
-const AIRPORTS_PATH: &str = "./datasets/airports/airports.csv";
+const AIRPORTS_PATH: &str = "./datasets/airports/cut_airports.csv";
 
 /// La cantidad mínima de elementos que ha de haber en una línea del dataset de aeropuertos.
 const MIN_AIRPORTS_ELEMS: usize = 17;
@@ -21,7 +33,7 @@ const MIN_AIRPORTS_ELEMS: usize = 17;
 /// Estructura que representa un aeropuerto.
 ///
 /// Este modelo está inspirado en las definiciones de [OurAirports](https://ourairports.com/help/data-dictionary.html#airports).
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Airport {
     /// El ID del aeropuerto. Éste es constante aún si el código de aeropuerto cambia.
     pub id: usize,
@@ -52,8 +64,8 @@ pub struct Airport {
     /// El código de continente donde el aeropuerto está (primariamente) ubicado.
     pub continent: ContinentType,
 
-    /// Mismo valor que el apartado [code](crate::data::countries::Country::code) de [Country](crate::data::countries::Country).
-    pub iso_country: String,
+    /// El país donde está el aeropuerto.
+    pub country: Country,
 
     /// Un código alfanumérico que representa la sub-división administrativa de un país donde el
     /// aeropuerto está (primariamente) ubicado.
@@ -114,7 +126,7 @@ impl Airport {
             position: Position::from_lat_lon(0., 0.),
             elevation_ft: None,
             continent: ContinentType::Oceania, // porque no existe, es un mito
-            iso_country: "".to_string(),
+            country: Country::dummy(),
             iso_region: "".to_string(),
             municipality: "".to_string(),
             scheduled_service: false,
@@ -153,7 +165,7 @@ impl Airport {
     /// Crea una instancia a partir de una lista de tokens.
     ///
     /// Se asume que dicha lista tiene suficientes elementos.
-    fn from_tokens(tokens: Vec<String>) -> Result<Self> {
+    fn from_tokens(tokens: Vec<String>, countries_cache: &CountriesMap) -> Result<Self> {
         let id = match tokens[0].parse::<usize>() {
             Ok(parsed) => parsed,
             Err(_) => {
@@ -182,6 +194,10 @@ impl Airport {
         };
         let continent = ContinentType::try_from(tokens[7].as_str())?;
         let iso_country = tokens[8].to_string();
+        let country = countries_cache
+            .get(&iso_country)
+            .unwrap_or(&Country::try_from_code(&iso_country)?)
+            .clone();
         let iso_region = tokens[9].to_string();
         let municipality = tokens[10].to_string();
         let scheduled_service = match tokens[11].as_str() {
@@ -204,7 +220,7 @@ impl Airport {
             position,
             elevation_ft,
             continent,
-            iso_country,
+            country,
             iso_region,
             municipality,
             scheduled_service,
@@ -218,7 +234,11 @@ impl Airport {
     }
 
     /// Devuelve una lista de aeropuertos que están cerca de la posición dada.
-    pub fn by_distance(pos: &Position, tolerance: &f64) -> Result<Vec<Self>> {
+    pub fn by_distance(
+        pos: &Position,
+        tolerance: &f64,
+        countries_cache: &CountriesMap,
+    ) -> Result<Vec<Self>> {
         let reader = reader_from(AIRPORTS_PATH, true)?;
         let mut airports = Vec::<Self>::new();
 
@@ -226,19 +246,34 @@ impl Airport {
             let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
 
             let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
-            if &distance_euclidean_wpos(&Position::from_lat_lon(cur_lat, cur_lon), pos) <= tolerance
+            if &distance_euclidean_pos(&Position::from_lat_lon(cur_lat, cur_lon), pos) <= tolerance
             {
-                airports.push(Self::from_tokens(tokens)?);
+                airports.push(Self::from_tokens(tokens, countries_cache)?);
             }
         }
 
         Ok(airports)
     }
 
+    /// Devuelve una lista de aeropuertos que están cerca de la posición dada, basado en un cache.
+    pub fn by_distance_cache(pos: &Position, tolerance: &f64, cache: &AirportsMap) -> Vec<Self> {
+        let mut airports = Vec::<Self>::new();
+        for airp in cache.values() {
+            if &distance_euclidean_pos(pos, &airp.position) <= tolerance {
+                airports.push(airp.clone());
+            }
+        }
+
+        airports
+    }
+
     /// Devuelve una lista de aeropuertos que están dentro del área indicada.
     ///
     /// La primera coordenada del área está garantizada de tener valores menores que la segunda.
-    pub fn by_area(area: (&Position, &Position)) -> Result<Vec<Self>> {
+    pub fn by_area(
+        area: (&Position, &Position),
+        countries_cache: &CountriesMap,
+    ) -> Result<Vec<Self>> {
         let reader = reader_from(AIRPORTS_PATH, true)?;
         let mut airports = Vec::<Self>::new();
 
@@ -247,10 +282,82 @@ impl Airport {
 
             let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
             if inside_area(&Position::from_lat_lon(cur_lat, cur_lon), area) {
-                airports.push(Self::from_tokens(tokens)?);
+                airports.push(Self::from_tokens(tokens, countries_cache)?);
             }
         }
 
         Ok(airports)
+    }
+
+    /// Devuelve una lista de aeropuertos que están dentro del área indicada, según un cache.
+    ///
+    /// La primera coordenada del área está garantizada de tener valores menores que la segunda.
+    pub fn by_area_cache(area: (&Position, &Position), cache: &AirportsMap) -> Vec<Self> {
+        let mut airports = Vec::<Self>::new();
+
+        for airp in cache.values() {
+            if inside_area(&airp.position, area) {
+                airports.push(airp.clone());
+            }
+        }
+
+        airports
+    }
+
+    /// Devuelve un mapa gigante de todos los aeropuertos disponibles.
+    ///
+    /// <div class="warning">
+    ///
+    /// _Idealmente, esta función se debería llamar lo menos posible, ya que levanta todo
+    /// el dataset en memoria._
+    ///
+    /// </div>
+    pub fn get_all() -> Result<AirportsMap> {
+        let mut airports = AirportsMap::new();
+        let countries_cache = Country::get_all()?;
+        let reader = reader_from(AIRPORTS_PATH, true)?;
+
+        for line in reader.lines().map_while(IOResult::ok) {
+            let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
+            airports.insert(
+                tokens[1].to_string(),
+                Self::from_tokens(tokens, &countries_cache)?,
+            );
+        }
+
+        Ok(airports)
+    }
+
+    /// Carga los aeropuertos y los manda cada tanto a un canal por partes.
+    ///
+    /// <div class="warning">
+    ///
+    /// _Idealmente, esta función se debería llamar lo menos posible, ya que levanta todo
+    /// el dataset en memoria._
+    ///
+    /// </div>
+    pub fn get_all_channel(sender: Sender<AirportsMap>) -> Result<()> {
+        let mut airports = AirportsMap::new();
+        let countries_cache = Country::get_all()?;
+        let reader = reader_from(AIRPORTS_PATH, true)?;
+        let sendable_step = 500; // mandar cada 100 iteraciones
+
+        for (i, line) in reader.lines().map_while(IOResult::ok).enumerate() {
+            let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
+            airports.insert(
+                tokens[1].to_string(),
+                Self::from_tokens(tokens, &countries_cache)?,
+            );
+            if i % sendable_step == 0 {
+                let _ = sender.send(airports.clone());
+                airports.clear();
+            }
+        }
+
+        if !airports.is_empty() {
+            let _ = sender.send(airports.clone());
+        }
+
+        Ok(())
     }
 }
