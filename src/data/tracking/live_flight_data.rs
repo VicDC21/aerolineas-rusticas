@@ -1,6 +1,6 @@
 //! Módulo para datos de vuelos en vivo.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 
 use crate::{
     client::{col_data::ColData, protocol_result::ProtocolResult},

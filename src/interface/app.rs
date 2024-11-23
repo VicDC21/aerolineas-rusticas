@@ -108,9 +108,13 @@ impl App for AerolineasApp {
             self.airlines_details
                 .set_airports(self.airports_loader.take_airports());
             self.airlines_details
-                .set_incoming_flights(self.flights_loader.take_incoming(), false);
+                .set_incoming_flights(self.flights_loader.take_fl_incoming(), false);
             self.airlines_details
-                .set_departing_flights(self.flights_loader.take_departing(), false);
+                .set_departing_flights(self.flights_loader.take_fl_departing(), false);
+            self.airlines_details
+                .set_incoming_tracking(self.flights_loader.take_tr_incoming());
+            self.airlines_details
+                .set_departing_tracking(self.flights_loader.take_tr_departing());
 
             self.airports_drawer
                 .sync_airports(self.airlines_details.get_airports())
