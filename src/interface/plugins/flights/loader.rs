@@ -17,10 +17,7 @@ use crate::{
     client::cli::Client,
     data::{
         airports::airp::Airport,
-        flights::{
-            departing::DepartingFlight, types::FlightType, incoming::IncomingFlight,
-            traits::Flight,
-        },
+        flights::{flight::Flight, types::FlightType},
     },
     protocol::{
         aliases::{results::Result, types::Long},
@@ -49,10 +46,10 @@ pub struct FlightsLoader {
     selected_airport: Arc<Option<Airport>>,
 
     /// Los vuelos entrantes actualmente en memoria.
-    incoming_flights: Option<Vec<IncomingFlight>>,
+    incoming_flights: Option<Vec<Flight>>,
 
     /// Los vuelso salientes actualmente en memoria.
-    departing_flights: Option<Vec<DepartingFlight>>,
+    departing_flights: Option<Vec<Flight>>,
 
     /// El tiempo que pasó desde la última _query_.
     last_checked: Instant,
@@ -61,16 +58,16 @@ pub struct FlightsLoader {
     date: DateTime<Local>,
 
     /// Hilo hijo para cargar vuelos entrantes.
-    incoming_child: DateChild,
+    incoming_airp_child: DateChild,
 
     /// Extremo de canal que recibe actualizaciones de los vuelos entrantes.
-    incoming_receiver: Receiver<Vec<FlightType>>,
+    incoming_receiver: Receiver<Vec<Flight>>,
 
     /// Hilo hijo para cargar vuelos salientes.
-    departing_child: DateChild,
+    departing_airp_child: DateChild,
 
     /// Extremo de canal que recibe actualizaciones de los vuelos entrantes.
-    departing_receiver: Receiver<Vec<FlightType>>,
+    departing_receiver: Receiver<Vec<Flight>>,
 }
 
 impl FlightsLoader {
@@ -78,11 +75,11 @@ impl FlightsLoader {
     pub fn new(
         client: Arc<Mutex<Client>>,
         selected_airport: Arc<Option<Airport>>,
-        flights: (Option<Vec<IncomingFlight>>, Option<Vec<DepartingFlight>>),
+        flights: (Option<Vec<Flight>>, Option<Vec<Flight>>),
         last_checked: Instant,
         date: DateTime<Local>,
         children: (DateChild, DateChild),
-        receivers: (Receiver<Vec<FlightType>>, Receiver<Vec<FlightType>>),
+        receivers: (Receiver<Vec<Flight>>, Receiver<Vec<Flight>>),
     ) -> Self {
         let (incoming_receiver, departing_receiver) = receivers;
         let (incoming_flights, departing_flights) = flights;
@@ -95,40 +92,32 @@ impl FlightsLoader {
             departing_flights,
             last_checked,
             date,
-            incoming_child,
+            incoming_airp_child: incoming_child,
             incoming_receiver,
-            departing_child,
+            departing_airp_child: departing_child,
             departing_receiver,
         }
     }
 
     /// Genera el hilo hijo para cargar vuelos entrantes.
     pub fn gen_incoming_child(
-        to_parent: Sender<Vec<FlightType>>,
+        to_parent: Sender<Vec<Flight>>,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
-        Self::gen_date_child(
-            to_parent,
-            FlightType::Incoming(IncomingFlight::dummy()),
-            client,
-        )
+        Self::gen_date_child(to_parent, FlightType::Incoming, client)
     }
 
     /// Genera el hilo hijo para cargar vuelos salientes.
     pub fn gen_departing_child(
-        to_parent: Sender<Vec<FlightType>>,
+        to_parent: Sender<Vec<Flight>>,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
-        Self::gen_date_child(
-            to_parent,
-            FlightType::Departing(DepartingFlight::dummy()),
-            client,
-        )
+        Self::gen_date_child(to_parent, FlightType::Departing, client)
     }
 
     /// Genera un hilo hijo.
     fn gen_date_child(
-        to_parent: Sender<Vec<FlightType>>,
+        to_parent: Sender<Vec<Flight>>,
         flight_type: FlightType,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
@@ -182,7 +171,7 @@ impl FlightsLoader {
     /// y en su lugar deja [None].
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
-    pub fn take_incoming(&mut self) -> Vec<IncomingFlight> {
+    pub fn take_incoming(&mut self) -> Vec<Flight> {
         self.incoming_flights.take().unwrap_or_default()
     }
 
@@ -190,7 +179,7 @@ impl FlightsLoader {
     /// y en su lugar deja [None].
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
-    pub fn take_departing(&mut self) -> Vec<DepartingFlight> {
+    pub fn take_departing(&mut self) -> Vec<Flight> {
         self.departing_flights.take().unwrap_or_default()
     }
 
@@ -229,7 +218,7 @@ impl FlightsLoader {
         flight_type: &FlightType,
         selected_airport: &Option<Airport>,
         timestamp: &Long,
-    ) -> Result<Vec<FlightType>> {
+    ) -> Result<Vec<Flight>> {
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
                 return Err(Error::ServerError(format!(
@@ -244,16 +233,16 @@ impl FlightsLoader {
 
         let airport = match selected_airport {
             Some(airp) => airp,
-            None => return Ok(Vec::<FlightType>::new()),
+            None => return Ok(Vec::<Flight>::new()),
         };
         let query = match flight_type {
-            FlightType::Incoming(_) => format!(
+            FlightType::Incoming => format!(
                 "SELECT * FROM vuelos_entrantes WHERE dest = '{}' AND llegada < {} AND llegada > {};",
                 airport.ident,
                 timestamp + (DAY_IN_SECONDS / 2),
                 timestamp - (DAY_IN_SECONDS / 2),
             ),
-            FlightType::Departing(_) => format!(
+            FlightType::Departing => format!(
                 "SELECT * FROM vuelos_salientes WHERE orig = '{}' AND salida < {} AND salida > {};",
                 airport.ident,
                 timestamp + (DAY_IN_SECONDS / 2),
@@ -262,24 +251,15 @@ impl FlightsLoader {
         };
 
         let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
-        let flights = match flight_type {
-            FlightType::Incoming(_) => IncomingFlight::try_from_protocol_result(protocol_result)?
-                .into_iter()
-                .map(FlightType::Incoming)
-                .collect(),
-            FlightType::Departing(_) => DepartingFlight::try_from_protocol_result(protocol_result)?
-                .into_iter()
-                .map(FlightType::Departing)
-                .collect(),
-        };
+        let flights = Flight::try_from_protocol_result(protocol_result, &flight_type)?;
 
         Ok(flights)
     }
 
     /// Apaga y espera a todos los hilos hijos.
     pub fn wait_children(&mut self) {
-        Self::wait_for_child(&mut self.incoming_child);
-        Self::wait_for_child(&mut self.departing_child);
+        Self::wait_for_child(&mut self.incoming_airp_child);
+        Self::wait_for_child(&mut self.departing_airp_child);
     }
 
     /// Espera a un hijo específico.
@@ -302,8 +282,8 @@ impl FlightsLoader {
 impl Default for FlightsLoader {
     fn default() -> Self {
         let client = Arc::new(Mutex::new(Client::default()));
-        let (incoming_sender, incoming_receiver) = channel::<Vec<FlightType>>();
-        let (departing_sender, departing_receiver) = channel::<Vec<FlightType>>();
+        let (incoming_sender, incoming_receiver) = channel::<Vec<Flight>>();
+        let (departing_sender, departing_receiver) = channel::<Vec<Flight>>();
 
         let incoming_client = Arc::clone(&client);
         let departing_client = Arc::clone(&client);
@@ -311,10 +291,7 @@ impl Default for FlightsLoader {
         Self::new(
             client,
             Arc::new(None),
-            (
-                Some(Vec::<IncomingFlight>::new()),
-                Some(Vec::<DepartingFlight>::new()),
-            ),
+            (Some(Vec::<Flight>::new()), Some(Vec::<Flight>::new())),
             Instant::now(),
             Local::now(),
             (
@@ -331,7 +308,7 @@ impl Plugin for &mut FlightsLoader {
         if self.elapsed_at_least(&Duration::from_secs(FLIGHTS_INTERVAL_SECS)) {
             self.reset_instant();
 
-            let (_, incoming_sender) = &mut self.incoming_child;
+            let (_, incoming_sender) = &mut self.incoming_airp_child;
             if let Err(err) =
                 incoming_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
             {
@@ -341,7 +318,7 @@ impl Plugin for &mut FlightsLoader {
                 );
             }
 
-            let (_, departing_sender) = &mut self.departing_child;
+            let (_, departing_sender) = &mut self.departing_airp_child;
             if let Err(err) =
                 departing_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
             {
@@ -354,13 +331,13 @@ impl Plugin for &mut FlightsLoader {
 
         if let Ok(new_incoming) = self.incoming_receiver.try_recv() {
             if !new_incoming.is_empty() {
-                self.incoming_flights = Some(FlightType::filter_incoming(new_incoming));
+                self.incoming_flights = Some(new_incoming);
             }
         }
 
         if let Ok(new_departing) = self.departing_receiver.try_recv() {
             if !new_departing.is_empty() {
-                self.departing_flights = Some(FlightType::filter_departing(new_departing));
+                self.departing_flights = Some(new_departing);
             }
         }
     }

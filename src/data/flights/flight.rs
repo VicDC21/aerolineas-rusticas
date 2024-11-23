@@ -1,19 +1,19 @@
-//! Módulo para vuelos salientes.
+//! Módulo para la estructura de vuelo.
 
 use chrono::{DateTime, TimeZone, Utc};
 
 use crate::client::col_data::ColData;
 use crate::client::protocol_result::ProtocolResult;
-use crate::data::flights::{states::FlightState, traits::Flight};
+use crate::data::flights::{states::FlightState, types::FlightType};
 use crate::protocol::aliases::{
     results::Result,
     types::{Int, Long},
 };
 use crate::protocol::errors::error::Error;
 
-/// Un vuelo que ha partido.
+/// Un vuelo propiamente dicho.
 #[derive(Debug)]
-pub struct DepartingFlight {
+pub struct Flight {
     /// El ID único del vuelo saliente.
     pub id: Int,
 
@@ -23,33 +23,61 @@ pub struct DepartingFlight {
     /// El [identificador](crate::data::airports::Airport::ident) del aeropuerto de destino.
     pub dest: String,
 
-    /// El momento en que ha comenzado el vuelo.
-    pub take_off: Long,
+    /// El momento en que comienzao finaliza el vuelo.
+    timestamp: Long,
 
     /// El estado del vuelo.
     pub state: FlightState,
+
+    /// El tipo de vuelo.
+    pub flight_type: FlightType,
 }
 
-impl DepartingFlight {
+impl Flight {
     /// Crea una nueva instancia de vuelo.
-    pub fn new(id: Int, orig: String, dest: String, take_off: Long, state: FlightState) -> Self {
+    pub fn new(
+        id: Int,
+        orig: String,
+        dest: String,
+        timestamp: Long,
+        state: FlightState,
+        flight_type: FlightType,
+    ) -> Self {
         Self {
             id,
             orig,
             dest,
-            take_off,
+            timestamp,
             state,
+            flight_type,
         }
     }
 
+    /// Consigue el timestamp del vuelo.
+    ///
+    /// Esto es un alias para los vuelos entrantes.
+    pub fn arrival(&self) -> Long {
+        self.timestamp
+    }
+
+    /// Consigue el timestamp del vuelo.
+    ///
+    /// Esto es un alias para los vuelos salientes.
+    pub fn take_off(&self) -> Long {
+        self.timestamp
+    }
+
     /// Trata de parsear el resultado de una _query_ a los vuelos correspondientes.
-    pub fn try_from_protocol_result(protocol_res: ProtocolResult) -> Result<Vec<Self>> {
-        let mut departing = Vec::<Self>::new();
+    pub fn try_from_protocol_result(
+        protocol_res: ProtocolResult,
+        flight_type: &FlightType,
+    ) -> Result<Vec<Self>> {
+        let mut flights = Vec::<Self>::new();
 
         if let ProtocolResult::QueryError(err) = protocol_res {
             return Err(err);
         } else if let ProtocolResult::Rows(rows) = protocol_res {
-            let preferred_len = 6;
+            let preferred_len = 5;
             for row in rows {
                 if row.len() != preferred_len {
                     return Err(Error::ServerError(format!(
@@ -66,15 +94,16 @@ impl DepartingFlight {
                         // 2. Destino
                         if let ColData::String(dest) = &row[2] {
                             // 3. Salida
-                            if let ColData::Timestamp(take_off) = &row[3] {
+                            if let ColData::Timestamp(timestamp) = &row[3] {
                                 // 4. Estado
                                 if let ColData::String(state) = &row[4] {
-                                    departing.push(DepartingFlight::new(
+                                    flights.push(Self::new(
                                         *id,
                                         orig.to_string(),
                                         dest.to_string(),
-                                        *take_off,
+                                        *timestamp,
                                         FlightState::try_from(state.as_str())?,
+                                        flight_type.clone(),
                                     ));
                                 }
                             }
@@ -84,16 +113,11 @@ impl DepartingFlight {
             }
         }
 
-        Ok(departing)
-    }
-}
-
-impl Flight for DepartingFlight {
-    fn dummy() -> Self {
-        Self::new(0, "".to_string(), "".to_string(), 0, FlightState::Canceled)
+        Ok(flights)
     }
 
-    fn get_date(&self) -> Option<DateTime<Utc>> {
-        Utc.timestamp_opt(self.take_off, 0).single()
+    /// Transforma el timestamp en una fecha.
+    pub fn get_date(&self) -> Option<DateTime<Utc>> {
+        Utc.timestamp_opt(self.timestamp, 0).single()
     }
 }

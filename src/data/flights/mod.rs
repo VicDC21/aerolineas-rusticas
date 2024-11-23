@@ -1,7 +1,5 @@
 //! Paquete para datos de vuelos.
 
-pub mod departing;
-pub mod types;
-pub mod incoming;
+pub mod flight;
 pub mod states;
-pub mod traits;
+pub mod types;
