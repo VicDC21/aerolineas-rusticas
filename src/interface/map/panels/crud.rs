@@ -34,7 +34,7 @@ pub fn insert_flight(
     let departing_client = Arc::clone(&client);
     let departing_query = format!(
         "INSERT INTO vuelos_salientes (id, orig, dest, salida, estado) VALUES ({}, '{}', '{}', {}, '{}');",
-        flight_id as Int, cur_airport.ident, cur_airport.ident, timestamp, FlightState::InCourse
+        flight_id as Int, cur_airport.ident, ex_airport.ident, timestamp, FlightState::InCourse
     );
 
     send_client_query(incoming_client, incoming_query.as_str())?;
