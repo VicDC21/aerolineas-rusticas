@@ -217,13 +217,13 @@ impl FlightSimulator {
         client: &Client,
     ) -> Result<(), Error> {
         let incoming_query = format!(
-            "INSERT INTO vuelos_entrantes_en_vivo (id, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', {}, {}, {}, '{}', {}, {}, {});",
-            flight.flight_number.parse::<i64>().unwrap(), flight.destination, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
+            "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {});",
+            flight.flight_number.parse::<i64>().unwrap(), flight.origin, flight.destination, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
         );
 
         let departing_query = format!(
-            "INSERT INTO vuelos_salientes_en_vivo (id, orig, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', {}, {}, {}, '{}', {}, {}, {});",
-            flight.flight_number.parse::<i64>().unwrap(), flight.origin, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
+            "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {});",
+            flight.flight_number.parse::<i64>().unwrap(), flight.origin, flight.destination, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
         );
 
         FlightSimulator::send_insert_query(&incoming_query, &mut client.clone())?;
