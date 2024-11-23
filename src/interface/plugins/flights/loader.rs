@@ -32,7 +32,7 @@ type ChildHandle = JoinHandle<Result<()>>;
 type DateChild = (Option<ChildHandle>, Sender<(Arc<Option<Airport>>, Long)>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
-const FLIGHTS_INTERVAL_SECS: u64 = 2;
+const FLIGHTS_INTERVAL_SECS: u64 = 3;
 
 /// Un día en segundos.
 const DAY_IN_SECONDS: i64 = 86400;
@@ -58,16 +58,10 @@ pub struct FlightsLoader {
     date: DateTime<Local>,
 
     /// Hilo hijo para cargar vuelos entrantes.
-    incoming_airp_child: DateChild,
-
-    /// Extremo de canal que recibe actualizaciones de los vuelos entrantes.
-    incoming_receiver: Receiver<Vec<Flight>>,
+    incoming_child: (DateChild, Receiver<Vec<Flight>>),
 
     /// Hilo hijo para cargar vuelos salientes.
-    departing_airp_child: DateChild,
-
-    /// Extremo de canal que recibe actualizaciones de los vuelos entrantes.
-    departing_receiver: Receiver<Vec<Flight>>,
+    departing_child: (DateChild, Receiver<Vec<Flight>>),
 }
 
 impl FlightsLoader {
@@ -78,10 +72,11 @@ impl FlightsLoader {
         flights: (Option<Vec<Flight>>, Option<Vec<Flight>>),
         last_checked: Instant,
         date: DateTime<Local>,
-        children: (DateChild, DateChild),
-        receivers: (Receiver<Vec<Flight>>, Receiver<Vec<Flight>>),
+        children: (
+            (DateChild, Receiver<Vec<Flight>>),
+            (DateChild, Receiver<Vec<Flight>>),
+        ),
     ) -> Self {
-        let (incoming_receiver, departing_receiver) = receivers;
         let (incoming_flights, departing_flights) = flights;
         let (incoming_child, departing_child) = children;
 
@@ -92,10 +87,8 @@ impl FlightsLoader {
             departing_flights,
             last_checked,
             date,
-            incoming_airp_child: incoming_child,
-            incoming_receiver,
-            departing_airp_child: departing_child,
-            departing_receiver,
+            incoming_child,
+            departing_child,
         }
     }
 
@@ -258,8 +251,8 @@ impl FlightsLoader {
 
     /// Apaga y espera a todos los hilos hijos.
     pub fn wait_children(&mut self) {
-        Self::wait_for_child(&mut self.incoming_airp_child);
-        Self::wait_for_child(&mut self.departing_airp_child);
+        Self::wait_for_child(&mut self.incoming_child.0);
+        Self::wait_for_child(&mut self.departing_child.0);
     }
 
     /// Espera a un hijo específico.
@@ -295,10 +288,15 @@ impl Default for FlightsLoader {
             Instant::now(),
             Local::now(),
             (
-                Self::gen_incoming_child(incoming_sender.clone(), incoming_client),
-                Self::gen_departing_child(departing_sender.clone(), departing_client),
+                (
+                    Self::gen_incoming_child(incoming_sender.clone(), incoming_client),
+                    incoming_receiver,
+                ),
+                (
+                    Self::gen_departing_child(departing_sender.clone(), departing_client),
+                    departing_receiver,
+                ),
             ),
-            (incoming_receiver, departing_receiver),
         )
     }
 }
@@ -308,7 +306,7 @@ impl Plugin for &mut FlightsLoader {
         if self.elapsed_at_least(&Duration::from_secs(FLIGHTS_INTERVAL_SECS)) {
             self.reset_instant();
 
-            let (_, incoming_sender) = &mut self.incoming_airp_child;
+            let ((_, incoming_sender), _) = &mut self.incoming_child;
             if let Err(err) =
                 incoming_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
             {
@@ -318,7 +316,7 @@ impl Plugin for &mut FlightsLoader {
                 );
             }
 
-            let (_, departing_sender) = &mut self.departing_airp_child;
+            let ((_, departing_sender), _) = &mut self.departing_child;
             if let Err(err) =
                 departing_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
             {
@@ -329,13 +327,13 @@ impl Plugin for &mut FlightsLoader {
             }
         }
 
-        if let Ok(new_incoming) = self.incoming_receiver.try_recv() {
+        if let Ok(new_incoming) = self.incoming_child.1.try_recv() {
             if !new_incoming.is_empty() {
                 self.incoming_flights = Some(new_incoming);
             }
         }
 
-        if let Ok(new_departing) = self.departing_receiver.try_recv() {
+        if let Ok(new_departing) = self.departing_child.1.try_recv() {
             if !new_departing.is_empty() {
                 self.departing_flights = Some(new_departing);
             }
