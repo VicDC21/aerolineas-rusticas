@@ -13,13 +13,14 @@ use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position};
 use crate::client::cli::Client;
 use crate::interface::{
     data::app_details::AirlinesDetails,
-    map::{
-        panels::show::{cur_airport_info, extra_airport_info},
-        windows::{airports_progress, clock_selector, date_selector, go_to_my_position, zoom},
-    },
+    panels::show::{cur_airport_info, extra_airport_info},
     plugins::{
         airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
         flights::loader::FlightsLoader,
+    },
+    windows::{
+        airp::{airports_progress, clock_selector, date_selector},
+        util::{go_to_my_position, zoom},
     },
 };
 
