@@ -25,7 +25,7 @@ struct FlightSimulationParams {
     simulation_limit: Duration,
     step_size: f64,
     initial_fuel: f64,
-    fuel_consumption_rate: f64,
+    _fuel_consumption_rate: f64,
 }
 
 /// Simulador de vuelos.
@@ -101,7 +101,7 @@ impl FlightSimulator {
         let mut rng = thread_rng();
         let _ = Self::prepare_flight(&flights, &mut flight, &client);
 
-        let (total_distance, initial_fuel, fuel_consumption_rate) =
+        let (total_distance, initial_fuel, _fuel_consumption_rate) =
             Self::initialize_flight_parameters(&flight, dest_coords);
 
         flight.state = FlightState::InCourse;
@@ -120,7 +120,7 @@ impl FlightSimulator {
             simulation_limit,
             step_size,
             initial_fuel,
-            fuel_consumption_rate,
+            _fuel_consumption_rate,
         };
 
         Self::run_flight_simulation(&flights, &mut flight, &client, &params, &mut rng);
@@ -135,21 +135,15 @@ impl FlightSimulator {
         params: &FlightSimulationParams,
         rng: &mut rand::rngs::ThreadRng,
     ) {
-        let mut distance_traveled = 0.0;
+        let mut _distance_traveled = 0.0;
+        let total_distance = FlightCalculations::calculate_distance(
+            flight.lat(),
+            flight.lon(),
+            params.dest_coords.0,
+            params.dest_coords.1,
+        );
 
         while params.simulation_start.elapsed() < params.simulation_limit {
-            let step_distance = FlightCalculations::calculate_distance(
-                flight.lat(),
-                flight.lon(),
-                params.dest_coords.0,
-                params.dest_coords.1,
-            );
-
-            distance_traveled += step_distance;
-            let current_fuel = (params.initial_fuel
-                - (distance_traveled * params.fuel_consumption_rate))
-                .max(60.0);
-
             let progress = params.simulation_start.elapsed().as_secs_f64()
                 / params.simulation_limit.as_secs_f64();
 
@@ -161,6 +155,20 @@ impl FlightSimulator {
                 params.dest_elevation,
                 rng,
             );
+
+            let step_distance = FlightCalculations::calculate_distance(
+                flight.lat(),
+                flight.lon(),
+                params.dest_coords.0,
+                params.dest_coords.1,
+            );
+
+            _distance_traveled = total_distance - step_distance;
+
+            let progress_factor = _distance_traveled / total_distance;
+            let current_fuel =
+                params.initial_fuel - ((params.initial_fuel - 60.0) * progress_factor);
+
             Self::update_flight_in_list(flights, flight);
 
             let timestamp = SystemTime::now()
@@ -289,6 +297,7 @@ impl FlightSimulator {
 
         Ok(())
     }
+
     fn initialize_flight_parameters(
         flight: &LiveFlightData,
         dest_coords: (f64, f64),
@@ -302,9 +311,9 @@ impl FlightSimulator {
 
         let initial_fuel = 100.0;
         let final_fuel = 60.0;
-        let fuel_consumption_rate = (initial_fuel - final_fuel) / total_distance;
+        let _fuel_consumption_rate = (initial_fuel - final_fuel) / total_distance;
 
-        (total_distance, initial_fuel, fuel_consumption_rate)
+        (total_distance, initial_fuel, _fuel_consumption_rate)
     }
 
     fn update_flight_position(

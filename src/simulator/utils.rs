@@ -70,11 +70,15 @@ impl FlightCalculations {
         progress: f64,
     ) -> f64 {
         const CRUISE_ALTITUDE: f64 = 35000.0;
+        const ASCENT_PHASE: f64 = 0.15;
+        const DESCENT_PHASE: f64 = 0.85;
 
-        if progress < 0.1 {
-            origin_elevation + (CRUISE_ALTITUDE - origin_elevation) * (progress * 10.0)
-        } else if progress > 0.9 {
-            CRUISE_ALTITUDE - (CRUISE_ALTITUDE - dest_elevation) * ((progress - 0.9) * 10.0)
+        if progress < ASCENT_PHASE {
+            origin_elevation
+                + (CRUISE_ALTITUDE - origin_elevation) * (progress / ASCENT_PHASE).powi(2)
+        } else if progress > DESCENT_PHASE {
+            let descent_progress = (progress - DESCENT_PHASE) / (1.0 - DESCENT_PHASE);
+            CRUISE_ALTITUDE - (CRUISE_ALTITUDE - dest_elevation) * descent_progress.powi(2)
         } else {
             CRUISE_ALTITUDE
         }
@@ -86,18 +90,24 @@ impl FlightCalculations {
         progress: f64,
         rng: &mut rand::rngs::ThreadRng,
     ) -> f64 {
-        if progress < 0.1 {
-            avg_speed * (progress * 10.0)
-        } else if progress > 0.9 {
-            avg_speed * (1.0 - ((progress - 0.9) * 10.0))
+        const ASCENT_PHASE: f64 = 0.15;
+        const DESCENT_PHASE: f64 = 0.85;
+
+        let base_speed = if progress < ASCENT_PHASE {
+            avg_speed * (progress / ASCENT_PHASE).powi(2)
+        } else if progress > DESCENT_PHASE {
+            let descent_progress = (progress - DESCENT_PHASE) / (1.0 - DESCENT_PHASE);
+            avg_speed * (1.0 - descent_progress.powi(2))
         } else {
-            avg_speed * (1.0 + rng.gen_range(-0.05..0.05))
-        }
+            avg_speed
+        };
+
+        base_speed * (1.0 + rng.gen_range(-0.02..0.02))
     }
 
     /// Calcula la altitud actual agregando una variación aleatoria
     pub fn calculate_current_altitude(base_altitude: f64, rng: &mut rand::rngs::ThreadRng) -> f64 {
-        base_altitude + rng.gen_range(-100.0..100.0)
+        base_altitude + rng.gen_range(-50.0..50.0)
     }
 }
 
