@@ -176,7 +176,7 @@ impl FlightSimulator {
                 new_lon + rng.gen_range(-0.001..0.001),
             );
 
-            flight.spd = flight.avg_spd() * (1.0 + rng.gen_range(-0.05..0.05));
+            flight.set_spd(flight.avg_spd() * (1.0 + rng.gen_range(-0.05..0.05)));
 
             flight.altitude_ft =
                 Self::calculate_cruise_altitude(flight.altitude_ft, dest_elevation, progress)
@@ -229,11 +229,11 @@ impl FlightSimulator {
     ) -> Result<(), Error> {
         let incoming_query = format!(
             "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {});",
-            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state.clone() as i32, flight.spd, flight.altitude_ft, 100.0);
+            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state.clone() as i32, flight.get_spd(), flight.altitude_ft, 100.0);
 
         let departing_query = format!(
             "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {});",
-            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state.clone() as i32, flight.spd, flight.altitude_ft, 100.0);
+            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state.clone() as i32, flight.get_spd(), flight.altitude_ft, 100.0);
 
         Self::send_insert_query(&incoming_query, &mut client.clone())?;
         Self::send_insert_query(&departing_query, &mut client.clone())?;

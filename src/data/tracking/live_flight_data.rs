@@ -30,7 +30,7 @@ pub struct LiveFlightData {
     timestamp: Long,
 
     /// La velocidal actual, o rapidez instantánea, del vuelo en curso.
-    pub spd: Double,
+    spd: Double,
 
     /// Un registro interno de todas las lecturas de velocidad anteriores desde
     /// que se creó la instancia.
@@ -77,6 +77,17 @@ impl LiveFlightData {
             flight_type,
             state,
         }
+    }
+
+    /// Consigue la velocidad actual.
+    pub fn get_spd(&self) -> &Double {
+        &self.spd
+    }
+
+    /// Actualiza la velocidad.
+    pub fn set_spd(&mut self, new_spd: Double) {
+        self.spd_readings.push(new_spd);
+        self.spd = new_spd;
     }
 
     /// Devuelve la velocidad promedio entre todas las lecturas anteriores.
