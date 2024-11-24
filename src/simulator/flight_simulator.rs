@@ -160,7 +160,7 @@ impl FlightSimulator {
         let initial_fuel = 100.0;
         let final_fuel = 60.0;
         let fuel_consumption_rate = (initial_fuel - final_fuel) / total_distance;
-        let mut current_fuel = initial_fuel;
+        let mut _current_fuel = initial_fuel;
         let mut distance_traveled = 0.0;
 
         flight.state = FlightState::InCourse;
@@ -197,7 +197,7 @@ impl FlightSimulator {
             let step_distance = r * c;
 
             distance_traveled += step_distance;
-            current_fuel =
+            _current_fuel =
                 (initial_fuel - (distance_traveled * fuel_consumption_rate)).max(final_fuel);
 
             flight.pos = (new_lat, new_lon);
@@ -230,7 +230,7 @@ impl FlightSimulator {
                 .unwrap_or_else(|_| Duration::from_secs(0))
                 .as_secs() as i64;
 
-            let _ = Self::send_flight_update(&flight, timestamp, &client, current_fuel);
+            let _ = Self::send_flight_update(&flight, timestamp, &client, _current_fuel);
 
             thread::sleep(Duration::from_secs(1));
         }
@@ -268,7 +268,7 @@ impl FlightSimulator {
     ) -> Result<(), Error> {
         let incoming_query = format!(
             "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {:.4}, {:.4}, '{}', {}, {}, {});",
-            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state.clone() as i32, flight.spd, flight.altitude_ft, fuel);
+            flight.flight_id, flight.dest, flight.orig, timestamp, flight.lat(), flight.lon(), flight.state.clone() as i32, flight.spd, flight.altitude_ft, fuel);
 
         let departing_query = format!(
             "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {:.4}, {:.4}, '{}', {}, {}, {});",
