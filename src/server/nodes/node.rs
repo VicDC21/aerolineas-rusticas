@@ -54,7 +54,7 @@ use crate::tokenizer::tokenizer::tokenize_query;
 use super::{
     addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
-    graph::{LAST_ID, N_NODES, START_ID},
+    graph::{N_NODES, START_ID},
     keyspace_metadata::keyspace::Keyspace,
     port_type::PortType,
     states::{
@@ -66,9 +66,9 @@ use super::{
     },
     table_metadata::table::Table,
     utils::{
-        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string, next_node_in_the_round,
-        send_to_node, send_to_node_and_wait_response, send_to_node_and_wait_response_with_timeout,
-        string_to_hashmap, string_to_hashmap_vec,
+        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string,
+        next_node_in_the_cluster, send_to_node, send_to_node_and_wait_response,
+        send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
     },
 };
 
@@ -286,9 +286,11 @@ impl Node {
         &self.endpoint_state
     }
 
-    /// Consulta los IDs de los vecinos, incluyendo el propio.
+    /// Devuelve los IDs de los vecinos, incluyendo el propio. Ordenados de menor a mayor.
     fn get_neighbours_ids(&self) -> Vec<NodeId> {
-        self.neighbours_states.keys().copied().collect()
+        let mut nodes_ids: Vec<NodeId> = self.neighbours_states.keys().copied().collect();
+        nodes_ids.sort();
+        nodes_ids
     }
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
@@ -1002,19 +1004,21 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 0..N_NODES {
-            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
-            response = if node_id != self.id {
+        let mut actual_node_id = self.id;
+        let nodes_ids = self.get_neighbours_ids();
+        for _ in 0..N_NODES {
+            response = if actual_node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    node_id,
+                    actual_node_id,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
                 )?
             } else {
                 self.process_internal_use_statement(&keyspace_name)?
-            }
+            };
+            actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
         Ok(response)
     }
@@ -1044,19 +1048,21 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 0..N_NODES {
-            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
-            response = if node_id != self.id {
+        let mut actual_node_id = self.id;
+        let nodes_ids = self.get_neighbours_ids();
+        for _ in 0..N_NODES {
+            response = if actual_node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    node_id,
+                    actual_node_id,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
                 )?
             } else {
                 self.process_internal_create_keyspace_statement(&create_keyspace)?
-            }
+            };
+            actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
         Ok(response)
     }
@@ -1087,13 +1093,13 @@ impl Node {
         }
 
         let mut responses = Vec::new();
-        for actual_node in 0..N_NODES {
-            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
-
-            let response = if node_id != self.id {
+        let mut actual_node_id = self.id;
+        let nodes_ids = self.get_neighbours_ids();
+        for _ in 0..N_NODES {
+            let response = if actual_node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    node_id,
+                    actual_node_id,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
@@ -1102,6 +1108,7 @@ impl Node {
                 self.process_internal_alter_keyspace_statement(&alter_keyspace)?
             };
             responses.push(response);
+            actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
         Ok(self.create_result_void())
     }
@@ -1147,13 +1154,13 @@ impl Node {
         }
 
         let mut responses = Vec::new();
-        for actual_node in 0..N_NODES {
-            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
-
-            let response = if node_id != self.id {
+        let mut actual_node_id = self.id;
+        let nodes_ids = self.get_neighbours_ids();
+        for _ in 0..N_NODES {
+            let response = if actual_node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    node_id,
+                    actual_node_id,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
@@ -1162,6 +1169,7 @@ impl Node {
                 self.process_internal_drop_keyspace_statement(&drop_keyspace)?
             };
             responses.push(response);
+            actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
         Ok(self.create_result_void())
     }
@@ -1230,17 +1238,17 @@ impl Node {
         let keyspace = self.get_keyspace_from_name(&keyspace_name)?;
         let quantity_replicas = self.get_quantity_of_replicas_from_keyspace(keyspace)?;
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node_id in START_ID..LAST_ID {
-            for i in 0..quantity_replicas {
-                let next_node_id =
-                    next_node_in_the_round(actual_node_id, i as u8, START_ID, LAST_ID);
+        let nodes_ids = self.get_neighbours_ids();
+        for actual_node_id in &nodes_ids {
+            let mut next_node_id = *actual_node_id;
+            for _ in 0..quantity_replicas {
                 response = if next_node_id == self.id {
-                    self.process_internal_create_table_statement(&create_table, actual_node_id)?
+                    self.process_internal_create_table_statement(&create_table, *actual_node_id)?
                 } else {
                     let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         None,
-                        Some(actual_node_id),
+                        Some(*actual_node_id),
                     );
                     self.send_message_and_wait_response_with_timeout(
                         request_with_metadata,
@@ -1249,7 +1257,8 @@ impl Node {
                         true,
                         TIMEOUT_SECS,
                     )?
-                }
+                };
+                next_node_id = next_node_in_the_cluster(next_node_id, &nodes_ids);
             }
         }
         Ok(response)
@@ -1502,8 +1511,9 @@ impl Node {
         let mut consistency_counter = 0;
         let mut wait_response = true;
 
+        let nodes_ids = self.get_neighbours_ids();
+        let mut node_to_replicate = node_id;
         for i in 0..N_NODES {
-            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
             if (i as u32) < replication_factor_quantity {
                 response = if node_to_replicate == self.id {
                     self.process_insert(&insert, timestamp, node_id)?
@@ -1551,6 +1561,7 @@ impl Node {
                     TIMEOUT_SECS,
                 )?;
             };
+            node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
 
             if consistency_counter >= consistency_number {
                 wait_response = false;
@@ -1690,8 +1701,9 @@ impl Node {
         update: &Update,
         timestamp: i64,
     ) -> Result<()> {
-        for i in 1..replication_factor {
-            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
+        let nodes_ids = self.get_neighbours_ids();
+        let mut node_to_replicate = node_id;
+        for _ in 1..replication_factor {
             if node_to_replicate == self.id {
                 self.process_update(update, timestamp, node_id)?;
             } else {
@@ -1719,6 +1731,8 @@ impl Node {
                     }
                 }
             }
+            node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
+
             // if consistency_counter >= consistency_number {
             //     wait_response = false;
             // } else if verify_succesful_response(&current_response) {
@@ -1832,9 +1846,9 @@ impl Node {
             // Si hubo timeout al esperar la respuesta, se intenta con las replicas
             if result.is_empty() {
                 self.acknowledge_offline_neighbour(node_id);
-                for i in 1..replication_factor_quantity {
-                    let node_to_replicate =
-                        next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
+                let nodes_ids = self.get_neighbours_ids();
+                let mut node_to_replicate = node_id;
+                for _ in 1..replication_factor_quantity {
                     if node_to_replicate != node_id {
                         if self.neighbour_is_responsive(node_to_replicate) {
                             let request_with_metadata =
@@ -1862,6 +1876,7 @@ impl Node {
                             *replicas_asked += 1;
                         }
                     }
+                    node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
                 }
             }
             result
@@ -1888,8 +1903,9 @@ impl Node {
         let (node_id, replicas_asked) = id_and_replicas_asked;
         let first_hashed_value = hash_value(response_from_first_responsive_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
-        for i in replicas_asked..consistency_number {
-            let node_to_consult = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
+        let nodes_ids = self.get_neighbours_ids();
+        let mut node_to_consult = node_id;
+        for _ in replicas_asked..consistency_number {
             let opcode_with_hashed_value = self.decide_how_to_request_the_digest_read_request(
                 node_to_consult,
                 request,
@@ -1903,6 +1919,7 @@ impl Node {
                 consistency_counter,
                 &mut responses,
             )?;
+            node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
         }
         check_if_read_repair_is_neccesary(
             consistency_counter,
@@ -1963,8 +1980,9 @@ impl Node {
         let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![];
         let mut req_with_node_replica = request[9..].to_vec();
         req_with_node_replica.push(node_id);
-        for i in 0..consistency_number {
-            let node_to_consult = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
+        let nodes_ids = self.get_neighbours_ids();
+        let mut node_to_consult = node_id;
+        for _ in 0..consistency_number {
             let res = if node_to_consult == self.id {
                 self.exec_direct_read_request(req_with_node_replica.clone())?
             } else {
@@ -1978,10 +1996,11 @@ impl Node {
                 create_utf8_string_from_bytes(extern_response)?
             };
             add_rows_with_his_node(res, &mut ids_and_rows, node_to_consult);
+            node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
         }
         let rows_as_string = get_most_recent_rows_as_string(ids_and_rows);
-        for i in 0..consistency_number {
-            let node_to_repair = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
+        let mut node_to_repair = node_id;
+        for _ in 0..consistency_number {
             if node_to_repair == self.id {
                 let table = self.get_table(table_name)?;
                 DiskHandler::repair_rows(
@@ -2007,6 +2026,7 @@ impl Node {
                     TIMEOUT_SECS,
                 )?;
             };
+            node_to_repair = next_node_in_the_cluster(node_to_repair, &nodes_ids);
         }
         Ok(true)
     }
@@ -2066,8 +2086,9 @@ impl Node {
     ) -> Result<()> {
         let mut consistency_counter = 0;
         let mut wait_response = true;
-        for i in 0..replication_factor {
-            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
+        let nodes_ids = self.get_neighbours_ids();
+        let mut node_to_replicate = node_id;
+        for _ in 0..replication_factor {
             let current_response = if node_to_replicate == self.id {
                 self.process_delete(delete, node_id)?
             } else {
@@ -2089,6 +2110,7 @@ impl Node {
             } else if verify_succesful_response(&current_response) {
                 consistency_counter += 1;
             }
+            node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
         }
         if consistency_counter < consistency_number {
             return Err(Error::ServerError(format!(

@@ -31,8 +31,8 @@ pub fn hash_value<T: Hash>(value: T) -> u64 {
     hasher.finish()
 }
 
-/// Devuelve el ID del siguiente nodo donde se deberían replicar datos.
-pub fn next_node_in_the_round(
+/// Devuelve el ID del siguiente nodo del cluster.
+pub fn _next_node_in_the_cluster(
     first_node_to_replicate: Byte,
     node_iterator: Byte,
     min: Byte,
@@ -40,6 +40,21 @@ pub fn next_node_in_the_round(
 ) -> Byte {
     let nodes_range = max - min;
     min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
+}
+
+/// Devuelve el ID del siguiente nodo del cluster.
+///
+/// Se asume que el vector de IDs de los nodos está ordenado de menor a mayor.
+pub fn next_node_in_the_cluster(current_id: Byte, nodes_ids: &[Byte]) -> Byte {
+    let current_index = nodes_ids.binary_search(&current_id).unwrap_or({
+        // No debería ocurrir, ya que current_id pertenece a nodes_ids siempre
+        0
+    });
+    if current_index + 1 == nodes_ids.len() {
+        nodes_ids[0]
+    } else {
+        nodes_ids[current_index + 1]
+    }
 }
 
 /// Manda un mensaje a un nodo específico.
