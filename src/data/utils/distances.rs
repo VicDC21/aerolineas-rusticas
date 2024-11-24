@@ -1,5 +1,6 @@
 //! Módulo de distancias entre dos puntos.
 
+#[cfg(feature = "gui")]
 use std::time::Duration;
 
 #[cfg(feature = "gui")]
@@ -10,8 +11,10 @@ use walkers::Position;
 use crate::protocol::aliases::types::Double;
 
 /// Velocidad promedio de un avión (en km/h).
+#[cfg(feature = "gui")]
 const AIRPLANE_AVG_SPD: f64 = 900.;
 /// Distancia aproximada entre un "grado" de latitud/longitud (en km).
+#[cfg(feature = "gui")]
 const DEG_DIST: f64 = 111.;
 
 /// Calcula la distancia teniendo en cuenta una geometría euclideana.
@@ -41,7 +44,6 @@ pub fn distance_euclidean(x1: f64, y1: f64, x2: f64, y2: f64) -> f64 {
 /// Calcula si una posición está entre otras dos posiciones.
 ///
 /// Se asume que la primera coordenada tiene valores menores que la segunda.
-#[cfg(feature = "gui")]
 pub fn inside_area(pos: (Double, Double), area: (Double, Double, Double, Double)) -> bool {
     let (pos_x, pos_y) = pos;
     let (area_min_x, area_min_y, area_max_x, area_max_y) = area;
