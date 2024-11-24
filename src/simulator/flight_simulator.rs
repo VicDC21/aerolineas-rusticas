@@ -71,18 +71,12 @@ impl FlightSimulator {
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs() as i64;
 
-        let origin_coords = (origin_airport.position.lat(), origin_airport.position.lon());
-        let dest_coords = (
-            destination_airport.position.lat(),
-            destination_airport.position.lon(),
-        );
-
         let flight = LiveFlightData::new(
             flight_id,
             (origin_airport.name, destination_airport.name),
             timestamp,
             (avg_speed, 1.0),
-            origin_coords,
+            origin_airport.position,
             origin_airport.elevation_ft.unwrap_or(0) as f64,
             (FlightType::Departing, FlightState::Preparing),
         );
@@ -96,7 +90,13 @@ impl FlightSimulator {
         }
 
         self.thread_pool.execute(move || {
-            Self::simulate_flight(flights, flight, client, dest_coords, dest_elevation);
+            Self::simulate_flight(
+                flights,
+                flight,
+                client,
+                destination_airport.position,
+                dest_elevation,
+            );
             Ok(())
         })
     }

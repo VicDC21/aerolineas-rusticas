@@ -2,6 +2,8 @@
 
 use std::sync::{Arc, Mutex};
 
+use walkers::Position;
+
 use crate::{
     client::cli::Client,
     data::{airports::airp::Airport, flights::states::FlightState, utils::distances::distance_eta},
@@ -22,7 +24,14 @@ pub fn insert_flight(
     let flight_id = cur_airport.id + ex_airport.id + timestamp as usize;
 
     let inc_fl_cli = Arc::clone(&client);
-    let flight_duration = distance_eta(&cur_airport.position, &ex_airport.position, None, None);
+    let (cur_lat, cur_lon) = cur_airport.position;
+    let (ex_lat, ex_lon) = ex_airport.position;
+    let flight_duration = distance_eta(
+        &Position::from_lat_lon(cur_lat, cur_lon),
+        &Position::from_lat_lon(ex_lat, ex_lon),
+        None,
+        None,
+    );
     let eta = (timestamp as u64 + flight_duration.as_secs()) as i64;
     let inc_fl_query = format!(
         "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES ({}, '{}', '{}', {}, '{}');",

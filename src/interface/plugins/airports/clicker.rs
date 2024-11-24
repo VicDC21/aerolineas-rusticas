@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use eframe::egui::{Painter, PointerButton, Response};
-use walkers::{Plugin, Projector};
+use walkers::{Plugin, Position, Projector};
 
 use crate::data::{airports::airp::Airport, utils::distances::distance_euclidean_pos2};
 use crate::interface::plugins::utils::zoom_is_showable;
@@ -93,7 +93,10 @@ impl Plugin for &mut ScreenClicker {
 
         if let Some(cur_pos) = cur_opt {
             for airport in self.airports.iter() {
-                let airport_pos = projector.project(airport.position).to_pos2();
+                let (lat, lon) = airport.position;
+                let airport_pos = projector
+                    .project(Position::from_lat_lon(lat, lon))
+                    .to_pos2();
                 if zoom_is_showable(&airport.airport_type, self.zoom)
                     && distance_euclidean_pos2(&cur_pos, &airport_pos) < MIN_CLICK_DIST
                 {
