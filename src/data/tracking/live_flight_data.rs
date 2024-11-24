@@ -15,6 +15,7 @@ use crate::{
 };
 
 /// Datos de vuelo en vivo.
+#[derive(Clone)]
 pub struct LiveFlightData {
     /// El ID del vuelo.
     pub flight_id: Int,

@@ -6,7 +6,7 @@ use crate::protocol::errors::error::Error;
 
 /// Un mismo vuelo puede cancelarse, atrasarse, u otras cosas que es necesario detectar.
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FlightState {
     /// Un vuelo actualmente ne curso.
     InCourse,
