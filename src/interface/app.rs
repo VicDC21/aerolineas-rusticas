@@ -16,7 +16,7 @@ use crate::interface::{
     panels::show::{cur_airport_info, extra_airport_info},
     plugins::{
         airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
-        flights::loader::FlightsLoader,
+        flights::{loader::FlightsLoader, updater::FlightsUpdater},
     },
     windows::{
         airp::{airports_progress, clock_selector, date_selector},
@@ -52,6 +52,9 @@ pub struct AerolineasApp {
     /// El cargador de vuelos.
     flights_loader: FlightsLoader,
 
+    /// El actualizador de vuelos.
+    flights_updater: FlightsUpdater,
+
     /// La fecha actual.
     datetime: DateTime<Local>,
 
@@ -75,6 +78,7 @@ impl AerolineasApp {
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
             flights_loader: FlightsLoader::default(),
+            flights_updater: FlightsUpdater::default(),
             datetime: Local::now(),
             airlines_details: AirlinesDetails::default(),
         }
@@ -123,6 +127,9 @@ impl App for AerolineasApp {
             self.screen_clicker
                 .sync_airports(self.airlines_details.get_airports())
                 .sync_zoom(zoom_lvl);
+            self.flights_updater
+                .sync_incoming_tracking(self.airlines_details.get_incoming_tracking())
+                .sync_departing_tracking(self.airlines_details.get_departing_tracking());
 
             let (airps_start, airps_end) = self.airports_loader.get_loading_progress();
 
@@ -144,7 +151,8 @@ impl App for AerolineasApp {
                 .with_plugin(&mut self.airports_loader)
                 .with_plugin(&mut self.airports_drawer)
                 .with_plugin(&mut self.screen_clicker)
-                .with_plugin(&mut self.flights_loader);
+                .with_plugin(&mut self.flights_loader)
+                .with_plugin(&mut self.flights_updater);
 
             ui.add(map);
 

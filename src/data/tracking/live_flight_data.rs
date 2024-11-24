@@ -39,6 +39,9 @@ pub struct LiveFlightData {
     /// siempre es el último elemento de la lista.
     spd_readings: Vec<Double>,
 
+    /// El nivel de combustible.
+    pub fuel: Double,
+
     /// La posición geográfica en latitud y longitud.
     pub pos: (Double, Double),
 
@@ -58,12 +61,13 @@ impl LiveFlightData {
         flight_id: Int,
         orig_dest: (String, String),
         timestamp: Long,
-        spd: Double,
+        spd_fuel: (Double, Double),
         pos: (Double, Double),
         altitude_ft: Double,
         type_state: (FlightType, FlightState),
     ) -> Self {
         let (orig, dest) = orig_dest;
+        let (spd, fuel) = spd_fuel;
         let (flight_type, state) = type_state;
         Self {
             flight_id,
@@ -72,6 +76,7 @@ impl LiveFlightData {
             timestamp,
             spd,
             spd_readings: vec![spd],
+            fuel,
             pos,
             altitude_ft,
             flight_type,
@@ -169,12 +174,12 @@ impl LiveFlightData {
                                         if let ColData::String(state) = &row[6] {
                                             if let ColData::Double(spd) = &row[7] {
                                                 if let ColData::Double(altitude_ft) = &row[8] {
-                                                    if let ColData::Double(_fuel) = &row[9] {
+                                                    if let ColData::Double(fuel) = &row[9] {
                                                         tracking_data.push(Self::new(
                                                             *flight_id,
                                                             (orig.to_string(), dest.to_string()),
                                                             *timestamp,
-                                                            *spd,
+                                                            (*spd, *fuel),
                                                             (*lat, *lon),
                                                             *altitude_ft,
                                                             (

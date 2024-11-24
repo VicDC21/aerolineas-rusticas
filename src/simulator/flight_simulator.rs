@@ -81,7 +81,7 @@ impl FlightSimulator {
             flight_id,
             (origin_airport.name, destination_airport.name),
             timestamp,
-            avg_speed,
+            (avg_speed, 1.0),
             origin_coords,
             origin_airport.elevation_ft.unwrap_or(0) as f64,
             (FlightType::Departing, FlightState::Preparing),

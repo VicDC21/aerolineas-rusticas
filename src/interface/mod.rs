@@ -5,4 +5,5 @@ pub mod data;
 pub mod panels;
 pub mod plugins;
 pub mod run;
+pub mod utils;
 pub mod windows;
