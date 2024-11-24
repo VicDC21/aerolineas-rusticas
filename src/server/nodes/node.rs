@@ -10,6 +10,7 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     path::Path,
     sync::{Arc, Mutex},
+    thread::JoinHandle,
     vec::IntoIter,
 };
 
@@ -79,6 +80,8 @@ pub type NodeId = Byte;
 pub type NodesMap = HashMap<NodeId, EndpointState>;
 /// Mapea todas las conexiones actualmente abiertas.
 pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
+/// El handle donde vive una operación de nodo.
+pub type NodeHandle = JoinHandle<Result<()>>;
 
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
@@ -154,6 +157,18 @@ impl Node {
             pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
         })
+    }
+
+    /// Crea un nuevo nodo con un ID específico.
+    pub fn init(&mut self, id: NodeId) -> Result<()> {
+        let handles = self.bootstrap()?;
+
+        Ok(())
+    }
+
+    /// Inicia todos los procesos necesarios para que el nodo se conecte al cluster.
+    fn bootstrap(&mut self) -> Result<Vec<NodeHandle>> {
+        Ok(Vec::new())
     }
 
     /// Setea el valor por defecto de los campos que no son guardados en su archivo JSON.

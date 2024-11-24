@@ -5,12 +5,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
 };
 
-use crate::protocol::{
-    aliases::types::Byte,
-    errors::error::Error,
-    traits::Byteable,
-    utils::{encode_ipaddr_to_bytes, parse_bytes_to_ipaddr},
-};
 use crate::server::{
     modes::ConnectionMode,
     nodes::{
@@ -21,6 +15,15 @@ use crate::server::{
             heartbeat::VerType,
         },
     },
+};
+use crate::{
+    protocol::{
+        aliases::types::Byte,
+        errors::error::Error,
+        traits::Byteable,
+        utils::{encode_ipaddr_to_bytes, parse_bytes_to_ipaddr},
+    },
+    server::nodes::addr::loader::AddrLoader,
 };
 
 /// Las propiedades de un nodo.
@@ -39,7 +42,11 @@ pub struct EndpointState {
 impl EndpointState {
     /// Genera un socket basado en un id dado.
     fn generate_ipaddr(id: NodeId) -> IpAddr {
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, id))
+        if let Some(ip) = AddrLoader::default_loaded().get_ip(id) {
+            ip
+        } else {
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, id))
+        }
     }
 
     /// Instancia las propiedades del nodo.

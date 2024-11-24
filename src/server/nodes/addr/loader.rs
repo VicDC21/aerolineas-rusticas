@@ -154,6 +154,20 @@ impl AddrLoader {
         ips
     }
 
+    /// Obtiene la IP de un nodo dado su ID. Si no se encuentra, se devuelve `None`.
+    pub fn get_ip(&self, asked_id: NodeId) -> Option<IpAddr> {
+        if let Some(ids_and_ips) = &self.node_ips {
+            for (id, ip) in ids_and_ips {
+                if let Some(node_id) = id {
+                    if *node_id == asked_id {
+                        return Some(*ip);
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Carga los _sockets_ con un tipo de purto de [cliente](PortType::Cli).
     pub fn get_sockets_cli(&self) -> Vec<SocketAddr> {
         self.get_sockets(&PortType::Cli)
