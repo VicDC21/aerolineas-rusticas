@@ -15,7 +15,7 @@ use crate::{
         airports::airp::Airport,
         flights::{flight::Flight, types::FlightType},
     },
-    interface::map::panels::crud::{delete_flight_by_id, insert_flight},
+    interface::panels::crud::{delete_flight_by_id, insert_flight},
     protocol::aliases::types::{Int, Long},
 };
 
