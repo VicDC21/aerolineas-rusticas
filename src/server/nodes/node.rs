@@ -10,8 +10,9 @@ use std::{
     sync::{Arc, Mutex},
     vec::IntoIter,
 };
+// use rustls::Connection;
 
-use crate::parser::{
+use crate::{parser::{
     data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
     statements::{
@@ -28,7 +29,7 @@ use crate::parser::{
         },
         statement::Statement,
     },
-};
+}, protocol::utils::{parse_bytes_to_string, parse_bytes_to_string_map}};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -804,46 +805,47 @@ impl Node {
     }
 
     /// Maneja una request.
-    fn handle_request(&mut self, request: &[Byte], internal_request: bool) -> Vec<Byte> {
+    fn handle_request(&mut self, request: &[Byte], is_internal_request: bool) -> Vec<Byte> {
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
-            Err(err) => return self.make_error_response(err),
+            Err(err) => return make_error_response(err),
         };
-
         let left_response = match header.opcode {
-            Opcode::Startup => self.handle_startup(request, header.length),
+            Opcode::Startup => self.handle_startup(&request[9..]),
             Opcode::Options => self.handle_options(),
-            Opcode::Query => self.handle_query(request, header.length, internal_request),
+            Opcode::Query => self.handle_query(request, &header.length, is_internal_request),
             Opcode::Prepare => self.handle_prepare(),
             Opcode::Execute => self.handle_execute(),
             Opcode::Register => self.handle_register(),
             Opcode::Batch => self.handle_batch(),
-            Opcode::AuthResponse => self.handle_auth_response(),
+            Opcode::AuthResponse => self.handle_auth_response(request, &header.length),
             _ => Err(Error::ProtocolError(
                 "El opcode recibido no es una request".to_string(),
             )),
         };
         match left_response {
-            Ok(value) => value,
-            Err(err) => self.make_error_response(err),
+            Ok(value) => wrap_header(value, is_internal_request, header),
+            Err(err) => wrap_header(make_error_response(err), is_internal_request, header),
         }
     }
 
-    fn make_error_response(&mut self, err: Error) -> Vec<Byte> {
+
+    fn handle_startup(&self, request_body: &[Byte]) -> Result<Vec<Byte>> {
+        // Si tuviesemos la opcion del READY pondriamos un if
+        let string_map = parse_bytes_to_string_map(request_body)?;
+        if string_map.is_empty(){
+            return Ok(make_error_response(Error::ConfigError("En el startup se debia mandar al menos la version CQL".to_string())))
+        }
+        if string_map[0].1 != "5.0.0"{
+            return Ok(make_error_response(Error::ConfigError(format!("{} es una version CQL no soportada", string_map[0].1))))
+        }
         let mut response: Vec<Byte> = Vec::new();
-        let mut bytes_err = err.as_bytes();
         response.append(&mut Version::ResponseV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
         response.append(&mut Stream::new(0).as_bytes());
-        response.append(&mut Opcode::RequestError.as_bytes());
-        response.append(&mut Length::new(bytes_err.len() as u32).as_bytes());
-        response.append(&mut bytes_err);
-        response
-    }
-
-    fn handle_startup(&self, _request: &[Byte], _length: Length) -> Result<Vec<Byte>> {
-        // El body es un [string map] con posibles opciones
-        Ok(vec![0])
+        response.append(&mut Opcode::AuthChallenge.as_bytes());
+        response.append(&mut Length::new(0).as_bytes()); // REVISAR ESTO
+        Ok(response)
     }
 
     fn handle_options(&self) -> Result<Vec<Byte>> {
@@ -856,7 +858,7 @@ impl Node {
     fn handle_query(
         &mut self,
         request: &[Byte],
-        lenght: Length,
+        lenght: &Length,
         internal_request: bool,
     ) -> Result<Vec<Byte>> {
         // if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec())
@@ -910,9 +912,29 @@ impl Node {
         Ok(vec![0])
     }
 
-    fn handle_auth_response(&self) -> Result<Vec<Byte>> {
-        Ok(vec![0])
+    fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
+        let req = &request[9..(lenght.len as usize) + 9];
+        let users = DiskHandler::read_admitted_users(&self.storage_addr)?;
+        let mut response: Vec<Byte> = Vec::new();
+        let mut i = 0;
+        let user_from_req = parse_bytes_to_string(req, &mut i)?;
+        let password_from_req = parse_bytes_to_string(req, &mut i)?;
+        for user in users{
+            if user.0 == user_from_req && user.1 == password_from_req{
+                response.append(&mut Version::ResponseV5.as_bytes());
+                response.append(&mut Flag::Default.as_bytes());
+                response.append(&mut Stream::new(0).as_bytes());
+                response.append(&mut Opcode::AuthSuccess.as_bytes());
+                response.append(&mut Length::new(0).as_bytes());
+                return Ok(response)
+            }
+        }
+        response = make_error_response(Error::Invalid("Las credenciales pasadas no son validas".to_string()));
+        Ok(response)
     }
+
+
+
 
     /// Maneja una declaración interna.
     fn handle_internal_statement(
@@ -2306,6 +2328,29 @@ impl Node {
         Ok(())
     }
 }
+
+fn wrap_header(mut response: Vec<Byte>, is_internal_request: bool, header: Headers) -> Vec<Byte> {
+    if !is_internal_request{
+        let ver = Version::ResponseV5.as_bytes();
+        let stream = header.stream.as_bytes();
+        response.splice(0..1, ver);
+        response.splice(2..4, stream);
+    }
+    response
+}
+
+fn make_error_response(err: Error) -> Vec<Byte> {
+    let mut response: Vec<Byte> = Vec::new();
+    let mut bytes_err = err.as_bytes();
+    response.append(&mut Version::ResponseV5.as_bytes());
+    response.append(&mut Flag::Default.as_bytes());
+    response.append(&mut Stream::new(0).as_bytes());
+    response.append(&mut Opcode::RequestError.as_bytes());
+    response.append(&mut Length::new(bytes_err.len() as u32).as_bytes());
+    response.append(&mut bytes_err);
+    response
+}
+
 
 fn check_consistency_of_the_responses(
     opcode_with_hashed_value: Vec<u8>,

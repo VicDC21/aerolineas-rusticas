@@ -386,6 +386,39 @@ pub fn parse_bytes_to_reasonmap(bytes: &[Byte], i: &mut usize) -> Result<ReasonM
     Ok(reasonmap)
 }
 
+
+/// Transforma un [String Map] a una colección de [Byte]s tal cual como está especificado
+/// en el protocolo de Cassandra.
+pub fn encode_string_map_to_bytes(string_map: Vec<(String, String)>) -> Vec<Byte>{
+    let mut bytes: Vec<Byte> = Vec::new();
+    let length: Short = string_map.len() as Short;
+    bytes.append(&mut(length.to_be_bytes().to_vec()));
+    for (key, value) in string_map{
+        let mut key_v = encode_string_to_bytes(&key);
+        let mut value_v = encode_string_to_bytes(&value);
+        bytes.append(&mut key_v);
+        bytes.append(&mut value_v);
+    }
+    bytes
+}
+
+/// Parsea un conjunto de [Byte]s de vuelta a un objeto [String].
+pub fn parse_bytes_to_string_map(bytes: &[Byte]) -> Result<Vec<(String, String)>>{
+    let mut string_map: Vec<(String, String)> = Vec::new();
+    let length: Short = u16::from_be_bytes([bytes[0], bytes[1]]);
+    let mut vec_position = 2;
+    for _i in 0..length{
+        let key = parse_bytes_to_string(bytes, &mut vec_position)?;
+        let value = parse_bytes_to_string(bytes, &mut vec_position)?;
+        string_map.push((key, value));
+    }
+    Ok(string_map)
+
+}
+
+
+
+
 // pub fn encode_bytes_to_bytes(value: String) -> Vec<Byte> {
 //     let
 //     let value_lenght = value.len() as i32;
