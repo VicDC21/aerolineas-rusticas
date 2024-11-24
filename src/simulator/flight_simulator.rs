@@ -1,6 +1,7 @@
 use {
     crate::{
         client::{cli::Client, protocol_result::ProtocolResult},
+        data::airports::airp::{Airport, AirportsMap},
         protocol::errors::error::Error,
         server::pool::threadpool::ThreadPool,
     },
@@ -12,7 +13,7 @@ use {
     },
 };
 
-/// Ejecuta el simulador de vuelos
+/// Ejecuta el simulador de vuelos.
 pub fn run_sim(client: Client) -> Result<(), Error> {
     match FlightSimulator::new(4, client) {
         Ok(simulator) => loop {
@@ -20,7 +21,8 @@ pub fn run_sim(client: Client) -> Result<(), Error> {
             println!("1. Añadir vuelo");
             println!("2. Ver estado de un vuelo");
             println!("3. Ver todos los vuelos");
-            println!("4. Salir");
+            println!("4. Ver aeropuertos disponibles");
+            println!("5. Salir");
 
             let mut input = String::new();
             std::io::stdin().read_line(&mut input).unwrap();
@@ -31,11 +33,11 @@ pub fn run_sim(client: Client) -> Result<(), Error> {
                     let mut flight_num = String::new();
                     std::io::stdin().read_line(&mut flight_num).unwrap();
 
-                    println!("Origen:");
+                    println!("Código del aeropuerto de origen:");
                     let mut origin = String::new();
                     std::io::stdin().read_line(&mut origin).unwrap();
 
-                    println!("Destino:");
+                    println!("Código del aeropuerto de destino:");
                     let mut dest = String::new();
                     std::io::stdin().read_line(&mut dest).unwrap();
 
@@ -44,33 +46,24 @@ pub fn run_sim(client: Client) -> Result<(), Error> {
                     std::io::stdin().read_line(&mut speed).unwrap();
 
                     if let Ok(speed) = speed.trim().parse::<f64>() {
-                        if let Err(e) = simulator.add_flight(
+                        match simulator.add_flight(
                             flight_num.trim().to_string(),
                             origin.trim().to_string(),
                             dest.trim().to_string(),
                             speed,
                         ) {
-                            println!("Error al añadir vuelo: {}", e);
+                            Ok(_) => println!("Vuelo añadido exitosamente"),
+                            Err(e) => println!("Error al añadir vuelo: {}", e),
                         }
                     }
                 }
-                "2" => {
-                    println!("Número de vuelo:");
-                    let mut flight_num = String::new();
-                    std::io::stdin().read_line(&mut flight_num).unwrap();
-
-                    if let Some(data) = simulator.get_flight_data(flight_num.trim()) {
-                        println!("{:#?}", data);
-                    } else {
-                        println!("Vuelo no encontrado");
+                "4" => {
+                    println!("Aeropuertos disponibles:");
+                    for (code, airport) in simulator.airports.iter() {
+                        println!("{}: {} ({})", code, airport.name, airport.municipality);
                     }
                 }
-                "3" => {
-                    for flight in &simulator.get_all_flights() {
-                        println!("{:#?}", flight);
-                    }
-                }
-                "4" => break Ok(()),
+                "5" => break Ok(()),
                 _ => println!("Opción no válida"),
             }
         },
@@ -81,8 +74,8 @@ pub fn run_sim(client: Client) -> Result<(), Error> {
 #[derive(Debug, Clone)]
 struct FlightData {
     flight_number: String,
-    origin: String,
-    destination: String,
+    origin_airport: Airport,
+    destination_airport: Airport,
     avg_speed: f64,
     current_position: (f64, f64),
     altitude: f64,
@@ -95,6 +88,7 @@ struct FlightSimulator {
     flights: Arc<Mutex<Vec<FlightData>>>,
     thread_pool: ThreadPool,
     client: Client,
+    airports: Arc<AirportsMap>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -106,10 +100,13 @@ enum FlightState {
 
 impl FlightSimulator {
     fn new(max_threads: usize, client: Client) -> Result<Self, Error> {
+        let airports = Airport::get_all()?;
+
         Ok(FlightSimulator {
             flights: Arc::new(Mutex::new(Vec::new())),
             thread_pool: ThreadPool::build(max_threads)?,
             client,
+            airports: Arc::new(airports),
         })
     }
 
@@ -120,10 +117,29 @@ impl FlightSimulator {
         destination: String,
         avg_speed: f64,
     ) -> Result<(), Error> {
+        let origin_airport = self
+            .airports
+            .get(&origin)
+            .ok_or_else(|| {
+                Error::ServerError(format!("Aeropuerto de origen '{}' no encontrado", origin))
+            })?
+            .clone();
+
+        let destination_airport = self
+            .airports
+            .get(&destination)
+            .ok_or_else(|| {
+                Error::ServerError(format!(
+                    "Aeropuerto de destino '{}' no encontrado",
+                    destination
+                ))
+            })?
+            .clone();
+
         let flight = FlightData {
             flight_number,
-            origin,
-            destination,
+            origin_airport,
+            destination_airport,
             avg_speed,
             current_position: (0.0, 0.0),
             altitude: 0.0,
@@ -154,6 +170,11 @@ impl FlightSimulator {
         let fuel_consumption_rate = 0.1;
         thread::sleep(Duration::from_secs(2));
 
+        flight.current_position = (
+            flight.origin_airport.position.lat(),
+            flight.origin_airport.position.lon(),
+        );
+
         if let Ok(mut flight_list) = flights.lock() {
             if let Some(existing_flight) = flight_list
                 .iter_mut()
@@ -167,12 +188,20 @@ impl FlightSimulator {
         let simulation_start = std::time::Instant::now();
         let simulation_limit = Duration::from_secs(15);
 
+        let lat_diff =
+            flight.destination_airport.position.lat() - flight.origin_airport.position.lat();
+        let lon_diff =
+            flight.destination_airport.position.lon() - flight.origin_airport.position.lon();
+        let total_distance = (lat_diff.powi(2) + lon_diff.powi(2)).sqrt();
+        let lat_step = lat_diff / total_distance * 0.1;
+        let lon_step = lon_diff / total_distance * 0.1;
+
         while flight.fuel_level > 0.0 && simulation_start.elapsed() < simulation_limit {
-            flight.current_position.0 += rng.gen_range(-0.1..0.1);
-            flight.current_position.1 += rng.gen_range(-0.1..0.1);
+            flight.current_position.0 += lat_step + rng.gen_range(-0.01..0.01);
+            flight.current_position.1 += lon_step + rng.gen_range(-0.01..0.01);
+
             flight.current_speed = flight.avg_speed * (1.0 + rng.gen_range(-0.1..0.1));
             flight.altitude = 32500.0 + rng.gen_range(-2500.0..2500.0);
-
             flight.fuel_level = (flight.fuel_level - fuel_consumption_rate).max(0.0);
 
             if let Ok(mut flight_list) = flights.lock() {
@@ -194,12 +223,18 @@ impl FlightSimulator {
         }
 
         flight.status = FlightState::Finished;
+        flight.current_position = (
+            flight.destination_airport.position.lat(),
+            flight.destination_airport.position.lon(),
+        );
+
         if let Ok(mut flight_list) = flights.lock() {
             if let Some(existing_flight) = flight_list
                 .iter_mut()
                 .find(|f| f.flight_number == flight.flight_number)
             {
                 existing_flight.status = FlightState::Finished;
+                existing_flight.current_position = flight.current_position;
             }
         }
 
@@ -218,12 +253,12 @@ impl FlightSimulator {
     ) -> Result<(), Error> {
         let incoming_query = format!(
             "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {});",
-            flight.flight_number.parse::<i64>().unwrap(), flight.origin, flight.destination, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
+            flight.flight_number.parse::<i64>().unwrap(), flight.origin_airport.ident, flight.destination_airport.ident, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
         );
 
         let departing_query = format!(
             "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {});",
-            flight.flight_number.parse::<i64>().unwrap(), flight.origin, flight.destination, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
+            flight.flight_number.parse::<i64>().unwrap(), flight.origin_airport.ident, flight.destination_airport.ident, timestamp, flight.current_position.0, flight.current_position.1, flight.status.clone() as i32, flight.current_speed, flight.altitude, flight.fuel_level
         );
 
         FlightSimulator::send_insert_query(&incoming_query, &mut client.clone())?;
