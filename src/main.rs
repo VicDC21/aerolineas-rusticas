@@ -2,7 +2,7 @@ use std::env::args;
 
 use aerolineas_rusticas::{
     client::cli::Client, protocol::aliases::results::Result, server::nodes::graph::NodesGraph,
-    simulator::flight_simulator::run_sim,
+    simulator::cli::run_sim,
 };
 
 #[cfg(feature = "gui")]

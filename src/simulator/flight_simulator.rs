@@ -13,82 +13,24 @@ use {
     },
 };
 
-/// Ejecuta el simulador de vuelos.
-pub fn run_sim(client: Client) -> Result<(), Error> {
-    match FlightSimulator::new(4, client) {
-        Ok(simulator) => loop {
-            println!("\nSimulador de Vuelos");
-            println!("1. Añadir vuelo");
-            println!("2. Ver estado de un vuelo");
-            println!("3. Ver todos los vuelos");
-            println!("4. Ver aeropuertos disponibles");
-            println!("5. Salir");
-
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
-
-            match input.trim() {
-                "1" => {
-                    println!("Número de vuelo:");
-                    let mut flight_num = String::new();
-                    std::io::stdin().read_line(&mut flight_num).unwrap();
-
-                    println!("Código del aeropuerto de origen:");
-                    let mut origin = String::new();
-                    std::io::stdin().read_line(&mut origin).unwrap();
-
-                    println!("Código del aeropuerto de destino:");
-                    let mut dest = String::new();
-                    std::io::stdin().read_line(&mut dest).unwrap();
-
-                    println!("Velocidad promedio (km/h):");
-                    let mut speed = String::new();
-                    std::io::stdin().read_line(&mut speed).unwrap();
-
-                    if let Ok(speed) = speed.trim().parse::<f64>() {
-                        match simulator.add_flight(
-                            flight_num.trim().to_string(),
-                            origin.trim().to_string(),
-                            dest.trim().to_string(),
-                            speed,
-                        ) {
-                            Ok(_) => println!("Vuelo añadido exitosamente"),
-                            Err(e) => println!("Error al añadir vuelo: {}", e),
-                        }
-                    }
-                }
-                "4" => {
-                    println!("Aeropuertos disponibles:");
-                    for (code, airport) in simulator.airports.iter() {
-                        println!("{}: {} ({})", code, airport.name, airport.municipality);
-                    }
-                }
-                "5" => break Ok(()),
-                _ => println!("Opción no válida"),
-            }
-        },
-        Err(e) => Err(e),
-    }
-}
-
 #[derive(Debug, Clone)]
-struct FlightData {
-    flight_number: String,
-    origin_airport: Airport,
-    destination_airport: Airport,
-    avg_speed: f64,
-    current_position: (f64, f64),
-    altitude: f64,
-    fuel_level: f64,
-    current_speed: f64,
-    status: FlightState,
+pub struct FlightData {
+    pub flight_number: String,
+    pub origin_airport: Airport,
+    pub destination_airport: Airport,
+    pub avg_speed: f64,
+    pub current_position: (f64, f64),
+    pub altitude: f64,
+    pub fuel_level: f64,
+    pub current_speed: f64,
+    pub status: FlightState,
 }
 
-struct FlightSimulator {
+pub struct FlightSimulator {
     flights: Arc<Mutex<Vec<FlightData>>>,
     thread_pool: ThreadPool,
     client: Client,
-    airports: Arc<AirportsMap>,
+    pub airports: Arc<AirportsMap>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,7 +41,7 @@ enum FlightState {
 }
 
 impl FlightSimulator {
-    fn new(max_threads: usize, client: Client) -> Result<Self, Error> {
+    pub fn new(max_threads: usize, client: Client) -> Result<Self, Error> {
         let airports = Airport::get_all()?;
 
         Ok(FlightSimulator {
@@ -333,7 +275,7 @@ mod tests {
             assert_eq!(
                 data.status,
                 FlightState::Finished,
-                "El estado del vuelo es {:?} cuando debería ser Landed",
+                "El estado del vuelo es {:?} cuando debería ser Finished",
                 data.status
             );
         }
