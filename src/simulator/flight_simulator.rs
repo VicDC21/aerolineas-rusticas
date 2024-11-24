@@ -8,12 +8,13 @@ use {
         },
         protocol::errors::error::Error,
         server::pool::threadpool::ThreadPool,
+        simulator::utils::FlightCalculations,
     },
-    rand::Rng,
+    rand::thread_rng,
     std::{
         sync::{Arc, Mutex},
         thread,
-        time::Duration,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     },
 };
 
@@ -83,8 +84,8 @@ impl FlightSimulator {
             })?
             .clone();
 
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs() as i64;
 
@@ -125,8 +126,7 @@ impl FlightSimulator {
         dest_coords: (f64, f64),
         dest_elevation: f64,
     ) {
-        let mut rng = rand::thread_rng();
-
+        let mut rng = thread_rng();
         flight.spd = 0.0;
         flight.state = FlightState::Preparing;
 
@@ -139,23 +139,20 @@ impl FlightSimulator {
             }
         }
 
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs() as i64;
         let _ = Self::send_flight_update(&flight, timestamp, &client, 100.0);
 
         thread::sleep(Duration::from_secs(2));
 
-        let r = 6371.0;
-        let d_lat = (dest_coords.0 - flight.lat()).to_radians();
-        let d_lon = (dest_coords.1 - flight.lon()).to_radians();
-        let lat1 = flight.lat().to_radians();
-        let lat2 = dest_coords.0.to_radians();
-
-        let a = (d_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (d_lon / 2.0).sin().powi(2);
-        let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-        let total_distance = r * c;
+        let total_distance = FlightCalculations::calculate_distance(
+            flight.lat(),
+            flight.lon(),
+            dest_coords.0,
+            dest_coords.1,
+        );
 
         let initial_fuel = 100.0;
         let final_fuel = 60.0;
@@ -173,12 +170,12 @@ impl FlightSimulator {
             }
         }
 
-        let simulation_start = std::time::Instant::now();
+        let simulation_start = Instant::now();
         let simulation_limit = Duration::from_secs(15);
         let step_size = total_distance / 15.0;
 
         while simulation_start.elapsed() < simulation_limit {
-            let (new_lat, new_lon) = Self::calculate_next_position(
+            let (new_lat, new_lon) = FlightCalculations::calculate_next_position(
                 flight.lat(),
                 flight.lon(),
                 dest_coords.0,
@@ -186,15 +183,12 @@ impl FlightSimulator {
                 step_size,
             );
 
-            let d_lat = (new_lat - flight.lat()).to_radians();
-            let d_lon = (new_lon - flight.lon()).to_radians();
-            let lat1 = flight.lat().to_radians();
-            let lat2 = new_lat.to_radians();
-
-            let a =
-                (d_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (d_lon / 2.0).sin().powi(2);
-            let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-            let step_distance = r * c;
+            let step_distance = FlightCalculations::calculate_distance(
+                flight.lat(),
+                flight.lon(),
+                new_lat,
+                new_lon,
+            );
 
             distance_traveled += step_distance;
             _current_fuel =
@@ -204,17 +198,17 @@ impl FlightSimulator {
 
             let progress =
                 simulation_start.elapsed().as_secs_f64() / simulation_limit.as_secs_f64();
-            if progress < 0.1 {
-                flight.spd = flight.avg_spd() * (progress * 10.0);
-            } else if progress > 0.9 {
-                flight.spd = flight.avg_spd() * (1.0 - ((progress - 0.9) * 10.0));
-            } else {
-                flight.spd = flight.avg_spd() * (1.0 + rng.gen_range(-0.05..0.05));
-            }
 
+            flight.spd =
+                FlightCalculations::calculate_current_speed(flight.avg_spd(), progress, &mut rng);
+
+            let base_altitude = FlightCalculations::calculate_cruise_altitude(
+                flight.altitude_ft,
+                dest_elevation,
+                progress,
+            );
             flight.altitude_ft =
-                Self::calculate_cruise_altitude(flight.altitude_ft, dest_elevation, progress)
-                    + rng.gen_range(-100.0..100.0);
+                FlightCalculations::calculate_current_altitude(base_altitude, &mut rng);
 
             if let Ok(mut flight_list) = flights.lock() {
                 if let Some(existing_flight) = flight_list
@@ -225,8 +219,8 @@ impl FlightSimulator {
                 }
             }
 
-            let timestamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .unwrap_or_else(|_| Duration::from_secs(0))
                 .as_secs() as i64;
 
@@ -245,15 +239,12 @@ impl FlightSimulator {
                 .iter_mut()
                 .find(|f| f.flight_id == flight.flight_id)
             {
-                existing_flight.state = FlightState::Finished;
-                existing_flight.pos = flight.pos;
-                existing_flight.spd = 0.0;
-                existing_flight.altitude_ft = dest_elevation;
+                *existing_flight = flight.clone();
             }
         }
 
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs() as i64;
 
@@ -268,7 +259,7 @@ impl FlightSimulator {
     ) -> Result<(), Error> {
         let incoming_query = format!(
             "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {:.4}, {:.4}, '{}', {}, {}, {});",
-            flight.flight_id, flight.dest, flight.orig, timestamp, flight.lat(), flight.lon(), flight.state.clone() as i32, flight.spd, flight.altitude_ft, fuel);
+            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state.clone() as i32, flight.spd, flight.altitude_ft, fuel);
 
         let departing_query = format!(
             "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {:.4}, {:.4}, '{}', {}, {}, {});",
@@ -289,62 +280,6 @@ impl FlightSimulator {
         }
 
         Ok(())
-    }
-
-    fn calculate_cruise_altitude(origin_elevation: f64, dest_elevation: f64, progress: f64) -> f64 {
-        const CRUISE_ALTITUDE: f64 = 35000.0;
-
-        if progress < 0.1 {
-            origin_elevation + (CRUISE_ALTITUDE - origin_elevation) * (progress * 10.0)
-        } else if progress > 0.9 {
-            CRUISE_ALTITUDE - (CRUISE_ALTITUDE - dest_elevation) * ((progress - 0.9) * 10.0)
-        } else {
-            CRUISE_ALTITUDE
-        }
-    }
-
-    fn calculate_next_position(
-        current_lat: f64,
-        current_lon: f64,
-        dest_lat: f64,
-        dest_lon: f64,
-        step_size: f64,
-    ) -> (f64, f64) {
-        let r = 6371.0;
-
-        let lat1 = current_lat.to_radians();
-        let lon1 = current_lon.to_radians();
-        let lat2 = dest_lat.to_radians();
-        let lon2 = dest_lon.to_radians();
-
-        let d_lon = lon2 - lon1;
-        let d_lat = lat2 - lat1;
-        let a = (d_lat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (d_lon / 2.0).sin().powi(2);
-        let c = 2.0 * a.sqrt().atan2((1.0 - a).sqrt());
-        let current_distance = r * c;
-
-        if current_distance < step_size {
-            return (dest_lat, dest_lon);
-        }
-
-        let y = d_lon.sin() * lat2.cos();
-        let x = lat1.cos() * lat2.sin() - lat1.sin() * lat2.cos() * d_lon.cos();
-        let bearing = y.atan2(x);
-
-        let angular_distance = step_size / r;
-
-        let new_lat = (lat1.sin() * angular_distance.cos()
-            + lat1.cos() * angular_distance.sin() * bearing.cos())
-        .asin();
-
-        let new_lon = lon1
-            + (bearing.sin() * angular_distance.sin() * lat1.cos())
-                .atan2(angular_distance.cos() - lat1.sin() * new_lat.sin());
-
-        (
-            (new_lat.to_degrees() * 10000.0).round() / 10000.0,
-            (new_lon.to_degrees() * 10000.0).round() / 10000.0,
-        )
     }
 }
 
