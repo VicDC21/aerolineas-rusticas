@@ -23,22 +23,36 @@ pub fn insert_flight(
 ) -> Result<()> {
     let flight_id = cur_airport.id + ex_airport.id + timestamp as usize;
 
-    let incoming_client = Arc::clone(&client);
+    let inc_fl_cli = Arc::clone(&client);
     let flight_duration = distance_eta(&cur_airport.position, &ex_airport.position, None, None);
     let eta = (timestamp as u64 + flight_duration.as_secs()) as i64;
-    let incoming_query = format!(
+    let inc_fl_query = format!(
         "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES ({}, '{}', '{}', {}, '{}');",
-        flight_id as Int, cur_airport.ident, ex_airport.ident, eta, FlightState::InCourse
+        flight_id as Int, cur_airport.ident, ex_airport.ident, eta, FlightState::Preparing
     );
 
-    let departing_client = Arc::clone(&client);
-    let departing_query = format!(
+    let dep_fl_cli = Arc::clone(&client);
+    let dep_fl_query = format!(
         "INSERT INTO vuelos_salientes (id, orig, dest, salida, estado) VALUES ({}, '{}', '{}', {}, '{}');",
-        flight_id as Int, cur_airport.ident, ex_airport.ident, timestamp, FlightState::InCourse
+        flight_id as Int, cur_airport.ident, ex_airport.ident, timestamp, FlightState::Preparing
     );
 
-    send_client_query(incoming_client, incoming_query.as_str())?;
-    send_client_query(departing_client, departing_query.as_str())?;
+    let inc_tr_cli = Arc::clone(&client);
+    let inc_tr_query = format!(
+        "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {});",
+        flight_id as Int, cur_airport.ident, ex_airport.ident, eta, cur_airport.position.lat(), cur_airport.position.lon(), FlightState::Preparing, 0.0, 35000.0, 100.0,
+    );
+
+    let dep_tr_cli = Arc::clone(&client);
+    let dep_tr_query = format!(
+        "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {});",
+        flight_id as Int, cur_airport.ident, ex_airport.ident, timestamp, cur_airport.position.lat(), cur_airport.position.lon(), FlightState::Preparing, 0.0, 35000.0, 100.0,
+    );
+
+    send_client_query(inc_fl_cli, inc_fl_query.as_str())?;
+    send_client_query(dep_fl_cli, dep_fl_query.as_str())?;
+    send_client_query(inc_tr_cli, inc_tr_query.as_str())?;
+    send_client_query(dep_tr_cli, dep_tr_query.as_str())?;
 
     Ok(())
 }
