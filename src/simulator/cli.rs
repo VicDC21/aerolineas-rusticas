@@ -83,7 +83,7 @@ fn handle_view_flight(simulator: &FlightSimulator) {
                     flight.lon()
                 );
                 println!("Altitud: {:.2} pies", flight.altitude_ft);
-                println!("Velocidad actual: {:.2} km/h", flight.spd);
+                println!("Velocidad actual: {:.2} km/h", flight.get_spd());
                 println!("Velocidad promedio: {:.2} km/h", flight.avg_spd());
             }
             None => println!("Vuelo no encontrado"),

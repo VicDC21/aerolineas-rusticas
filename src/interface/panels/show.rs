@@ -154,8 +154,7 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
         ui.label(
             RichText::new(format!(
                 "\n\tPosition:\t({}, {})",
-                &airport.position.lat(),
-                &airport.position.lon()
+                &airport.position.0, &airport.position.1
             ))
             .color(text_color),
         );

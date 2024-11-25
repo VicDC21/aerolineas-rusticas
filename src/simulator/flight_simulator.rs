@@ -86,7 +86,13 @@ impl FlightSimulator {
         let client = self.client.clone();
 
         self.thread_pool.execute(move || {
-            Self::simulate_flight(flights, flight, client, dest_coords, dest_elevation);
+            Self::simulate_flight(
+                flights,
+                flight,
+                client,
+                destination_airport.position,
+                dest_elevation,
+            );
             Ok(())
         })
     }

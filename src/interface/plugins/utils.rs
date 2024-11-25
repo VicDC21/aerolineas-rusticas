@@ -4,6 +4,7 @@ use std::result::Result as StdResult;
 
 use eframe::egui::{ColorImage, Context};
 use image::{ImageError, ImageReader};
+use walkers::Position;
 use walkers::{extras::Image, Texture};
 
 use crate::data::airports::{airp::Airport, types::AirportType};
@@ -29,7 +30,11 @@ pub fn load_airport_image(path: &str, airport: &Airport, context: &Context) -> R
         ))),
         Ok(img) => {
             let texture = Texture::from_color_image(img, context);
-            Ok(Image::new(texture, airport.position))
+            let (airp_lat, airp_lon) = airport.position;
+            Ok(Image::new(
+                texture,
+                Position::from_lat_lon(airp_lat, airp_lon),
+            ))
         }
     }
 }

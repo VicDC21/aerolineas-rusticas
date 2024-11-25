@@ -1,6 +1,7 @@
 //! Módulo para un cargador de vuelos.
 
 use std::{
+    collections::hash_map::{Entry, HashMap},
     sync::{
         mpsc::{channel, Receiver, Sender},
         Arc, Mutex,
@@ -21,10 +22,16 @@ use crate::{
         tracking::live_flight_data::LiveFlightData,
     },
     protocol::{
-        aliases::{results::Result, types::Long},
+        aliases::{
+            results::Result,
+            types::{Int, Long},
+        },
         errors::error::Error,
     },
 };
+
+/// Los datos de vuelos ordenados por ID.
+pub type LiveDataMap = HashMap<Int, Vec<LiveFlightData>>;
 
 /// Un hilo destinado a procesos paralelos.
 type ChildHandle = JoinHandle<Result<()>>;
@@ -36,10 +43,12 @@ type DateChild = (Option<ChildHandle>, Sender<(Arc<Option<Airport>>, Long)>);
 type FlightChild = (DateChild, Receiver<Vec<Flight>>);
 
 /// Tupi de hilo hijo para datos de vuelos.
-type FlightDataChild = (DateChild, Receiver<Vec<LiveFlightData>>);
+type FlightDataChild = (DateChild, Receiver<LiveDataMap>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
 const FLIGHTS_INTERVAL_SECS: u64 = 3;
+/// Intervalo (en segundos) antes de cargar los datos de vuelos de nuevo, como mínimo.
+const TRACKING_INTERVAL_SECS: u64 = 5;
 
 /// Un día en segundos.
 const DAY_IN_SECONDS: i64 = 86400;
@@ -59,13 +68,16 @@ pub struct FlightsLoader {
     departing_flights: Option<Vec<Flight>>,
 
     /// Los datos de vuelos entrantes actualmente en memoria.
-    incoming_tracking: Option<Vec<LiveFlightData>>,
+    incoming_tracking: Option<LiveDataMap>,
 
     /// Los datos de vuelos salientes actualmente en memoria.
-    departing_tracking: Option<Vec<LiveFlightData>>,
+    departing_tracking: Option<LiveDataMap>,
 
-    /// El tiempo que pasó desde la última _query_.
-    last_checked: Instant,
+    /// El tiempo que pasó desde la última _query_ para vuelos.
+    last_checked_fl: Instant,
+
+    /// El tiempo que pasó desde la última _query_ para datos de vuelos.
+    last_checked_tr: Instant,
 
     /// Fecha seleccionada.
     date: DateTime<Local>,
@@ -89,13 +101,14 @@ impl FlightsLoader {
         client: Arc<Mutex<Client>>,
         selected_airport: Arc<Option<Airport>>,
         flights: (Option<Vec<Flight>>, Option<Vec<Flight>>),
-        tracking: (Option<Vec<LiveFlightData>>, Option<Vec<LiveFlightData>>),
-        last_checked: Instant,
+        tracking: (Option<LiveDataMap>, Option<LiveDataMap>),
+        last_checked: (Instant, Instant),
         date: DateTime<Local>,
         children: (FlightChild, FlightChild, FlightDataChild, FlightDataChild),
     ) -> Self {
         let (incoming_flights, departing_flights) = flights;
         let (incoming_tracking, departing_tracking) = tracking;
+        let (last_checked_fl, last_checked_tr) = last_checked;
         let (incoming_fl_child, departing_fl_child, incoming_tr_child, departing_tr_child) =
             children;
 
@@ -106,7 +119,8 @@ impl FlightsLoader {
             departing_flights,
             incoming_tracking,
             departing_tracking,
-            last_checked,
+            last_checked_fl,
+            last_checked_tr,
             date,
             incoming_fl_child,
             departing_fl_child,
@@ -185,7 +199,7 @@ impl FlightsLoader {
 
     /// Genera el hilo hijo para cargar datos de vuelos entrantes.
     pub fn gen_inc_tr_child(
-        to_parent: Sender<Vec<LiveFlightData>>,
+        to_parent: Sender<LiveDataMap>,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
         Self::gen_date_tr_child(to_parent, FlightType::Incoming, client)
@@ -193,7 +207,7 @@ impl FlightsLoader {
 
     /// Genera el hilo hijo para cargar datos de vuelos salientes.
     pub fn gen_dep_tr_child(
-        to_parent: Sender<Vec<LiveFlightData>>,
+        to_parent: Sender<LiveDataMap>,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
         Self::gen_date_tr_child(to_parent, FlightType::Departing, client)
@@ -201,7 +215,7 @@ impl FlightsLoader {
 
     /// Genera un hilo hijo para datos de vuelos.
     fn gen_date_tr_child(
-        to_parent: Sender<Vec<LiveFlightData>>,
+        to_parent: Sender<LiveDataMap>,
         flight_type: FlightType,
         client: Arc<Mutex<Client>>,
     ) -> DateChild {
@@ -229,7 +243,7 @@ impl FlightsLoader {
                             Ok(loaded) => loaded,
                             Err(err) => {
                                 println!("Error cargando los vuelos:\n\n{}", err);
-                                Vec::new()
+                                LiveDataMap::new()
                             }
                         };
 
@@ -270,7 +284,7 @@ impl FlightsLoader {
     /// para devolverla, y en su lugar deja [None].
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
-    pub fn take_tr_incoming(&mut self) -> Vec<LiveFlightData> {
+    pub fn take_tr_incoming(&mut self) -> LiveDataMap {
         self.incoming_tracking.take().unwrap_or_default()
     }
 
@@ -278,7 +292,7 @@ impl FlightsLoader {
     /// para devolverla, y en su lugar deja [None].
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
-    pub fn take_tr_departing(&mut self) -> Vec<LiveFlightData> {
+    pub fn take_tr_departing(&mut self) -> LiveDataMap {
         self.departing_tracking.take().unwrap_or_default()
     }
 
@@ -300,15 +314,26 @@ impl FlightsLoader {
         self
     }
 
-    /// Resetea el chequeo al [Instant] actual.
-    pub fn reset_instant(&mut self) {
-        self.last_checked = Instant::now();
+    /// Resetea el chequeo al [Instant] actual de vuelos.
+    pub fn reset_instant_fl(&mut self) {
+        self.last_checked_fl = Instant::now();
     }
 
     /// Verifica si ha pasado un mínimo de tiempo dado desde la última vez
     /// que se editaron los vuelos.
-    pub fn elapsed_at_least(&self, duration: &Duration) -> bool {
-        &self.last_checked.elapsed() >= duration
+    pub fn elapsed_at_least_fl(&self, duration: &Duration) -> bool {
+        &self.last_checked_fl.elapsed() >= duration
+    }
+
+    /// Resetea el chequeo al [Instant] actual de datos de vuelos.
+    pub fn reset_instant_tr(&mut self) {
+        self.last_checked_tr = Instant::now();
+    }
+
+    /// Verifica si ha pasado un mínimo de tiempo dado desde la última vez
+    /// que se editaron los datos de vuelos.
+    pub fn elapsed_at_least_tr(&self, duration: &Duration) -> bool {
+        &self.last_checked_tr.elapsed() >= duration
     }
 
     /// Carga los vuelos con una _query_.
@@ -360,7 +385,7 @@ impl FlightsLoader {
         client_lock: Arc<Mutex<Client>>,
         flight_type: &FlightType,
         selected_airport: &Option<Airport>,
-    ) -> Result<Vec<LiveFlightData>> {
+    ) -> Result<LiveDataMap> {
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
                 return Err(Error::ServerError(format!(
@@ -375,7 +400,7 @@ impl FlightsLoader {
 
         let airport = match selected_airport {
             Some(airp) => airp,
-            None => return Ok(Vec::<LiveFlightData>::new()),
+            None => return Ok(LiveDataMap::new()),
         };
         let query = match flight_type {
             FlightType::Incoming => format!(
@@ -388,10 +413,18 @@ impl FlightsLoader {
             ),
         };
 
+        let mut flights_by_id = LiveDataMap::new();
         let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
         let live_data = LiveFlightData::try_from_protocol_result(protocol_result, flight_type)?;
+        for data in live_data {
+            if let Entry::Vacant(entry) = flights_by_id.entry(data.flight_id) {
+                entry.insert(Vec::<LiveFlightData>::new());
+            } else if let Some(entries) = flights_by_id.get_mut(&data.flight_id) {
+                entries.push(data);
+            }
+        }
 
-        Ok(live_data)
+        Ok(flights_by_id)
     }
 
     /// Apaga y espera a todos los hilos hijos.
@@ -424,8 +457,8 @@ impl Default for FlightsLoader {
         let client = Arc::new(Mutex::new(Client::default()));
         let (inc_fl_sender, inc_fl_receiver) = channel::<Vec<Flight>>();
         let (dep_fl_sender, dep_fl_receiver) = channel::<Vec<Flight>>();
-        let (inc_tr_sender, inc_tr_receiver) = channel::<Vec<LiveFlightData>>();
-        let (dep_tr_sender, dep_tr_receiver) = channel::<Vec<LiveFlightData>>();
+        let (inc_tr_sender, inc_tr_receiver) = channel::<LiveDataMap>();
+        let (dep_tr_sender, dep_tr_receiver) = channel::<LiveDataMap>();
 
         let inc_fl_cli = Arc::clone(&client);
         let dep_fl_cli = Arc::clone(&client);
@@ -436,11 +469,8 @@ impl Default for FlightsLoader {
             client,
             Arc::new(None),
             (Some(Vec::<Flight>::new()), Some(Vec::<Flight>::new())),
-            (
-                Some(Vec::<LiveFlightData>::new()),
-                Some(Vec::<LiveFlightData>::new()),
-            ),
-            Instant::now(),
+            (Some(LiveDataMap::new()), Some(LiveDataMap::new())),
+            (Instant::now(), Instant::now()),
             Local::now(),
             (
                 (
@@ -466,8 +496,8 @@ impl Default for FlightsLoader {
 
 impl Plugin for &mut FlightsLoader {
     fn run(&mut self, _response: &Response, _painter: Painter, _projector: &Projector) {
-        if self.elapsed_at_least(&Duration::from_secs(FLIGHTS_INTERVAL_SECS)) {
-            self.reset_instant();
+        if self.elapsed_at_least_fl(&Duration::from_secs(FLIGHTS_INTERVAL_SECS)) {
+            self.reset_instant_fl();
 
             let ((_, inc_fl_sender), _) = &mut self.incoming_fl_child;
             if let Err(err) =
@@ -488,6 +518,10 @@ impl Plugin for &mut FlightsLoader {
                     err
                 );
             }
+        }
+
+        if self.elapsed_at_least_tr(&Duration::from_secs(TRACKING_INTERVAL_SECS)) {
+            self.reset_instant_tr();
 
             let ((_, inc_tr_sender), _) = &mut self.incoming_tr_child;
             if let Err(err) =

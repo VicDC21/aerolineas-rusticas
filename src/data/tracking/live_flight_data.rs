@@ -30,7 +30,7 @@ pub struct LiveFlightData {
     timestamp: Long,
 
     /// La velocidal actual, o rapidez instantánea, del vuelo en curso.
-    pub spd: Double,
+    spd: Double,
 
     /// Un registro interno de todas las lecturas de velocidad anteriores desde
     /// que se creó la instancia.
@@ -38,6 +38,9 @@ pub struct LiveFlightData {
     /// Normalmente, [crate::data::tracking::live_flight_data::LiveFlightData::spd]
     /// siempre es el último elemento de la lista.
     spd_readings: Vec<Double>,
+
+    /// El nivel de combustible.
+    pub fuel: Double,
 
     /// La posición geográfica en latitud y longitud.
     pub pos: (Double, Double),
@@ -58,12 +61,13 @@ impl LiveFlightData {
         flight_id: Int,
         orig_dest: (String, String),
         timestamp: Long,
-        spd: Double,
+        spd_fuel: (Double, Double),
         pos: (Double, Double),
         altitude_ft: Double,
         type_state: (FlightType, FlightState),
     ) -> Self {
         let (orig, dest) = orig_dest;
+        let (spd, fuel) = spd_fuel;
         let (flight_type, state) = type_state;
         Self {
             flight_id,
@@ -72,11 +76,23 @@ impl LiveFlightData {
             timestamp,
             spd,
             spd_readings: vec![spd],
+            fuel,
             pos,
             altitude_ft,
             flight_type,
             state,
         }
+    }
+
+    /// Consigue la velocidad actual.
+    pub fn get_spd(&self) -> &Double {
+        &self.spd
+    }
+
+    /// Actualiza la velocidad.
+    pub fn set_spd(&mut self, new_spd: Double) {
+        self.spd_readings.push(new_spd);
+        self.spd = new_spd;
     }
 
     /// Devuelve la velocidad promedio entre todas las lecturas anteriores.
@@ -158,12 +174,12 @@ impl LiveFlightData {
                                         if let ColData::String(state) = &row[6] {
                                             if let ColData::Double(spd) = &row[7] {
                                                 if let ColData::Double(altitude_ft) = &row[8] {
-                                                    if let ColData::Double(_fuel) = &row[9] {
+                                                    if let ColData::Double(fuel) = &row[9] {
                                                         tracking_data.push(Self::new(
                                                             *flight_id,
                                                             (orig.to_string(), dest.to_string()),
                                                             *timestamp,
-                                                            *spd,
+                                                            (*spd, *fuel),
                                                             (*lat, *lon),
                                                             *altitude_ft,
                                                             (

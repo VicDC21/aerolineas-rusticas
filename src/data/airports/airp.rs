@@ -5,21 +5,23 @@ use std::{
     io::{BufRead, Result as IOResult},
     sync::mpsc::Sender,
 };
-use walkers::Position;
 
-use crate::data::{
-    airports::types::AirportType, continents::types::ContinentType, countries::Country,
-};
-use crate::data::{
-    countries::CountriesMap,
-    utils::{
-        distances::{distance_euclidean_pos, inside_area},
-        paths::{get_tokens, reader_from},
-        strings::{breakdown, to_option},
+use crate::{
+    data::{
+        airports::types::AirportType,
+        continents::types::ContinentType,
+        countries::{CountriesMap, Country},
+        utils::{
+            distances::{distance_euclidean, inside_area},
+            paths::{get_tokens, reader_from},
+            strings::{breakdown, to_option},
+        },
+    },
+    protocol::{
+        aliases::{results::Result, types::Double},
+        errors::error::Error,
     },
 };
-use crate::protocol::aliases::results::Result;
-use crate::protocol::errors::error::Error;
 
 /// Un mapa de aeropuertos.
 pub type AirportsMap = HashMap<String, Airport>;
@@ -56,7 +58,7 @@ pub struct Airport {
 
     /// La las coordenadas geográficas (latitud/longitud) del aeropuerto, enpaquetadas
     /// en un [Position] para comodidad.
-    pub position: Position,
+    pub position: (Double, Double),
 
     /// La elevación del aeropuerto en **pies** _(ft)_, no metros.
     pub elevation_ft: Option<isize>,
@@ -123,7 +125,7 @@ impl Airport {
             ident: "".to_string(),
             airport_type: AirportType::Closed,
             name: "".to_string(),
-            position: Position::from_lat_lon(0., 0.),
+            position: (0., 0.),
             elevation_ft: None,
             continent: ContinentType::Oceania, // porque no existe, es un mito
             country: Country::dummy(),
@@ -179,7 +181,7 @@ impl Airport {
         let airport_type = AirportType::try_from(tokens[2].as_str())?;
         let name = tokens[3].to_string();
         let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
-        let position = Position::from_lat_lon(cur_lat, cur_lon);
+        let position = (cur_lat, cur_lon);
         let elevation_ft = match tokens[6].as_str() {
             "" => None,
             _ => match tokens[6].parse::<isize>() {
@@ -235,7 +237,7 @@ impl Airport {
 
     /// Devuelve una lista de aeropuertos que están cerca de la posición dada.
     pub fn by_distance(
-        pos: &Position,
+        pos: (Double, Double),
         tolerance: &f64,
         countries_cache: &CountriesMap,
     ) -> Result<Vec<Self>> {
@@ -246,8 +248,8 @@ impl Airport {
             let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
 
             let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
-            if &distance_euclidean_pos(&Position::from_lat_lon(cur_lat, cur_lon), pos) <= tolerance
-            {
+            let (lat, lon) = pos;
+            if &distance_euclidean(cur_lat, cur_lon, lat, lon) <= tolerance {
                 airports.push(Self::from_tokens(tokens, countries_cache)?);
             }
         }
@@ -256,10 +258,16 @@ impl Airport {
     }
 
     /// Devuelve una lista de aeropuertos que están cerca de la posición dada, basado en un cache.
-    pub fn by_distance_cache(pos: &Position, tolerance: &f64, cache: &AirportsMap) -> Vec<Self> {
+    pub fn by_distance_cache(
+        pos: (Double, Double),
+        tolerance: &f64,
+        cache: &AirportsMap,
+    ) -> Vec<Self> {
         let mut airports = Vec::<Self>::new();
+        let (lat, lon) = pos;
         for airp in cache.values() {
-            if &distance_euclidean_pos(pos, &airp.position) <= tolerance {
+            let (airp_lat, airp_lon) = airp.position;
+            if &distance_euclidean(lat, lon, airp_lat, airp_lon) <= tolerance {
                 airports.push(airp.clone());
             }
         }
@@ -271,7 +279,7 @@ impl Airport {
     ///
     /// La primera coordenada del área está garantizada de tener valores menores que la segunda.
     pub fn by_area(
-        area: (&Position, &Position),
+        area: (Double, Double, Double, Double),
         countries_cache: &CountriesMap,
     ) -> Result<Vec<Self>> {
         let reader = reader_from(AIRPORTS_PATH, true)?;
@@ -281,7 +289,7 @@ impl Airport {
             let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
 
             let (cur_lat, cur_lon) = Self::coords(&tokens[4], &tokens[5])?;
-            if inside_area(&Position::from_lat_lon(cur_lat, cur_lon), area) {
+            if inside_area((cur_lat, cur_lon), area) {
                 airports.push(Self::from_tokens(tokens, countries_cache)?);
             }
         }
@@ -292,11 +300,11 @@ impl Airport {
     /// Devuelve una lista de aeropuertos que están dentro del área indicada, según un cache.
     ///
     /// La primera coordenada del área está garantizada de tener valores menores que la segunda.
-    pub fn by_area_cache(area: (&Position, &Position), cache: &AirportsMap) -> Vec<Self> {
+    pub fn by_area_cache(area: (Double, Double, Double, Double), cache: &AirportsMap) -> Vec<Self> {
         let mut airports = Vec::<Self>::new();
 
         for airp in cache.values() {
-            if inside_area(&airp.position, area) {
+            if inside_area(airp.position, area) {
                 airports.push(airp.clone());
             }
         }

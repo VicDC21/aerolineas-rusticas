@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
-use crate::data::{
-    airports::airp::Airport, flights::flight::Flight, tracking::live_flight_data::LiveFlightData,
+use crate::{
+    data::{airports::airp::Airport, flights::flight::Flight},
+    interface::plugins::flights::loader::LiveDataMap,
 };
 
 /// Holds details to many of the important data of the current instant in the GUI.
@@ -24,10 +25,10 @@ pub struct AirlinesDetails {
     departing_flights: Arc<Vec<Flight>>,
 
     /// Los datos de vuelos entrantes actualmente en memoria.
-    incoming_tracking: Arc<Vec<LiveFlightData>>,
+    incoming_tracking: Arc<LiveDataMap>,
 
     /// Los datos de vuelos salientes actualmente en memoria.
-    departing_tracking: Arc<Vec<LiveFlightData>>,
+    departing_tracking: Arc<LiveDataMap>,
 
     /// Decidir si mostrar los vuelos entrantes.
     show_incoming_flights: bool,
@@ -43,7 +44,7 @@ impl AirlinesDetails {
         extra_airport: Option<Airport>,
         current_airports: Vec<Airport>,
         flights: (Vec<Flight>, Vec<Flight>),
-        tracking: (Vec<LiveFlightData>, Vec<LiveFlightData>),
+        tracking: (LiveDataMap, LiveDataMap),
         show_incoming_flights: bool,
         show_departing_flights: bool,
     ) -> Self {
@@ -139,24 +140,24 @@ impl AirlinesDetails {
     }
 
     /// Consigue una referencia clonada a los datos de vuelos entrantes guardados.
-    pub fn get_incoming_tracking(&self) -> Arc<Vec<LiveFlightData>> {
+    pub fn get_incoming_tracking(&self) -> Arc<LiveDataMap> {
         Arc::clone(&self.incoming_tracking)
     }
 
     /// Actualiza la lista de datos de vuelos entrantes.
-    pub fn set_incoming_tracking(&mut self, new_tr_incoming: Vec<LiveFlightData>) {
+    pub fn set_incoming_tracking(&mut self, new_tr_incoming: LiveDataMap) {
         if !new_tr_incoming.is_empty() {
             self.incoming_tracking = Arc::new(new_tr_incoming);
         }
     }
 
     /// Consigue una referencia clonada a los datos de vuelos entrantes guardados.
-    pub fn get_departing_tracking(&self) -> Arc<Vec<LiveFlightData>> {
+    pub fn get_departing_tracking(&self) -> Arc<LiveDataMap> {
         Arc::clone(&self.departing_tracking)
     }
 
     /// Actualiza la lista de datos de vuelos salientes.
-    pub fn set_departing_tracking(&mut self, new_tr_departing: Vec<LiveFlightData>) {
+    pub fn set_departing_tracking(&mut self, new_tr_departing: LiveDataMap) {
         if !new_tr_departing.is_empty() {
             self.departing_tracking = Arc::new(new_tr_departing);
         }
@@ -202,7 +203,7 @@ impl Default for AirlinesDetails {
             None,
             Vec::<Airport>::new(),
             (Vec::<Flight>::new(), Vec::<Flight>::new()),
-            (Vec::<LiveFlightData>::new(), Vec::<LiveFlightData>::new()),
+            (LiveDataMap::new(), LiveDataMap::new()),
             false,
             false,
         )

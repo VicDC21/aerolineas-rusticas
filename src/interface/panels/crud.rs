@@ -2,15 +2,15 @@
 
 use std::sync::{Arc, Mutex};
 
+use walkers::Position;
+
 use crate::{
-    client::{cli::Client, protocol_result::ProtocolResult},
+    client::cli::Client,
     data::{airports::airp::Airport, flights::states::FlightState, utils::distances::distance_eta},
-    protocol::{
-        aliases::{
-            results::Result,
-            types::{Int, Long},
-        },
-        errors::error::Error,
+    interface::utils::send_client_query,
+    protocol::aliases::{
+        results::Result,
+        types::{Int, Long},
     },
 };
 
@@ -23,22 +23,29 @@ pub fn insert_flight(
 ) -> Result<()> {
     let flight_id = cur_airport.id + ex_airport.id + timestamp as usize;
 
-    let incoming_client = Arc::clone(&client);
-    let flight_duration = distance_eta(&cur_airport.position, &ex_airport.position, None, None);
+    let inc_fl_cli = Arc::clone(&client);
+    let (cur_lat, cur_lon) = cur_airport.position;
+    let (ex_lat, ex_lon) = ex_airport.position;
+    let flight_duration = distance_eta(
+        &Position::from_lat_lon(cur_lat, cur_lon),
+        &Position::from_lat_lon(ex_lat, ex_lon),
+        None,
+        None,
+    );
     let eta = (timestamp as u64 + flight_duration.as_secs()) as i64;
-    let incoming_query = format!(
+    let inc_fl_query = format!(
         "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES ({}, '{}', '{}', {}, '{}');",
-        flight_id as Int, cur_airport.ident, ex_airport.ident, eta, FlightState::InCourse
+        flight_id as Int, cur_airport.ident, ex_airport.ident, eta, FlightState::Preparing
     );
 
-    let departing_client = Arc::clone(&client);
-    let departing_query = format!(
+    let dep_fl_cli = Arc::clone(&client);
+    let dep_fl_query = format!(
         "INSERT INTO vuelos_salientes (id, orig, dest, salida, estado) VALUES ({}, '{}', '{}', {}, '{}');",
-        flight_id as Int, cur_airport.ident, ex_airport.ident, timestamp, FlightState::InCourse
+        flight_id as Int, cur_airport.ident, ex_airport.ident, timestamp, FlightState::Preparing
     );
 
-    send_client_query(incoming_client, incoming_query.as_str())?;
-    send_client_query(departing_client, departing_query.as_str())?;
+    send_client_query(inc_fl_cli, inc_fl_query.as_str())?;
+    send_client_query(dep_fl_cli, dep_fl_query.as_str())?;
 
     Ok(())
 }
@@ -53,28 +60,6 @@ pub fn delete_flight_by_id(client_lock: Arc<Mutex<Client>>, flight_id: Int) -> R
 
     send_client_query(inc_client, inc_delete.as_str())?;
     send_client_query(dep_client, dep_delete.as_str())?;
-
-    Ok(())
-}
-
-/// Manda una _query_ para insertar un tipo de vuelo.
-fn send_client_query(client_lock: Arc<Mutex<Client>>, query: &str) -> Result<()> {
-    let mut client = match client_lock.lock() {
-        Ok(cli) => cli,
-        Err(poison_err) => {
-            return Err(Error::ServerError(format!(
-                "Error de lock envenenado tratando de leer un cliente:\n\n{}",
-                poison_err
-            )))
-        }
-    };
-
-    let mut tcp_stream = client.connect()?;
-    let protocol_result = client.send_query(query, &mut tcp_stream)?;
-
-    if let ProtocolResult::QueryError(err) = protocol_result {
-        println!("{}", err);
-    }
 
     Ok(())
 }
