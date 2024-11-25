@@ -32,7 +32,7 @@ pub struct LiveFlightData {
     timestamp: Long,
 
     /// La velocidal actual, o rapidez instantánea, del vuelo en curso.
-    pub spd: Double,
+    spd: Double,
 
     /// Un registro interno de todas las lecturas de velocidad anteriores desde
     /// que se creó la instancia.
@@ -207,7 +207,10 @@ impl LiveFlightData {
                                                         if let ColData::Double(elapsed) = &row[10] {
                                                             tracking_data.push(Self::new(
                                                                 *flight_id,
-                                                                (orig.to_string(), dest.to_string()),
+                                                                (
+                                                                    orig.to_string(),
+                                                                    dest.to_string(),
+                                                                ),
                                                                 (*timestamp, *elapsed),
                                                                 (*spd, *fuel),
                                                                 (*lat, *lon),

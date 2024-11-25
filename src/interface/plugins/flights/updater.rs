@@ -6,8 +6,12 @@ use eframe::egui::{Color32, Context, Painter, Response, Shape, Stroke};
 use walkers::{extras::Image, Plugin, Position, Projector, Texture};
 
 use crate::{
-    data::{airports::airp::{Airport, AirportsMap}, tracking::live_flight_data::LiveFlightData},
+    data::{
+        airports::airp::{Airport, AirportsMap},
+        tracking::live_flight_data::LiveFlightData,
+    },
     interface::plugins::{flights::loader::LiveDataMap, utils::load_egui_img},
+    protocol::aliases::types::Double,
 };
 
 /// La ruta de la imagen de un vuelo en curso.
@@ -95,6 +99,55 @@ impl FlightsUpdater {
 
         self
     }
+
+    /// Dibuja la lína de viaje.
+    pub fn draw_flight_line(
+        &self,
+        response: &Response,
+        painter: Painter,
+        projector: &Projector,
+        orig_dest: ((Double, Double), (Double, Double)),
+        cur_pos: (Double, Double),
+        chosen_color: Color32,
+    ) {
+        let ((orig_lat, orig_lon), (dest_lat, dest_lon)) = orig_dest;
+        let (cur_lat, cur_lon) = cur_pos;
+
+        let orig_pos = Position::from_lat_lon(orig_lat, orig_lon);
+        let dest_pos = Position::from_lat_lon(dest_lat, dest_lon);
+        let cur_pos = Position::from_lat_lon(cur_lat, cur_lon);
+
+        let mut orig_to_fl = Shape::dashed_line(
+            &[
+                projector.project(orig_pos).to_pos2(),
+                projector.project(cur_pos).to_pos2(),
+            ],
+            Stroke::new(2.0, Color32::from_rgb(50, 50, 50)),
+            10.0,
+            10.0,
+        );
+        let fl_to_dest = Shape::line_segment(
+            [
+                projector.project(cur_pos).to_pos2(),
+                projector.project(dest_pos).to_pos2(),
+            ],
+            Stroke::new(2.0, chosen_color),
+        );
+
+        let mut drawable = Vec::<Shape>::new();
+        drawable.append(&mut orig_to_fl);
+        drawable.push(fl_to_dest);
+
+        painter.extend(drawable);
+
+        if let Some(text) = &self.in_course_img {
+            let mut img = Image::new(text.clone(), cur_pos);
+            img.scale(0.025, 0.025);
+            // TODO: rotarla según el ángulo entre las dos posiciones
+
+            img.draw(response, painter.clone(), projector);
+        }
+    }
 }
 
 impl Plugin for &mut FlightsUpdater {
@@ -106,47 +159,34 @@ impl Plugin for &mut FlightsUpdater {
                         continue;
                     }
 
-                    println!("pos: {:?}", recent_entry.pos);
-
                     if let Some(dest) = self.all_airports.get(&recent_entry.dest) {
-                        let (orig_lat, orig_lon) = airport.position;
-                        let (dest_lat, dest_lon) = dest.position;
-                        let (cur_lat, cur_lon) = recent_entry.pos;
-
-                        let orig_pos = Position::from_lat_lon(orig_lat, orig_lon);
-                        let dest_pos = Position::from_lat_lon(dest_lat, dest_lon);
-                        let cur_pos = Position::from_lat_lon(cur_lat, cur_lon);
-
-                        let mut orig_to_fl = Shape::dashed_line(
-                            &[
-                                projector.project(orig_pos).to_pos2(),
-                                projector.project(cur_pos).to_pos2(),
-                            ],
-                            Stroke::new(2.0, Color32::from_rgb(50, 50, 50)),
-                            10.0,
-                            10.0,
+                        self.draw_flight_line(
+                            response,
+                            painter.clone(),
+                            projector,
+                            (airport.position, dest.position),
+                            recent_entry.pos,
+                            Color32::from_rgb(255, 60, 60),
                         );
-                        let fl_to_dest = Shape::line_segment(
-                            [
-                                projector.project(cur_pos).to_pos2(),
-                                projector.project(dest_pos).to_pos2(),
-                            ],
-                            Stroke::new(2.0, Color32::from_rgb(255, 60, 60)),
+                    }
+                }
+            }
+
+            for inc_data in self.incoming_tracking.values() {
+                if let Some(recent_entry) = LiveFlightData::most_recent(inc_data) {
+                    if recent_entry.dest != airport.ident {
+                        continue;
+                    }
+
+                    if let Some(orig) = self.all_airports.get(&recent_entry.orig) {
+                        self.draw_flight_line(
+                            response,
+                            painter.clone(),
+                            projector,
+                            (orig.position, airport.position),
+                            recent_entry.pos,
+                            Color32::from_rgb(60, 60, 200),
                         );
-
-                        let mut drawable = Vec::<Shape>::new();
-                        drawable.append(&mut orig_to_fl);
-                        drawable.push(fl_to_dest);
-
-                        painter.extend(drawable);
-
-                        if let Some(text) = &self.in_course_img {
-                            let mut img = Image::new(text.clone(), cur_pos);
-                            img.scale(0.025, 0.025);
-                            // TODO: rotarla según el ángulo entre las dos posiciones
-
-                            img.draw(response, painter.clone(), projector);
-                        }
                     }
                 }
             }

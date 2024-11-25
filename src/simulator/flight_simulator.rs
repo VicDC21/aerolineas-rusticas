@@ -117,7 +117,7 @@ impl FlightSimulator {
 
         let simulation_start = Instant::now();
         let simulation_limit = Duration::from_secs(FLIGHT_LIMIT_SECS);
-        let step_size = total_distance / 15.0;
+        let step_size = total_distance / 50.0;
 
         let params = FlightSimulationParams {
             dest_coords,
@@ -131,7 +131,14 @@ impl FlightSimulator {
 
         Self::run_flight_simulation(&flights, &mut flight, &client, &params, &mut rng);
 
-        let _ = Self::finish_flight(&flights, &mut flight, dest_coords, dest_elevation, &client, params.simulation_start.elapsed().as_secs_f64());
+        let _ = Self::finish_flight(
+            &flights,
+            &mut flight,
+            dest_coords,
+            dest_elevation,
+            &client,
+            params.simulation_start.elapsed().as_secs_f64(),
+        );
     }
 
     fn run_flight_simulation(
@@ -182,7 +189,13 @@ impl FlightSimulator {
                 .unwrap_or_else(|_| Duration::from_secs(0))
                 .as_secs() as Long;
 
-            let _ = Self::send_flight_update(flight, timestamp, client, current_fuel, params.simulation_start.elapsed().as_secs_f64());
+            let _ = Self::send_flight_update(
+                flight,
+                timestamp,
+                client,
+                current_fuel,
+                params.simulation_start.elapsed().as_secs_f64(),
+            );
             thread::sleep(Duration::from_secs(1));
         }
     }
@@ -195,12 +208,12 @@ impl FlightSimulator {
         elapsed: Double,
     ) -> Result<(), Error> {
         let incoming_query = format!(
-            "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {}, {});",
-            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state.clone() as Int, flight.get_spd(), flight.altitude_ft, fuel, elapsed);
+            "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible, duracion) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {}, {});",
+            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state, flight.get_spd(), flight.altitude_ft, fuel, elapsed);
 
         let departing_query = format!(
-            "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {}, {});",
-            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state.clone() as Int, flight.get_spd(), flight.altitude_ft, fuel, elapsed);
+            "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible, duracion) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {}, {});",
+            flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state, flight.get_spd(), flight.altitude_ft, fuel, elapsed);
 
         Self::send_insert_query(&incoming_query, &mut client.clone())?;
         Self::send_insert_query(&departing_query, &mut client.clone())?;
@@ -242,7 +255,7 @@ impl FlightSimulator {
 
         let flight = LiveFlightData::new(
             flight_id,
-            (origin_airport.name, destination_airport.name),
+            (origin_airport.ident, destination_airport.ident),
             (timestamp, 0.0),
             (avg_speed, 100.0),
             origin_coords,
@@ -289,7 +302,7 @@ impl FlightSimulator {
         flight: &mut LiveFlightData,
         client: &Client,
     ) -> Result<(), Error> {
-        flight.spd = 0.0;
+        flight.set_spd(0.0);
         flight.state = FlightState::Preparing;
 
         Self::update_flight_in_list(flights, flight);
@@ -340,7 +353,11 @@ impl FlightSimulator {
         );
 
         flight.pos = (new_lat, new_lon);
-        flight.spd = FlightCalculations::calculate_current_speed(flight.avg_spd(), progress, rng);
+        flight.set_spd(FlightCalculations::calculate_current_speed(
+            flight.avg_spd(),
+            progress,
+            rng,
+        ));
 
         let base_altitude = FlightCalculations::calculate_cruise_altitude(
             flight.altitude_ft,
@@ -371,7 +388,7 @@ impl FlightSimulator {
     ) -> Result<(), Error> {
         flight.state = FlightState::Finished;
         flight.pos = dest_coords;
-        flight.spd = 0.0;
+        flight.set_spd(0.0);
         flight.altitude_ft = dest_elevation;
 
         Self::update_flight_in_list(flights, flight);
