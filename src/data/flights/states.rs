@@ -6,22 +6,22 @@ use crate::protocol::errors::error::Error;
 
 /// Un mismo vuelo puede cancelarse, atrasarse, u otras cosas que es necesario detectar.
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FlightState {
+    /// Un vuelo en preparación.
+    Preparing,
+
     /// Un vuelo actualmente ne curso.
     InCourse,
+
+    /// Un vuelo finalizado correctamente (no [cancelado](crate::data::flight_states::FlightState::Canceled)).
+    Finished,
 
     /// Un vuelo atrasado.
     Delayed,
 
     /// Un vuelo cancelado.
     Canceled,
-
-    /// Un vuelo finalizado correctamente (no [cancelado](crate::data::flight_states::FlightState::Canceled)).
-    Finished,
-
-    /// Un vuelo en preparación.
-    Preparing,
 }
 
 impl Display for FlightState {

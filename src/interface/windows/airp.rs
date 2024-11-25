@@ -1,47 +1,8 @@
-//! Módulo para funciones que crean ventanas en el mapa.
-//!
-//! Al ser "ventanas" flotantes, se pueden mostrar por encima del mapa.
+//! Módulo para ventanas de widgets de aeropuertos.
 
 use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
 use eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window};
 use egui_extras::DatePickerButton;
-use walkers::MapMemory;
-
-/// Zoom simple.
-pub fn zoom(ui: &Ui, map_memory: &mut MapMemory) {
-    Window::new("Zoom Buttons")
-        .collapsible(false)
-        .resizable(false)
-        .title_bar(false)
-        .anchor(Align2::LEFT_BOTTOM, [10., -10.])
-        .show(ui.ctx(), |ui| {
-            ui.horizontal(|ui| {
-                if ui.button(RichText::new("➕").heading()).clicked() {
-                    let _ = map_memory.zoom_in();
-                }
-
-                if ui.button(RichText::new("➖").heading()).clicked() {
-                    let _ = map_memory.zoom_out();
-                }
-            });
-        });
-}
-
-/// Cuando el foco se mueve del origen de coordenadas, aparece este botón para traerte de vuelta.
-pub fn go_to_my_position(ui: &Ui, map_memory: &mut MapMemory) {
-    if map_memory.detached().is_some() {
-        Window::new("Follow Pos")
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .anchor(Align2::RIGHT_BOTTOM, [-10., -10.])
-            .show(ui.ctx(), |ui| {
-                if ui.button(RichText::new("📌").heading()).clicked() {
-                    map_memory.follow_my_position();
-                }
-            });
-    }
-}
 
 /// Seleccionar la fecha actual.
 pub fn date_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {

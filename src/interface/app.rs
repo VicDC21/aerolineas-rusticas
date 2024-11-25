@@ -13,13 +13,14 @@ use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position};
 use crate::client::cli::Client;
 use crate::interface::{
     data::app_details::AirlinesDetails,
-    map::{
-        panels::show::{cur_airport_info, extra_airport_info},
-        windows::{airports_progress, clock_selector, date_selector, go_to_my_position, zoom},
-    },
+    panels::show::{cur_airport_info, extra_airport_info},
     plugins::{
         airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
-        flights::loader::FlightsLoader,
+        flights::{loader::FlightsLoader, updater::FlightsUpdater},
+    },
+    windows::{
+        airp::{airports_progress, clock_selector, date_selector},
+        util::{go_to_my_position, zoom},
     },
 };
 
@@ -51,6 +52,9 @@ pub struct AerolineasApp {
     /// El cargador de vuelos.
     flights_loader: FlightsLoader,
 
+    /// El actualizador de vuelos.
+    flights_updater: FlightsUpdater,
+
     /// La fecha actual.
     datetime: DateTime<Local>,
 
@@ -74,6 +78,7 @@ impl AerolineasApp {
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
             flights_loader: FlightsLoader::default(),
+            flights_updater: FlightsUpdater::with_ctx(egui_ctx.clone()),
             datetime: Local::now(),
             airlines_details: AirlinesDetails::default(),
         }
@@ -108,9 +113,13 @@ impl App for AerolineasApp {
             self.airlines_details
                 .set_airports(self.airports_loader.take_airports());
             self.airlines_details
-                .set_incoming_flights(self.flights_loader.take_incoming(), false);
+                .set_incoming_flights(self.flights_loader.take_fl_incoming(), false);
             self.airlines_details
-                .set_departing_flights(self.flights_loader.take_departing(), false);
+                .set_departing_flights(self.flights_loader.take_fl_departing(), false);
+            self.airlines_details
+                .set_incoming_tracking(self.flights_loader.take_tr_incoming());
+            self.airlines_details
+                .set_departing_tracking(self.flights_loader.take_tr_departing());
 
             self.airports_drawer
                 .sync_airports(self.airlines_details.get_airports())
@@ -118,6 +127,10 @@ impl App for AerolineasApp {
             self.screen_clicker
                 .sync_airports(self.airlines_details.get_airports())
                 .sync_zoom(zoom_lvl);
+            self.flights_updater
+                .sync_airport(self.airlines_details.get_selected_airport())
+                .sync_incoming_tracking(self.airlines_details.get_incoming_tracking())
+                .sync_departing_tracking(self.airlines_details.get_departing_tracking());
 
             let (airps_start, airps_end) = self.airports_loader.get_loading_progress();
 
@@ -139,7 +152,8 @@ impl App for AerolineasApp {
                 .with_plugin(&mut self.airports_loader)
                 .with_plugin(&mut self.airports_drawer)
                 .with_plugin(&mut self.screen_clicker)
-                .with_plugin(&mut self.flights_loader);
+                .with_plugin(&mut self.flights_loader)
+                .with_plugin(&mut self.flights_updater);
 
             ui.add(map);
 

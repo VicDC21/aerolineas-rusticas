@@ -93,7 +93,10 @@ impl AirportsLoader {
                             cache.extend(airp);
                         }
 
-                        let airports = Airport::by_area_cache((&pos_min, &pos_max), &cache);
+                        let airports = Airport::by_area_cache(
+                            (pos_min.lat(), pos_min.lon(), pos_max.lat(), pos_max.lon()),
+                            &cache,
+                        );
 
                         if let Err(err) = to_parent.send((airports, cache.len())) {
                             println!(
