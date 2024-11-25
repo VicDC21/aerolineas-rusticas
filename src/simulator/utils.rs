@@ -1,4 +1,4 @@
-use rand::Rng;
+use {crate::protocol::aliases::types::Double, rand::Rng};
 
 /// Funciones de utilidad para cálculos de vuelo
 pub struct FlightCalculations;
@@ -6,12 +6,12 @@ pub struct FlightCalculations;
 impl FlightCalculations {
     /// Calcula la siguiente posición basada en la posición actual, destino y tamaño del paso
     pub fn calculate_next_position(
-        current_lat: f64,
-        current_lon: f64,
-        dest_lat: f64,
-        dest_lon: f64,
-        step_size: f64,
-    ) -> (f64, f64) {
+        current_lat: Double,
+        current_lon: Double,
+        dest_lat: Double,
+        dest_lon: Double,
+        step_size: Double,
+    ) -> (Double, Double) {
         let r = 6371.0;
 
         let lat1 = current_lat.to_radians();
@@ -50,7 +50,7 @@ impl FlightCalculations {
     }
 
     /// Calcula la distancia entre dos puntos usando la fórmula haversine
-    pub fn calculate_distance(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    pub fn calculate_distance(lat1: Double, lon1: Double, lat2: Double, lon2: Double) -> Double {
         let r = 6371.0;
         let d_lat = (lat2 - lat1).to_radians();
         let d_lon = (lon2 - lon1).to_radians();
@@ -65,13 +65,13 @@ impl FlightCalculations {
 
     /// Calcula la altitud de crucero basada en la elevación de origen y destino
     pub fn calculate_cruise_altitude(
-        origin_elevation: f64,
-        dest_elevation: f64,
-        progress: f64,
-    ) -> f64 {
-        const CRUISE_ALTITUDE: f64 = 35000.0;
-        const ASCENT_PHASE: f64 = 0.15;
-        const DESCENT_PHASE: f64 = 0.85;
+        origin_elevation: Double,
+        dest_elevation: Double,
+        progress: Double,
+    ) -> Double {
+        const CRUISE_ALTITUDE: Double = 35000.0;
+        const ASCENT_PHASE: Double = 0.15;
+        const DESCENT_PHASE: Double = 0.85;
 
         if progress < ASCENT_PHASE {
             origin_elevation
@@ -86,12 +86,12 @@ impl FlightCalculations {
 
     /// Calcula la velocidad actual basada en la velocidad promedio y el progreso del vuelo
     pub fn calculate_current_speed(
-        avg_speed: f64,
-        progress: f64,
+        avg_speed: Double,
+        progress: Double,
         rng: &mut rand::rngs::ThreadRng,
-    ) -> f64 {
-        const ASCENT_PHASE: f64 = 0.15;
-        const DESCENT_PHASE: f64 = 0.85;
+    ) -> Double {
+        const ASCENT_PHASE: Double = 0.15;
+        const DESCENT_PHASE: Double = 0.85;
 
         let base_speed = if progress < ASCENT_PHASE {
             avg_speed * (progress / ASCENT_PHASE).powi(2)
@@ -106,7 +106,10 @@ impl FlightCalculations {
     }
 
     /// Calcula la altitud actual agregando una variación aleatoria
-    pub fn calculate_current_altitude(base_altitude: f64, rng: &mut rand::rngs::ThreadRng) -> f64 {
+    pub fn calculate_current_altitude(
+        base_altitude: Double,
+        rng: &mut rand::rngs::ThreadRng,
+    ) -> Double {
         base_altitude + rng.gen_range(-50.0..50.0)
     }
 }
