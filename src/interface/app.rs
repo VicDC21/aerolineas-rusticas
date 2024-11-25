@@ -78,7 +78,7 @@ impl AerolineasApp {
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
             flights_loader: FlightsLoader::default(),
-            flights_updater: FlightsUpdater::default(),
+            flights_updater: FlightsUpdater::with_ctx(egui_ctx.clone()),
             datetime: Local::now(),
             airlines_details: AirlinesDetails::default(),
         }
@@ -128,6 +128,7 @@ impl App for AerolineasApp {
                 .sync_airports(self.airlines_details.get_airports())
                 .sync_zoom(zoom_lvl);
             self.flights_updater
+                .sync_airport(self.airlines_details.get_selected_airport())
                 .sync_incoming_tracking(self.airlines_details.get_incoming_tracking())
                 .sync_departing_tracking(self.airlines_details.get_departing_tracking());
 
