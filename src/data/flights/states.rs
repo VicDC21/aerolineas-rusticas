@@ -8,20 +8,20 @@ use crate::protocol::errors::error::Error;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FlightState {
+    /// Un vuelo en preparación.
+    Preparing,
+
     /// Un vuelo actualmente ne curso.
     InCourse,
+
+    /// Un vuelo finalizado correctamente (no [cancelado](crate::data::flight_states::FlightState::Canceled)).
+    Finished,
 
     /// Un vuelo atrasado.
     Delayed,
 
     /// Un vuelo cancelado.
     Canceled,
-
-    /// Un vuelo finalizado correctamente (no [cancelado](crate::data::flight_states::FlightState::Canceled)).
-    Finished,
-
-    /// Un vuelo en preparación.
-    Preparing,
 }
 
 impl Display for FlightState {

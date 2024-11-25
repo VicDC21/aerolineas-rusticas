@@ -1,11 +1,15 @@
 use crate::{
-    client::cli::Client, protocol::errors::error::Error,
+    client::cli::Client,
+    protocol::aliases::types::{Double, Int},
+    protocol::errors::error::Error,
     simulator::flight_simulator::FlightSimulator,
 };
 
+const MAX_THREADS: usize = 4;
+
 /// Ejecuta el simulador de vuelos.
 pub fn run_sim(client: Client) -> Result<(), Error> {
-    match FlightSimulator::new(4, client) {
+    match FlightSimulator::new(MAX_THREADS, client) {
         Ok(simulator) => loop {
             println!("\nSimulador de Vuelos");
             println!("1. Añadir vuelo");
@@ -47,8 +51,8 @@ fn handle_add_flight(simulator: &FlightSimulator) {
     let mut speed = String::new();
     std::io::stdin().read_line(&mut speed).unwrap();
 
-    if let Ok(speed) = speed.trim().parse::<f64>() {
-        match flight_id.trim().parse::<i32>() {
+    if let Ok(speed) = speed.trim().parse::<Double>() {
+        match flight_id.trim().parse::<Int>() {
             Ok(id) => match simulator.add_flight(
                 id,
                 origin.trim().to_string(),
@@ -70,7 +74,7 @@ fn handle_view_flight(simulator: &FlightSimulator) {
     let mut flight_id = String::new();
     std::io::stdin().read_line(&mut flight_id).unwrap();
 
-    match flight_id.trim().parse::<i32>() {
+    match flight_id.trim().parse::<Int>() {
         Ok(id) => match simulator.get_flight_data(id) {
             Some(flight) => {
                 println!("\nInformación del vuelo {}:", flight.flight_id);
@@ -78,11 +82,11 @@ fn handle_view_flight(simulator: &FlightSimulator) {
                 println!("Destino: {}", flight.dest);
                 println!("Estado: {:?}", flight.state);
                 println!(
-                    "Posición actual: ({:.2}, {:.2})",
+                    "Posición actual: ({:.4}, {:.4})",
                     flight.lat(),
                     flight.lon()
                 );
-                println!("Altitud: {:.2} pies", flight.altitude_ft);
+                println!("Altitud: {:.2} msnm", flight.altitude_ft);
                 println!("Velocidad actual: {:.2} km/h", flight.get_spd());
                 println!("Velocidad promedio: {:.2} km/h", flight.avg_spd());
             }
@@ -105,13 +109,15 @@ fn handle_view_all_flights(simulator: &FlightSimulator) {
         println!("  Origen: {}", flight.orig);
         println!("  Destino: {}", flight.dest);
         println!("  Estado: {:?}", flight.state);
-        println!("  Tipo: {:?}", flight.flight_type);
     }
 }
 
 fn handle_view_airports(simulator: &FlightSimulator) {
     println!("Aeropuertos disponibles:");
     for (code, airport) in simulator.airports.iter() {
-        println!("{}: {} ({})", code, airport.name, airport.municipality);
+        println!(
+            "{}: {} ({}, {})",
+            code, airport.name, airport.municipality, airport.country.name
+        );
     }
 }

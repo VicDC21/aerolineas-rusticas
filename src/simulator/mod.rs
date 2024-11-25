@@ -4,3 +4,5 @@
 pub mod cli;
 /// Módulo de simulación de vuelos.
 pub mod flight_simulator;
+/// Módulo de utilidades.
+pub mod utils;
