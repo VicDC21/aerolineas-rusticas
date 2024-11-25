@@ -454,7 +454,7 @@ impl Node {
             let mut rng = thread_rng();
             let selected_id = nodes_ids[dist.sample(&mut rng)];
             if selected_id != id {
-                return Ok(());
+                continue;
             }
 
             let mut neighbours: HashSet<NodeId> = HashSet::new();
@@ -795,6 +795,7 @@ impl Node {
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done();
+        //println!("Vecinos del nodo [{}]: {:?}", self.id, self.neighbours_states);
 
         for neighbour_id in neighbours {
             if let Err(err) = send_to_node(
