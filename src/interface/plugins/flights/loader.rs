@@ -48,7 +48,7 @@ type FlightDataChild = (DateChild, Receiver<LiveDataMap>);
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
 const FLIGHTS_INTERVAL_SECS: u64 = 3;
 /// Intervalo (en segundos) antes de cargar los datos de vuelos de nuevo, como mínimo.
-const TRACKING_INTERVAL_SECS: u64 = 5;
+const TRACKING_INTERVAL_SECS: u64 = 1;
 
 /// Un día en segundos.
 const DAY_IN_SECONDS: i64 = 86400;

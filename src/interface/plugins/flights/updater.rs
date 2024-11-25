@@ -6,7 +6,7 @@ use eframe::egui::{Color32, Context, Painter, Response, Shape, Stroke};
 use walkers::{extras::Image, Plugin, Position, Projector, Texture};
 
 use crate::{
-    data::airports::airp::{Airport, AirportsMap},
+    data::{airports::airp::{Airport, AirportsMap}, tracking::live_flight_data::LiveFlightData},
     interface::plugins::{flights::loader::LiveDataMap, utils::load_egui_img},
 };
 
@@ -100,15 +100,18 @@ impl FlightsUpdater {
 impl Plugin for &mut FlightsUpdater {
     fn run(&mut self, response: &Response, painter: Painter, projector: &Projector) {
         if let Some(airport) = self.selected_airport.as_ref() {
-            for inc_data in self.incoming_tracking.values() {
-                if let Some(last_entry) = inc_data.last() {
-                    if last_entry.orig != airport.ident {
+            for dep_data in self.departing_tracking.values() {
+                if let Some(recent_entry) = LiveFlightData::most_recent(dep_data) {
+                    if recent_entry.orig != airport.ident {
                         continue;
                     }
-                    if let Some(dest) = self.all_airports.get(&last_entry.dest) {
+
+                    println!("pos: {:?}", recent_entry.pos);
+
+                    if let Some(dest) = self.all_airports.get(&recent_entry.dest) {
                         let (orig_lat, orig_lon) = airport.position;
                         let (dest_lat, dest_lon) = dest.position;
-                        let (cur_lat, cur_lon) = last_entry.pos;
+                        let (cur_lat, cur_lon) = recent_entry.pos;
 
                         let orig_pos = Position::from_lat_lon(orig_lat, orig_lon);
                         let dest_pos = Position::from_lat_lon(dest_lat, dest_lon);
@@ -119,7 +122,7 @@ impl Plugin for &mut FlightsUpdater {
                                 projector.project(orig_pos).to_pos2(),
                                 projector.project(cur_pos).to_pos2(),
                             ],
-                            Stroke::new(20.0, Color32::from_rgb(50, 50, 50)),
+                            Stroke::new(2.0, Color32::from_rgb(50, 50, 50)),
                             10.0,
                             10.0,
                         );
@@ -128,7 +131,7 @@ impl Plugin for &mut FlightsUpdater {
                                 projector.project(cur_pos).to_pos2(),
                                 projector.project(dest_pos).to_pos2(),
                             ],
-                            Stroke::new(20.0, Color32::from_rgb(255, 60, 60)),
+                            Stroke::new(2.0, Color32::from_rgb(255, 60, 60)),
                         );
 
                         let mut drawable = Vec::<Shape>::new();

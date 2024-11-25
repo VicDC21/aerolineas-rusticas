@@ -1,5 +1,7 @@
 //! Módulo para datos de vuelos en vivo.
 
+use std::time::Duration;
+
 use chrono::{DateTime, TimeZone, Utc};
 
 use crate::{
@@ -15,7 +17,7 @@ use crate::{
 };
 
 /// Datos de vuelo en vivo.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LiveFlightData {
     /// El ID del vuelo.
     pub flight_id: Int,
@@ -53,6 +55,9 @@ pub struct LiveFlightData {
 
     /// El [estado](FlightState) del vuelo.
     pub state: FlightState,
+
+    /// El tiempo desde que se inició el vuelo.
+    pub elapsed: Duration,
 }
 
 impl LiveFlightData {
@@ -60,13 +65,14 @@ impl LiveFlightData {
     pub fn new(
         flight_id: Int,
         orig_dest: (String, String),
-        timestamp: Long,
+        timestamp_elapsed: (Long, Double),
         spd_fuel: (Double, Double),
         pos: (Double, Double),
         altitude_ft: Double,
         type_state: (FlightType, FlightState),
     ) -> Self {
         let (orig, dest) = orig_dest;
+        let (timestamp, elapsed) = timestamp_elapsed;
         let (spd, fuel) = spd_fuel;
         let (flight_type, state) = type_state;
         Self {
@@ -81,6 +87,7 @@ impl LiveFlightData {
             altitude_ft,
             flight_type,
             state,
+            elapsed: Duration::from_secs_f64(elapsed),
         }
     }
 
@@ -144,6 +151,28 @@ impl LiveFlightData {
         Utc.timestamp_opt(self.timestamp, 0).single()
     }
 
+    /// Consigue, entre muchos vuelos, el más reciente.
+    ///
+    /// Esta función no verifica si son todos los vuelos del mismo ID ni nada.
+    /// Deben estar más o menos ordenados desde antes.
+    pub fn most_recent(candidates: &Vec<Self>) -> Option<&Self> {
+        let mut chosen_one: Option<&LiveFlightData> = None;
+        let null_duration = Duration::from_secs_f64(0.);
+
+        for candidate in candidates {
+            let dur = match chosen_one {
+                Some(chosen) => chosen.elapsed,
+                None => null_duration,
+            };
+
+            if candidate.elapsed > dur {
+                chosen_one = Some(candidate);
+            }
+        }
+
+        chosen_one
+    }
+
     /// Trata de parsear el resultado de una _query_ a los datos de vuelo correspondientes.
     pub fn try_from_protocol_result(
         protocol_res: ProtocolResult,
@@ -154,7 +183,7 @@ impl LiveFlightData {
         if let ProtocolResult::QueryError(err) = protocol_res {
             return Err(err);
         } else if let ProtocolResult::Rows(rows) = protocol_res {
-            let preferred_len = 10;
+            let preferred_len = 11;
             for row in rows {
                 if row.len() != preferred_len {
                     return Err(Error::ServerError(format!(
@@ -175,20 +204,22 @@ impl LiveFlightData {
                                             if let ColData::Double(spd) = &row[7] {
                                                 if let ColData::Double(altitude_ft) = &row[8] {
                                                     if let ColData::Double(fuel) = &row[9] {
-                                                        tracking_data.push(Self::new(
-                                                            *flight_id,
-                                                            (orig.to_string(), dest.to_string()),
-                                                            *timestamp,
-                                                            (*spd, *fuel),
-                                                            (*lat, *lon),
-                                                            *altitude_ft,
-                                                            (
-                                                                flight_type.clone(),
-                                                                FlightState::try_from(
-                                                                    state.as_str(),
-                                                                )?,
-                                                            ),
-                                                        ));
+                                                        if let ColData::Double(elapsed) = &row[10] {
+                                                            tracking_data.push(Self::new(
+                                                                *flight_id,
+                                                                (orig.to_string(), dest.to_string()),
+                                                                (*timestamp, *elapsed),
+                                                                (*spd, *fuel),
+                                                                (*lat, *lon),
+                                                                *altitude_ft,
+                                                                (
+                                                                    flight_type.clone(),
+                                                                    FlightState::try_from(
+                                                                        state.as_str(),
+                                                                    )?,
+                                                                ),
+                                                            ));
+                                                        }
                                                     }
                                                 }
                                             }
