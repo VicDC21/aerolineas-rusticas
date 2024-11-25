@@ -154,18 +154,53 @@ impl AddrLoader {
         ips
     }
 
-    /// Obtiene la IP de un nodo dado su ID. Si no se encuentra, se devuelve `None`.
-    pub fn get_ip(&self, asked_id: NodeId) -> Option<IpAddr> {
+    /// Trata de buscar la dirección IP asociada a un ID.
+    pub fn get_ip(&self, asked_id: NodeId) -> Result<IpAddr> {
         if let Some(ids_and_ips) = &self.node_ips {
             for (id, ip) in ids_and_ips {
                 if let Some(node_id) = id {
                     if *node_id == asked_id {
-                        return Some(*ip);
+                        return Ok(*ip);
                     }
                 }
             }
         }
-        None
+
+        Err(Error::ServerError(format!(
+            "No se encontró una dirección IP que coincida con el ID {}.",
+            asked_id,
+        )))
+    }
+
+    /// Carga las IDs de nodos, descartando los IPs.
+    pub fn get_ids(&self) -> Vec<NodeId> {
+        let mut ids = Vec::<NodeId>::new();
+
+        if let Some(ip_keys) = &self.node_ips {
+            for id in ip_keys.keys().flatten() {
+                ids.push(*id);
+            }
+        }
+
+        ids
+    }
+
+    /// Trata de buscar el ID asociado a una dirección IP.
+    pub fn get_id(&self, ip_addr: &IpAddr) -> Result<NodeId> {
+        if let Some(node_ips) = &self.node_ips {
+            for (node_id_opt, ip) in node_ips {
+                if ip == ip_addr {
+                    if let Some(node_id) = node_id_opt {
+                        return Ok(*node_id);
+                    }
+                }
+            }
+        }
+
+        Err(Error::ServerError(format!(
+            "No se encontró un ID de nodo que coincida con la IP {}.",
+            ip_addr
+        )))
     }
 
     /// Carga los _sockets_ con un tipo de purto de [cliente](PortType::Cli).
@@ -191,32 +226,6 @@ impl AddrLoader {
         sockets
     }
 
-    /// Convierte un [IpAddr] a un [SocketAddr] según un [tipo](PortType) de puerto dado.
-    pub fn ip_to_socket(ip: &IpAddr, port_type: &PortType) -> SocketAddr {
-        match ip {
-            IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(*ipv4, port_type.to_num())),
-            IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(*ipv6, port_type.to_num(), 0, 0)),
-        }
-    }
-
-    /// Trata de buscar el ID asociado a una dirección IP.
-    pub fn get_id(&self, ip_addr: &IpAddr) -> Result<NodeId> {
-        if let Some(node_ips) = &self.node_ips {
-            for (node_id_opt, ip) in node_ips {
-                if ip == ip_addr {
-                    if let Some(node_id) = node_id_opt {
-                        return Ok(*node_id);
-                    }
-                }
-            }
-        }
-
-        Err(Error::ServerError(format!(
-            "No se encontró un ID de nodo que coincida con la IP {}.",
-            ip_addr
-        )))
-    }
-
     /// Si existe una dirección IP con un [ID de nodo](NodeId) dado, se devuelve un _socket_ con un [tipo](PortType)
     /// de puerto, también dado.
     pub fn get_socket(&self, node_id: &NodeId, port_type: &PortType) -> Result<SocketAddr> {
@@ -234,6 +243,14 @@ impl AddrLoader {
             "No se encontró un socket de nodo que coincida con el ID de nodo {}.",
             node_id
         )))
+    }
+
+    /// Convierte un [IpAddr] a un [SocketAddr] según un [tipo](PortType) de puerto dado.
+    pub fn ip_to_socket(ip: &IpAddr, port_type: &PortType) -> SocketAddr {
+        match ip {
+            IpAddr::V4(ipv4) => SocketAddr::V4(SocketAddrV4::new(*ipv4, port_type.to_num())),
+            IpAddr::V6(ipv6) => SocketAddr::V6(SocketAddrV6::new(*ipv6, port_type.to_num(), 0, 0)),
+        }
     }
 }
 

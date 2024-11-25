@@ -1,7 +1,9 @@
 use std::env::args;
 
 use aerolineas_rusticas::{
-    client::cli::Client, protocol::aliases::results::Result, server::nodes::graph::NodesGraph,
+    client::cli::Client,
+    protocol::aliases::results::Result,
+    server::nodes::{graph::NodesGraph, node::Node},
     simulator::flight_simulator::run_sim,
 };
 
@@ -17,7 +19,7 @@ fn print_err(res: Result<()>) {
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
-    let how_to_use = "Uso:\n\ncargo run [cli | --features \"gui\" gui | sim | sv [echo]]\n";
+    let how_to_use = "Uso:\n\ncargo run [cli | --features \"gui\" gui | sim | sv | nd [echo]]\n";
     if argv.len() < 2 {
         println!("{}", how_to_use);
         return;
@@ -31,6 +33,18 @@ fn main() {
                 NodesGraph::parsing_mode()
             };
             print_err(graph.init());
+        }
+        "nd" => {
+            let id = if argv.len() >= 3 {
+                argv[2].parse::<u8>().unwrap_or(0)
+            } else {
+                0
+            };
+            if argv.len() == 4 && argv[3] == "echo" {
+                print_err(Node::init_in_echo_mode(id))
+            } else {
+                print_err(Node::init_in_parsing_mode(id))
+            }
         }
         "cli" => {
             let mut client = Client::default();
