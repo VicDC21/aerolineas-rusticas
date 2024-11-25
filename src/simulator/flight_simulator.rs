@@ -73,7 +73,7 @@ impl FlightSimulator {
 
         let flight = LiveFlightData::new(
             flight_id,
-            (origin_airport.name, destination_airport.name),
+            (origin_airport.ident, destination_airport.ident),
             timestamp,
             (avg_speed, 1.0),
             origin_airport.position,
