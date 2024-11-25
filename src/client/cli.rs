@@ -1,10 +1,14 @@
 //! Módulo del cliente.
 
 use std::{
-    collections::HashSet, fs::File, io::{stdin, BufRead, BufReader, Read, Write}, net::{SocketAddr, TcpStream}, str::FromStr, sync::Arc, time::Duration
+    collections::HashSet,
+    io::{stdin, BufRead, BufReader, Read, Write},
+    net::{SocketAddr, TcpStream},
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
 };
 
-use rustls::ClientConfig;
 use crate::{
     client::cql_frame::frame::Frame,
     parser::{main_parser::make_parse, statements::statement::Statement},
@@ -29,6 +33,7 @@ use crate::{
     },
     tokenizer::tokenizer::tokenize_query,
 };
+use rustls::ClientConfig;
 
 use super::{col_data::ColData, protocol_result::ProtocolResult};
 
@@ -71,7 +76,6 @@ impl Client {
             .set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
         Ok(tcp_stream)
-
     }
 
     // fn load_tls_config(cert_path: &str, key_path: &str) -> Result<ServerConfig> {
@@ -80,33 +84,30 @@ impl Client {
     //         .into_iter()
     //         .map(Certificate)
     //         .collect();
-    
+
     //     // Leer el archivo de clave privada
     //     let key_file = &mut BufReader::new(File::open(key_path)?);
     //     let mut keys: Vec<PrivateKeyDer> = rustls_pemfile::rsa_private_keys(key_file)?
     //         .into_iter()
     //         .map(PrivateKeyDer)
     //         .collect();
-    
+
     //     if keys.is_empty() {
     //         return Err(Error::Invalid("No se encontró ninguna clave privada válida".to_string()));
     //     }
-    
+
     //     // Configurar TLS
     //     let config = ServerConfig::builder()
     //         .with_no_client_auth() // Cambiar si necesitas autenticación de cliente
     //         .with_single_cert(cert_chain, keys.remove(0))?;
-    
+
     //     Ok(config)
     // }
-
-
 
     /// Conecta con alguno de los _sockets_ dados.
     pub fn connect_to(sockets: &[SocketAddr]) -> Result<TcpStream> {
         match TcpStream::connect(sockets) {
-            Ok(tcp_stream) => {
-                Ok(tcp_stream)},
+            Ok(tcp_stream) => Ok(tcp_stream),
             Err(_) => Err(Error::ServerError(
                 "No se pudo conectar con ningún socket.".to_string(),
             )),
@@ -137,7 +138,7 @@ impl Client {
         }
     }
 
-    fn get_client_connection(&mut self) -> Result<rustls::ClientConnection>{
+    fn get_client_connection(&mut self) -> Result<rustls::ClientConnection> {
         let root_store = rustls::RootCertStore::empty();
         let config = ClientConfig::builder()
             .with_root_certificates(root_store)
@@ -145,10 +146,10 @@ impl Client {
 
         // 3. Crear una conexión TLS sobre la conexión TCP
         let server_name = "www.rust-lang.org".try_into().unwrap();
-        let client_connection = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
+        let client_connection =
+            rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
         Ok(client_connection)
     }
-
 
     /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
     ///
@@ -160,7 +161,8 @@ impl Client {
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
         let mut client_connection = self.get_client_connection()?;
-        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> = rustls::Stream::new(&mut client_connection, &mut tcp_stream);
+        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
+            rustls::Stream::new(&mut client_connection, &mut tcp_stream);
         tls_stream.write_all(&Client::prepare_startup_message()?);
         println!(
             "ECHO MODE:\n \
@@ -259,7 +261,8 @@ impl Client {
                 const MAX_RETRIES: u32 = 2;
                 let mut last_error = None;
 
-                for _retry in 0..=MAX_RETRIES { // VER ESTE CASO
+                for _retry in 0..=MAX_RETRIES {
+                    // VER ESTE CASO
                     // if retry > 0 {
                     //     match self.reconnect(tls_stream) {
                     //         Ok(_) => (),
@@ -327,7 +330,10 @@ impl Client {
         }
     }
 
-    fn read_complete_response(&mut self, tls_stream: &mut rustls::Stream<'_, rustls::ClientConnection, TcpStream>) -> Result<ProtocolResult> {
+    fn read_complete_response(
+        &mut self,
+        tls_stream: &mut rustls::Stream<'_, rustls::ClientConnection, TcpStream>,
+    ) -> Result<ProtocolResult> {
         let mut response = Vec::new();
         let mut buffer = vec![0; 8192];
         const HEADER_SIZE: usize = 9;
@@ -611,7 +617,7 @@ impl Client {
     }
 
     /// Crea una request Startup para ser mandada
-    pub fn prepare_startup_message()-> Result<Vec<Byte>>{
+    pub fn prepare_startup_message() -> Result<Vec<Byte>> {
         let mut response = Vec::new();
         response.append(&mut Version::RequestV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
@@ -624,7 +630,6 @@ impl Client {
         response.splice(5..9, length.to_be_bytes()); // TAMBIEN ESTO
         Ok(response)
     }
-
 }
 
 impl Default for Client {

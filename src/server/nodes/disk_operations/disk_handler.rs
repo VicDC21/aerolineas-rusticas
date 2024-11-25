@@ -40,7 +40,10 @@ use crate::{
 };
 
 use std::{
-    fs::{create_dir, File, OpenOptions}, io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write}, path::Path, str::FromStr
+    fs::{create_dir, File, OpenOptions},
+    io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write},
+    path::Path,
+    str::FromStr,
 };
 
 use super::{
@@ -994,20 +997,27 @@ impl DiskHandler {
         todo!() // ESTA SERIA LA FUNCION, HAY QUE VER LOS PARAMETROS QUE DEBERIA RECIBIR
     }
 
-
     /// Lee la tabla de usuarios y contraseñas, y los devuelve como vector de tuplas.
-    pub fn read_admitted_users(storage_addr: &str) -> Result<Vec<(String, String)>>{
-        let file = match File::open(format!("{}/users.csv",storage_addr)){
+    pub fn read_admitted_users(storage_addr: &str) -> Result<Vec<(String, String)>> {
+        let file = match File::open(format!("{}/users.csv", storage_addr)) {
             Ok(value) => value,
-            Err(_err) => return Err(Error::ServerError("Error abriendo la tabla de usuarios para la autenticacion".to_string()))
+            Err(_err) => {
+                return Err(Error::ServerError(
+                    "Error abriendo la tabla de usuarios para la autenticacion".to_string(),
+                ))
+            }
         };
         let reader = BufReader::new(file);
         let mut result = Vec::new();
-    
+
         for (index, line) in reader.lines().enumerate() {
-            let line = match line{
+            let line = match line {
                 Ok(value) => value,
-                Err(_err) => return Err(Error::ServerError("Error al leer tabla de usuarios para la autenticacion".to_string()))
+                Err(_err) => {
+                    return Err(Error::ServerError(
+                        "Error al leer tabla de usuarios para la autenticacion".to_string(),
+                    ))
+                }
             };
             if index == 0 {
                 continue;
@@ -1020,6 +1030,4 @@ impl DiskHandler {
 
         Ok(result)
     }
-
-
 }

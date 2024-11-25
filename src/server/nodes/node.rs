@@ -1,30 +1,21 @@
 //! Módulo de nodos.
 use chrono::Utc;
-use rustls::{pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer}, server::NoClientAuth, ServerConfig, ServerConnection};
+use rustls::{
+    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
+    ServerConfig, ServerConnection,
+};
 use std::{
-    cmp::PartialEq, collections::{HashMap, HashSet}, env, fmt, fs::File, io::{BufRead, BufReader, Read, Write}, net::{SocketAddr, TcpListener, TcpStream}, path::Path, sync::{Arc, Mutex}, vec::IntoIter
+    cmp::PartialEq,
+    collections::{HashMap, HashSet},
+    env, fmt,
+    io::{BufRead, BufReader, Read, Write},
+    net::{SocketAddr, TcpListener, TcpStream},
+    path::Path,
+    sync::{Arc, Mutex},
+    vec::IntoIter,
 };
 // use rustls::Connection;
 
-
-use crate::{parser::{
-    data_types::keyspace_name::KeyspaceName,
-    main_parser::make_parse,
-    statements::{
-        ddl_statement::{
-            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-            create_table::CreateTable, ddl_statement_parser::DdlStatement,
-            drop_keyspace::DropKeyspace,
-        },
-        dml_statement::{
-            dml_statement_parser::DmlStatement,
-            main_statements::{
-                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
-            },
-        },
-        statement::Statement,
-    },
-}, protocol::utils::{parse_bytes_to_string, parse_bytes_to_string_map}};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -43,6 +34,28 @@ use crate::server::{
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
+use crate::{
+    parser::{
+        data_types::keyspace_name::KeyspaceName,
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::{
+                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+                create_table::CreateTable, ddl_statement_parser::DdlStatement,
+                drop_keyspace::DropKeyspace,
+            },
+            dml_statement::{
+                dml_statement_parser::DmlStatement,
+                main_statements::{
+                    delete::Delete, insert::Insert, select::select_operation::Select,
+                    update::Update,
+                },
+            },
+            statement::Statement,
+        },
+    },
+    protocol::utils::{parse_bytes_to_string, parse_bytes_to_string_map},
+};
 
 use super::{
     addr::loader::AddrLoader,
@@ -617,10 +630,13 @@ impl Node {
                     let mut server_conn = match ServerConnection::new(config) {
                         Ok(conn) => conn,
                         Err(_) => {
-                            return Err(Error::ServerError("Error al crear la conexión TLS".to_string()));
+                            return Err(Error::ServerError(
+                                "Error al crear la conexión TLS".to_string(),
+                            ));
                         }
                     };
-                    let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> = rustls::Stream::new(&mut server_conn, &mut tcp_stream);
+                    let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
+                        rustls::Stream::new(&mut server_conn, &mut tcp_stream);
                     let mut bytes_vec: Vec<Byte> = Vec::new();
                     tls_stream.read_to_end(&mut bytes_vec);
                     // let mut bufreader: BufReader<rustls::Stream<'_, ServerConnection, TcpStream>> = BufReader::new(tls_stream);
@@ -646,7 +662,11 @@ impl Node {
 
     /// Procesa una _request_ en forma de [Byte]s.
     /// También devuelve un [bool] indicando si se debe parar el hilo.
-    pub fn process_tcp(&mut self, tls_stream: rustls::Stream<'_, ServerConnection, TcpStream>, bytes: Vec<Byte>) -> Result<()> {
+    pub fn process_tcp(
+        &mut self,
+        tls_stream: rustls::Stream<'_, ServerConnection, TcpStream>,
+        bytes: Vec<Byte>,
+    ) -> Result<()> {
         if bytes.is_empty() {
             return Ok(());
         }
@@ -665,7 +685,11 @@ impl Node {
     }
 
     /// Maneja una acción de servidor.
-    fn handle_sv_action(&mut self, action: SvAction, mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream>) -> Result<bool> {
+    fn handle_sv_action(
+        &mut self,
+        action: SvAction,
+        mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream>,
+    ) -> Result<bool> {
         let mut stop = false;
         match action {
             SvAction::Exit => stop = true, // La comparación para salir ocurre en otro lado
@@ -833,15 +857,19 @@ impl Node {
         }
     }
 
-
     fn handle_startup(&self, request_body: &[Byte]) -> Result<Vec<Byte>> {
         // Si tuviesemos la opcion del READY pondriamos un if
         let string_map = parse_bytes_to_string_map(request_body)?;
-        if string_map.is_empty(){
-            return Ok(make_error_response(Error::ConfigError("En el startup se debia mandar al menos la version CQL".to_string())))
+        if string_map.is_empty() {
+            return Ok(make_error_response(Error::ConfigError(
+                "En el startup se debia mandar al menos la version CQL".to_string(),
+            )));
         }
-        if string_map[0].1 != "5.0.0"{
-            return Ok(make_error_response(Error::ConfigError(format!("{} es una version CQL no soportada", string_map[0].1))))
+        if string_map[0].1 != "5.0.0" {
+            return Ok(make_error_response(Error::ConfigError(format!(
+                "{} es una version CQL no soportada",
+                string_map[0].1
+            ))));
         }
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
@@ -923,17 +951,19 @@ impl Node {
         let mut i = 0;
         let user_from_req = parse_bytes_to_string(req, &mut i)?;
         let password_from_req = parse_bytes_to_string(req, &mut i)?;
-        for user in users{
-            if user.0 == user_from_req && user.1 == password_from_req{
+        for user in users {
+            if user.0 == user_from_req && user.1 == password_from_req {
                 response.append(&mut Version::ResponseV5.as_bytes());
                 response.append(&mut Flag::Default.as_bytes());
                 response.append(&mut Stream::new(0).as_bytes());
                 response.append(&mut Opcode::AuthSuccess.as_bytes());
                 response.append(&mut Length::new(0).as_bytes());
-                return Ok(response)
+                return Ok(response);
             }
         }
-        response = make_error_response(Error::Invalid("Las credenciales pasadas no son validas".to_string()));
+        response = make_error_response(Error::Invalid(
+            "Las credenciales pasadas no son validas".to_string(),
+        ));
         Ok(response)
     }
 
@@ -2253,30 +2283,12 @@ impl Node {
         Ok(res_hashed_value)
     }
 
-    // fn configure_tls() -> Result<ServerConfig> {
-    //     let mut config = ServerConfig::new(NoClientAuth::new());    
-    //     let cert_file = File::open("cert.pem")?;
-    //     let key_file = File::open("key.pem")?;
-    //     let mut cert_reader = BufReader::new(cert_file);
-    //     let mut key_reader = BufReader::new(key_file);
-    
-    //     let cert_chain = pemfile::certs(&mut cert_reader).unwrap();
-    //     let mut keys = pemfile::pkcs8_private_keys(&mut key_reader).unwrap();
-    
-    //     config.set_single_cert(cert_chain, keys.remove(0))?;
-    
-    //     Ok(config)
-    // }
-    fn configure_tls() -> Result<Arc<ServerConfig>>{
+    fn configure_tls() -> Result<Arc<ServerConfig>> {
         let mut args = env::args();
         args.next();
-        let cert_file = args
-            .next()
-            .expect("missing certificate file argument");
-        let private_key_file = args
-            .next()
-            .expect("missing private key file argument");
-    
+        let cert_file = args.next().expect("missing certificate file argument");
+        let private_key_file = args.next().expect("missing private key file argument");
+
         let certs = CertificateDer::pem_file_iter(cert_file)
             .unwrap()
             .map(|cert| cert.unwrap())
@@ -2284,12 +2296,16 @@ impl Node {
         let private_key = PrivateKeyDer::from_pem_file(private_key_file).unwrap();
         let config = match ServerConfig::builder()
             .with_no_client_auth()
-            .with_single_cert(certs, private_key){
-                Ok(value) => value,
-                Err(_err) => return Err(Error::ServerError("No se pudo buildear la configuracion tls".to_string()))
-            };
+            .with_single_cert(certs, private_key)
+        {
+            Ok(value) => value,
+            Err(_err) => {
+                return Err(Error::ServerError(
+                    "No se pudo buildear la configuracion tls".to_string(),
+                ))
+            }
+        };
         Ok(Arc::new(config))
-    
     }
 
     fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
@@ -2328,7 +2344,9 @@ impl Node {
         }
     }
 
-    fn write_bytes_in_buffer(bufreader: &mut BufReader<rustls::Stream<'_, ServerConnection, TcpStream>>) -> Result<Vec<Byte>> {
+    fn write_bytes_in_buffer(
+        bufreader: &mut BufReader<rustls::Stream<'_, ServerConnection, TcpStream>>,
+    ) -> Result<Vec<Byte>> {
         match bufreader.fill_buf() {
             Ok(recv) => Ok(recv.to_vec()),
             Err(err) => Err(Error::ServerError(format!(
@@ -2370,7 +2388,7 @@ impl Node {
 }
 
 fn wrap_header(mut response: Vec<Byte>, is_internal_request: bool, header: Headers) -> Vec<Byte> {
-    if !is_internal_request{
+    if !is_internal_request {
         let ver = Version::ResponseV5.as_bytes();
         let stream = header.stream.as_bytes();
         response.splice(0..1, ver);
@@ -2390,7 +2408,6 @@ fn make_error_response(err: Error) -> Vec<Byte> {
     response.append(&mut bytes_err);
     response
 }
-
 
 fn check_consistency_of_the_responses(
     opcode_with_hashed_value: Vec<u8>,
