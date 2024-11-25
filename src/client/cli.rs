@@ -1,13 +1,10 @@
 //! Módulo del cliente.
 
 use std::{
-    collections::HashSet,
-    io::{stdin, BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpStream},
-    str::FromStr,
-    time::Duration,
+    collections::HashSet, fs::File, io::{stdin, BufRead, BufReader, Read, Write}, net::{SocketAddr, TcpStream}, str::FromStr, sync::Arc, time::Duration
 };
 
+use rustls::ClientConfig;
 use crate::{
     client::cql_frame::frame::Frame,
     parser::{main_parser::make_parse, statements::statement::Statement},
@@ -62,13 +59,54 @@ impl Client {
 
     /// Conecta con alguno de los _sockets_ guardados.
     pub fn connect(&self) -> Result<TcpStream> {
-        Self::connect_to(&self.addr_loader.get_sockets_cli()[..])
+        let tcp_stream = Self::connect_to(&self.addr_loader.get_sockets_cli()[..])?;
+        tcp_stream
+            .set_nonblocking(true)
+            .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {}", e)))?;
+        // Configurar timeouts explícitos
+        tcp_stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| Error::ServerError(format!("Error al configurar read timeout: {}", e)))?;
+        tcp_stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
+        Ok(tcp_stream)
+
     }
+
+    // fn load_tls_config(cert_path: &str, key_path: &str) -> Result<ServerConfig> {
+    //     let cert_file = &mut BufReader::new(File::open(cert_path)?);
+    //     let cert_chain: Vec<CertificateCompressionAlgorithm> = rustls_pemfile::certs(cert_file)?
+    //         .into_iter()
+    //         .map(Certificate)
+    //         .collect();
+    
+    //     // Leer el archivo de clave privada
+    //     let key_file = &mut BufReader::new(File::open(key_path)?);
+    //     let mut keys: Vec<PrivateKeyDer> = rustls_pemfile::rsa_private_keys(key_file)?
+    //         .into_iter()
+    //         .map(PrivateKeyDer)
+    //         .collect();
+    
+    //     if keys.is_empty() {
+    //         return Err(Error::Invalid("No se encontró ninguna clave privada válida".to_string()));
+    //     }
+    
+    //     // Configurar TLS
+    //     let config = ServerConfig::builder()
+    //         .with_no_client_auth() // Cambiar si necesitas autenticación de cliente
+    //         .with_single_cert(cert_chain, keys.remove(0))?;
+    
+    //     Ok(config)
+    // }
+
+
 
     /// Conecta con alguno de los _sockets_ dados.
     pub fn connect_to(sockets: &[SocketAddr]) -> Result<TcpStream> {
         match TcpStream::connect(sockets) {
-            Ok(tcp_stream) => Ok(tcp_stream),
+            Ok(tcp_stream) => {
+                Ok(tcp_stream)},
             Err(_) => Err(Error::ServerError(
                 "No se pudo conectar con ningún socket.".to_string(),
             )),
@@ -99,6 +137,19 @@ impl Client {
         }
     }
 
+    fn get_client_connection(&mut self) -> Result<rustls::ClientConnection>{
+        let root_store = rustls::RootCertStore::empty();
+        let config = ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth(); // Sin autenticación del cliente
+
+        // 3. Crear una conexión TLS sobre la conexión TCP
+        let server_name = "www.rust-lang.org".try_into().unwrap();
+        let client_connection = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
+        Ok(client_connection)
+    }
+
+
     /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
     ///
     /// <div class="warning">
@@ -108,18 +159,9 @@ impl Client {
     /// </div>
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
-        tcp_stream
-            .set_nonblocking(true)
-            .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {}", e)))?;
-
-        // Configurar timeouts explícitos
-        tcp_stream
-            .set_read_timeout(Some(Duration::from_secs(5)))
-            .map_err(|e| Error::ServerError(format!("Error al configurar read timeout: {}", e)))?;
-        tcp_stream
-            .set_write_timeout(Some(Duration::from_secs(5)))
-            .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
-
+        let mut client_connection = self.get_client_connection()?;
+        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> = rustls::Stream::new(&mut client_connection, &mut tcp_stream);
+        tls_stream.write_all(&Client::prepare_startup_message()?);
         println!(
             "ECHO MODE:\n \
             ----------\n \
@@ -142,7 +184,7 @@ impl Client {
                         return Ok(());
                     }
 
-                    match self.send_query(&input, &mut tcp_stream) {
+                    match self.send_query(&input, &mut tls_stream) {
                         Ok(res) => {
                             if let ProtocolResult::QueryError(err) = res {
                                 println!("{}", err)
@@ -153,23 +195,24 @@ impl Client {
                             // Intentar reconectar si es necesario
                             if let Error::ServerError(msg) = &e {
                                 if msg.contains("conexión") {
-                                    match self.reconnect(&mut tcp_stream) {
-                                        Ok(_) => {
-                                            // Reintentar la query después de reconectar
-                                            if let Err(retry_err) =
-                                                self.send_query(&input, &mut tcp_stream)
-                                            {
-                                                eprintln!(
-                                                    "Error al reintentar la query: {}",
-                                                    retry_err
-                                                );
-                                            }
-                                        }
-                                        Err(e) => {
-                                            eprintln!("No se pudo reconectar: {}", e);
-                                            break;
-                                        }
-                                    }
+                                    println!("No volvemos a reconectar")
+                                    // match self.reconnect(&mut tcp_stream) {
+                                    //     Ok(_) => {
+                                    //         // Reintentar la query después de reconectar
+                                    //         if let Err(retry_err) =
+                                    //             self.send_query(&input, &mut tcp_stream)
+                                    //         {
+                                    //             eprintln!(
+                                    //                 "Error al reintentar la query: {}",
+                                    //                 retry_err
+                                    //             );
+                                    //         }
+                                    //     }
+                                    //     Err(e) => {
+                                    //         eprintln!("No se pudo reconectar: {}", e);
+                                    //         break;
+                                    //     }
+                                    // }
                                 } else {
                                     eprintln!("Error en la query: {}", e);
                                 }
@@ -193,7 +236,7 @@ impl Client {
     pub fn send_query(
         &mut self,
         query: &str,
-        tcp_stream: &mut TcpStream,
+        tls_stream: &mut rustls::Stream<'_, rustls::ClientConnection, TcpStream>,
     ) -> Result<ProtocolResult> {
         let mut stream_id: i16 = 0;
         while self.requests_stream.contains(&stream_id) {
@@ -216,20 +259,20 @@ impl Client {
                 const MAX_RETRIES: u32 = 2;
                 let mut last_error = None;
 
-                for retry in 0..=MAX_RETRIES {
-                    if retry > 0 {
-                        match self.reconnect(tcp_stream) {
-                            Ok(_) => (),
-                            Err(e) => {
-                                last_error = Some(e);
-                                continue;
-                            }
-                        }
-                    }
+                for _retry in 0..=MAX_RETRIES { // VER ESTE CASO
+                    // if retry > 0 {
+                    //     match self.reconnect(tls_stream) {
+                    //         Ok(_) => (),
+                    //         Err(e) => {
+                    //             last_error = Some(e);
+                    //             continue;
+                    //         }
+                    //     }
+                    // }
 
-                    match tcp_stream.write_all(&frame.as_bytes()) {
-                        Ok(_) => match tcp_stream.flush() {
-                            Ok(_) => match self.read_complete_response(tcp_stream) {
+                    match tls_stream.write_all(&frame.as_bytes()) {
+                        Ok(_) => match tls_stream.flush() {
+                            Ok(_) => match self.read_complete_response(tls_stream) {
                                 Ok(response) => return Ok(response),
                                 Err(e) => last_error = Some(e),
                             },
@@ -284,7 +327,7 @@ impl Client {
         }
     }
 
-    fn read_complete_response(&mut self, tcp_stream: &mut TcpStream) -> Result<ProtocolResult> {
+    fn read_complete_response(&mut self, tls_stream: &mut rustls::Stream<'_, rustls::ClientConnection, TcpStream>) -> Result<ProtocolResult> {
         let mut response = Vec::new();
         let mut buffer = vec![0; 8192];
         const HEADER_SIZE: usize = 9;
@@ -297,7 +340,7 @@ impl Client {
                 return Err(Error::ServerError("Timeout al leer header".into()));
             }
             // println!("Response: {:?}", response);
-            match tcp_stream.read(&mut buffer) {
+            match tls_stream.read(&mut buffer) {
                 Ok(0) => {
                     if response.is_empty() {
                         return Err(Error::ServerError(
@@ -327,7 +370,7 @@ impl Client {
                     return Err(Error::ServerError("Timeout al leer cuerpo".into()));
                 }
 
-                match tcp_stream.read(&mut buffer) {
+                match tls_stream.read(&mut buffer) {
                     Ok(0) => break,
                     Ok(n) => {
                         response.extend_from_slice(&buffer[..n]);
