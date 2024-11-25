@@ -2100,9 +2100,9 @@ impl Node {
                             read_repair_executed = rr_executed;
                         }
                     }
-                    Err(_) => return Err(Error::ServerError(format!(
-                        "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
-                        consistency_level, consistency_counter, consistency_number,
+                    Err(err) => return Err(Error::ServerError(format!(
+                        "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}: {}",
+                        consistency_level, consistency_counter, consistency_number, err,
                     ))),
                 }
                 // Una vez que todo fue reparado, queremos reenviar la query para obtener el resultado
