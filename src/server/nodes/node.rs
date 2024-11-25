@@ -1,6 +1,7 @@
 //! Módulo de nodos.
 
 use chrono::Utc;
+use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::PartialEq,
@@ -86,6 +87,8 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
 
+/// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
+const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
@@ -139,10 +142,6 @@ pub struct Node {
     #[serde(skip)]
     open_connections: OpenConnectionsMap,
 
-    /// Todos los hilos bajo este nodo.
-    #[serde(skip)]
-    handlers: Vec<Option<NodeHandle>>,
-
     /// Los pesos de los nodos.
     nodes_weights: Vec<usize>,
 }
@@ -166,7 +165,6 @@ impl Node {
             tables_and_partitions_keys_values: HashMap::new(),
             pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
-            handlers: Vec::new(),
             nodes_weights: Vec::new(),
         })
     }
@@ -185,7 +183,6 @@ impl Node {
         self.nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
         self.pool = ThreadPool::build(N_THREADS)?;
         self.open_connections = OpenConnectionsMap::new();
-        self.handlers = Vec::new();
 
         Ok(())
     }
@@ -202,36 +199,56 @@ impl Node {
 
     /// Crea un nuevo nodo con un ID específico.
     fn init(id: NodeId, mode: ConnectionMode) -> Result<()> {
-        let handlers = Self::bootstrap(id, mode)?;
+        let mut nodes_weights: Vec<usize> = Vec::new();
+        let handlers = Self::bootstrap(id, mode, &mut nodes_weights)?;
 
         let (_beater, _beat_stopper) = Self::beater(id)?;
+        let (_gossiper, _gossip_stopper) = Self::gossiper(id, &nodes_weights)?;
 
+        // REVISAR
+        /*Paramos los handlers especiales primero
+        let _ = beat_stopper.send(true);
+        let _ = beater.join();
+
+        let _ = gossip_stopper.send(true);
+        let _ = gossiper.join();*/
+
+        Self::wait(handlers);
         Ok(())
     }
 
     /// Inicia todos los procesos necesarios para que el nodo se conecte al cluster.
-    fn bootstrap(id: NodeId, mode: ConnectionMode) -> Result<Vec<Option<NodeHandle>>> {
+    fn bootstrap(
+        id: NodeId,
+        mode: ConnectionMode,
+        nodes_weights: &mut Vec<usize>,
+    ) -> Result<Vec<Option<NodeHandle>>> {
         let metadata_path = DiskHandler::get_node_metadata_path(id);
         let node_metadata_path = Path::new(&metadata_path);
         if node_metadata_path.exists() {
-            Self::bootup_existing_node(id, mode, &metadata_path)
+            Self::bootup_existing_node(id, mode, &metadata_path, nodes_weights)
         } else {
-            Self::bootup_new_node(id, mode)
+            Self::bootup_new_node(id, mode, nodes_weights)
         }
     }
 
     /// Inicia un nuevo nodo.
-    fn bootup_new_node(id: NodeId, mode: ConnectionMode) -> Result<Vec<Option<NodeHandle>>> {
+    fn bootup_new_node(
+        id: NodeId,
+        mode: ConnectionMode,
+        nodes_weights: &mut Vec<usize>,
+    ) -> Result<Vec<Option<NodeHandle>>> {
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
         let mut node = Self::new(id, mode)?;
         node.inicialize_nodes_weights();
+        *nodes_weights = node.nodes_weights.clone();
         let max_weight_id = node.max_weight();
 
         let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
         let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-        node.create_client_and_private_conexion(id, cli_socket, &mut node_listeners, priv_socket)?;
+        node.create_client_and_private_conexion(id, cli_socket, priv_socket, &mut node_listeners)?;
 
         handlers.append(&mut node_listeners);
 
@@ -251,18 +268,20 @@ impl Node {
         id: NodeId,
         mode: ConnectionMode,
         metadata_path: &str,
+        nodes_weights: &mut Vec<usize>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
         let mut node: Node = load_json(metadata_path)?;
         node.set_default_fields(id, mode)?;
         node.inicialize_nodes_weights();
+        *nodes_weights = node.nodes_weights.clone();
         let max_weight_id = node.max_weight();
 
         let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
         let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-        node.create_client_and_private_conexion(id, cli_socket, &mut node_listeners, priv_socket)?;
+        node.create_client_and_private_conexion(id, cli_socket, priv_socket, &mut node_listeners)?;
 
         handlers.append(&mut node_listeners);
 
@@ -274,7 +293,7 @@ impl Node {
             Self::send_states_to_node(max_weight_id);
         }
 
-        Ok(Vec::new())
+        Ok(handlers)
     }
 
     fn inicialize_nodes_weights(&mut self) {
@@ -293,8 +312,8 @@ impl Node {
         self,
         id: u8,
         cli_socket: SocketAddr,
-        node_listeners: &mut Vec<Option<NodeHandle>>,
         priv_socket: SocketAddr,
+        node_listeners: &mut Vec<Option<NodeHandle>>,
     ) -> Result<()> {
         let sendable_node = Arc::new(Mutex::new(self));
         let cli_node = Arc::clone(&sendable_node);
@@ -359,12 +378,13 @@ impl Node {
     /// Avanza a cada segundo el estado de _heartbeat_ de los nodos.
     fn beater(id: NodeId) -> Result<(NodeHandle, Sender<bool>)> {
         let (sender, receiver) = channel::<bool>();
-        let builder = Builder::new().name(format!("beater_{}", id));
+        let builder = Builder::new().name(format!("beater_node_{}", id));
         match builder.spawn(move || Self::increase_heartbeat_and_store_metadata(receiver, id)) {
             Ok(handler) => Ok((handler, sender.clone())),
-            Err(_) => Err(Error::ServerError(
-                "Error procesando los beats de los nodos.".to_string(),
-            )),
+            Err(_) => Err(Error::ServerError(format!(
+                "Error procesando los beats del nodo {}.",
+                id
+            ))),
         }
     }
 
@@ -389,6 +409,71 @@ impl Node {
                 return Err(Error::ServerError(format!(
                     "Error enviando mensaje de almacenamiento de metadata a nodo {}",
                     id
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn gossiper(id: NodeId, nodes_weights: &[usize]) -> Result<(NodeHandle, Sender<bool>)> {
+        let (sender, receiver) = channel::<bool>();
+        let builder = Builder::new().name(format!("gossiper_node_{}", id));
+        let weights = nodes_weights.to_vec();
+        match builder.spawn(move || Self::exec_gossip(receiver, id, weights)) {
+            Ok(handler) => Ok((handler, sender.clone())),
+            Err(_) => Err(Error::ServerError(format!(
+                "Error procesando la ronda de gossip del nodo {}.",
+                id
+            ))),
+        }
+    }
+
+    fn exec_gossip(
+        receiver: std::sync::mpsc::Receiver<bool>,
+        id: NodeId,
+        weights: Vec<usize>,
+    ) -> Result<()> {
+        loop {
+            sleep(Duration::from_millis(200));
+            if let Ok(stop) = receiver.try_recv() {
+                if stop {
+                    break;
+                }
+            }
+
+            let dist = if let Ok(dist) = WeightedIndex::new(&weights) {
+                dist
+            } else {
+                return Err(Error::ServerError(format!(
+                    "No se pudo crear una distribución de pesos con {:?}.",
+                    &weights
+                )));
+            };
+
+            let nodes_ids = AddrLoader::default_loaded().get_ids();
+            let mut rng = thread_rng();
+            let selected_id = nodes_ids[dist.sample(&mut rng)];
+            if selected_id != id {
+                return Ok(());
+            }
+
+            let mut neighbours: HashSet<NodeId> = HashSet::new();
+            while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
+                let selected_neighbour = nodes_ids[dist.sample(&mut rng)];
+                if (selected_neighbour != selected_id) && !neighbours.contains(&selected_neighbour)
+                {
+                    neighbours.insert(selected_neighbour);
+                }
+            }
+
+            if let Err(err) = send_to_node(
+                selected_id,
+                SvAction::Gossip(neighbours).as_bytes(),
+                PortType::Priv,
+            ) {
+                return Err(Error::ServerError(format!(
+                    "Ocurrió un error enviando mensaje de gossip desde el nodo {}:\n\n{}",
+                    id, err
                 )));
             }
         }
@@ -2592,6 +2677,22 @@ impl Node {
         }
         Ok(())
     }
+
+    /// Espera a que terminen todos los handlers.
+    ///
+    /// Esto idealmente sólo debería llamarse una vez, ya que consume los handlers y además
+    /// bloquea el hilo actual.
+    fn wait(mut handlers: Vec<Option<NodeHandle>>) {
+        // long live the option dance
+        for handler_opt in &mut handlers {
+            if let Some(handler) = handler_opt.take() {
+                if handler.join().is_err() {
+                    // Un hilo caído NO debería interrumpir el dropping de los demás
+                    println!("Ocurrió un error mientras se esperaba a que termine un hilo hijo.");
+                }
+            }
+        }
+    }
 }
 
 fn check_consistency_of_the_responses(
@@ -2815,7 +2916,6 @@ impl Serializable for Node {
             tables_and_partitions_keys_values,
             pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
-            handlers: Vec::new(),
             nodes_weights: Vec::new(),
         })
     }
