@@ -30,7 +30,7 @@ pub struct LiveFlightData {
     timestamp: Long,
 
     /// La velocidal actual, o rapidez instantánea, del vuelo en curso.
-    spd: Double,
+    pub spd: Double,
 
     /// Un registro interno de todas las lecturas de velocidad anteriores desde
     /// que se creó la instancia.
