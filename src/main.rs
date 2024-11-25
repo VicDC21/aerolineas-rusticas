@@ -25,9 +25,9 @@ fn main() {
         return;
     }
 
-    match argv[1].as_str() {
+    match argv[1].to_ascii_lowercase().as_str() {
         "sv" => {
-            let mut graph = if argv.len() == 3 && argv[2] == "echo" {
+            let mut graph = if argv.len() == 3 && argv[2].to_ascii_lowercase() == "echo" {
                 NodesGraph::echo_mode()
             } else {
                 NodesGraph::parsing_mode()
@@ -35,16 +35,22 @@ fn main() {
             print_err(graph.init());
         }
         "nd" => {
-            let id = if argv.len() >= 3 {
-                argv[2].parse::<u8>().unwrap_or(0)
+            if argv.len() >= 3 {
+                match argv[2].parse::<u8>() {
+                    Ok(id) => {
+                        if argv.len() == 4 && argv[3].to_ascii_lowercase() == "echo" {
+                            print_err(Node::init_in_echo_mode(id))
+                        } else {
+                            print_err(Node::init_in_parsing_mode(id))
+                        }
+                    }
+                    Err(_) => {
+                        println!("El id debe ser un número entero entre 0 y 255.");
+                    }
+                }
             } else {
-                0
+                println!("Uso:\n\ncargo run nd <id> [echo]\n");
             };
-            if argv.len() == 4 && argv[3] == "echo" {
-                print_err(Node::init_in_echo_mode(id))
-            } else {
-                print_err(Node::init_in_parsing_mode(id))
-            }
         }
         "cli" => {
             let mut client = Client::default();
