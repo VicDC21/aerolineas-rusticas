@@ -63,8 +63,10 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
         Err(_) => {
-            println!("No se pudo conectar al nodo con ID {}", id);
-            return Ok(()); // No se considera un error, ya que el nodo puede estar apagado
+            return Err(Error::ServerError(format!(
+                "No se pudo conectar al nodo con ID {}",
+                id
+            )));
         }
     };
     if stream.write_all(&bytes[..]).is_err() {
@@ -101,8 +103,10 @@ pub fn send_to_node_and_wait_response_with_timeout(
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
         Err(_) => {
-            println!("No se pudo conectar al nodo con ID {}", id);
-            return Ok(Vec::new()); // No se considera un error, ya que el nodo puede estar apagado
+            return Err(Error::ServerError(format!(
+                "No se pudo conectar al nodo con ID {}",
+                id
+            )));
         }
     };
     // println!("Le escribe al nodo: {} la data: {:?}", id, bytes);

@@ -795,17 +795,24 @@ impl Node {
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done();
-        //println!("Vecinos del nodo [{}]: {:?}", self.id, self.neighbours_states);
+        //println!(
+        //    "Vecinos del nodo [{}]: {:?}",
+        //    self.id, self.neighbours_states
+        //);
 
         for neighbour_id in neighbours {
-            if let Err(err) = send_to_node(
+            if send_to_node(
                 neighbour_id,
                 SvAction::Syn(self.get_id().to_owned(), self.get_gossip_info()).as_bytes(),
                 PortType::Priv,
-            ) {
+            )
+            .is_err()
+            {
+                self.acknowledge_offline_neighbour(neighbour_id);
+                // No frenamos el programa porque no se considera un error que un vecino no responda en esta instancia.
                 println!(
-                    "Ocurrió un error al mandar un mensaje SYN al nodo [{}]:\n\n{}",
-                    neighbour_id, err
+                    "No se pudo establecer conexión con el nodo [{}] para un mensaje SYN",
+                    neighbour_id,
                 );
             }
         }
