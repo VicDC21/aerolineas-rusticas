@@ -30,8 +30,7 @@ struct FlightSimulationParams {
     simulation_start: Instant,
     simulation_limit: Duration,
     step_size: Double,
-    initial_fuel: Double,
-    _fuel_consumption_rate: Double,
+    fuel_consumption_rate: Double,
 }
 
 /// Simulador de vuelos.
@@ -79,7 +78,6 @@ impl FlightSimulator {
         flight_id: Int,
         origin: String,
         destination: String,
-        avg_speed: Double,
     ) -> Result<(), Error> {
         if self.get_flight_data(flight_id).is_some() {
             return Err(Error::ServerError(format!(
@@ -89,7 +87,7 @@ impl FlightSimulator {
         }
 
         let (flight, dest_coords, dest_elevation) =
-            self.initialize_flight(flight_id, origin, destination, avg_speed)?;
+            self.initialize_flight(flight_id, origin, destination)?;
 
         if let Ok(mut flight_list) = self.flights.lock() {
             flight_list.push(flight.clone());
@@ -116,8 +114,10 @@ impl FlightSimulator {
         let mut rng = thread_rng();
         let _ = Self::prepare_flight(&flights, &mut flight, &client);
 
-        let (total_distance, initial_fuel, _fuel_consumption_rate) =
+        let (total_distance, fuel_consumption_rate) =
             Self::initialize_flight_parameters(&flight, dest_coords);
+
+        thread::sleep(Duration::from_secs(2));
 
         flight.state = FlightState::InCourse;
         Self::update_flight_in_list(&flights, &flight);
@@ -132,8 +132,7 @@ impl FlightSimulator {
             simulation_start,
             simulation_limit,
             step_size,
-            initial_fuel,
-            _fuel_consumption_rate,
+            fuel_consumption_rate,
         };
 
         Self::run_flight_simulation(&flights, &mut flight, &client, &params, &mut rng);
@@ -155,14 +154,6 @@ impl FlightSimulator {
         params: &FlightSimulationParams,
         rng: &mut rand::rngs::ThreadRng,
     ) {
-        let mut _distance_traveled = 0.0;
-        let total_distance = FlightCalculations::calculate_distance(
-            flight.lat(),
-            flight.lon(),
-            params.dest_coords.0,
-            params.dest_coords.1,
-        );
-
         while params.simulation_start.elapsed() < params.simulation_limit {
             let progress = params.simulation_start.elapsed().as_secs_f64()
                 / params.simulation_limit.as_secs_f64();
@@ -176,18 +167,7 @@ impl FlightSimulator {
                 rng,
             );
 
-            let step_distance = FlightCalculations::calculate_distance(
-                flight.lat(),
-                flight.lon(),
-                params.dest_coords.0,
-                params.dest_coords.1,
-            );
-
-            _distance_traveled = total_distance - step_distance;
-
-            let progress_factor = _distance_traveled / total_distance;
-            let current_fuel =
-                params.initial_fuel - ((params.initial_fuel - 60.0) * progress_factor);
+            flight.fuel = (flight.fuel - params.fuel_consumption_rate).max(0.0);
 
             Self::update_flight_in_list(flights, flight);
 
@@ -200,7 +180,7 @@ impl FlightSimulator {
                 flight,
                 timestamp,
                 client,
-                current_fuel,
+                flight.fuel,
                 params.simulation_start.elapsed().as_secs_f64(),
             );
             thread::sleep(Duration::from_secs(1));
@@ -244,7 +224,6 @@ impl FlightSimulator {
         flight_id: Int,
         origin: String,
         destination: String,
-        avg_speed: Double,
     ) -> Result<(LiveFlightData, (Double, Double), Double), Error> {
         let (origin_airport, destination_airport) =
             self.validate_airports(&origin, &destination)?;
@@ -264,7 +243,7 @@ impl FlightSimulator {
             flight_id,
             (origin_airport.ident, destination_airport.ident),
             (timestamp, 0.0),
-            (avg_speed, 100.0),
+            (6000.0, 100.0),
             origin_coords,
             origin_airport.elevation_ft.unwrap_or(0) as Double,
             (FlightType::Departing, FlightState::Preparing),
@@ -319,28 +298,23 @@ impl FlightSimulator {
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs() as Long;
 
-        Self::send_flight_update(flight, timestamp, client, 100.0, 0.0)?;
-        thread::sleep(Duration::from_secs(2));
-
+        Self::send_flight_update(flight, timestamp, client, flight.fuel, 0.0)?;
         Ok(())
     }
 
     fn initialize_flight_parameters(
         flight: &LiveFlightData,
         dest_coords: (Double, Double),
-    ) -> (Double, Double, Double) {
-        let total_distance = FlightCalculations::calculate_distance(
-            flight.lat(),
-            flight.lon(),
-            dest_coords.0,
-            dest_coords.1,
-        );
-
-        let initial_fuel = 100.0;
-        let final_fuel = 60.0;
-        let _fuel_consumption_rate = (initial_fuel - final_fuel) / total_distance;
-
-        (total_distance, initial_fuel, _fuel_consumption_rate)
+    ) -> (Double, Double) {
+        (
+            FlightCalculations::calculate_distance(
+                flight.lat(),
+                flight.lon(),
+                dest_coords.0,
+                dest_coords.1,
+            ),
+            0.5,
+        )
     }
 
     fn update_flight_position(
@@ -405,7 +379,7 @@ impl FlightSimulator {
             .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs() as Long;
 
-        Self::send_flight_update(flight, timestamp, client, 60.0, elapsed)
+        Self::send_flight_update(flight, timestamp, client, flight.fuel, elapsed)
     }
 }
 
@@ -423,14 +397,17 @@ mod tests {
     fn test_flight_simulator() -> Result<(), Error> {
         let simulator = FlightSimulator::default();
 
-        simulator.add_flight(123456, "SAEZ".to_string(), "LEMD".to_string(), 900.0)?;
+        simulator.add_flight(123456, "SAEZ".to_string(), "LEMD".to_string())?;
+
+        assert!(simulator.get_flight_data(123456).is_some());
+
+        if let Some(data) = simulator.get_flight_data(123456) {
+            assert_eq!(data.state, FlightState::Preparing);
+        }
 
         thread::sleep(Duration::from_secs(3));
 
-        let flight_data = simulator.get_flight_data(123456);
-        assert!(flight_data.is_some());
-
-        if let Some(data) = flight_data {
+        if let Some(data) = simulator.get_flight_data(123456) {
             assert_eq!(data.state, FlightState::InCourse);
         }
 
@@ -453,35 +430,30 @@ mod tests {
         let simulator = FlightSimulator::new(8, Client::default())?;
 
         let flight_configs = vec![
-            (123456, "SAEZ", "LEMD", 900.0),
-            (234567, "SBGR", "KJFK", 850.0),
-            (345678, "KLAX", "RJAA", 800.0),
-            (456789, "LFPG", "SVMI", 750.0),
+            (123456, "SAEZ", "LEMD"),
+            (234567, "SBGR", "KJFK"),
+            (345678, "KLAX", "RJAA"),
+            (456789, "LFPG", "SVMI"),
         ];
 
-        for &(flight_id, origin, destination, avg_speed) in &flight_configs {
-            simulator.add_flight(
-                flight_id,
-                origin.to_string(),
-                destination.to_string(),
-                avg_speed,
-            )?;
+        for &(flight_id, origin, destination) in &flight_configs {
+            simulator.add_flight(flight_id, origin.to_string(), destination.to_string())?;
         }
 
-        let total_wait_time = FLIGHT_LIMIT_SECS + 10;
         let check_intervals = 5;
+        let total_wait_time = FLIGHT_LIMIT_SECS + check_intervals;
         let check_interval_duration = total_wait_time / check_intervals;
 
         for _ in 0..check_intervals {
             thread::sleep(Duration::from_secs(check_interval_duration));
 
-            for &(flight_id, _, _, _) in &flight_configs {
+            for &(flight_id, _, _) in &flight_configs {
                 let flight_data = simulator.get_flight_data(flight_id);
                 assert!(flight_data.is_some(), "Vuelo {} no encontrado", flight_id);
             }
         }
 
-        for &(flight_id, _, _, _) in &flight_configs {
+        for &(flight_id, _, _) in &flight_configs {
             let flight_data = simulator.get_flight_data(flight_id);
             assert!(flight_data.is_some(), "Vuelo {} no encontrado", flight_id);
 

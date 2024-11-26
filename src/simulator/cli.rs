@@ -1,7 +1,5 @@
 use crate::{
-    client::cli::Client,
-    protocol::aliases::types::{Double, Int},
-    protocol::errors::error::Error,
+    client::cli::Client, protocol::aliases::types::Int, protocol::errors::error::Error,
     simulator::flight_simulator::FlightSimulator,
 };
 
@@ -47,29 +45,30 @@ fn handle_add_flight(simulator: &FlightSimulator) {
     let mut dest = String::new();
     std::io::stdin().read_line(&mut dest).unwrap();
 
-    println!("Velocidad promedio (km/h):");
-    let mut speed = String::new();
-    std::io::stdin().read_line(&mut speed).unwrap();
-
-    if let Ok(speed) = speed.trim().parse::<Double>() {
-        match flight_id.trim().parse::<Int>() {
-            Ok(id) => match simulator.add_flight(
-                id,
-                origin.trim().to_string(),
-                dest.trim().to_string(),
-                speed,
-            ) {
+    match flight_id.trim().parse::<Int>() {
+        Ok(id) => {
+            match simulator.add_flight(id, origin.trim().to_string(), dest.trim().to_string()) {
                 Ok(_) => println!("Vuelo añadido exitosamente"),
                 Err(e) => println!("Error al añadir vuelo: {}", e),
-            },
-            Err(_) => println!("Error: El ID de vuelo debe ser un entero válido"),
+            }
         }
-    } else {
-        println!("Error: La velocidad debe ser un número válido");
+        Err(_) => println!("Error: El ID de vuelo debe ser un entero válido"),
     }
 }
 
+fn check_if_there_are_flights(simulator: &FlightSimulator) -> bool {
+    if simulator.get_all_flights().is_empty() {
+        println!("No hay vuelos activos");
+        return false;
+    }
+    true
+}
+
 fn handle_view_flight(simulator: &FlightSimulator) {
+    if !check_if_there_are_flights(simulator) {
+        return;
+    }
+
     println!("Ingrese el ID de vuelo:");
     let mut flight_id = String::new();
     std::io::stdin().read_line(&mut flight_id).unwrap();
@@ -86,9 +85,10 @@ fn handle_view_flight(simulator: &FlightSimulator) {
                     flight.lat(),
                     flight.lon()
                 );
-                println!("Altitud: {:.2} msnm", flight.altitude_ft);
+                println!("Altitud: {:.2} ft", flight.altitude_ft);
                 println!("Velocidad actual: {:.2} km/h", flight.get_spd());
                 println!("Velocidad promedio: {:.2} km/h", flight.avg_spd());
+                println!("Combustible restante: {:.2} %", flight.fuel);
             }
             None => println!("Vuelo no encontrado"),
         },
@@ -97,12 +97,11 @@ fn handle_view_flight(simulator: &FlightSimulator) {
 }
 
 fn handle_view_all_flights(simulator: &FlightSimulator) {
-    let flights = simulator.get_all_flights();
-    if flights.is_empty() {
-        println!("No hay vuelos activos");
+    if !check_if_there_are_flights(simulator) {
         return;
     }
 
+    let flights = simulator.get_all_flights();
     println!("\nVuelos activos:");
     for flight in flights {
         println!("\nVuelo {}:", flight.flight_id);
