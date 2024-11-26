@@ -138,19 +138,6 @@ impl Client {
         }
     }
 
-    fn get_client_connection(&mut self) -> Result<rustls::ClientConnection> {
-        let root_store = rustls::RootCertStore::empty();
-        let config = ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth(); // Sin autenticación del cliente
-
-        // 3. Crear una conexión TLS sobre la conexión TCP
-        let server_name = "www.rust-lang.org".try_into().unwrap();
-        let client_connection =
-            rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
-        Ok(client_connection)
-    }
-
     /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
     ///
     /// <div class="warning">
@@ -160,10 +147,23 @@ impl Client {
     /// </div>
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
-        let mut client_connection = self.get_client_connection()?;
+        let mut client_connection = get_client_connection()?;
         let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
             rustls::Stream::new(&mut client_connection, &mut tcp_stream);
-        tls_stream.write_all(&Client::prepare_startup_message()?);
+        match tls_stream.write_all(&Client::prepare_startup_message()?){
+            Ok(_) => match tls_stream.flush() {
+                Ok(_) => match self.read_complete_response(&mut tls_stream) {
+                    Ok(response) => response,
+                    Err(_) => return Err(Error::Invalid("dsa".to_string())),
+                },
+                Err(e) => {
+                    return Err(Error::ServerError(format!("Error al flush: {}", e)))
+                }
+            },
+            Err(e) => {
+                return Err(Error::ServerError(format!("Error al escribir: {}", e)))
+            }
+        };
         println!(
             "ECHO MODE:\n \
             ----------\n \
@@ -185,7 +185,6 @@ impl Client {
                         self.send_shutdown()?;
                         return Ok(());
                     }
-
                     match self.send_query(&input, &mut tls_stream) {
                         Ok(res) => {
                             if let ProtocolResult::QueryError(err) = res {
@@ -221,6 +220,7 @@ impl Client {
                             }
                         }
                     }
+
                 }
                 Err(e) => {
                     eprintln!("Error leyendo la entrada: {}", e);
@@ -250,7 +250,10 @@ impl Client {
             Ok(statement) => {
                 let frame = match statement {
                     Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
-                        Frame::new(stream_id, query, self.consistency_level)
+                        Frame::new(stream_id, query, self.consistency_level).as_bytes()
+                    }
+                    Statement::LoginUser(user) =>{
+                        vec![]
                     }
                     Statement::UdtStatement(_) => {
                         self.requests_stream.remove(&stream_id);
@@ -273,7 +276,7 @@ impl Client {
                     //     }
                     // }
 
-                    match tls_stream.write_all(&frame.as_bytes()) {
+                    match tls_stream.write_all(&frame) {
                         Ok(_) => match tls_stream.flush() {
                             Ok(_) => match self.read_complete_response(tls_stream) {
                                 Ok(response) => return Ok(response),
@@ -636,4 +639,17 @@ impl Default for Client {
     fn default() -> Self {
         Self::new(AddrLoader::default_loaded(), HashSet::<i16>::new())
     }
+}
+
+pub fn get_client_connection() -> Result<rustls::ClientConnection> {
+    let root_store = rustls::RootCertStore::empty();
+    let config = ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth(); // Sin autenticación del cliente
+
+    // 3. Crear una conexión TLS sobre la conexión TCP
+    let server_name = "rust.com".try_into().unwrap();
+    let client_connection =
+        rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
+    Ok(client_connection)
 }

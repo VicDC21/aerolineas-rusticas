@@ -149,6 +149,8 @@ impl NodesGraph {
                         } // Valor arbitrario por ahora
                         Statement::UdtStatement(_) => {
                             return Err(Error::ServerError("UDT statements no soportados".into()))
+                        }Statement::LoginUser(_) => {
+                            return Err(Error::Invalid("No se deberia haber mandado el login por este canal".to_string()))
                         }
                     };
                     send_to_node(node_id, frame.as_bytes(), PortType::Priv)?;

@@ -638,7 +638,10 @@ impl Node {
                     let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
                         rustls::Stream::new(&mut server_conn, &mut tcp_stream);
                     let mut bytes_vec: Vec<Byte> = Vec::new();
-                    tls_stream.read_to_end(&mut bytes_vec);
+                    match tls_stream.read_to_end(&mut bytes_vec){
+                        Ok(value) => value,
+                        Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string()))
+                    };
                     // let mut bufreader: BufReader<rustls::Stream<'_, ServerConnection, TcpStream>> = BufReader::new(tls_stream);
                     // bytes_vec = Node::write_bytes_in_buffer(&mut bufreader)?;
                     // consumimos los bytes del stream para no mandarlos de vuelta en la response
@@ -981,6 +984,7 @@ impl Node {
                 self.handle_internal_dml_statement(dml_statement, internal_metadata)
             }
             Statement::UdtStatement(_udt_statement) => todo!(),
+            Statement::LoginUser(_) => Err(Error::Invalid("No se deberia haber mandado el login por este canal".to_string()))
         }
     }
 
@@ -1452,6 +1456,7 @@ impl Node {
                 self.handle_dml_statement(dml_statement, request, consistency_level)
             }
             Statement::UdtStatement(_udt_statement) => todo!(),
+            Statement::LoginUser(_) => Err(Error::Invalid("No se deberia haber mandado el login por este canal".to_string()))
         }
     }
 

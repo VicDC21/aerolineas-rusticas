@@ -1,14 +1,12 @@
 use {
     crate::{
-        client::{cli::Client, protocol_result::ProtocolResult},
+        client::{cli::{get_client_connection, Client}, protocol_result::ProtocolResult},
         protocol::errors::error::Error,
         server::pool::threadpool::ThreadPool,
     },
     rand::Rng,
     std::{
-        sync::{Arc, Mutex},
-        thread,
-        time::Duration,
+        net::TcpStream, sync::{Arc, Mutex}, thread, time::Duration
     },
 };
 
@@ -234,7 +232,10 @@ impl FlightSimulator {
 
     fn send_insert_query(query: &str, client: &mut Client) -> Result<(), Error> {
         let mut tcp_stream = client.connect()?;
-        let protocol_result = client.send_query(query, &mut tcp_stream)?;
+        let mut client_connection = get_client_connection()?;
+        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
+            rustls::Stream::new(&mut client_connection, &mut tcp_stream);
+        let protocol_result = client.send_query(query, &mut tls_stream)?;
 
         if let ProtocolResult::QueryError(err) = protocol_result {
             println!("{}", err);
