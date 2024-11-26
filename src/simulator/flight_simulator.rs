@@ -81,6 +81,13 @@ impl FlightSimulator {
         destination: String,
         avg_speed: Double,
     ) -> Result<(), Error> {
+        if self.get_flight_data(flight_id).is_some() {
+            return Err(Error::ServerError(format!(
+                "El vuelo con id {} ya existe",
+                flight_id
+            )));
+        }
+
         let (flight, dest_coords, dest_elevation) =
             self.initialize_flight(flight_id, origin, destination, avg_speed)?;
 
@@ -92,7 +99,9 @@ impl FlightSimulator {
         let client = self.client.clone();
 
         self.thread_pool.execute(move || {
-            Self::simulate_flight(flights, flight, client, dest_coords, dest_elevation);
+            thread::spawn(move || {
+                Self::simulate_flight(flights, flight, client, dest_coords, dest_elevation);
+            });
             Ok(())
         })
     }
@@ -112,8 +121,6 @@ impl FlightSimulator {
 
         flight.state = FlightState::InCourse;
         Self::update_flight_in_list(&flights, &flight);
-
-        thread::sleep(Duration::from_millis(100));
 
         let simulation_start = Instant::now();
         let simulation_limit = Duration::from_secs(FLIGHT_LIMIT_SECS);
@@ -437,6 +444,64 @@ mod tests {
                 data.state
             );
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_concurrent_flights_simulation() -> Result<(), Error> {
+        let simulator = FlightSimulator::new(8, Client::default())?;
+
+        let flight_configs = vec![
+            (123456, "SAEZ", "LEMD", 900.0),
+            (234567, "SBGR", "KJFK", 850.0),
+            (345678, "KLAX", "RJAA", 800.0),
+            (456789, "LFPG", "SVMI", 750.0),
+        ];
+
+        for &(flight_id, origin, destination, avg_speed) in &flight_configs {
+            simulator.add_flight(
+                flight_id,
+                origin.to_string(),
+                destination.to_string(),
+                avg_speed,
+            )?;
+        }
+
+        let total_wait_time = FLIGHT_LIMIT_SECS + 10;
+        let check_intervals = 5;
+        let check_interval_duration = total_wait_time / check_intervals;
+
+        for _ in 0..check_intervals {
+            thread::sleep(Duration::from_secs(check_interval_duration));
+
+            for &(flight_id, _, _, _) in &flight_configs {
+                let flight_data = simulator.get_flight_data(flight_id);
+                assert!(flight_data.is_some(), "Vuelo {} no encontrado", flight_id);
+            }
+        }
+
+        for &(flight_id, _, _, _) in &flight_configs {
+            let flight_data = simulator.get_flight_data(flight_id);
+            assert!(flight_data.is_some(), "Vuelo {} no encontrado", flight_id);
+
+            if let Some(data) = flight_data {
+                assert_eq!(
+                    data.state,
+                    FlightState::Finished,
+                    "El vuelo {} no ha finalizado como se esperaba. Estado actual: {:?}",
+                    flight_id,
+                    data.state
+                );
+            }
+        }
+
+        let all_flights = simulator.get_all_flights();
+        assert_eq!(
+            all_flights.len(),
+            flight_configs.len(),
+            "No se registraron todos los vuelos"
+        );
 
         Ok(())
     }
