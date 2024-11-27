@@ -32,6 +32,21 @@ pub enum AirportType {
     Closed,
 }
 
+impl AirportType {
+    /// Devuelve el nombre del tipo en un formato imprimible.
+    pub fn pretty_name(&self) -> &str {
+        match self {
+            Self::LargeAirport => "Large Airport",
+            Self::MediumAirport => "Medium Airport",
+            Self::SmallAirport => "Small Airport",
+            Self::Heliport => "Heliport",
+            Self::SeaplaneBase => "Seaplane Base",
+            Self::BalloonBase => "Ballon Port",
+            Self::Closed => "Closed",
+        }
+    }
+}
+
 impl Display for AirportType {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {

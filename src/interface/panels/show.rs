@@ -6,7 +6,8 @@ use std::{
 };
 
 use eframe::egui::{
-    Button, Color32, Frame, Margin, Response, RichText, ScrollArea, Separator, SidePanel, Ui,
+    Button, Color32, FontId, Frame, Margin, Response, RichText, ScrollArea, Separator, SidePanel,
+    Ui,
 };
 
 use crate::{
@@ -141,39 +142,78 @@ pub fn extra_airport_info(
 fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
     if let Some(airport) = &airport {
         let text_color = Color32::from_rgba_unmultiplied(200, 200, 200, 255);
+        let font = FontId::monospace(15.0);
+        let section_space = 10.0;
+
         ui.label(
             RichText::new(format!("\t{}", &airport.name))
                 .color(text_color)
+                .font(FontId::monospace(20.0))
                 .heading(),
         );
+
         ui.separator();
 
-        ui.label(RichText::new(format!("\n\n\tIdent:\t{}", &airport.ident)).color(text_color));
-        ui.label(RichText::new(format!("\tType:\t{}", &airport.airport_type)).color(text_color));
-
         ui.label(
-            RichText::new(format!(
-                "\n\tPosition:\t({}, {})",
-                &airport.position.0, &airport.position.1
-            ))
-            .color(text_color),
+            RichText::new(format!("\t{:<20}{:>25}", "Ident:", &airport.ident))
+                .color(text_color)
+                .font(font.clone()),
         );
         ui.label(
             RichText::new(format!(
-                "\tElevation (ft):\t{}",
+                "\t{:<20}{:>25}",
+                "Type:",
+                &airport.airport_type.pretty_name()
+            ))
+            .color(text_color)
+            .font(font.clone()),
+        );
+
+        ui.add_space(section_space);
+
+        ui.label(
+            RichText::new(format!(
+                "\t{:<20}{:>25}",
+                "Position:",
+                format!("({:.4}, {:.4})", &airport.position.0, &airport.position.1),
+            ))
+            .color(text_color)
+            .font(font.clone()),
+        );
+        ui.label(
+            RichText::new(format!(
+                "\t{:<20}{:>25}",
+                "Elevation (ft):",
                 &airport.elevation_ft.unwrap_or(-999)
             ))
-            .color(text_color),
+            .color(text_color)
+            .font(font.clone()),
         );
 
-        ui.label(RichText::new(format!("\tContinent:\t{}", &airport.continent)).color(text_color));
+        ui.add_space(section_space);
 
         ui.label(
             RichText::new(format!(
-                "\tCountry:\t{} ({})",
-                &airport.country.name, &airport.country.code
+                "\t{:<20}{:>25}",
+                "Continent:",
+                format!(
+                    "{} ({})",
+                    &airport.continent.full_name(),
+                    &airport.continent
+                )
             ))
-            .color(text_color),
+            .color(text_color)
+            .font(font.clone()),
+        );
+
+        ui.label(
+            RichText::new(format!(
+                "\t{:<20}{:>25}",
+                "Country:",
+                format!("{} ({})", &airport.country.name, &airport.country.code),
+            ))
+            .color(text_color)
+            .font(font.clone()),
         );
     }
 }
