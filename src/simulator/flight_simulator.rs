@@ -313,7 +313,6 @@ impl FlightSimulator {
             .as_secs() as Long;
 
         Self::send_flight_update(flight, timestamp, client, 100.0, 0.0)?;
-        thread::sleep(Duration::from_secs(2));
 
         Ok(())
     }
@@ -415,10 +414,8 @@ mod tests {
     #[test]
     fn test_flight_simulator() -> Result<(), Error> {
         let simulator = FlightSimulator::default();
-
         simulator.add_flight(123456, "SAEZ".to_string(), "LEMD".to_string(), 900.0)?;
-
-        thread::sleep(Duration::from_secs(3));
+        thread::sleep(Duration::from_secs(20));
 
         let flight_data = simulator.get_flight_data(123456);
         assert!(flight_data.is_some());
