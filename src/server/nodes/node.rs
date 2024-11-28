@@ -5,14 +5,7 @@ use rustls::{
     ServerConfig, ServerConnection,
 };
 use std::{
-    cmp::PartialEq,
-    collections::{HashMap, HashSet},
-    env, fmt,
-    io::{BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
-    path::Path,
-    sync::{Arc, Mutex},
-    vec::IntoIter,
+    cmp::PartialEq, collections::{HashMap, HashSet}, fmt, io::{BufRead, BufReader, Read, Write}, net::{SocketAddr, TcpListener, TcpStream}, path::Path, sync::{Arc, Mutex}, vec::IntoIter
 };
 // use rustls::Connection;
 
@@ -619,12 +612,19 @@ impl Node {
     ///
     /// Las otras funciones son wrappers para no repetir código.
     fn listen(socket: SocketAddr, port_type: PortType, node: Arc<Mutex<Node>>) -> Result<()> {
+        match port_type{
+            PortType::Cli => Node::listen_cli_port(socket, node),
+            PortType::Priv => Node::listen_priv_port(socket, node)
+        }
+    }
+
+    fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()>{
         let server_config = Node::configure_tls()?;
         let listener = Node::bind_with_socket(socket)?;
         let addr_loader = AddrLoader::default_loaded();
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
-                Err(_) => return Node::tcp_stream_error(&port_type, &socket, &addr_loader),
+                Err(_) => return Node::tcp_stream_error(&PortType::Cli, &socket, &addr_loader),
                 Ok(mut tcp_stream) => {
                     let config = Arc::clone(&server_config);
                     let mut server_conn = match ServerConnection::new(config) {
@@ -638,6 +638,7 @@ impl Node {
                     let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
                         rustls::Stream::new(&mut server_conn, &mut tcp_stream);
                     let mut bytes_vec: Vec<Byte> = Vec::new();
+                    println!("Llega hasta aca");
                     match tls_stream.read_to_end(&mut bytes_vec){
                         Ok(value) => value,
                         Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string()))
@@ -651,7 +652,7 @@ impl Node {
                     }
                     match node.lock() {
                         Ok(mut locked_in) => {
-                            locked_in.process_tcp(tls_stream, bytes_vec)?;
+                            locked_in.process_tls_tcp(tls_stream, bytes_vec)?;
                         }
                         Err(poison_err) => {
                             println!("Error de lock envenenado:\n\n{}", poison_err);
@@ -663,9 +664,75 @@ impl Node {
         Ok(())
     }
 
+
+    fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()>{
+        let listener = Node::bind_with_socket(socket)?;
+        let addr_loader = AddrLoader::default_loaded();
+        for tcp_stream_res in listener.incoming() {
+            match tcp_stream_res {
+                Err(_) => return Node::tcp_stream_error(&PortType::Priv, &socket, &addr_loader),
+                Ok(tcp_stream) => {
+                    let buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
+                    let mut bufreader = BufReader::new(buffered_stream);
+                    let bytes_vec = Node::write_bytes_in_priv_buffer(&mut bufreader)?;
+                    // consumimos los bytes del stream para no mandarlos de vuelta en la response
+                    bufreader.consume(bytes_vec.len());
+                    if Self::is_exit(&bytes_vec[..]) {
+                        break;
+                    }
+                    match node.lock() {
+                        Ok(mut locked_in) => {
+                            locked_in.process_tcp(tcp_stream, bytes_vec)?;
+                        }
+                        Err(poison_err) => {
+                            println!("Error de lock envenenado:\n\n{}", poison_err);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+
+    ///TODO
+    pub fn process_tcp(&mut self, tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<()> {
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        match SvAction::get_action(&bytes[..]) {
+            Some(action) => {
+                if let Err(err) = self.handle_sv_action(action, tcp_stream) {
+                    println!(
+                        "[{} - ACTION] Error en la acción del servidor: {}",
+                        self.id, err
+                    );
+                }
+                Ok(())
+            }
+            None => {println!("Error interno");
+                Err(Error::Invalid("Error interno".to_string()))
+                // self.match_kind_of_conection_mode(bytes, tcp_stream)
+            },
+        }
+    }
+
+
+    fn write_bytes_in_priv_buffer(bufreader: &mut BufReader<TcpStream>) -> Result<Vec<Byte>> {
+        match bufreader.fill_buf() {
+            Ok(recv) => Ok(recv.to_vec()),
+            Err(err) => Err(Error::ServerError(format!(
+                "No se pudo escribir los bytes:\n\n{}",
+                err
+            ))),
+        }
+    }
+
+
     /// Procesa una _request_ en forma de [Byte]s.
     /// También devuelve un [bool] indicando si se debe parar el hilo.
-    pub fn process_tcp(
+    pub fn process_tls_tcp(
         &mut self,
         tls_stream: rustls::Stream<'_, ServerConnection, TcpStream>,
         bytes: Vec<Byte>,
@@ -674,14 +741,15 @@ impl Node {
             return Ok(());
         }
         match SvAction::get_action(&bytes[..]) {
-            Some(action) => {
-                if let Err(err) = self.handle_sv_action(action, tls_stream) {
-                    println!(
-                        "[{} - ACTION] Error en la acción del servidor: {}",
-                        self.id, err
-                    );
-                }
-                Ok(())
+            Some(_action) => {println!("Error interno");
+                Err(Error::Invalid("Error interno".to_string()))
+                // if let Err(err) = self.handle_sv_action(action, tls_stream) {
+                //     println!(
+                //         "[{} - ACTION] Error en la acción del servidor: {}",
+                //         self.id, err
+                //     );
+                // }
+                // Ok(())
             }
             None => self.match_kind_of_conection_mode(bytes, tls_stream),
         }
@@ -691,7 +759,7 @@ impl Node {
     fn handle_sv_action(
         &mut self,
         action: SvAction,
-        mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream>,
+        mut tcp_stream: TcpStream,
     ) -> Result<bool> {
         let mut stop = false;
         match action {
@@ -719,8 +787,8 @@ impl Node {
             }
             SvAction::InternalQuery(bytes) => {
                 let response = self.handle_request(&bytes, true);
-                let _ = tls_stream.write_all(&response[..]);
-                if let Err(err) = tls_stream.flush() {
+                let _ = tcp_stream.write_all(&response[..]);
+                if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
@@ -734,8 +802,8 @@ impl Node {
             }
             SvAction::DirectReadRequest(bytes) => {
                 let res = self.exec_direct_read_request(bytes)?;
-                let _ = tls_stream.write_all(res.as_bytes());
-                if let Err(err) = tls_stream.flush() {
+                let _ = tcp_stream.write_all(res.as_bytes());
+                if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
@@ -745,13 +813,13 @@ impl Node {
                 if verify_succesful_response(&response) {
                     let mut res = Opcode::Result.as_bytes();
                     res.extend_from_slice(&hash_value(&response).to_be_bytes());
-                    let _ = tls_stream.write_all(&res);
+                    let _ = tcp_stream.write_all(&res);
                 } else {
                     let mut res = Opcode::RequestError.as_bytes();
                     res.extend_from_slice(&response);
-                    let _ = tls_stream.write_all(&res);
+                    let _ = tcp_stream.write_all(&res);
                 }
-                if let Err(err) = tls_stream.flush() {
+                if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
@@ -2289,22 +2357,24 @@ impl Node {
     }
 
     fn configure_tls() -> Result<Arc<ServerConfig>> {
-        let mut args = env::args();
-        args.next();
-        let cert_file = args.next().expect("missing certificate file argument");
-        let private_key_file = args.next().expect("missing private key file argument");
-
+        let cert_file = "custom.pem";
+        let private_key_file = "custom.key";
         let certs = CertificateDer::pem_file_iter(cert_file)
             .unwrap()
             .map(|cert| cert.unwrap())
             .collect();
         let private_key = PrivateKeyDer::from_pem_file(private_key_file).unwrap();
+        println!("Los certificados son {:?}", certs);
+        println!("Las llaves son {:?}", private_key);
+        println!("Llega hasta aca 0.5");
+
         let config = match ServerConfig::builder()
             .with_no_client_auth()
             .with_single_cert(certs, private_key)
         {
-            Ok(value) => value,
-            Err(_err) => {
+            Ok(value) => {println!("Llega hasta aca 0.6");
+                value},
+            Err(_err) => {println!("El error fue {:?}", _err);
                 return Err(Error::ServerError(
                     "No se pudo buildear la configuracion tls".to_string(),
                 ))
@@ -2312,6 +2382,7 @@ impl Node {
         };
         Ok(Arc::new(config))
     }
+
 
     fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
         match TcpListener::bind(socket) {

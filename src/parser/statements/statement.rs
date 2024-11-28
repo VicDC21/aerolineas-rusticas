@@ -24,6 +24,6 @@ pub enum Statement {
     /// Este tipo de datos personalizado se puede utilizar en la definición de columnas de una tabla.
     UdtStatement(UdtStatement),
 
-
+    ///Representa el logueo de usuarios (es una implementacion por fuera de cassandra creada por nosotros)
     LoginUser(LoginUserStatement)
 }
