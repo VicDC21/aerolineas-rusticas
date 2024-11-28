@@ -3,6 +3,7 @@
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+use crate::data::traits::PrettyShow;
 use crate::protocol::errors::error::Error;
 
 /// El tipo de un continente.
@@ -32,9 +33,8 @@ pub enum ContinentType {
     SouthAmerica,
 }
 
-impl ContinentType {
-    /// Devuelve el nombre completo del continent, en inglés.
-    pub fn full_name(&self) -> &str {
+impl PrettyShow for ContinentType {
+    fn pretty_name(&self) -> &str {
         match self {
             Self::Africa => "Africa",
             Self::Antarctica => "Antarctica",

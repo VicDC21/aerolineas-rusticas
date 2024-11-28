@@ -167,18 +167,13 @@ impl FlightsLoader {
                         if stop_by_airport && (timestamp == stop_value) {
                             break;
                         }
-                        let flights = match Self::load_flights(
+                        let flights = Self::load_flights(
                             Arc::clone(&client),
                             &flight_type,
                             selected_airport.as_ref(),
                             &timestamp,
-                        ) {
-                            Ok(loaded) => loaded,
-                            Err(err) => {
-                                println!("Error cargando los vuelos:\n\n{}", err);
-                                Vec::new()
-                            }
-                        };
+                        )
+                        .unwrap_or_default();
 
                         if let Err(err) = to_parent.send(flights) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);
@@ -235,17 +230,12 @@ impl FlightsLoader {
                         if stop_by_airport && (timestamp == stop_value) {
                             break;
                         }
-                        let live_data = match Self::load_live_data(
+                        let live_data = Self::load_live_data(
                             Arc::clone(&client),
                             &flight_type,
                             selected_airport.as_ref(),
-                        ) {
-                            Ok(loaded) => loaded,
-                            Err(err) => {
-                                println!("Error cargando los vuelos:\n\n{}", err);
-                                LiveDataMap::new()
-                            }
-                        };
+                        )
+                        .unwrap_or_default();
 
                         if let Err(err) = to_parent.send(live_data) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);

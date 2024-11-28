@@ -15,8 +15,13 @@ use crate::{
     data::{
         airports::airp::Airport,
         flights::{flight::Flight, types::FlightType},
+        traits::PrettyShow,
     },
-    interface::panels::crud::{delete_flight_by_id, insert_flight},
+    interface::{
+        data::widget_details::WidgetDetails,
+        panels::crud::{delete_flight_by_id, insert_flight},
+        windows::flight_editor::FlightEditorWindow,
+    },
     protocol::aliases::types::{Int, Long},
 };
 
@@ -28,11 +33,12 @@ pub fn cur_airport_info(
     client: Arc<Mutex<Client>>,
     ui: &Ui,
     cur_airport: &Option<Airport>,
-    incoming_flights: Arc<Vec<Flight>>,
-    show_incoming: &bool,
-    departing_flights: Arc<Vec<Flight>>,
-    show_departing: &bool,
+    incoming_fl: (Arc<Vec<Flight>>, &bool),
+    departing_fl: (Arc<Vec<Flight>>, &bool),
+    widget_details: &mut WidgetDetails,
 ) -> (bool, bool) {
+    let (incoming_flights, show_incoming) = incoming_fl;
+    let (departing_flights, show_departing) = departing_fl;
     let mut must_show_incoming = *show_incoming;
     let mut must_show_departing = *show_departing;
     let mut delete_queue = DeleteQueue::new();
@@ -75,12 +81,15 @@ pub fn cur_airport_info(
             );
         });
 
+        ui.add_space(20.0);
+
         must_show_incoming = show_flights(
             ui,
             &buttons["incoming"],
             show_incoming,
             incoming_flights,
             &FlightType::Incoming,
+            widget_details,
             &mut delete_queue,
         );
         must_show_departing = show_flights(
@@ -89,6 +98,7 @@ pub fn cur_airport_info(
             show_departing,
             departing_flights,
             &FlightType::Departing,
+            widget_details,
             &mut delete_queue,
         );
     });
@@ -198,7 +208,7 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
                 "Continent:",
                 format!(
                     "{} ({})",
-                    &airport.continent.full_name(),
+                    &airport.continent.pretty_name(),
                     &airport.continent
                 )
             ))
@@ -225,23 +235,23 @@ fn show_flights(
     do_show: &bool,
     flights: Arc<Vec<Flight>>,
     flight_type: &FlightType,
+    widget_details: &mut WidgetDetails,
     delete_queue: &mut DeleteQueue,
 ) -> bool {
     let ctx = ui.ctx();
     let mut must_show = *do_show;
-    let tipo_str = match flight_type {
-        FlightType::Incoming => "entrante",
-        FlightType::Departing => "saliente",
-    };
     if must_show {
+        let text_color = Color32::from_rgb(255, 255, 255);
+        let font = FontId::monospace(12.5);
+        let interspace = 10.0;
         ScrollArea::vertical()
-            .max_height(100.0)
+            .max_height(250.0)
             .max_width(ctx.screen_rect().width() / 3.5)
             .animated(true)
-            .id_salt(format!("scroll_{}", tipo_str))
+            .id_salt(format!("scroll_{}", flight_type))
             .show(ui, |scroll_ui| {
                 if flights.is_empty() {
-                    show_loading_spinner(scroll_ui, format!("Cargando vuelos {}s...", tipo_str));
+                    show_loading_spinner(scroll_ui, format!("Loading {} flights...", flight_type));
                 }
 
                 for flight in flights.iter() {
@@ -250,38 +260,55 @@ fn show_flights(
                         Some(date) => date.to_string(),
                     };
                     scroll_ui.label(
-                        RichText::new(format!("\tId: {}\n", flight.id))
+                        RichText::new(format!("\t{:<15}{:>30}", "Id:", flight.id))
                             .italics()
-                            .color(Color32::from_rgb(255, 255, 255)),
+                            .color(text_color)
+                            .font(font.clone()),
                     );
                     scroll_ui.label(
-                        RichText::new(format!("\tOrigen: {}", flight.orig))
+                        RichText::new(format!("\t{:<15}{:>30}", "Origin:", flight.orig))
                             .italics()
-                            .color(Color32::from_rgb(255, 255, 255)),
+                            .color(text_color)
+                            .font(font.clone()),
                     );
                     scroll_ui.label(
-                        RichText::new(format!("\tDestino: {}", flight.dest))
+                        RichText::new(format!("\t{:<15}{:>30}", "Destination:", flight.dest))
                             .italics()
-                            .color(Color32::from_rgb(255, 255, 255)),
+                            .color(text_color)
+                            .font(font.clone()),
                     );
                     let tiemstamp_msg = match flight_type {
-                        FlightType::Incoming => "llegada",
-                        FlightType::Departing => "salida",
+                        FlightType::Incoming => "Arrival:",
+                        FlightType::Departing => "Take Off:",
                     };
                     scroll_ui.label(
-                        RichText::new(format!("\t{}: {}", tiemstamp_msg, potential_date))
+                        RichText::new(format!("\t{:<15}{:>30}", tiemstamp_msg, potential_date))
                             .italics()
-                            .color(Color32::from_rgb(255, 255, 255)),
+                            .color(text_color)
+                            .font(font.clone()),
                     );
                     scroll_ui.label(
-                        RichText::new(format!("\testado: {}", flight.state))
-                            .italics()
-                            .color(Color32::from_rgb(255, 255, 255)),
+                        RichText::new(format!(
+                            "\t{:<15}{:>30}",
+                            "State:",
+                            flight.state.pretty_name()
+                        ))
+                        .italics()
+                        .color(text_color)
+                        .font(font.clone()),
                     );
-                    if scroll_ui.button("Borrar").clicked() {
-                        delete_queue.insert(flight.id);
-                    }
+                    scroll_ui.horizontal(|hor_ui| {
+                        hor_ui.add_space(30.0);
+                        if hor_ui.button(RichText::new("Edit").heading()).clicked() {
+                            widget_details.flight_editor = Some(FlightEditorWindow::from(flight));
+                        }
+                        if hor_ui.button(RichText::new("Delete").heading()).clicked() {
+                            delete_queue.insert(flight.id);
+                        }
+                    });
+                    scroll_ui.add_space(interspace);
                     scroll_ui.add(Separator::default().shrink(30.0));
+                    scroll_ui.add_space(interspace);
                 }
             });
     }

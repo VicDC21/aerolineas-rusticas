@@ -1,6 +1,6 @@
 //! Módulo para la estructura de vuelo.
 
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Local, TimeZone};
 
 use crate::client::col_data::ColData;
 use crate::client::protocol_result::ProtocolResult;
@@ -12,15 +12,15 @@ use crate::protocol::aliases::{
 use crate::protocol::errors::error::Error;
 
 /// Un vuelo propiamente dicho.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Flight {
     /// El ID único del vuelo saliente.
     pub id: Int,
 
-    /// El [identificador](crate::data::airports::Airport::ident) del aeropuerto de origen.
+    /// El [identificador](crate::data::airports::airp::Airport::ident) del aeropuerto de origen.
     pub orig: String,
 
-    /// El [identificador](crate::data::airports::Airport::ident) del aeropuerto de destino.
+    /// El [identificador](crate::data::airports::airp::Airport::ident) del aeropuerto de destino.
     pub dest: String,
 
     /// El momento en que comienzao finaliza el vuelo.
@@ -117,7 +117,7 @@ impl Flight {
     }
 
     /// Transforma el timestamp en una fecha.
-    pub fn get_date(&self) -> Option<DateTime<Utc>> {
-        Utc.timestamp_opt(self.timestamp, 0).single()
+    pub fn get_date(&self) -> Option<DateTime<Local>> {
+        Local.timestamp_opt(self.timestamp, 0).single()
     }
 }

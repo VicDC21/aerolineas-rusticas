@@ -1,5 +1,5 @@
 //! Paquete para widgets de ventanas.
 
 pub mod airp;
-pub mod airport_details;
+pub mod flight_editor;
 pub mod util;
