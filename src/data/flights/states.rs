@@ -2,7 +2,7 @@
 
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use crate::protocol::errors::error::Error;
+use crate::{data::traits::PrettyShow, protocol::errors::error::Error};
 
 /// Un mismo vuelo puede cancelarse, atrasarse, u otras cosas que es necesario detectar.
 
@@ -22,6 +22,18 @@ pub enum FlightState {
 
     /// Un vuelo cancelado.
     Canceled,
+}
+
+impl PrettyShow for FlightState {
+    fn pretty_name(&self) -> &str {
+        match self {
+            Self::InCourse => "In Course",
+            Self::Delayed => "Delayed",
+            Self::Canceled => "Canceled",
+            Self::Finished => "Finished",
+            Self::Preparing => "Preparing",
+        }
+    }
 }
 
 impl Display for FlightState {

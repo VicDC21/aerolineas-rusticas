@@ -11,8 +11,10 @@ use walkers::sources::OpenStreetMap;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position};
 
 use crate::client::cli::Client;
+use crate::data::flights::types::FlightType;
+use crate::data::tracking::live_flight_data::LiveFlightData;
 use crate::interface::{
-    data::app_details::AirlinesDetails,
+    data::{app_details::AirlinesDetails, widget_details::WidgetDetails},
     panels::show::{cur_airport_info, extra_airport_info},
     plugins::{
         airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
@@ -60,6 +62,9 @@ pub struct AerolineasApp {
 
     /// Los detalles de lso aeropuertos.
     airlines_details: AirlinesDetails,
+
+    /// Detalles de widgets auxiliares.
+    widget_details: WidgetDetails,
 }
 
 impl AerolineasApp {
@@ -81,6 +86,7 @@ impl AerolineasApp {
             flights_updater: FlightsUpdater::with_ctx(egui_ctx.clone()),
             datetime: Local::now(),
             airlines_details: AirlinesDetails::default(),
+            widget_details: WidgetDetails::default(),
         }
     }
 
@@ -170,10 +176,15 @@ impl App for AerolineasApp {
                 Arc::clone(&self.client),
                 ui,
                 self.airlines_details.get_ref_selected_airport(),
-                self.airlines_details.get_incoming_flights(),
-                self.airlines_details.get_show_incoming_flights(),
-                self.airlines_details.get_departing_flights(),
-                self.airlines_details.get_show_departing_flights(),
+                (
+                    self.airlines_details.get_incoming_flights(),
+                    self.airlines_details.get_show_incoming_flights(),
+                ),
+                (
+                    self.airlines_details.get_departing_flights(),
+                    self.airlines_details.get_show_departing_flights(),
+                ),
+                &mut self.widget_details,
             );
             self.airlines_details
                 .set_show_incoming_flights(show_incoming);
@@ -190,6 +201,23 @@ impl App for AerolineasApp {
 
             if airps_start < airps_end {
                 airports_progress(ui, airps_start, airps_end);
+            }
+
+            if let Some(editor) = &mut self.widget_details.flight_editor {
+                let mut live_data = None;
+                if let Some(flight) = &editor.held_flight {
+                    let live_data_map = match flight.flight_type {
+                        FlightType::Incoming => self.airlines_details.get_incoming_tracking(),
+                        FlightType::Departing => self.airlines_details.get_departing_tracking(),
+                    };
+                    live_data = match live_data_map.get(&flight.id) {
+                        Some(candidates) => LiveFlightData::most_recent(candidates).cloned(),
+                        None => None,
+                    };
+                }
+                if !editor.show(ui, Arc::clone(&self.client), self.datetime, live_data) {
+                    self.widget_details.flight_editor = None;
+                }
             }
         });
     }
