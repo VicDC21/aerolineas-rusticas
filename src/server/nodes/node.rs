@@ -619,6 +619,7 @@ impl Node {
     }
 
     fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()>{
+        println!("Esta en sesion de cliente");
         let server_config = Node::configure_tls()?;
         let listener = Node::bind_with_socket(socket)?;
         let addr_loader = AddrLoader::default_loaded();
@@ -666,6 +667,7 @@ impl Node {
 
 
     fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()>{
+        println!("Esta en sesion privada");
         let listener = Node::bind_with_socket(socket)?;
         let addr_loader = AddrLoader::default_loaded();
         for tcp_stream_res in listener.incoming() {
@@ -701,6 +703,7 @@ impl Node {
         if bytes.is_empty() {
             return Ok(());
         }
+        // println!("Esta en process_tcp");
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
                 if let Err(err) = self.handle_sv_action(action, tcp_stream) {
@@ -711,9 +714,10 @@ impl Node {
                 }
                 Ok(())
             }
-            None => {println!("Error interno");
-                Err(Error::Invalid("Error interno".to_string()))
-                // self.match_kind_of_conection_mode(bytes, tcp_stream)
+            None => {
+                // println!("Error interno");
+                // Err(Error::Invalid("Error interno".to_string()))
+                self.match_kind_of_conection_mode_priv(bytes, tcp_stream)
             },
         }
     }
@@ -741,8 +745,8 @@ impl Node {
             return Ok(());
         }
         match SvAction::get_action(&bytes[..]) {
-            Some(_action) => {println!("Error interno");
-                Err(Error::Invalid("Error interno".to_string()))
+            Some(_action) => {println!("Error mensaje por canal equivocado");
+                Err(Error::Invalid("Error mensaje por canal equivocado".to_string()))
                 // if let Err(err) = self.handle_sv_action(action, tls_stream) {
                 //     println!(
                 //         "[{} - ACTION] Error en la acción del servidor: {}",
@@ -2461,7 +2465,42 @@ impl Node {
         }
         Ok(())
     }
+
+    fn match_kind_of_conection_mode_priv(
+        &mut self,
+        bytes: Vec<Byte>,
+        mut tcp_stream: TcpStream,
+    ) -> Result<()> {
+        match self.mode() {
+            ConnectionMode::Echo => {
+                let printable_bytes = bytes
+                    .iter()
+                    .map(|b| format!("{:#X}", b))
+                    .collect::<Vec<String>>();
+                println!("[{} - ECHO] {}", self.id, printable_bytes.join(" "));
+                if let Err(err) = tcp_stream.write_all(&bytes) {
+                    println!("Error al escribir en el TCPStream:\n\n{}", err);
+                }
+                if let Err(err) = tcp_stream.flush() {
+                    println!("Error haciendo flush desde el nodo:\n\n{}", err);
+                }
+            }
+            ConnectionMode::Parsing => {
+                let res = self.handle_request(&bytes[..], false);
+                let _ = tcp_stream.write_all(&res[..]);
+                if let Err(err) = tcp_stream.flush() {
+                    println!("Error haciendo flush desde el nodo:\n\n{}", err);
+                }
+            }
+        }
+        Ok(())
+    }
+
 }
+
+
+
+
 
 fn wrap_header(mut response: Vec<Byte>, is_internal_request: bool, header: Headers) -> Vec<Byte> {
     if !is_internal_request {

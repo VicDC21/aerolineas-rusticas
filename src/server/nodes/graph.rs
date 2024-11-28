@@ -372,6 +372,7 @@ fn create_client_and_private_conexion(
             )));
         }
     }
+    println!("Intenta crear sesiones privadas");
     let priv_builder = Builder::new().name(format!("{}_priv", current_id));
     let priv_res = priv_builder.spawn(move || Node::priv_listen(priv_socket, priv_node));
     match priv_res {
