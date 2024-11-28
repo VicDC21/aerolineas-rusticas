@@ -619,7 +619,6 @@ impl Node {
     }
 
     fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()>{
-        println!("Esta en sesion de cliente");
         let server_config = Node::configure_tls()?;
         let listener = Node::bind_with_socket(socket)?;
         let addr_loader = AddrLoader::default_loaded();
@@ -639,7 +638,6 @@ impl Node {
                     let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
                         rustls::Stream::new(&mut server_conn, &mut tcp_stream);
                     let mut bytes_vec: Vec<Byte> = Vec::new();
-                    println!("Llega hasta aca");
                     match tls_stream.read_to_end(&mut bytes_vec){
                         Ok(value) => value,
                         Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string()))
@@ -667,7 +665,6 @@ impl Node {
 
 
     fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()>{
-        println!("Esta en sesion privada");
         let listener = Node::bind_with_socket(socket)?;
         let addr_loader = AddrLoader::default_loaded();
         for tcp_stream_res in listener.incoming() {
@@ -2361,24 +2358,19 @@ impl Node {
     }
 
     fn configure_tls() -> Result<Arc<ServerConfig>> {
-        let cert_file = "custom.pem";
+        let cert_file = "cert.pem";
         let private_key_file = "custom.key";
         let certs = CertificateDer::pem_file_iter(cert_file)
             .unwrap()
             .map(|cert| cert.unwrap())
             .collect();
         let private_key = PrivateKeyDer::from_pem_file(private_key_file).unwrap();
-        println!("Los certificados son {:?}", certs);
-        println!("Las llaves son {:?}", private_key);
-        println!("Llega hasta aca 0.5");
-
         let config = match ServerConfig::builder()
             .with_no_client_auth()
             .with_single_cert(certs, private_key)
         {
-            Ok(value) => {println!("Llega hasta aca 0.6");
-                value},
-            Err(_err) => {println!("El error fue {:?}", _err);
+            Ok(value) => {value},
+            Err(_err) => {
                 return Err(Error::ServerError(
                     "No se pudo buildear la configuracion tls".to_string(),
                 ))
