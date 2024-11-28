@@ -3,7 +3,7 @@ use crate::protocol::errors::error::Error;
 use super::col_data::ColData;
 
 /// Resultado de una operación en el protocolo de Cassandra.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ProtocolResult {
     /// El resultado no contiene información adicional en el cuerpo.
     Void,
