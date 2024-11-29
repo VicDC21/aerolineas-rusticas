@@ -133,10 +133,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
         }
         match stream.read_to_end(&mut buf) {
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                println!(
-                    "Timeout alcanzado al esperar respuesta del nodo {}:\n\n{}",
-                    id, err
-                );
+                println!("Timeout alcanzado al esperar respuesta del nodo {}", id);
             }
             Err(err) => println!("Error recibiendo response del nodo {}:\n\n{}", id, err),
             Ok(i) => {

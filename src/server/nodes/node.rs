@@ -238,6 +238,14 @@ impl Node {
         mode: ConnectionMode,
         nodes_weights: &mut Vec<usize>,
     ) -> Result<Vec<Option<NodeHandle>>> {
+        let nodes_ids = Self::get_nodes_ids();
+        if !nodes_ids.contains(&id) {
+            return Err(Error::ServerError(format!(
+                "El ID {} no está en el archivo de nodos disponibles.",
+                id
+            )));
+        }
+
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
         let mut node = Self::new(id, mode)?;
@@ -764,8 +772,11 @@ impl Node {
 
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&mut self) {
-        if self.neighbours_states.len() == N_NODES as usize {
+        if self.neighbours_states.len() == N_NODES as usize
+            && *self.endpoint_state.get_appstate_status() != AppStatus::Normal
+        {
             self.endpoint_state.set_appstate_status(AppStatus::Normal);
+            println!("El nodo {} fue iniciado correctamente.", self.id);
         }
     }
 
@@ -795,10 +806,6 @@ impl Node {
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done();
-        //println!(
-        //    "Vecinos del nodo [{}]: {:?}",
-        //    self.id, self.neighbours_states
-        //);
 
         for neighbour_id in neighbours {
             if send_to_node(
@@ -808,12 +815,8 @@ impl Node {
             )
             .is_err()
             {
+                // No devolvemos error porque no se considera un error que un vecino no responda en esta instancia.
                 self.acknowledge_offline_neighbour(neighbour_id);
-                // No frenamos el programa porque no se considera un error que un vecino no responda en esta instancia.
-                println!(
-                    "No se pudo establecer conexión con el nodo [{}] para un mensaje SYN",
-                    neighbour_id,
-                );
             }
         }
         Ok(())
@@ -2074,24 +2077,25 @@ impl Node {
                 let wait_response = true;
                 let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
+                let mut responsive_replica = node_id;
                 let mut replicas_asked = 0;
 
                 let mut actual_result = self.decide_how_to_request_internal_query_select(
                     node_id,
-                    &select,
-                    request,
+                    (&select, request),
                     wait_response,
+                    &mut responsive_replica,
                     &mut replicas_asked,
                     replication_factor_quantity,
                 )?;
                 consistency_counter += 1;
                 match self.consult_replica_nodes(
                     (node_id, replicas_asked),
-                    request,
+                    (request, &table_name),
                     &mut consistency_counter,
                     consistency_number,
-                    &actual_result,
-                    &table_name,
+                    (responsive_replica, &actual_result),
+                    replication_factor_quantity,
                 ) {
                     Ok(rr_executed) => {
                         // Este chequeo es porque si ya es true, no queremos que vuelva a ser false
@@ -2110,9 +2114,9 @@ impl Node {
                 if read_repair_executed {
                     actual_result = self.decide_how_to_request_internal_query_select(
                         node_id,
-                        &select,
-                        request,
+                        (&select, request),
                         wait_response,
+                        &mut responsive_replica,
                         &mut replicas_asked,
                         replication_factor_quantity,
                     )?;
@@ -2130,13 +2134,15 @@ impl Node {
 
     fn decide_how_to_request_internal_query_select(
         &mut self,
-        node_id: u8,
-        select: &Select,
-        request: &[u8],
+        node_id: NodeId,
+        select_and_request: (&Select, &[Byte]),
         wait_response: bool,
+        responsive_replica: &mut NodeId,
         replicas_asked: &mut usize,
         replication_factor_quantity: u32,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vec<Byte>> {
+        let (select, request) = select_and_request;
+
         let actual_result = if node_id == self.id {
             self.process_select(select, node_id)?
         } else {
@@ -2147,50 +2153,53 @@ impl Node {
             );
             let mut result: Vec<u8> = Vec::new();
             if self.neighbour_is_responsive(node_id) {
-                result = self.send_message_and_wait_response_with_timeout(
-                    request_with_metadata,
-                    node_id,
-                    PortType::Priv,
-                    wait_response,
-                    TIMEOUT_SECS,
-                )?;
+                result = self
+                    .send_message_and_wait_response_with_timeout(
+                        request_with_metadata,
+                        node_id,
+                        PortType::Priv,
+                        wait_response,
+                        TIMEOUT_SECS,
+                    )
+                    .unwrap_or_default()
             }
             *replicas_asked += 1;
 
-            // Si hubo timeout al esperar la respuesta, se intenta con las replicas
+            // Si hubo error al enviar el mensaje, se asume que el vecino está apagado,
+            // entonces se intenta con las replicas
             if result.is_empty() {
                 self.acknowledge_offline_neighbour(node_id);
                 let nodes_ids = Self::get_nodes_ids();
-                let mut node_to_replicate = node_id;
+                let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
                 for _ in 1..replication_factor_quantity {
-                    if node_to_replicate != node_id {
-                        if self.neighbour_is_responsive(node_to_replicate) {
-                            let request_with_metadata =
-                                add_metadata_to_internal_request_of_any_kind(
-                                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                                    None,
-                                    Some(node_id),
-                                );
-                            let replica_response = self
-                                .send_message_and_wait_response_with_timeout(
-                                    SvAction::InternalQuery(request_with_metadata).as_bytes(),
-                                    node_to_replicate,
-                                    PortType::Priv,
-                                    wait_response,
-                                    TIMEOUT_SECS,
-                                )?;
-                            *replicas_asked += 1;
-                            if replica_response.is_empty() {
-                                self.acknowledge_offline_neighbour(node_to_replicate);
-                            } else {
-                                result = replica_response;
-                                break;
-                            }
+                    if self.neighbour_is_responsive(node_replica) {
+                        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                            None,
+                            Some(node_id),
+                        );
+                        let replica_response = self
+                            .send_message_and_wait_response_with_timeout(
+                                SvAction::InternalQuery(request_with_metadata).as_bytes(),
+                                node_replica,
+                                PortType::Priv,
+                                wait_response,
+                                TIMEOUT_SECS,
+                            )
+                            .unwrap_or_default();
+                        *replicas_asked += 1;
+
+                        if replica_response.is_empty() {
+                            self.acknowledge_offline_neighbour(node_replica);
                         } else {
-                            *replicas_asked += 1;
+                            result = replica_response;
+                            *responsive_replica = node_replica;
+                            break;
                         }
+                    } else {
+                        *replicas_asked += 1;
                     }
-                    node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
+                    node_replica = next_node_in_the_cluster(node_replica, &nodes_ids);
                 }
             }
             result
@@ -2203,23 +2212,27 @@ impl Node {
     /// Devuelve un booleano indicando si _read-repair_ fue ejecutado o no.
     fn consult_replica_nodes(
         &mut self,
-        id_and_replicas_asked: (u8, usize),
-        request: &[Byte],
+        id_and_replicas_asked: (NodeId, usize),
+        request_and_table_name: (&[Byte], &str),
         consistency_counter: &mut usize,
         consistency_number: usize,
-        response_from_first_responsive_replica: &[Byte],
-        table_name: &str,
+        first_responsive_id_and_response: (NodeId, &[Byte]),
+        replication_factor_quantity: u32,
     ) -> Result<bool> {
-        let mut exec_read_repair = false;
         if consistency_number == 1 {
             return Ok(false);
         }
+        let mut exec_read_repair = false;
         let (node_id, replicas_asked) = id_and_replicas_asked;
+        let (request, table_name) = request_and_table_name;
+        let (responsive_replica, response_from_first_responsive_replica) =
+            first_responsive_id_and_response;
+
         let first_hashed_value = hash_value(response_from_first_responsive_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
         let nodes_ids = Self::get_nodes_ids();
-        let mut node_to_consult = node_id;
-        for _ in replicas_asked..consistency_number {
+        let mut node_to_consult = responsive_replica;
+        for _ in (replicas_asked as u32)..replication_factor_quantity {
             let opcode_with_hashed_value = self.decide_how_to_request_the_digest_read_request(
                 node_to_consult,
                 request,
@@ -2233,6 +2246,9 @@ impl Node {
                 consistency_counter,
                 &mut responses,
             )?;
+            if *consistency_counter >= consistency_number {
+                break;
+            }
             node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
         }
         check_if_read_repair_is_neccesary(
