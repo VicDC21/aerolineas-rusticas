@@ -116,7 +116,7 @@ $ cargo run --bin sv
 
 ### Nodos
 
-Se debe decidir entre correr el _Servidor_, que levanta todos los nodos en una sola corrida, o los nodos indivualmente, los cuales se deben levantar de a uno.
+Se debe decidir entre correr el _Servidor_, que levanta todos los nodos en una sola consola, o los nodos indivualmente, los cuales se deben levantar de a uno por consola.
 Para poder levantarse deben existir su ID e IP correspondientes en un archivo llamado `node_ips.csv` cuyas columnas son `node_id,ip`. Además, el nodo con mayor ID debe ser levantado último.
 
 <details>
