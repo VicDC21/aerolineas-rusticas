@@ -2,26 +2,38 @@
 
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use crate::protocol::errors::error::Error;
+use crate::{data::traits::PrettyShow, protocol::errors::error::Error};
 
 /// Un mismo vuelo puede cancelarse, atrasarse, u otras cosas que es necesario detectar.
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FlightState {
+    /// Un vuelo en preparación.
+    Preparing,
+
     /// Un vuelo actualmente ne curso.
     InCourse,
+
+    /// Un vuelo finalizado correctamente (no [cancelado](crate::data::flight_states::FlightState::Canceled)).
+    Finished,
 
     /// Un vuelo atrasado.
     Delayed,
 
     /// Un vuelo cancelado.
     Canceled,
+}
 
-    /// Un vuelo finalizado correctamente (no [cancelado](crate::data::flight_states::FlightState::Canceled)).
-    Finished,
-
-    /// Un vuelo en preparación.
-    Preparing,
+impl PrettyShow for FlightState {
+    fn pretty_name(&self) -> &str {
+        match self {
+            Self::InCourse => "In Course",
+            Self::Delayed => "Delayed",
+            Self::Canceled => "Canceled",
+            Self::Finished => "Finished",
+            Self::Preparing => "Preparing",
+        }
+    }
 }
 
 impl Display for FlightState {
