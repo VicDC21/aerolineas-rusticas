@@ -624,9 +624,12 @@ impl Node {
         let addr_loader = AddrLoader::default_loaded();
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
-                Err(_) => return Node::tcp_stream_error(&PortType::Cli, &socket, &addr_loader),
+                Err(_) => {return Node::tcp_stream_error(&PortType::Cli, &socket, &addr_loader)},
                 Ok(mut tcp_stream) => {
+                    println!("Se empieza a conectar");
                     let config = Arc::clone(&server_config);
+                    println!("Se empieza a conectar 2");
+
                     let mut server_conn = match ServerConnection::new(config) {
                         Ok(conn) => conn,
                         Err(_) => {
@@ -635,16 +638,20 @@ impl Node {
                             ));
                         }
                     };
+                    println!("Se empieza a conectar 3");
+
                     let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
                         rustls::Stream::new(&mut server_conn, &mut tcp_stream);
+                    println!("Se empieza a conectar 4");
                     let mut bytes_vec: Vec<Byte> = Vec::new();
-                    match tls_stream.read_to_end(&mut bytes_vec){
+                    match tls_stream.read(&mut bytes_vec){
                         Ok(value) => value,
                         Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string()))
                     };
+                    println!("Se empieza a conectar 5");
                     // let mut bufreader: BufReader<rustls::Stream<'_, ServerConnection, TcpStream>> = BufReader::new(tls_stream);
                     // bytes_vec = Node::write_bytes_in_buffer(&mut bufreader)?;
-                    // consumimos los bytes del stream para no mandarlos de vuelta en la response
+                    // // consumimos los bytes del stream para no mandarlos de vuelta en la response
                     // bufreader.consume(bytes_vec.len());
                     if Self::is_exit(&bytes_vec[..]) {
                         break;
@@ -690,7 +697,6 @@ impl Node {
                 }
             }
         }
-
         Ok(())
     }
 
@@ -742,15 +748,8 @@ impl Node {
             return Ok(());
         }
         match SvAction::get_action(&bytes[..]) {
-            Some(_action) => {println!("Error mensaje por canal equivocado");
+            Some(_action) => {
                 Err(Error::Invalid("Error mensaje por canal equivocado".to_string()))
-                // if let Err(err) = self.handle_sv_action(action, tls_stream) {
-                //     println!(
-                //         "[{} - ACTION] Error en la acción del servidor: {}",
-                //         self.id, err
-                //     );
-                // }
-                // Ok(())
             }
             None => self.match_kind_of_conection_mode(bytes, tls_stream),
         }
@@ -2360,7 +2359,7 @@ impl Node {
     fn configure_tls() -> Result<Arc<ServerConfig>> {
         let cert_file = "cert.pem";
         let private_key_file = "custom.key";
-        let certs = CertificateDer::pem_file_iter(cert_file)
+        let certs: Vec<CertificateDer<'_>> = CertificateDer::pem_file_iter(cert_file)
             .unwrap()
             .map(|cert| cert.unwrap())
             .collect();
@@ -2399,6 +2398,10 @@ impl Node {
             PortType::Cli => "cliente",
             PortType::Priv => "nodo o estructura interna",
         };
+        println!("Un {} no pudo conectarse al nodo con ID {}",
+            falla,
+            addr_loader.get_id(&socket.ip())?,
+        );
         Err(Error::ServerError(format!(
             "Un {} no pudo conectarse al nodo con ID {}",
             falla,
@@ -2416,17 +2419,17 @@ impl Node {
         }
     }
 
-    fn write_bytes_in_buffer(
-        bufreader: &mut BufReader<rustls::Stream<'_, ServerConnection, TcpStream>>,
-    ) -> Result<Vec<Byte>> {
-        match bufreader.fill_buf() {
-            Ok(recv) => Ok(recv.to_vec()),
-            Err(err) => Err(Error::ServerError(format!(
-                "No se pudo escribir los bytes:\n\n{}",
-                err
-            ))),
-        }
-    }
+    // fn write_bytes_in_buffer(
+    //     bufreader: &mut BufReader<rustls::Stream<'_, ServerConnection, TcpStream>>,
+    // ) -> Result<Vec<Byte>> {
+    //     match bufreader.fill_buf() {
+    //         Ok(recv) => Ok(recv.to_vec()),
+    //         Err(err) => Err(Error::ServerError(format!(
+    //             "No se pudo escribir los bytes:\n\n{}",
+    //             err
+    //         ))),
+    //     }
+    // }
 
     fn match_kind_of_conection_mode(
         &mut self,

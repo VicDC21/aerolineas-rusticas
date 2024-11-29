@@ -33,7 +33,7 @@ use crate::{
     },
     tokenizer::tokenizer::tokenize_query,
 };
-use rustls::ClientConfig;
+use rustls::{pki_types::{pem::PemObject, CertificateDer}, ClientConfig, RootCertStore};
 
 use super::{col_data::ColData, protocol_result::ProtocolResult};
 
@@ -147,9 +147,20 @@ impl Client {
     /// </div>
     pub fn echo(&mut self) -> Result<()> {
         let mut tcp_stream = self.connect()?;
+        tcp_stream
+            .set_nonblocking(true)
+            .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {}", e)))?;
+        tcp_stream
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| Error::ServerError(format!("Error al configurar read timeout: {}", e)))?;
+        tcp_stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
         let mut client_connection = get_client_connection()?;
+        println!("Pasa por aca");
         let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
             rustls::Stream::new(&mut client_connection, &mut tcp_stream);
+        println!("Pasa por aca 2");
         match tls_stream.write_all(&Client::prepare_startup_message()?){
             Ok(_) => match tls_stream.flush() {
                 Ok(_) => match self.read_complete_response(&mut tls_stream) {
@@ -164,6 +175,7 @@ impl Client {
                 return Err(Error::ServerError(format!("Error al escribir: {}", e)))
             }
         };
+
         println!(
             "ECHO MODE:\n \
             ----------\n \
@@ -252,7 +264,7 @@ impl Client {
                     Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
                         Frame::new(stream_id, query, self.consistency_level).as_bytes()
                     }
-                    Statement::LoginUser(user) =>{
+                    Statement::LoginUser(_user) =>{
                         vec![]
                     }
                     Statement::UdtStatement(_) => {
@@ -641,15 +653,25 @@ impl Default for Client {
     }
 }
 
+///TODO
 pub fn get_client_connection() -> Result<rustls::ClientConnection> {
-    let root_store = rustls::RootCertStore::empty();
+    let cert_file = "cert.pem";
+    let mut root_store = RootCertStore::empty();
+    let certs: Vec<CertificateDer<'_>> = CertificateDer::pem_file_iter(cert_file)
+        .unwrap()
+        .map(|cert| cert.unwrap())
+        .collect();
+    for cert in certs {
+        match root_store.add(cert){
+            Ok(_) => (),
+            Err(_err) => return Err(Error::Invalid("Error al crear la conexion tls".to_string()))
+        };
+    }
     let config = ClientConfig::builder()
         .with_root_certificates(root_store)
-        .with_no_client_auth(); // Sin autenticación del cliente
-
-    // 3. Crear una conexión TLS sobre la conexión TCP
-    let server_name = "rust.com".try_into().unwrap();
-    let client_connection =
+        .with_no_client_auth();
+    let server_name = "Los-aldeanos-panas".try_into().unwrap();
+    let client_connection: rustls::ClientConnection =
         rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
     Ok(client_connection)
 }
