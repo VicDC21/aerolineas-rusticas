@@ -2,7 +2,11 @@
 
 mod common;
 
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    thread::sleep,
+    time::Duration,
+};
 
 use aerolineas_rusticas::{
     client::{cli::Client, protocol_result::ProtocolResult},
@@ -12,8 +16,13 @@ use common::{clean_nodes, init_graph_echo, init_graph_parsing};
 
 #[test]
 fn test_1_simple_connection() {
+    assert!(clean_nodes().is_ok());
+
     let graph_handle = init_graph_echo();
     let client = Client::default();
+
+    // le damos tiempo para procesar
+    sleep(Duration::from_secs(5));
 
     let con_res = client.connect();
     assert!(con_res.is_ok());
@@ -21,6 +30,8 @@ fn test_1_simple_connection() {
         let msg = "ping!";
         assert!(tcp_stream.write_all(msg.as_bytes()).is_ok());
         assert!(tcp_stream.flush().is_ok());
+
+        sleep(Duration::from_secs(5));
 
         let mut buffer = String::new();
         let read_res = tcp_stream.read_to_string(&mut buffer);
@@ -39,11 +50,17 @@ fn test_1_simple_connection() {
 
 #[test]
 fn test_2_simple_insert_and_select() {
+    assert!(clean_nodes().is_ok());
+
     let graph_handle = init_graph_parsing();
     let mut client = Client::default();
 
+    // le damos tiempo para procesar
+    sleep(Duration::from_secs(5));
+
     let con_res = client.connect();
     assert!(con_res.is_ok());
+
     if let Ok(mut tcp_stream) = con_res {
         let insert_query = "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES (123456, 'SABE', 'SADL', 12345678, 'in_course');";
 
@@ -53,6 +70,8 @@ fn test_2_simple_insert_and_select() {
             // el resultado de un insert es VOID
             assert!(matches!(protocol_res, ProtocolResult::Void));
         }
+
+        sleep(Duration::from_secs(5));
 
         let select_query = "SELECT * FROM vuelos_entrantes;";
         let select_res = client.send_query(select_query, &mut tcp_stream);

@@ -656,6 +656,7 @@ impl Node {
                         }
                         Err(poison_err) => {
                             println!("Error de lock envenenado:\n\n{}", poison_err);
+                            node.clear_poison();
                         }
                     }
                 }
@@ -831,6 +832,9 @@ impl Node {
 
     /// Maneja una request.
     fn handle_request(&mut self, request: &[Byte], internal_request: bool) -> Vec<Byte> {
+        if request.len() < 9 {
+            return Vec::<Byte>::new();
+        }
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return self.make_error_response(err),

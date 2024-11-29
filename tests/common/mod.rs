@@ -2,6 +2,7 @@
 //!
 //! Dichas funciones se definen directamente en este archivo, o sino corremos el riesgo
 //! de que cargo crea que los archivos son archivos de tests en sí.
+#![allow(dead_code)] // Las funciones sí se usan, pero no lo descubre por no estar en la lib
 
 use std::{
     fs::remove_dir_all,
@@ -36,16 +37,16 @@ pub fn init_graph_parsing() -> ThreadHandle<()> {
 
 /// Borra todos los archivos y directorios de metadatos relevantes,
 /// tal que quede limpio de corridas anteriores.
-///
-/// Ignoramos el error específico de si no se encuentra.
 pub fn clean_nodes() -> IOResult<()> {
-    if let Err(err) = remove_dir_all(STORAGE_PATH) {
-        if !matches!(err.kind(), ErrorKind::NotFound) {
-            return Err(err);
-        }
-    }
+    rmdir(STORAGE_PATH)?;
+    rmdir(NODES_METADATA_PATH)?;
 
-    if let Err(err) = remove_dir_all(NODES_METADATA_PATH) {
+    Ok(())
+}
+
+/// Remueve un directorio, e ignora el error si el mismo no existe.
+fn rmdir(path: &str) -> IOResult<()> {
+    if let Err(err) = remove_dir_all(path) {
         if !matches!(err.kind(), ErrorKind::NotFound) {
             return Err(err);
         }
