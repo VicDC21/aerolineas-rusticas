@@ -2,6 +2,8 @@
 
 pub mod app;
 pub mod data;
-pub mod map;
+pub mod panels;
 pub mod plugins;
 pub mod run;
+pub mod utils;
+pub mod windows;

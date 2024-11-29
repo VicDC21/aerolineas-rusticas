@@ -284,29 +284,12 @@ impl DiskHandler {
         let values = statement.get_values();
         let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values, timestamp);
 
-        let partition_key_columns = table.get_partition_key();
-        let duplicate_index = rows.iter().position(|row| {
-            partition_key_columns.iter().all(|col| {
-                if let Some(index) = table.get_columns_names().iter().position(|c| c == col) {
-                    row[index] == new_row[index]
-                } else {
-                    false
-                }
-            })
-        });
-
-        if let Some(index) = duplicate_index {
-            if partition_key_columns.len() == 1 {
-                rows.push(new_row.clone());
-            } else {
-                rows[index] = new_row.clone();
-            }
-        } else if !statement.if_not_exists {
+        if !rows.contains(&new_row) {
             rows.push(new_row.clone());
+            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
+            return Ok(new_row);
         }
-
-        DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
-        Ok(new_row)
+        Ok(Vec::new())
     }
 
     /// Devuelve las filas de la tabla como un string
@@ -371,11 +354,6 @@ impl DiskHandler {
         }
 
         let mut result = Vec::new();
-        // if query_cols.len() == 1 && query_cols[0] == "*" {
-        //     result.push(table_ops.columns.clone());
-        // } else {
-        //     result.push(query_cols.clone());
-        // }
 
         let mut rows = table_ops.read_rows(true)?;
         if let Some(the_where) = &statement.options.the_where {
@@ -482,7 +460,6 @@ impl DiskHandler {
         let table_ops = TableOperations::new(path)?;
         let rows = table_ops.read_rows(false)?;
 
-        // println!("las filas originales son {:?}", rows);
         if matches!(statement.if_condition, IfCondition::Exists) && rows.is_empty() {
             return Ok(Vec::new());
         }
@@ -494,7 +471,6 @@ impl DiskHandler {
         };
 
         let (modified_rows, deleted_data) = result;
-        // println!("las filas modificadas son {:?}", modified_rows);
 
         if !deleted_data.is_empty() || modified_rows.is_empty() {
             let mut rows_to_write = modified_rows.clone();

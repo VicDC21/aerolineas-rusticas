@@ -4,7 +4,7 @@ use aerolineas_rusticas::{
     client::cli::Client,
     protocol::aliases::results::Result,
     server::nodes::{graph::NodesGraph, node::Node},
-    simulator::flight_simulator::run_sim,
+    simulator::cli::run_sim,
 };
 
 #[cfg(feature = "gui")]
