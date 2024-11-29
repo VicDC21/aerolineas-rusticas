@@ -25,5 +25,8 @@ pub enum Statement {
     UdtStatement(UdtStatement),
 
     ///Representa el logueo de usuarios (es una implementacion por fuera de cassandra creada por nosotros)
-    LoginUser(LoginUserStatement)
+    LoginUser(LoginUserStatement),
+
+    ///TODO
+    Startup
 }

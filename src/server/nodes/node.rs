@@ -1052,6 +1052,7 @@ impl Node {
                 self.handle_internal_dml_statement(dml_statement, internal_metadata)
             }
             Statement::UdtStatement(_udt_statement) => todo!(),
+            Statement::Startup => Err(Error::Invalid("No se deberia haber mandado el startup por este canal".to_string())),
             Statement::LoginUser(_) => Err(Error::Invalid("No se deberia haber mandado el login por este canal".to_string()))
         }
     }
@@ -1524,6 +1525,7 @@ impl Node {
                 self.handle_dml_statement(dml_statement, request, consistency_level)
             }
             Statement::UdtStatement(_udt_statement) => todo!(),
+            Statement::Startup => Err(Error::Invalid("No se deberia haber mandado el startup por este canal".to_string())),
             Statement::LoginUser(_) => Err(Error::Invalid("No se deberia haber mandado el login por este canal".to_string()))
         }
     }

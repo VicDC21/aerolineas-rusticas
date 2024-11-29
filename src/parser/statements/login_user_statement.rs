@@ -1,8 +1,10 @@
 use crate::protocol::errors::error::Error;
 
+use super::ddl_statement::ddl_statement_parser::check_words;
 
 
 
+/// TODO
 #[derive(Debug)]
 pub struct LoginUserStatement {
     login: String,
@@ -10,12 +12,24 @@ pub struct LoginUserStatement {
 }
 
 
-
+/// TODO
 pub fn login_statement(lista: &mut Vec<String>) -> Result<Option<LoginUserStatement>, Error>{
-
-
-
-
-    
-    Ok(None)
+    let mut login = LoginUserStatement{login: "".to_string(), password: "".to_string()};
+    if !check_words(lista, "User:"){
+        return Ok(None)
+    }
+    if !lista.is_empty(){
+        let user = lista.remove(0);
+        login.login = user;
+    }
+    if !check_words(lista, "Password:"){
+        return Err(Error::Invalid("Falta la contraseña al momento de loguearse".to_string()))
+    }
+    if !lista.is_empty(){
+        let password = lista.remove(0);
+        login.password = password;
+    } else {
+        return Err(Error::Invalid("Falta la contraseña al momento de loguearse".to_string()))
+    }
+    Ok(Some(login))
 }

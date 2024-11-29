@@ -7,7 +7,8 @@ use crate::parser::statements::{
 };
 use crate::protocol::errors::error::Error;
 
-use super::statements::login_user_statement::{self, login_statement};
+use super::statements::login_user_statement::login_statement;
+use super::statements::startup_statement::startup_statement;
 
 /// Analiza una lista de declaraciones CQL y devuelve un `Statement` o un `Error`.
 ///
@@ -42,6 +43,8 @@ fn cql_statement(lista: &mut Vec<String>) -> Result<Option<Statement>, Error> {
         return Ok(Some(Statement::UdtStatement(statement)));
     } else if let Some(statement) = login_statement(lista)?{
         return Ok(Some(Statement::LoginUser(statement)))
+    } else if (startup_statement(lista)?).is_some(){
+        return Ok(Some(Statement::Startup))
     }
     Ok(None)
 }
