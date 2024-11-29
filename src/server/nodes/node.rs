@@ -2460,12 +2460,12 @@ fn add_metadata_to_internal_request_of_any_kind(
 }
 
 fn verify_succesful_response(response: &[Byte]) -> bool {
+    if response.len() < 9 {
+        return false;
+    };
     let opcode = match Opcode::try_from(response[4]) {
         Ok(opcode) => opcode,
         Err(_err) => Opcode::RequestError,
-    };
-    if response.len() < 9 {
-        return false;
     };
     match opcode {
         Opcode::Result => true, // Si la response tiene el opcode Result entonces es valida
