@@ -114,6 +114,33 @@ $ cargo run --bin sv
 
 </details>
 
+### Nodos
+
+Se debe decidir entre correr el _Servidor_, que levanta todos los nodos en una sola corrida, o los nodos indivualmente, los cuales se deben levantar de a uno.
+Para poder levantarse deben existir su ID e IP correspondientes en un archivo llamado `node_ips.csv` cuyas columnas son `node_id,ip`. Además, el nodo con mayor ID debe ser levantado último.
+
+<details>
+    <summary>
+        <b>Forma simple</b>
+    </summary>
+
+```console
+$ cargo run nd <id>
+```
+
+</details>
+
+<details>
+    <summary>
+        <b>Binario Separado</b>
+    </summary>
+
+```console
+$ cargo run --bin nd <id>
+```
+
+</details>
+
 ### Interfaz de Usuario
 
 La interfaz de usuario incluye muchas dependencias y por lo tanto, se compila
