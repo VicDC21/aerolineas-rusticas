@@ -10,6 +10,7 @@
     - [Ejecución](#cómo-correr)
         * [Cliente](#cliente)
         * [Servidor](#servidor)
+        * [Nodos](#nodos)
         * [Interfaz Gráfica](#interfaz-de-usuario)
         * [Simulador de Vuelos](#simulador-de-vuelos)
 * [Cómo Testear](#cómo-testear)
