@@ -22,7 +22,7 @@ use crate::{
         },
         notations::consistency::Consistency,
         traits::Byteable,
-        utils::{encode_string_map_to_bytes, parse_bytes_to_string},
+        utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
     },
     server::{
         actions::opcode::SvAction,
@@ -266,8 +266,8 @@ impl Client {
                     Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
                         Frame::new(stream_id, query, self.consistency_level).as_bytes()
                     }
-                    Statement::LoginUser(_user) =>{
-                        vec![]
+                    Statement::LoginUser(user) =>{
+                        Client::prepare_auth_response_message(&user.user, &user.password)?
                     }
                     Statement::Startup => {
                         Client::prepare_startup_message()?
@@ -643,13 +643,36 @@ impl Client {
         response.append(&mut Flag::Default.as_bytes());
         response.append(&mut Stream::new(0).as_bytes());
         response.append(&mut Opcode::Startup.as_bytes());
-        response.append(&mut Length::new(0).as_bytes()); // REVISAR ESTO
+        response.append(&mut Length::new(0).as_bytes());
         let cql_version = vec![("CQL_VERSION".to_string(), "5.0.0".to_string())];
-        let string_map_as_bytes = encode_string_map_to_bytes(cql_version);
+        let mut string_map_as_bytes = encode_string_map_to_bytes(cql_version);
         let length: u32 = string_map_as_bytes.len() as u32;
-        response.splice(5..9, length.to_be_bytes()); // TAMBIEN ESTO
+        response.append(&mut string_map_as_bytes);
+        response.splice(5..9, length.to_be_bytes());
         Ok(response)
     }
+
+    /// Crea una request Startup para ser mandada
+    pub fn prepare_auth_response_message(user: &str, password: &str) -> Result<Vec<Byte>> {
+        let mut response = Vec::new();
+        response.append(&mut Version::RequestV5.as_bytes());
+        response.append(&mut Flag::Default.as_bytes());
+        response.append(&mut Stream::new(0).as_bytes());
+        response.append(&mut Opcode::AuthResponse.as_bytes());
+        response.append(&mut Length::new(0).as_bytes());
+        let mut user = encode_string_to_bytes(user);
+        let mut password = encode_string_to_bytes(password);
+        let length: u32 = (user.len() + password.len()) as u32;
+        response.append(&mut user);
+        response.append(&mut password);
+        response.splice(5..9, length.to_be_bytes());
+
+
+
+        Ok(response)
+    }
+
+
 }
 
 impl Default for Client {
