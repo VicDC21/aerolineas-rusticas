@@ -975,6 +975,7 @@ impl Node {
                         }
                         Err(poison_err) => {
                             println!("Error de lock envenenado:\n\n{}", poison_err);
+                            node.clear_poison();
                         }
                     }
                 }
@@ -1150,6 +1151,9 @@ impl Node {
 
     /// Maneja una request.
     fn handle_request(&mut self, request: &[Byte], internal_request: bool) -> Vec<Byte> {
+        if request.len() < 9 {
+            return Vec::<Byte>::new();
+        }
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return self.make_error_response(err),
@@ -2828,12 +2832,12 @@ fn add_metadata_to_internal_request_of_any_kind(
 }
 
 fn verify_succesful_response(response: &[Byte]) -> bool {
+    if response.len() < 9 {
+        return false;
+    };
     let opcode = match Opcode::try_from(response[4]) {
         Ok(opcode) => opcode,
         Err(_err) => Opcode::RequestError,
-    };
-    if response.len() < 9 {
-        return false;
     };
     match opcode {
         Opcode::Result => true, // Si la response tiene el opcode Result entonces es valida
