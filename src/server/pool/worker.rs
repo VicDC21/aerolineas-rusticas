@@ -35,6 +35,7 @@ impl Worker {
             loop {
                 match receiver.lock() {
                     Err(poison_err) => {
+                        receiver.clear_poison();
                         return Err(Error::ServerError(format!("Se detectó un lock envenenado en el worker ({}):\n\n{}", id, poison_err)));
                     },
                     Ok(lock) => {
@@ -43,6 +44,9 @@ impl Worker {
                                 return Err(Error::ServerError(format!("Ocurrió un error al recibir una tarea en el worker ({}):\n\n{}", id, recv_err)));
                             },
                             Ok(job_type) => {
+                                // lo dropeamos antes de hacer el trabajo, por si éste toma
+                                // mucho tiempo
+                                drop(lock);
                                 match job_type {
                                     JobType::NewTask(job) => {
                                         job()?;

@@ -92,7 +92,7 @@ const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
-const N_THREADS: usize = 6;
+const N_THREADS: usize = 32;
 /// El tiempo _(en segundos)_ que espera un nodo por una respuesta.
 const TIMEOUT_SECS: u64 = 2;
 
@@ -2551,6 +2551,9 @@ impl Node {
 
     fn get_columns_metadata_length(&self, results_from_another_nodes: &[Byte]) -> usize {
         let mut total_length_from_metadata: usize = 21;
+        if results_from_another_nodes.len() < total_length_from_metadata {
+            return 0;
+        }
         // el 13 al 17 son flags
         let column_quantity = &results_from_another_nodes[17..21];
         let column_quantity = i32::from_be_bytes([
