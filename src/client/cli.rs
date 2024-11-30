@@ -146,6 +146,7 @@ impl Client {
     ///
     /// </div>
     pub fn echo(&mut self) -> Result<()> {
+        let mut client_connection = get_client_connection()?;
         let mut tcp_stream = self.connect()?;
         tcp_stream
             .set_nonblocking(false)
@@ -156,28 +157,13 @@ impl Client {
         tcp_stream
             .set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
-        let mut client_connection = get_client_connection()?;
-        println!("Pasa por aca");
-        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
+
+
+        let mut tls_stream=
             rustls::Stream::new(&mut client_connection, &mut tcp_stream);
-        
-
-        // println!("Pasa por aca 2");
-        // match tls_stream.write_all(&Client::prepare_startup_message()?){
-        //     Ok(_) => match tls_stream.flush() {
-        //         Ok(_) => match self.read_complete_response(&mut tls_stream) {
-        //             Ok(response) => response,
-        //             Err(_) => return Err(Error::Invalid("No pudo leer la respuesta".to_string())),
-        //         },
-        //         Err(e) => {
-        //             return Err(Error::ServerError(format!("Error al flush: {}", e)))
-        //         }
-        //     },
-        //     Err(e) => {
-        //         return Err(Error::ServerError(format!("Error al escribir: {}", e)))
-        //     }
-        // };
-
+        // tls_stream
+        //     .write_all("GET / HTTP/1.1\r\nConnection: close\r\n\r\n".to_string().as_bytes())
+        //     .unwrap();
         println!(
             "ECHO MODE:\n \
             ----------\n \
@@ -187,6 +173,15 @@ impl Client {
             'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
             ----------\n"
         );
+        // tls_stream.write_all("STARTUP".as_bytes());
+        // tls_stream.flush();
+        // let mut buf = Vec::new();
+        // tls_stream.read_to_end(&mut buf);
+        // println!("Recibi del stream 1 {:?}", buf);
+        // tls_stream.write_all("STARTUP".as_bytes());
+        // tls_stream.read_to_end(&mut buf);
+
+        // println!("Recibi del stream 2 {:?}", buf);
 
         let reader = BufReader::new(stdin());
         for line in reader.lines() {
@@ -462,11 +457,12 @@ impl Client {
     }
 
     fn handle_ready(&self) -> Result<ProtocolResult> {
+        println!("Entra a ready");
         todo!()
     }
 
     fn handle_authenticate(&self) -> Result<ProtocolResult> {
-        todo!()
+        Ok(ProtocolResult::Void)
     }
 
     fn handle_supported(&self) -> Result<ProtocolResult> {
@@ -492,7 +488,7 @@ impl Client {
     }
 
     fn handle_auth_success(&self) -> Result<ProtocolResult> {
-        todo!()
+        Ok(ProtocolResult::AuthSuccess)
     }
 
     fn deserialize_rows(&self, _lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {

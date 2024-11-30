@@ -20,6 +20,9 @@ pub enum ProtocolResult {
     /// El resultado de una _query_ que altera un _schema_.
     SchemaChange,
 
+    /// Indica que el cliente fue aceptado por el servidor.
+    AuthSuccess,
+
     /// El resultado de una _query_ que indica un error en la consulta.
     QueryError(Error),
 }

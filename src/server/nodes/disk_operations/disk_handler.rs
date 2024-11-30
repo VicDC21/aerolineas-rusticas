@@ -351,14 +351,7 @@ impl DiskHandler {
         if query_cols.len() != 1 && query_cols[0] != "*" {
             table_ops.validate_columns(&query_cols)?;
         }
-
         let mut result = Vec::new();
-        // if query_cols.len() == 1 && query_cols[0] == "*" {
-        //     result.push(table_ops.columns.clone());
-        // } else {
-        //     result.push(query_cols.clone());
-        // }
-
         let mut rows = table_ops.read_rows(true)?;
         if let Some(the_where) = &statement.options.the_where {
             rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
@@ -998,8 +991,8 @@ impl DiskHandler {
     }
 
     /// Lee la tabla de usuarios y contraseñas, y los devuelve como vector de tuplas.
-    pub fn read_admitted_users(storage_addr: &str) -> Result<Vec<(String, String)>> {
-        let file = match File::open(format!("{}/users.csv", storage_addr)) {
+    pub fn read_admitted_users(_storage_addr: &str) -> Result<Vec<(String, String)>> {
+        let file = match File::open("users.csv") {
             Ok(value) => value,
             Err(_err) => {
                 return Err(Error::ServerError(

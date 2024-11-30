@@ -7,8 +7,6 @@ use rustls::{
 use std::{
     cmp::PartialEq, collections::{HashMap, HashSet}, fmt, io::{BufRead, BufReader, Read, Write}, net::{SocketAddr, TcpListener, TcpStream}, path::Path, sync::{Arc, Mutex}, vec::IntoIter
 };
-// use rustls::Connection;
-
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -105,6 +103,9 @@ pub struct Node {
     /// Nombre del keyspace por defecto.
     default_keyspace_name: String,
 
+    /// Nombre del keyspace por defecto de cada usuario.
+    users_default_keyspace_name: HashMap<String, String>,
+
     /// Los keyspaces que tiene el nodo.
     /// (nombre, keyspace)
     keyspaces: HashMap<String, Keyspace>,
@@ -141,6 +142,7 @@ impl Node {
             endpoint_state,
             storage_addr,
             default_keyspace_name: "".to_string(),
+            users_default_keyspace_name: HashMap::new(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
             nodes_ranges,
@@ -625,11 +627,8 @@ impl Node {
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
                 Err(_) => {return Node::tcp_stream_error(&PortType::Cli, &socket, &addr_loader)},
-                Ok(mut tcp_stream) => {
-                    println!("Se empieza a conectar");
+                Ok(tcp_stream) => {
                     let config = Arc::clone(&server_config);
-                    println!("Se empieza a conectar 2");
-
                     let mut server_conn = match ServerConnection::new(config) {
                         Ok(conn) => conn,
                         Err(_) => {
@@ -638,30 +637,27 @@ impl Node {
                             ));
                         }
                     };
-                    println!("Se empieza a conectar 3");
-
+                    let mut buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
                     let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
-                        rustls::Stream::new(&mut server_conn, &mut tcp_stream);
-                    println!("Se empieza a conectar 4");
-                    let mut bytes_vec: Vec<Byte> = Vec::new();
-                    match tls_stream.read(&mut bytes_vec){
-                        Ok(value) => value,
-                        Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string()))
-                    };
-                    println!("Se empieza a conectar 5");
-                    // let mut bufreader: BufReader<rustls::Stream<'_, ServerConnection, TcpStream>> = BufReader::new(tls_stream);
-                    // bytes_vec = Node::write_bytes_in_buffer(&mut bufreader)?;
-                    // // consumimos los bytes del stream para no mandarlos de vuelta en la response
-                    // bufreader.consume(bytes_vec.len());
-                    if Self::is_exit(&bytes_vec[..]) {
-                        break;
-                    }
-                    match node.lock() {
-                        Ok(mut locked_in) => {
-                            locked_in.process_tls_tcp(tls_stream, bytes_vec)?;
+                        rustls::Stream::new(&mut server_conn, &mut buffered_stream);
+                    let tls = &mut tls_stream;
+                    loop{
+                        let mut buffer = [0u8; 2048];
+
+                        match tls.read(&mut buffer){
+                            Ok(value) => {value},
+                            Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string()))
+                        };
+                        if Self::is_exit(&buffer[..]) {
+                            break;
                         }
-                        Err(poison_err) => {
-                            println!("Error de lock envenenado:\n\n{}", poison_err);
+                        match node.lock() {
+                            Ok(mut locked_in) => {
+                                locked_in.process_tcp_or_tls(tls, buffer.to_vec())?;
+                            }
+                            Err(poison_err) => {
+                                println!("Error de lock envenenado:\n\n{}", poison_err);
+                            }
                         }
                     }
                 }
@@ -677,7 +673,7 @@ impl Node {
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
                 Err(_) => return Node::tcp_stream_error(&PortType::Priv, &socket, &addr_loader),
-                Ok(tcp_stream) => {
+                Ok(mut tcp_stream) => {
                     let buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
                     let mut bufreader = BufReader::new(buffered_stream);
                     let bytes_vec = Node::write_bytes_in_priv_buffer(&mut bufreader)?;
@@ -688,7 +684,7 @@ impl Node {
                     }
                     match node.lock() {
                         Ok(mut locked_in) => {
-                            locked_in.process_tcp(tcp_stream, bytes_vec)?;
+                            locked_in.process_tcp_or_tls(&mut tcp_stream, bytes_vec)?;
                         }
                         Err(poison_err) => {
                             println!("Error de lock envenenado:\n\n{}", poison_err);
@@ -701,8 +697,11 @@ impl Node {
     }
 
 
-    ///TODO
-    pub fn process_tcp(&mut self, tcp_stream: TcpStream, bytes: Vec<Byte>) -> Result<()> {
+    /// Procesa una _request_ en forma de [Byte]s.
+    /// También devuelve un [bool] indicando si se debe parar el hilo.
+    pub fn process_tcp_or_tls<S>(&mut self, tcp_stream:&mut  S, bytes: Vec<Byte>) -> Result<()> 
+    where S: Read + Write
+    {
         if bytes.is_empty() {
             return Ok(());
         }
@@ -718,9 +717,7 @@ impl Node {
                 Ok(())
             }
             None => {
-                // println!("Error interno");
-                // Err(Error::Invalid("Error interno".to_string()))
-                self.match_kind_of_conection_mode_priv(bytes, tcp_stream)
+                self.match_kind_of_conection_mode(bytes, tcp_stream)
             },
         }
     }
@@ -736,31 +733,12 @@ impl Node {
         }
     }
 
-
-    /// Procesa una _request_ en forma de [Byte]s.
-    /// También devuelve un [bool] indicando si se debe parar el hilo.
-    pub fn process_tls_tcp(
-        &mut self,
-        tls_stream: rustls::Stream<'_, ServerConnection, TcpStream>,
-        bytes: Vec<Byte>,
-    ) -> Result<()> {
-        if bytes.is_empty() {
-            return Ok(());
-        }
-        match SvAction::get_action(&bytes[..]) {
-            Some(_action) => {
-                Err(Error::Invalid("Error mensaje por canal equivocado".to_string()))
-            }
-            None => self.match_kind_of_conection_mode(bytes, tls_stream),
-        }
-    }
-
     /// Maneja una acción de servidor.
-    fn handle_sv_action(
+    fn handle_sv_action<S>(
         &mut self,
         action: SvAction,
-        mut tcp_stream: TcpStream,
-    ) -> Result<bool> {
+        mut tcp_stream: S,
+    ) -> Result<bool> where S: Read + Write{
         let mut stop = false;
         match action {
             SvAction::Exit => stop = true, // La comparación para salir ocurre en otro lado
@@ -905,6 +883,7 @@ impl Node {
 
     /// Maneja una request.
     fn handle_request(&mut self, request: &[Byte], is_internal_request: bool) -> Vec<Byte> {
+        // println!("La request es {:?}", request);
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return make_error_response(err),
@@ -1015,13 +994,13 @@ impl Node {
         Ok(vec![0])
     }
 
-    fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
+    fn handle_auth_response(&mut self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
         let req = &request[9..(lenght.len as usize) + 9];
         let users = DiskHandler::read_admitted_users(&self.storage_addr)?;
         let mut response: Vec<Byte> = Vec::new();
         let mut i = 0;
         let user_from_req = parse_bytes_to_string(req, &mut i)?;
-        let password_from_req = parse_bytes_to_string(req, &mut i)?;
+        let password_from_req = parse_bytes_to_string(&req[i..], &mut i)?;
         for user in users {
             if user.0 == user_from_req && user.1 == password_from_req {
                 response.append(&mut Version::ResponseV5.as_bytes());
@@ -1029,10 +1008,14 @@ impl Node {
                 response.append(&mut Stream::new(0).as_bytes());
                 response.append(&mut Opcode::AuthSuccess.as_bytes());
                 response.append(&mut Length::new(0).as_bytes());
+                
+                if !self.users_default_keyspace_name.contains_key(&user.0){
+                    self.users_default_keyspace_name.insert(user.0.to_string(), "".to_string());
+                }
                 return Ok(response);
             }
         }
-        response = make_error_response(Error::Invalid(
+        response = make_error_response(Error::AuthenticationError(
             "Las credenciales pasadas no son validas".to_string(),
         ));
         Ok(response)
@@ -2433,41 +2416,11 @@ impl Node {
     //     }
     // }
 
-    fn match_kind_of_conection_mode(
+    fn match_kind_of_conection_mode<S>(
         &mut self,
         bytes: Vec<Byte>,
-        mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream>,
-    ) -> Result<()> {
-        match self.mode() {
-            ConnectionMode::Echo => {
-                let printable_bytes = bytes
-                    .iter()
-                    .map(|b| format!("{:#X}", b))
-                    .collect::<Vec<String>>();
-                println!("[{} - ECHO] {}", self.id, printable_bytes.join(" "));
-                if let Err(err) = tls_stream.write_all(&bytes) {
-                    println!("Error al escribir en el TCPStream:\n\n{}", err);
-                }
-                if let Err(err) = tls_stream.flush() {
-                    println!("Error haciendo flush desde el nodo:\n\n{}", err);
-                }
-            }
-            ConnectionMode::Parsing => {
-                let res = self.handle_request(&bytes[..], false);
-                let _ = tls_stream.write_all(&res[..]);
-                if let Err(err) = tls_stream.flush() {
-                    println!("Error haciendo flush desde el nodo:\n\n{}", err);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn match_kind_of_conection_mode_priv(
-        &mut self,
-        bytes: Vec<Byte>,
-        mut tcp_stream: TcpStream,
-    ) -> Result<()> {
+        mut tcp_stream: S,
+    ) -> Result<()> where S: Read + Write{
         match self.mode() {
             ConnectionMode::Echo => {
                 let printable_bytes = bytes
@@ -2730,6 +2683,7 @@ impl Serializable for Node {
             endpoint_state: EndpointState::with_id(id),
             storage_addr: DiskHandler::get_node_storage(id),
             default_keyspace_name,
+            users_default_keyspace_name: HashMap::new(),
             keyspaces,
             tables,
             nodes_ranges: divide_range(0, 18446744073709551615, N_NODES as usize),
