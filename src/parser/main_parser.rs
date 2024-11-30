@@ -41,10 +41,10 @@ fn cql_statement(lista: &mut Vec<String>) -> Result<Option<Statement>, Error> {
     return Ok(Some(Statement::RoleOrPermissionStatement(statement)));*/
     } else if let Some(statement) = udt_statement(lista)? {
         return Ok(Some(Statement::UdtStatement(statement)));
-    } else if let Some(statement) = login_statement(lista)?{
-        return Ok(Some(Statement::LoginUser(statement)))
-    } else if (startup_statement(lista)?).is_some(){
-        return Ok(Some(Statement::Startup))
+    } else if let Some(statement) = login_statement(lista)? {
+        return Ok(Some(Statement::LoginUser(statement)));
+    } else if (startup_statement(lista)?).is_some() {
+        return Ok(Some(Statement::Startup));
     }
     Ok(None)
 }

@@ -28,5 +28,5 @@ pub enum Statement {
     LoginUser(LoginUserStatement),
 
     ///TODO
-    Startup
+    Startup,
 }

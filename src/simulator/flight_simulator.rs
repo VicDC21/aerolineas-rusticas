@@ -1,12 +1,18 @@
 use {
     crate::{
-        client::{cli::{get_client_connection, Client}, protocol_result::ProtocolResult},
+        client::{
+            cli::{get_client_connection, Client},
+            protocol_result::ProtocolResult,
+        },
         protocol::errors::error::Error,
         server::pool::threadpool::ThreadPool,
     },
     rand::Rng,
     std::{
-        net::TcpStream, sync::{Arc, Mutex}, thread, time::Duration
+        net::TcpStream,
+        sync::{Arc, Mutex},
+        thread,
+        time::Duration,
     },
 };
 

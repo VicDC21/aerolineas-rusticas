@@ -33,7 +33,10 @@ use crate::{
     },
     tokenizer::tokenizer::tokenize_query,
 };
-use rustls::{pki_types::{pem::PemObject, CertificateDer}, ClientConfig, RootCertStore};
+use rustls::{
+    pki_types::{pem::PemObject, CertificateDer},
+    ClientConfig, RootCertStore,
+};
 
 use super::{col_data::ColData, protocol_result::ProtocolResult};
 
@@ -158,9 +161,7 @@ impl Client {
             .set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
 
-
-        let mut tls_stream=
-            rustls::Stream::new(&mut client_connection, &mut tcp_stream);
+        let mut tls_stream = rustls::Stream::new(&mut client_connection, &mut tcp_stream);
         // tls_stream
         //     .write_all("GET / HTTP/1.1\r\nConnection: close\r\n\r\n".to_string().as_bytes())
         //     .unwrap();
@@ -229,7 +230,6 @@ impl Client {
                             }
                         }
                     }
-
                 }
                 Err(e) => {
                     eprintln!("Error leyendo la entrada: {}", e);
@@ -261,12 +261,10 @@ impl Client {
                     Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
                         Frame::new(stream_id, query, self.consistency_level).as_bytes()
                     }
-                    Statement::LoginUser(user) =>{
+                    Statement::LoginUser(user) => {
                         Client::prepare_auth_response_message(&user.user, &user.password)?
                     }
-                    Statement::Startup => {
-                        Client::prepare_startup_message()?
-                    }
+                    Statement::Startup => Client::prepare_startup_message()?,
                     Statement::UdtStatement(_) => {
                         self.requests_stream.remove(&stream_id);
                         return Err(Error::ServerError("UDT statements no soportados".into()));
@@ -315,35 +313,35 @@ impl Client {
         result
     }
 
-    fn reconnect(&mut self, tcp_stream: &mut TcpStream) -> Result<()> {
-        // Cerrar explícitamente la conexión anterior
-        let _ = tcp_stream.shutdown(std::net::Shutdown::Both);
-        std::thread::sleep(Duration::from_millis(100));
+    // fn reconnect(&mut self, tcp_stream: &mut TcpStream) -> Result<()> {
+    //     // Cerrar explícitamente la conexión anterior
+    //     let _ = tcp_stream.shutdown(std::net::Shutdown::Both);
+    //     std::thread::sleep(Duration::from_millis(100));
 
-        match self.connect() {
-            Ok(new_stream) => {
-                *tcp_stream = new_stream;
-                tcp_stream.set_nonblocking(true).map_err(|e| {
-                    Error::ServerError(format!("Error al configurar non-blocking: {}", e))
-                })?;
+    //     match self.connect() {
+    //         Ok(new_stream) => {
+    //             *tcp_stream = new_stream;
+    //             tcp_stream.set_nonblocking(true).map_err(|e| {
+    //                 Error::ServerError(format!("Error al configurar non-blocking: {}", e))
+    //             })?;
 
-                tcp_stream
-                    .set_read_timeout(Some(Duration::from_secs(5)))
-                    .map_err(|e| {
-                        Error::ServerError(format!("Error al configurar read timeout: {}", e))
-                    })?;
+    //             tcp_stream
+    //                 .set_read_timeout(Some(Duration::from_secs(5)))
+    //                 .map_err(|e| {
+    //                     Error::ServerError(format!("Error al configurar read timeout: {}", e))
+    //                 })?;
 
-                tcp_stream
-                    .set_write_timeout(Some(Duration::from_secs(5)))
-                    .map_err(|e| {
-                        Error::ServerError(format!("Error al configurar write timeout: {}", e))
-                    })?;
+    //             tcp_stream
+    //                 .set_write_timeout(Some(Duration::from_secs(5)))
+    //                 .map_err(|e| {
+    //                     Error::ServerError(format!("Error al configurar write timeout: {}", e))
+    //                 })?;
 
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
-    }
+    //             Ok(())
+    //         }
+    //         Err(e) => Err(e),
+    //     }
+    // }
 
     fn read_complete_response(
         &mut self,
@@ -663,12 +661,8 @@ impl Client {
         response.append(&mut password);
         response.splice(5..9, length.to_be_bytes());
 
-
-
         Ok(response)
     }
-
-
 }
 
 impl Default for Client {
@@ -686,9 +680,9 @@ pub fn get_client_connection() -> Result<rustls::ClientConnection> {
         .map(|cert| cert.unwrap())
         .collect();
     for cert in certs {
-        match root_store.add(cert){
+        match root_store.add(cert) {
             Ok(_) => (),
-            Err(_err) => return Err(Error::Invalid("Error al crear la conexion tls".to_string()))
+            Err(_err) => return Err(Error::Invalid("Error al crear la conexion tls".to_string())),
         };
     }
     let config = ClientConfig::builder()

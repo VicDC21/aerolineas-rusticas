@@ -1,12 +1,4 @@
 //! Módulo de nodos.
-use chrono::Utc;
-use rustls::{
-    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
-    ServerConfig, ServerConnection,
-};
-use std::{
-    cmp::PartialEq, collections::{HashMap, HashSet}, fmt, io::{BufRead, BufReader, Read, Write}, net::{SocketAddr, TcpListener, TcpStream}, path::Path, sync::{Arc, Mutex}, vec::IntoIter
-};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -47,6 +39,21 @@ use crate::{
     },
     protocol::utils::{parse_bytes_to_string, parse_bytes_to_string_map},
 };
+use chrono::Utc;
+use rustls::{
+    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
+    ServerConfig, ServerConnection,
+};
+use std::{
+    cmp::PartialEq,
+    collections::{HashMap, HashSet},
+    fmt,
+    io::{BufRead, BufReader, Read, Write},
+    net::{SocketAddr, TcpListener, TcpStream},
+    path::Path,
+    sync::{Arc, Mutex},
+    vec::IntoIter,
+};
 
 use super::{
     addr::loader::AddrLoader,
@@ -80,7 +87,7 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
-const N_THREADS: usize = 6;
+const N_THREADS: usize = 20;
 /// El tiempo de espera _(en segundos)_ por una respuesta.
 const TIMEOUT_SECS: u64 = 2;
 
@@ -120,9 +127,6 @@ pub struct Node {
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
     tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 
-    /// El [ThreadPool] de tareas disponibles.
-    pub pool: ThreadPool,
-
     /// Mapa de conexiones abiertas entre el nodo y otros clientes.
     open_connections: OpenConnectionsMap,
 }
@@ -147,7 +151,6 @@ impl Node {
             tables: HashMap::new(),
             nodes_ranges,
             tables_and_partitions_keys_values: HashMap::new(),
-            pool: ThreadPool::build(N_THREADS).unwrap(),
             open_connections: OpenConnectionsMap::new(),
         })
     }
@@ -614,60 +617,38 @@ impl Node {
     ///
     /// Las otras funciones son wrappers para no repetir código.
     fn listen(socket: SocketAddr, port_type: PortType, node: Arc<Mutex<Node>>) -> Result<()> {
-        match port_type{
+        match port_type {
             PortType::Cli => Node::listen_cli_port(socket, node),
-            PortType::Priv => Node::listen_priv_port(socket, node)
+            PortType::Priv => Node::listen_priv_port(socket, node),
         }
     }
 
-    fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()>{
+    fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
         let server_config = Node::configure_tls()?;
         let listener = Node::bind_with_socket(socket)?;
         let addr_loader = AddrLoader::default_loaded();
+        let pool = ThreadPool::build(N_THREADS)?;
+        let exit = false;
         for tcp_stream_res in listener.incoming() {
             match tcp_stream_res {
-                Err(_) => {return Node::tcp_stream_error(&PortType::Cli, &socket, &addr_loader)},
+                Err(_) => return Node::tcp_stream_error(&PortType::Cli, &socket, &addr_loader),
                 Ok(tcp_stream) => {
                     let config = Arc::clone(&server_config);
-                    let mut server_conn = match ServerConnection::new(config) {
-                        Ok(conn) => conn,
-                        Err(_) => {
-                            return Err(Error::ServerError(
-                                "Error al crear la conexión TLS".to_string(),
-                            ));
-                        }
-                    };
-                    let mut buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
-                    let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
-                        rustls::Stream::new(&mut server_conn, &mut buffered_stream);
-                    let tls = &mut tls_stream;
-                    loop{
-                        let mut buffer = [0u8; 2048];
-
-                        match tls.read(&mut buffer){
-                            Ok(value) => {value},
-                            Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string()))
-                        };
-                        if Self::is_exit(&buffer[..]) {
-                            break;
-                        }
-                        match node.lock() {
-                            Ok(mut locked_in) => {
-                                locked_in.process_tcp_or_tls(tls, buffer.to_vec())?;
-                            }
-                            Err(poison_err) => {
-                                println!("Error de lock envenenado:\n\n{}", poison_err);
-                            }
-                        }
-                    }
+                    let node = Arc::clone(&node);
+                    let arc_exit = Arc::new(Mutex::new(exit));
+                    pool.execute(move || {
+                        Node::listen_single_client(config, tcp_stream, arc_exit, node)
+                    })?;
                 }
+            };
+            if exit {
+                break;
             }
         }
         Ok(())
     }
 
-
-    fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()>{
+    fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
         let listener = Node::bind_with_socket(socket)?;
         let addr_loader = AddrLoader::default_loaded();
         for tcp_stream_res in listener.incoming() {
@@ -684,7 +665,7 @@ impl Node {
                     }
                     match node.lock() {
                         Ok(mut locked_in) => {
-                            locked_in.process_tcp_or_tls(&mut tcp_stream, bytes_vec)?;
+                            locked_in.process_stream(&mut tcp_stream, bytes_vec, true)?;
                         }
                         Err(poison_err) => {
                             println!("Error de lock envenenado:\n\n{}", poison_err);
@@ -696,32 +677,29 @@ impl Node {
         Ok(())
     }
 
-
     /// Procesa una _request_ en forma de [Byte]s.
     /// También devuelve un [bool] indicando si se debe parar el hilo.
-    pub fn process_tcp_or_tls<S>(&mut self, tcp_stream:&mut  S, bytes: Vec<Byte>) -> Result<()> 
-    where S: Read + Write
+    pub fn process_stream<S>(&mut self, stream: &mut S, bytes: Vec<Byte>, is_logged: bool) -> Result<Vec<Byte>>
+    where
+        S: Read + Write,
     {
         if bytes.is_empty() {
-            return Ok(());
+            return Ok(vec![]);
         }
         // println!("Esta en process_tcp");
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
-                if let Err(err) = self.handle_sv_action(action, tcp_stream) {
+                if let Err(err) = self.handle_sv_action(action, stream) {
                     println!(
                         "[{} - ACTION] Error en la acción del servidor: {}",
                         self.id, err
                     );
                 }
-                Ok(())
+                Ok(vec![])
             }
-            None => {
-                self.match_kind_of_conection_mode(bytes, tcp_stream)
-            },
+            None => self.match_kind_of_conection_mode(bytes, stream, is_logged),
         }
     }
-
 
     fn write_bytes_in_priv_buffer(bufreader: &mut BufReader<TcpStream>) -> Result<Vec<Byte>> {
         match bufreader.fill_buf() {
@@ -734,11 +712,10 @@ impl Node {
     }
 
     /// Maneja una acción de servidor.
-    fn handle_sv_action<S>(
-        &mut self,
-        action: SvAction,
-        mut tcp_stream: S,
-    ) -> Result<bool> where S: Read + Write{
+    fn handle_sv_action<S>(&mut self, action: SvAction, mut tcp_stream: S) -> Result<bool>
+    where
+        S: Read + Write,
+    {
         let mut stop = false;
         match action {
             SvAction::Exit => stop = true, // La comparación para salir ocurre en otro lado
@@ -764,7 +741,7 @@ impl Node {
                 self.send_endpoint_state(id);
             }
             SvAction::InternalQuery(bytes) => {
-                let response = self.handle_request(&bytes, true);
+                let response = self.handle_request(&bytes, true, true);
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
@@ -786,7 +763,7 @@ impl Node {
                 };
             }
             SvAction::DigestReadRequest(bytes) => {
-                let response = self.handle_request(&bytes, true);
+                let response = self.handle_request(&bytes, true, true);
                 // Devolvemos además un opcode para poder saber si el resultado fue un error o no.
                 if verify_succesful_response(&response) {
                     let mut res = Opcode::Result.as_bytes();
@@ -882,8 +859,7 @@ impl Node {
     }
 
     /// Maneja una request.
-    fn handle_request(&mut self, request: &[Byte], is_internal_request: bool) -> Vec<Byte> {
-        // println!("La request es {:?}", request);
+    fn handle_request(&mut self, request: &[Byte], is_internal_request: bool, is_logged: bool) -> Vec<Byte> {
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return make_error_response(err),
@@ -891,7 +867,7 @@ impl Node {
         let left_response = match header.opcode {
             Opcode::Startup => self.handle_startup(&request[9..]),
             Opcode::Options => self.handle_options(),
-            Opcode::Query => self.handle_query(request, &header.length, is_internal_request),
+            Opcode::Query => self.handle_query(request, &header.length, is_internal_request, is_logged),
             Opcode::Prepare => self.handle_prepare(),
             Opcode::Execute => self.handle_execute(),
             Opcode::Register => self.handle_register(),
@@ -942,8 +918,11 @@ impl Node {
         request: &[Byte],
         lenght: &Length,
         internal_request: bool,
+        is_logged: bool
     ) -> Result<Vec<Byte>> {
-        // if let Ok(query) = String::from_utf8(request[9..(lenght.len as usize) + 9].to_vec())
+        if !is_logged{
+            return Err(Error::AuthenticationError("No se pueden mandar queries antes de autenticar el usuario".to_string()))
+        }
         if let Ok(query_body) = QueryBody::try_from(&request[9..(lenght.len as usize) + 9]) {
             let res = match make_parse(&mut tokenize_query(query_body.get_query())) {
                 Ok(statement) => {
@@ -1008,9 +987,10 @@ impl Node {
                 response.append(&mut Stream::new(0).as_bytes());
                 response.append(&mut Opcode::AuthSuccess.as_bytes());
                 response.append(&mut Length::new(0).as_bytes());
-                
-                if !self.users_default_keyspace_name.contains_key(&user.0){
-                    self.users_default_keyspace_name.insert(user.0.to_string(), "".to_string());
+
+                if !self.users_default_keyspace_name.contains_key(&user.0) {
+                    self.users_default_keyspace_name
+                        .insert(user.0.to_string(), "".to_string());
                 }
                 return Ok(response);
             }
@@ -1035,8 +1015,12 @@ impl Node {
                 self.handle_internal_dml_statement(dml_statement, internal_metadata)
             }
             Statement::UdtStatement(_udt_statement) => todo!(),
-            Statement::Startup => Err(Error::Invalid("No se deberia haber mandado el startup por este canal".to_string())),
-            Statement::LoginUser(_) => Err(Error::Invalid("No se deberia haber mandado el login por este canal".to_string()))
+            Statement::Startup => Err(Error::Invalid(
+                "No se deberia haber mandado el startup por este canal".to_string(),
+            )),
+            Statement::LoginUser(_) => Err(Error::Invalid(
+                "No se deberia haber mandado el login por este canal".to_string(),
+            )),
         }
     }
 
@@ -1508,8 +1492,12 @@ impl Node {
                 self.handle_dml_statement(dml_statement, request, consistency_level)
             }
             Statement::UdtStatement(_udt_statement) => todo!(),
-            Statement::Startup => Err(Error::Invalid("No se deberia haber mandado el startup por este canal".to_string())),
-            Statement::LoginUser(_) => Err(Error::Invalid("No se deberia haber mandado el login por este canal".to_string()))
+            Statement::Startup => Err(Error::Invalid(
+                "No se deberia haber mandado el startup por este canal".to_string(),
+            )),
+            Statement::LoginUser(_) => Err(Error::Invalid(
+                "No se deberia haber mandado el login por este canal".to_string(),
+            )),
         }
     }
 
@@ -2011,7 +1999,7 @@ impl Node {
         let opcode_with_hashed_value = if node_to_consult == self.id {
             let internal_request =
                 add_metadata_to_internal_request_of_any_kind(request.to_vec(), None, Some(node_id));
-            let res = self.handle_request(&internal_request, true);
+            let res = self.handle_request(&internal_request, true, true);
             let mut res_with_opcode;
             if verify_succesful_response(&res) {
                 res_with_opcode = Opcode::Result.as_bytes();
@@ -2353,7 +2341,7 @@ impl Node {
             .with_no_client_auth()
             .with_single_cert(certs, private_key)
         {
-            Ok(value) => {value},
+            Ok(value) => value,
             Err(_err) => {
                 return Err(Error::ServerError(
                     "No se pudo buildear la configuracion tls".to_string(),
@@ -2362,7 +2350,6 @@ impl Node {
         };
         Ok(Arc::new(config))
     }
-
 
     fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
         match TcpListener::bind(socket) {
@@ -2383,7 +2370,8 @@ impl Node {
             PortType::Cli => "cliente",
             PortType::Priv => "nodo o estructura interna",
         };
-        println!("Un {} no pudo conectarse al nodo con ID {}",
+        println!(
+            "Un {} no pudo conectarse al nodo con ID {}",
             falla,
             addr_loader.get_id(&socket.ip())?,
         );
@@ -2416,11 +2404,10 @@ impl Node {
     //     }
     // }
 
-    fn match_kind_of_conection_mode<S>(
-        &mut self,
-        bytes: Vec<Byte>,
-        mut tcp_stream: S,
-    ) -> Result<()> where S: Read + Write{
+    fn match_kind_of_conection_mode<S>(&mut self, bytes: Vec<Byte>, mut stream: S, is_logged: bool) -> Result<Vec<Byte>>
+    where
+        S: Read + Write,
+    {
         match self.mode() {
             ConnectionMode::Echo => {
                 let printable_bytes = bytes
@@ -2428,29 +2415,76 @@ impl Node {
                     .map(|b| format!("{:#X}", b))
                     .collect::<Vec<String>>();
                 println!("[{} - ECHO] {}", self.id, printable_bytes.join(" "));
-                if let Err(err) = tcp_stream.write_all(&bytes) {
+                if let Err(err) = stream.write_all(&bytes) {
                     println!("Error al escribir en el TCPStream:\n\n{}", err);
                 }
-                if let Err(err) = tcp_stream.flush() {
+                if let Err(err) = stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);
                 }
             }
             ConnectionMode::Parsing => {
-                let res = self.handle_request(&bytes[..], false);
-                let _ = tcp_stream.write_all(&res[..]);
-                if let Err(err) = tcp_stream.flush() {
+                let res = self.handle_request(&bytes[..], false, is_logged);
+                let _ = stream.write_all(&res[..]);
+                if let Err(err) = stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);
+                }
+                return Ok(res)
+            }
+        }
+        Ok(vec![])
+    }
+
+    fn listen_single_client(
+        config: Arc<ServerConfig>,
+        tcp_stream: TcpStream,
+        arc_exit: Arc<Mutex<bool>>,
+        node: Arc<Mutex<Node>>,
+    ) -> Result<()> {
+        let mut server_conn = match ServerConnection::new(config) {
+            Ok(conn) => conn,
+            Err(_) => {
+                return Err(Error::ServerError(
+                    "Error al crear la conexión TLS".to_string(),
+                ));
+            }
+        };
+        let mut buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
+        let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
+            rustls::Stream::new(&mut server_conn, &mut buffered_stream);
+        let tls = &mut tls_stream;
+        let mut is_logged = false;
+        loop {
+            let mut buffer = [0u8; 2048];
+            match tls.read(&mut buffer) {
+                Ok(value) => value,
+                Err(_err) => {
+                    return Err(Error::ServerError("No se pudo leer el stream".to_string()))
+                }
+            };
+            if Self::is_exit(&buffer[..]) {
+                match arc_exit.lock() {
+                    Ok(mut locked_in) => *locked_in = true,
+                    Err(poison_err) => {
+                        println!("Error de lock envenenado:\n\n{}", poison_err);
+                    }
+                }
+                break;
+            }
+            match node.lock() {
+                Ok(mut locked_in) => {
+                    let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
+                    if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0]{
+                        is_logged = true;
+                    }
+                }
+                Err(poison_err) => {
+                    println!("Error de lock envenenado:\n\n{}", poison_err);
                 }
             }
         }
         Ok(())
     }
-
 }
-
-
-
-
 
 fn wrap_header(mut response: Vec<Byte>, is_internal_request: bool, header: Headers) -> Vec<Byte> {
     if !is_internal_request {
@@ -2688,7 +2722,6 @@ impl Serializable for Node {
             tables,
             nodes_ranges: divide_range(0, 18446744073709551615, N_NODES as usize),
             tables_and_partitions_keys_values,
-            pool: ThreadPool::build(N_THREADS)?,
             open_connections: OpenConnectionsMap::new(),
         })
     }
