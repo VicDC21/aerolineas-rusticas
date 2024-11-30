@@ -2152,6 +2152,8 @@ impl Node {
                 Some(node_id),
             );
             let mut result: Vec<u8> = Vec::new();
+            *responsive_replica = node_id;
+            *replicas_asked = 0;
             if self.neighbour_is_responsive(node_id) {
                 result = self
                     .send_message_and_wait_response_with_timeout(
@@ -2231,13 +2233,15 @@ impl Node {
         let first_hashed_value = hash_value(response_from_first_responsive_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
         let nodes_ids = Self::get_nodes_ids();
-        let mut node_to_consult = responsive_replica;
+        let mut node_to_consult = next_node_in_the_cluster(responsive_replica, &nodes_ids);
         for _ in (replicas_asked as u32)..replication_factor_quantity {
-            let opcode_with_hashed_value = self.decide_how_to_request_the_digest_read_request(
-                node_to_consult,
-                request,
-                node_id,
-            )?;
+            let opcode_with_hashed_value = self
+                .decide_how_to_request_the_digest_read_request(node_to_consult, request, node_id)
+                .unwrap_or_default();
+            if opcode_with_hashed_value.is_empty() {
+                node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
+                continue;
+            }
             let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
             check_consistency_of_the_responses(
                 opcode_with_hashed_value,
@@ -2258,7 +2262,7 @@ impl Node {
             responses,
             first_hashed_value,
         );
-        if exec_read_repair {
+        if exec_read_repair && self.neighbour_is_responsive(node_id) {
             return self.exec_read_repair(node_id, request, consistency_number, table_name);
         };
         Ok(false)
@@ -2475,6 +2479,9 @@ impl Node {
         _select: &Select,
     ) -> Result<()> {
         let mut res = result_from_actual_node.to_vec();
+        if res.is_empty() {
+            return Ok(());
+        }
         if results_from_another_nodes.is_empty() {
             results_from_another_nodes.append(&mut res);
             return Ok(());
@@ -2828,12 +2835,12 @@ fn add_metadata_to_internal_request_of_any_kind(
 }
 
 fn verify_succesful_response(response: &[Byte]) -> bool {
+    if response.len() < 9 {
+        return false;
+    };
     let opcode = match Opcode::try_from(response[4]) {
         Ok(opcode) => opcode,
         Err(_err) => Opcode::RequestError,
-    };
-    if response.len() < 9 {
-        return false;
     };
     match opcode {
         Opcode::Result => true, // Si la response tiene el opcode Result entonces es valida
