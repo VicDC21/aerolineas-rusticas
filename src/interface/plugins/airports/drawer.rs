@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use eframe::egui::{Context, Painter, Pos2, Response, Rgba, Stroke};
-use walkers::{extras::Image, Plugin, Projector, Texture};
+use walkers::{extras::Image, Plugin, Position, Projector, Texture};
 
 use crate::data::{
     airports::{airp::Airport, types::AirportType},
@@ -190,8 +190,11 @@ impl AirportsDrawer {
 
     fn draw_circle(airport: &Airport, painter: &Painter, projector: &Projector) {
         let (rad, color, stroke) = AirportsDrawer::circle_by_airport_type(&airport.airport_type);
+        let (lat, lon) = airport.position;
         painter.circle(
-            projector.project(airport.position).to_pos2(),
+            projector
+                .project(Position::from_lat_lon(lat, lon))
+                .to_pos2(),
             rad,
             color,
             stroke,
@@ -209,7 +212,9 @@ impl Plugin for &mut AirportsDrawer {
 
             let icon = self.icons.get(&airport.airport_type);
             if let Some(Some(texture)) = icon {
-                let mut img = Image::new(texture.clone(), airport.position);
+                let (lat, lon) = airport.position;
+                let geo_pos = Position::from_lat_lon(lat, lon);
+                let mut img = Image::new(texture.clone(), geo_pos);
                 let extra = AirportsDrawer::scale_img_by_type(&airport.airport_type);
                 img.scale(extra, extra);
                 if let Some(hover_pos) = response.hover_pos() {
@@ -217,7 +222,7 @@ impl Plugin for &mut AirportsDrawer {
                         &mut img,
                         extra,
                         &hover_pos,
-                        &projector.project(airport.position).to_pos2(),
+                        &projector.project(geo_pos).to_pos2(),
                     );
                 }
                 img.draw(response, painter.clone(), projector);

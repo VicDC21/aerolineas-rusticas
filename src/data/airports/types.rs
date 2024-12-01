@@ -3,6 +3,7 @@
 use std::convert::TryFrom;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
+use crate::data::traits::PrettyShow;
 use crate::protocol::errors::error::Error;
 
 /// El tipo de un aeropuerto.
@@ -30,6 +31,20 @@ pub enum AirportType {
 
     /// Cualquier tipo de aeropuerto que no es actualmente operacional.
     Closed,
+}
+
+impl PrettyShow for AirportType {
+    fn pretty_name(&self) -> &str {
+        match self {
+            Self::LargeAirport => "Large Airport",
+            Self::MediumAirport => "Medium Airport",
+            Self::SmallAirport => "Small Airport",
+            Self::Heliport => "Heliport",
+            Self::SeaplaneBase => "Seaplane Base",
+            Self::BalloonBase => "Ballon Port",
+            Self::Closed => "Closed",
+        }
+    }
 }
 
 impl Display for AirportType {

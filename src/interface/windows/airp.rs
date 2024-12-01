@@ -1,47 +1,8 @@
-//! Módulo para funciones que crean ventanas en el mapa.
-//!
-//! Al ser "ventanas" flotantes, se pueden mostrar por encima del mapa.
+//! Módulo para ventanas de widgets de aeropuertos.
 
 use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
 use eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window};
 use egui_extras::DatePickerButton;
-use walkers::MapMemory;
-
-/// Zoom simple.
-pub fn zoom(ui: &Ui, map_memory: &mut MapMemory) {
-    Window::new("Zoom Buttons")
-        .collapsible(false)
-        .resizable(false)
-        .title_bar(false)
-        .anchor(Align2::LEFT_BOTTOM, [10., -10.])
-        .show(ui.ctx(), |ui| {
-            ui.horizontal(|ui| {
-                if ui.button(RichText::new("➕").heading()).clicked() {
-                    let _ = map_memory.zoom_in();
-                }
-
-                if ui.button(RichText::new("➖").heading()).clicked() {
-                    let _ = map_memory.zoom_out();
-                }
-            });
-        });
-}
-
-/// Cuando el foco se mueve del origen de coordenadas, aparece este botón para traerte de vuelta.
-pub fn go_to_my_position(ui: &Ui, map_memory: &mut MapMemory) {
-    if map_memory.detached().is_some() {
-        Window::new("Follow Pos")
-            .collapsible(false)
-            .resizable(false)
-            .title_bar(false)
-            .anchor(Align2::RIGHT_BOTTOM, [-10., -10.])
-            .show(ui.ctx(), |ui| {
-                if ui.button(RichText::new("📌").heading()).clicked() {
-                    map_memory.follow_my_position();
-                }
-            });
-    }
-}
 
 /// Seleccionar la fecha actual.
 pub fn date_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
@@ -76,21 +37,21 @@ pub fn clock_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTim
             ui.collapsing(
                 RichText::new(format!("{:0>2}:{:0>2}:{:0>2}", &hour, &minute, &second)),
                 |ui| {
-                    ComboBox::from_label("Hora")
+                    ComboBox::from_label("Hour")
                         .selected_text(format!("{}", hour))
                         .show_ui(ui, |ui| {
                             for h in 0..24 {
                                 ui.selectable_value(&mut hour, h, format!("{:0>2}", h));
                             }
                         });
-                    ComboBox::from_label("Minutos")
+                    ComboBox::from_label("Minutes")
                         .selected_text(format!("{}", minute))
                         .show_ui(ui, |ui| {
                             for m in 0..60 {
                                 ui.selectable_value(&mut minute, m, format!("{:0>2}", m));
                             }
                         });
-                    ComboBox::from_label("Segundos")
+                    ComboBox::from_label("Seconds")
                         .selected_text(format!("{}", second))
                         .show_ui(ui, |ui| {
                             for s in 0..60 {

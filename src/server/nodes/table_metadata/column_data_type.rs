@@ -1,5 +1,6 @@
 //! Módulo que detalla el tipo de dato de una columna.
 
+use serde::{Deserialize, Serialize};
 use std::{fmt, str::FromStr};
 
 use crate::protocol::{
@@ -7,7 +8,7 @@ use crate::protocol::{
 };
 
 /// Representa el tipo de dato de una columna.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ColumnDataType {
     /// Tipo de dato `String`.
     String,

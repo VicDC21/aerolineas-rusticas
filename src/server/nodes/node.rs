@@ -14,6 +14,7 @@ use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
     traits::Serializable,
+    utils::load_json,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
@@ -44,6 +45,8 @@ use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
     ServerConfig, ServerConnection,
 };
+use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
@@ -51,28 +54,31 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{
+        mpsc::{channel, Sender},
+        Arc, Mutex,
+    },
+    thread::{sleep, Builder, JoinHandle},
+    time::Duration,
     vec::IntoIter,
 };
 
 use super::{
     addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
-    graph::{LAST_ID, N_NODES, START_ID},
+    graph::{N_NODES, START_ID},
     keyspace_metadata::keyspace::Keyspace,
     port_type::PortType,
     states::{
         appstatus::AppStatus,
         endpoints::EndpointState,
-        heartbeat::{
-            HeartbeatState, {GenType, VerType},
-        },
+        heartbeat::{GenType, HeartbeatState, VerType},
     },
     table_metadata::table::Table,
     utils::{
-        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string, next_node_in_the_round,
-        send_to_node, send_to_node_and_wait_response, send_to_node_and_wait_response_with_timeout,
-        string_to_hashmap, string_to_hashmap_vec,
+        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string,
+        next_node_in_the_cluster, send_to_node, send_to_node_and_wait_response,
+        send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
     },
 };
 
@@ -83,7 +89,11 @@ pub type NodeId = Byte;
 pub type NodesMap = HashMap<NodeId, EndpointState>;
 /// Mapea todas las conexiones actualmente abiertas.
 pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
+/// El handle donde vive una operación de nodo.
+pub type NodeHandle = JoinHandle<Result<()>>;
 
+/// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
+const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
@@ -92,6 +102,7 @@ const N_THREADS: usize = 20;
 const TIMEOUT_SECS: u64 = 2;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
+#[derive(Serialize, Deserialize)]
 pub struct Node {
     /// El ID del nodo mismo.
     id: NodeId,
@@ -99,12 +110,15 @@ pub struct Node {
     /// Los estados de los nodos vecinos, incluyendo este mismo.
     ///
     /// No necesariamente serán todos los otros nodos del grafo, sólo los que este nodo conoce.
+    #[serde(skip)]
     neighbours_states: NodesMap,
 
     /// Estado actual del nodo.
+    #[serde(skip)]
     endpoint_state: EndpointState,
 
     /// Dirección de almacenamiento en disco.
+    #[serde(skip)]
     storage_addr: String,
 
     /// Nombre del keyspace por defecto.
@@ -122,20 +136,23 @@ pub struct Node {
     tables: HashMap<String, Table>,
 
     /// Rangos asignados a cada nodo para determinar la partición de los datos.
+    #[serde(skip)]
     nodes_ranges: Vec<(u64, u64)>,
 
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
     tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 
     /// Mapa de conexiones abiertas entre el nodo y otros clientes.
+    #[serde(skip)]
     open_connections: OpenConnectionsMap,
+
+    /// Los pesos de los nodos.
+    nodes_weights: Vec<usize>,
 }
 
 impl Node {
     /// Crea un nuevo nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Result<Self> {
-        let storage_addr = DiskHandler::new_node_storage(id)?;
-        let nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
         neighbours_states.insert(id, endpoint_state.clone());
@@ -144,15 +161,334 @@ impl Node {
             id,
             neighbours_states,
             endpoint_state,
-            storage_addr,
+            storage_addr: DiskHandler::new_node_storage(id)?,
             default_keyspace_name: "".to_string(),
             users_default_keyspace_name: HashMap::new(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
-            nodes_ranges,
+            nodes_ranges: divide_range(0, NODES_RANGE_END, N_NODES as usize),
             tables_and_partitions_keys_values: HashMap::new(),
             open_connections: OpenConnectionsMap::new(),
+            nodes_weights: Vec::new(),
         })
+    }
+
+    /// Setea el valor por defecto de los campos que no son guardados en su archivo JSON.
+    ///
+    /// Se asume que esta función se llama sobre un nodo que fue cargado recientemente de su archivo JSON.
+    pub fn set_default_fields(&mut self, id: NodeId, mode: ConnectionMode) -> Result<()> {
+        let mut neighbours_states = NodesMap::new();
+        let endpoint_state = EndpointState::with_id_and_mode(id, mode);
+        neighbours_states.insert(id, endpoint_state.clone());
+
+        self.neighbours_states = neighbours_states;
+        self.endpoint_state = endpoint_state;
+        self.storage_addr = DiskHandler::get_node_storage(id);
+        self.nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
+        self.open_connections = OpenConnectionsMap::new();
+
+        Ok(())
+    }
+
+    /// Inicia un nuevo nodo con un ID específico en modo de conexión _parsing_.
+    pub fn init_in_parsing_mode(id: NodeId) -> Result<()> {
+        Self::init(id, ConnectionMode::Parsing)
+    }
+
+    /// Inicia un nuevo nodo con un ID específico en modo de conexión _echo_.
+    pub fn init_in_echo_mode(id: NodeId) -> Result<()> {
+        Self::init(id, ConnectionMode::Echo)
+    }
+
+    /// Crea un nuevo nodo con un ID específico.
+    fn init(id: NodeId, mode: ConnectionMode) -> Result<()> {
+        let mut nodes_weights: Vec<usize> = Vec::new();
+        let handlers = Self::bootstrap(id, mode, &mut nodes_weights)?;
+
+        let (_beater, _beat_stopper) = Self::beater(id)?;
+        let (_gossiper, _gossip_stopper) = Self::gossiper(id, &nodes_weights)?;
+
+        // REVISAR
+        /*Paramos los handlers especiales primero
+        let _ = beat_stopper.send(true);
+        let _ = beater.join();
+
+        let _ = gossip_stopper.send(true);
+        let _ = gossiper.join();*/
+
+        Self::wait(handlers);
+        Ok(())
+    }
+
+    /// Inicia todos los procesos necesarios para que el nodo se conecte al cluster.
+    fn bootstrap(
+        id: NodeId,
+        mode: ConnectionMode,
+        nodes_weights: &mut Vec<usize>,
+    ) -> Result<Vec<Option<NodeHandle>>> {
+        let metadata_path = DiskHandler::get_node_metadata_path(id);
+        let node_metadata_path = Path::new(&metadata_path);
+        if node_metadata_path.exists() {
+            Self::bootup_existing_node(id, mode, &metadata_path, nodes_weights)
+        } else {
+            Self::bootup_new_node(id, mode, nodes_weights)
+        }
+    }
+
+    /// Inicia un nuevo nodo.
+    fn bootup_new_node(
+        id: NodeId,
+        mode: ConnectionMode,
+        nodes_weights: &mut Vec<usize>,
+    ) -> Result<Vec<Option<NodeHandle>>> {
+        let nodes_ids = Self::get_nodes_ids();
+        if !nodes_ids.contains(&id) {
+            return Err(Error::ServerError(format!(
+                "El ID {} no está en el archivo de nodos disponibles.",
+                id
+            )));
+        }
+
+        let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
+        let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
+        let mut node = Self::new(id, mode)?;
+        node.inicialize_nodes_weights();
+        *nodes_weights = node.nodes_weights.clone();
+        let max_weight_id = node.max_weight();
+
+        let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
+        let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
+
+        node.create_client_and_private_conexion(id, cli_socket, priv_socket, &mut node_listeners)?;
+
+        handlers.append(&mut node_listeners);
+
+        // Llenamos de información al nodo "seed". Arbitrariamente será el último.
+        // Si fue iniciado el último nodo, hacemos el envío de la información,
+        // pues se asume que los nodos fueron iniciados en orden.
+        let nodes_ids = Self::get_nodes_ids();
+        if id == nodes_ids[(N_NODES - 1) as usize] {
+            Self::send_states_to_node(max_weight_id);
+        }
+
+        Ok(handlers)
+    }
+
+    /// Inicia un nodo existente.
+    fn bootup_existing_node(
+        id: NodeId,
+        mode: ConnectionMode,
+        metadata_path: &str,
+        nodes_weights: &mut Vec<usize>,
+    ) -> Result<Vec<Option<NodeHandle>>> {
+        let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
+        let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
+        let mut node: Node = load_json(metadata_path)?;
+        node.set_default_fields(id, mode)?;
+        node.inicialize_nodes_weights();
+        *nodes_weights = node.nodes_weights.clone();
+        let max_weight_id = node.max_weight();
+
+        let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
+        let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
+
+        node.create_client_and_private_conexion(id, cli_socket, priv_socket, &mut node_listeners)?;
+
+        handlers.append(&mut node_listeners);
+
+        // Llenamos de información al nodo "seed". Arbitrariamente será el último.
+        // Si fue iniciado el último nodo, hacemos el envío de la información,
+        // pues se asume que los nodos fueron iniciados en orden.
+        let nodes_ids = Self::get_nodes_ids();
+        if id == nodes_ids[(N_NODES - 1) as usize] {
+            Self::send_states_to_node(max_weight_id);
+        }
+
+        Ok(handlers)
+    }
+
+    fn inicialize_nodes_weights(&mut self) {
+        self.nodes_weights = vec![1; N_NODES as usize];
+        self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo tiene el triple de probabilidades de ser elegido.
+    }
+
+    /// Crea los _handlers_ que escuchan por conexiones entrantes.
+    ///
+    /// <div class="warning">
+    ///
+    /// Esta función toma _ownership_ del [nodo](Node) que se le pasa.
+    ///
+    /// </div>
+    fn create_client_and_private_conexion(
+        self,
+        id: u8,
+        cli_socket: SocketAddr,
+        priv_socket: SocketAddr,
+        node_listeners: &mut Vec<Option<NodeHandle>>,
+    ) -> Result<()> {
+        let sendable_node = Arc::new(Mutex::new(self));
+        let cli_node = Arc::clone(&sendable_node);
+        let priv_node = Arc::clone(&sendable_node);
+
+        let cli_builder = Builder::new().name(format!("{}_cli", id));
+        let cli_res = cli_builder.spawn(move || Self::cli_listen(cli_socket, cli_node));
+        match cli_res {
+            Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
+            Err(err) => {
+                return Err(Error::ServerError(format!(
+                "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
+                id, err
+            )));
+            }
+        }
+        let priv_builder = Builder::new().name(format!("{}_priv", id));
+        let priv_res = priv_builder.spawn(move || Self::priv_listen(priv_socket, priv_node));
+        match priv_res {
+            Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
+            Err(err) => {
+                return Err(Error::ServerError(format!(
+                "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
+                id, err
+            )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Ordena a todos los nodos existentes que envien su endpoint state al nodo con el ID correspondiente.
+    fn send_states_to_node(id: NodeId) {
+        for node_id in Self::get_nodes_ids() {
+            if let Err(err) = send_to_node(
+                node_id,
+                SvAction::SendEndpointState(id).as_bytes(),
+                PortType::Priv,
+            ) {
+                println!(
+                    "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
+                    err
+                );
+            }
+        }
+    }
+
+    /// Decide cuál es el nodo con el mayor "peso". Es decir, el que tiene más probabilidades
+    /// de ser elegido cuando se los elige "al azar".
+    ///
+    /// Si todos son iguales, agarra el primero.
+    pub fn max_weight(&self) -> NodeId {
+        let nodes_ids = Self::get_nodes_ids();
+        let mut max_id: usize = 0;
+        for i in 0..nodes_ids.len() {
+            if self.nodes_weights[i] > self.nodes_weights[max_id] {
+                max_id = i;
+            }
+        }
+        nodes_ids[max_id]
+    }
+
+    /// Avanza a cada segundo el estado de _heartbeat_ de los nodos.
+    fn beater(id: NodeId) -> Result<(NodeHandle, Sender<bool>)> {
+        let (sender, receiver) = channel::<bool>();
+        let builder = Builder::new().name(format!("beater_node_{}", id));
+        match builder.spawn(move || Self::increase_heartbeat_and_store_metadata(receiver, id)) {
+            Ok(handler) => Ok((handler, sender.clone())),
+            Err(_) => Err(Error::ServerError(format!(
+                "Error procesando los beats del nodo {}.",
+                id
+            ))),
+        }
+    }
+
+    fn increase_heartbeat_and_store_metadata(
+        receiver: std::sync::mpsc::Receiver<bool>,
+        id: NodeId,
+    ) -> std::result::Result<(), Error> {
+        loop {
+            sleep(Duration::from_secs(1));
+            if let Ok(stop) = receiver.try_recv() {
+                if stop {
+                    break;
+                }
+            }
+            if send_to_node(id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
+                return Err(Error::ServerError(format!(
+                    "Error enviando mensaje de heartbeat a nodo {}",
+                    id
+                )));
+            }
+            if send_to_node(id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
+                return Err(Error::ServerError(format!(
+                    "Error enviando mensaje de almacenamiento de metadata a nodo {}",
+                    id
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn gossiper(id: NodeId, nodes_weights: &[usize]) -> Result<(NodeHandle, Sender<bool>)> {
+        let (sender, receiver) = channel::<bool>();
+        let builder = Builder::new().name(format!("gossiper_node_{}", id));
+        let weights = nodes_weights.to_vec();
+        match builder.spawn(move || Self::exec_gossip(receiver, id, weights)) {
+            Ok(handler) => Ok((handler, sender.clone())),
+            Err(_) => Err(Error::ServerError(format!(
+                "Error procesando la ronda de gossip del nodo {}.",
+                id
+            ))),
+        }
+    }
+
+    fn exec_gossip(
+        receiver: std::sync::mpsc::Receiver<bool>,
+        id: NodeId,
+        weights: Vec<usize>,
+    ) -> Result<()> {
+        loop {
+            sleep(Duration::from_millis(200));
+            if let Ok(stop) = receiver.try_recv() {
+                if stop {
+                    break;
+                }
+            }
+
+            let dist = if let Ok(dist) = WeightedIndex::new(&weights) {
+                dist
+            } else {
+                return Err(Error::ServerError(format!(
+                    "No se pudo crear una distribución de pesos con {:?}.",
+                    &weights
+                )));
+            };
+
+            let nodes_ids = AddrLoader::default_loaded().get_ids();
+            let mut rng = thread_rng();
+            let selected_id = nodes_ids[dist.sample(&mut rng)];
+            if selected_id != id {
+                continue;
+            }
+
+            let mut neighbours: HashSet<NodeId> = HashSet::new();
+            while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
+                let selected_neighbour = nodes_ids[dist.sample(&mut rng)];
+                if (selected_neighbour != selected_id) && !neighbours.contains(&selected_neighbour)
+                {
+                    neighbours.insert(selected_neighbour);
+                }
+            }
+
+            if let Err(err) = send_to_node(
+                selected_id,
+                SvAction::Gossip(neighbours).as_bytes(),
+                PortType::Priv,
+            ) {
+                return Err(Error::ServerError(format!(
+                    "Ocurrió un error enviando mensaje de gossip desde el nodo {}:\n\n{}",
+                    id, err
+                )));
+            }
+        }
+        Ok(())
     }
 
     fn add_table(&mut self, table: Table) {
@@ -267,9 +603,11 @@ impl Node {
         &self.endpoint_state
     }
 
-    /// Consulta los IDs de los vecinos, incluyendo el propio.
-    fn get_neighbours_ids(&self) -> Vec<NodeId> {
-        self.neighbours_states.keys().copied().collect()
+    /// Devuelve los IDs de los nodos del cluster. Ordenados de menor a mayor.
+    fn get_nodes_ids() -> Vec<NodeId> {
+        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_loaded().get_ids();
+        nodes_ids.sort();
+        nodes_ids
     }
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
@@ -330,7 +668,7 @@ impl Node {
 
     /// Manda un mensaje en bytes a todos los vecinos del nodo.
     pub fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
-        for neighbour_id in self.get_neighbours_ids() {
+        for neighbour_id in Self::get_nodes_ids() {
             if neighbour_id == self.id {
                 continue;
             }
@@ -388,6 +726,19 @@ impl Node {
         self.neighbours_states.contains_key(node_id)
     }
 
+    /// Consulta si el nodo todavía esta booteando.
+    pub fn is_bootstraping(&self) -> bool {
+        matches!(
+            self.endpoint_state.get_appstate().get_status(),
+            AppStatus::Bootstrap
+        )
+    }
+
+    /// Consulta el modo de conexión del nodo.
+    fn mode(&self) -> &ConnectionMode {
+        self.endpoint_state.get_appstate().get_mode()
+    }
+
     fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
         let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
         if !self.has_endpoint_state_by_id(&guessed_id) {
@@ -422,33 +773,13 @@ impl Node {
         }
     }
 
-    /// Consigue la información de _gossip_ que contiene este nodo.
-    fn get_gossip_info(&self) -> GossipInfo {
-        let mut gossip_info = GossipInfo::new();
-        for (node_id, endpoint_state) in &self.neighbours_states {
-            gossip_info.insert(node_id.to_owned(), endpoint_state.clone_heartbeat());
-        }
-
-        gossip_info
-    }
-
-    /// Consulta el modo de conexión del nodo.
-    fn mode(&self) -> &ConnectionMode {
-        self.endpoint_state.get_appstate().get_mode()
-    }
-
-    /// Consulta si el nodo todavía esta booteando.
-    pub fn is_bootstraping(&self) -> bool {
-        matches!(
-            self.endpoint_state.get_appstate().get_status(),
-            AppStatus::Bootstrap
-        )
-    }
-
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&mut self) {
-        if self.neighbours_states.len() == N_NODES as usize {
+        if self.neighbours_states.len() == N_NODES as usize
+            && *self.endpoint_state.get_appstate_status() != AppStatus::Normal
+        {
             self.endpoint_state.set_appstate_status(AppStatus::Normal);
+            println!("El nodo {} fue iniciado correctamente.", self.id);
         }
     }
 
@@ -465,20 +796,30 @@ impl Node {
         self.get_beat().1
     }
 
+    /// Consigue la información de _gossip_ que contiene este nodo.
+    fn get_gossip_info(&self) -> GossipInfo {
+        let mut gossip_info = GossipInfo::new();
+        for (node_id, endpoint_state) in &self.neighbours_states {
+            gossip_info.insert(node_id.to_owned(), endpoint_state.clone_heartbeat());
+        }
+
+        gossip_info
+    }
+
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done();
 
         for neighbour_id in neighbours {
-            if let Err(err) = send_to_node(
+            if send_to_node(
                 neighbour_id,
                 SvAction::Syn(self.get_id().to_owned(), self.get_gossip_info()).as_bytes(),
                 PortType::Priv,
-            ) {
-                println!(
-                    "Ocurrió un error al mandar un mensaje SYN al nodo [{}]:\n\n{}",
-                    neighbour_id, err
-                );
+            )
+            .is_err()
+            {
+                // No devolvemos error porque no se considera un error que un vecino no responda en esta instancia.
+                self.acknowledge_offline_neighbour(neighbour_id);
             }
         }
         Ok(())
@@ -748,10 +1089,10 @@ impl Node {
                 };
             }
             SvAction::StoreMetadata => {
-                if let Err(e) = DiskHandler::store_node_metadata(self.id, &self.serialize()) {
+                if let Err(err) = DiskHandler::store_node_metadata(self) {
                     return Err(Error::ServerError(format!(
                         "Error guardando metadata del nodo {}: {}",
-                        &self.id, e
+                        &self.id, err
                     )));
                 }
             }
@@ -1069,19 +1410,21 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 0..N_NODES {
-            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
-            response = if node_id != self.id {
+        let mut actual_node_id = self.id;
+        let nodes_ids = Self::get_nodes_ids();
+        for _ in 0..N_NODES {
+            response = if actual_node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    node_id,
+                    actual_node_id,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
                 )?
             } else {
                 self.process_internal_use_statement(&keyspace_name)?
-            }
+            };
+            actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
         Ok(response)
     }
@@ -1111,19 +1454,21 @@ impl Node {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node in 0..N_NODES {
-            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
-            response = if node_id != self.id {
+        let mut actual_node_id = self.id;
+        let nodes_ids = Self::get_nodes_ids();
+        for _ in 0..N_NODES {
+            response = if actual_node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    node_id,
+                    actual_node_id,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
                 )?
             } else {
                 self.process_internal_create_keyspace_statement(&create_keyspace)?
-            }
+            };
+            actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
         Ok(response)
     }
@@ -1154,13 +1499,13 @@ impl Node {
         }
 
         let mut responses = Vec::new();
-        for actual_node in 0..N_NODES {
-            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
-
-            let response = if node_id != self.id {
+        let mut actual_node_id = self.id;
+        let nodes_ids = Self::get_nodes_ids();
+        for _ in 0..N_NODES {
+            let response = if actual_node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    node_id,
+                    actual_node_id,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
@@ -1169,6 +1514,7 @@ impl Node {
                 self.process_internal_alter_keyspace_statement(&alter_keyspace)?
             };
             responses.push(response);
+            actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
         Ok(self.create_result_void())
     }
@@ -1214,13 +1560,13 @@ impl Node {
         }
 
         let mut responses = Vec::new();
-        for actual_node in 0..N_NODES {
-            let node_id = next_node_in_the_round(self.id, actual_node as Byte, START_ID, LAST_ID);
-
-            let response = if node_id != self.id {
+        let mut actual_node_id = self.id;
+        let nodes_ids = Self::get_nodes_ids();
+        for _ in 0..N_NODES {
+            let response = if actual_node_id != self.id {
                 self.send_message_and_wait_response_with_timeout(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    node_id,
+                    actual_node_id,
                     PortType::Priv,
                     true,
                     TIMEOUT_SECS,
@@ -1229,6 +1575,7 @@ impl Node {
                 self.process_internal_drop_keyspace_statement(&drop_keyspace)?
             };
             responses.push(response);
+            actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
         Ok(self.create_result_void())
     }
@@ -1297,17 +1644,17 @@ impl Node {
         let keyspace = self.get_keyspace_from_name(&keyspace_name)?;
         let quantity_replicas = self.get_quantity_of_replicas_from_keyspace(keyspace)?;
         let mut response: Vec<Byte> = Vec::new();
-        for actual_node_id in START_ID..LAST_ID {
-            for i in 0..quantity_replicas {
-                let next_node_id =
-                    next_node_in_the_round(actual_node_id, i as u8, START_ID, LAST_ID);
+        let nodes_ids = Self::get_nodes_ids();
+        for actual_node_id in &nodes_ids {
+            let mut next_node_id = *actual_node_id;
+            for _ in 0..quantity_replicas {
                 response = if next_node_id == self.id {
-                    self.process_internal_create_table_statement(&create_table, actual_node_id)?
+                    self.process_internal_create_table_statement(&create_table, *actual_node_id)?
                 } else {
                     let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
                         None,
-                        Some(actual_node_id),
+                        Some(*actual_node_id),
                     );
                     self.send_message_and_wait_response_with_timeout(
                         request_with_metadata,
@@ -1316,7 +1663,8 @@ impl Node {
                         true,
                         TIMEOUT_SECS,
                     )?
-                }
+                };
+                next_node_id = next_node_in_the_cluster(next_node_id, &nodes_ids);
             }
         }
         Ok(response)
@@ -1575,8 +1923,9 @@ impl Node {
         let mut consistency_counter = 0;
         let mut wait_response = true;
 
+        let nodes_ids = Self::get_nodes_ids();
+        let mut node_to_replicate = node_id;
         for i in 0..N_NODES {
-            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
             if (i as u32) < replication_factor_quantity {
                 response = if node_to_replicate == self.id {
                     self.process_insert(&insert, timestamp, node_id)?
@@ -1624,6 +1973,7 @@ impl Node {
                     TIMEOUT_SECS,
                 )?;
             };
+            node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
 
             if consistency_counter >= consistency_number {
                 wait_response = false;
@@ -1763,8 +2113,9 @@ impl Node {
         update: &Update,
         timestamp: i64,
     ) -> Result<()> {
-        for i in 1..replication_factor {
-            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
+        let nodes_ids = Self::get_nodes_ids();
+        let mut node_to_replicate = node_id;
+        for _ in 1..replication_factor {
             if node_to_replicate == self.id {
                 self.process_update(update, timestamp, node_id)?;
             } else {
@@ -1792,6 +2143,8 @@ impl Node {
                     }
                 }
             }
+            node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
+
             // if consistency_counter >= consistency_number {
             //     wait_response = false;
             // } else if verify_succesful_response(&current_response) {
@@ -1819,24 +2172,25 @@ impl Node {
                 let wait_response = true;
                 let mut read_repair_executed = false;
                 let mut consistency_counter = 0;
+                let mut responsive_replica = node_id;
                 let mut replicas_asked = 0;
 
                 let mut actual_result = self.decide_how_to_request_internal_query_select(
                     node_id,
-                    &select,
-                    request,
+                    (&select, request),
                     wait_response,
+                    &mut responsive_replica,
                     &mut replicas_asked,
                     replication_factor_quantity,
                 )?;
                 consistency_counter += 1;
                 match self.consult_replica_nodes(
                     (node_id, replicas_asked),
-                    request,
+                    (request, &table_name),
                     &mut consistency_counter,
                     consistency_number,
-                    &actual_result,
-                    &table_name,
+                    (responsive_replica, &actual_result),
+                    replication_factor_quantity,
                 ) {
                     Ok(rr_executed) => {
                         // Este chequeo es porque si ya es true, no queremos que vuelva a ser false
@@ -1845,9 +2199,9 @@ impl Node {
                             read_repair_executed = rr_executed;
                         }
                     }
-                    Err(_) => return Err(Error::ServerError(format!(
-                        "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
-                        consistency_level, consistency_counter, consistency_number,
+                    Err(err) => return Err(Error::ServerError(format!(
+                        "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}: {}",
+                        consistency_level, consistency_counter, consistency_number, err,
                     ))),
                 }
                 // Una vez que todo fue reparado, queremos reenviar la query para obtener el resultado
@@ -1855,13 +2209,17 @@ impl Node {
                 if read_repair_executed {
                     actual_result = self.decide_how_to_request_internal_query_select(
                         node_id,
-                        &select,
-                        request,
+                        (&select, request),
                         wait_response,
+                        &mut responsive_replica,
                         &mut replicas_asked,
                         replication_factor_quantity,
                     )?;
                 };
+                // if actual_result[4] == 0 {
+                //     let a: Error = Err(Error::try_from(actual_result[9..].to_vec())?)?;
+                //     println!("El error es {:?}", a)
+                // }
                 self.handle_result_from_node(
                     &mut results_from_another_nodes,
                     &actual_result,
@@ -1875,13 +2233,15 @@ impl Node {
 
     fn decide_how_to_request_internal_query_select(
         &mut self,
-        node_id: u8,
-        select: &Select,
-        request: &[u8],
+        node_id: NodeId,
+        select_and_request: (&Select, &[Byte]),
         wait_response: bool,
+        responsive_replica: &mut NodeId,
         replicas_asked: &mut usize,
         replication_factor_quantity: u32,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vec<Byte>> {
+        let (select, request) = select_and_request;
+
         let actual_result = if node_id == self.id {
             self.process_select(select, node_id)?
         } else {
@@ -1891,50 +2251,56 @@ impl Node {
                 Some(node_id),
             );
             let mut result: Vec<u8> = Vec::new();
+            *responsive_replica = node_id;
+            *replicas_asked = 0;
             if self.neighbour_is_responsive(node_id) {
-                result = self.send_message_and_wait_response_with_timeout(
-                    request_with_metadata,
-                    node_id,
-                    PortType::Priv,
-                    wait_response,
-                    TIMEOUT_SECS,
-                )?;
+                result = self
+                    .send_message_and_wait_response_with_timeout(
+                        request_with_metadata,
+                        node_id,
+                        PortType::Priv,
+                        wait_response,
+                        TIMEOUT_SECS,
+                    )
+                    .unwrap_or_default()
             }
             *replicas_asked += 1;
 
-            // Si hubo timeout al esperar la respuesta, se intenta con las replicas
+            // Si hubo error al enviar el mensaje, se asume que el vecino está apagado,
+            // entonces se intenta con las replicas
             if result.is_empty() {
                 self.acknowledge_offline_neighbour(node_id);
-                for i in 1..replication_factor_quantity {
-                    let node_to_replicate =
-                        next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
-                    if node_to_replicate != node_id {
-                        if self.neighbour_is_responsive(node_to_replicate) {
-                            let request_with_metadata =
-                                add_metadata_to_internal_request_of_any_kind(
-                                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                                    None,
-                                    Some(node_id),
-                                );
-                            let replica_response = self
-                                .send_message_and_wait_response_with_timeout(
-                                    SvAction::InternalQuery(request_with_metadata).as_bytes(),
-                                    node_to_replicate,
-                                    PortType::Priv,
-                                    wait_response,
-                                    TIMEOUT_SECS,
-                                )?;
-                            *replicas_asked += 1;
-                            if replica_response.is_empty() {
-                                self.acknowledge_offline_neighbour(node_to_replicate);
-                            } else {
-                                result = replica_response;
-                                break;
-                            }
+                let nodes_ids = Self::get_nodes_ids();
+                let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
+                for _ in 1..replication_factor_quantity {
+                    if self.neighbour_is_responsive(node_replica) {
+                        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                            None,
+                            Some(node_id),
+                        );
+                        let replica_response = self
+                            .send_message_and_wait_response_with_timeout(
+                                request_with_metadata,
+                                node_replica,
+                                PortType::Priv,
+                                wait_response,
+                                TIMEOUT_SECS,
+                            )
+                            .unwrap_or_default();
+                        *replicas_asked += 1;
+
+                        if replica_response.is_empty() {
+                            self.acknowledge_offline_neighbour(node_replica);
                         } else {
-                            *replicas_asked += 1;
+                            result = replica_response;
+                            *responsive_replica = node_replica;
+                            break;
                         }
+                    } else {
+                        *replicas_asked += 1;
                     }
+                    node_replica = next_node_in_the_cluster(node_replica, &nodes_ids);
                 }
             }
             result
@@ -1947,27 +2313,34 @@ impl Node {
     /// Devuelve un booleano indicando si _read-repair_ fue ejecutado o no.
     fn consult_replica_nodes(
         &mut self,
-        id_and_replicas_asked: (u8, usize),
-        request: &[Byte],
+        id_and_replicas_asked: (NodeId, usize),
+        request_and_table_name: (&[Byte], &str),
         consistency_counter: &mut usize,
         consistency_number: usize,
-        response_from_first_responsive_replica: &[Byte],
-        table_name: &str,
+        first_responsive_id_and_response: (NodeId, &[Byte]),
+        replication_factor_quantity: u32,
     ) -> Result<bool> {
-        let mut exec_read_repair = false;
         if consistency_number == 1 {
             return Ok(false);
         }
+        let mut exec_read_repair = false;
         let (node_id, replicas_asked) = id_and_replicas_asked;
+        let (request, table_name) = request_and_table_name;
+        let (responsive_replica, response_from_first_responsive_replica) =
+            first_responsive_id_and_response;
+
         let first_hashed_value = hash_value(response_from_first_responsive_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
-        for i in replicas_asked..consistency_number {
-            let node_to_consult = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
-            let opcode_with_hashed_value = self.decide_how_to_request_the_digest_read_request(
-                node_to_consult,
-                request,
-                node_id,
-            )?;
+        let nodes_ids = Self::get_nodes_ids();
+        let mut node_to_consult = next_node_in_the_cluster(responsive_replica, &nodes_ids);
+        for _ in (replicas_asked as u32)..replication_factor_quantity {
+            let opcode_with_hashed_value = self
+                .decide_how_to_request_the_digest_read_request(node_to_consult, request, node_id)
+                .unwrap_or_default();
+            if opcode_with_hashed_value.is_empty() {
+                node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
+                continue;
+            }
             let res_hashed_value = self.get_digest_read_request_value(&opcode_with_hashed_value)?;
             check_consistency_of_the_responses(
                 opcode_with_hashed_value,
@@ -1976,6 +2349,10 @@ impl Node {
                 consistency_counter,
                 &mut responses,
             )?;
+            if *consistency_counter >= consistency_number {
+                break;
+            }
+            node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
         }
         check_if_read_repair_is_neccesary(
             consistency_counter,
@@ -1984,7 +2361,7 @@ impl Node {
             responses,
             first_hashed_value,
         );
-        if exec_read_repair {
+        if exec_read_repair && self.neighbour_is_responsive(node_id) {
             return self.exec_read_repair(node_id, request, consistency_number, table_name);
         };
         Ok(false)
@@ -2036,8 +2413,9 @@ impl Node {
         let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![];
         let mut req_with_node_replica = request[9..].to_vec();
         req_with_node_replica.push(node_id);
-        for i in 0..consistency_number {
-            let node_to_consult = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
+        let nodes_ids = Self::get_nodes_ids();
+        let mut node_to_consult = node_id;
+        for _ in 0..consistency_number {
             let res = if node_to_consult == self.id {
                 self.exec_direct_read_request(req_with_node_replica.clone())?
             } else {
@@ -2051,10 +2429,11 @@ impl Node {
                 create_utf8_string_from_bytes(extern_response)?
             };
             add_rows_with_his_node(res, &mut ids_and_rows, node_to_consult);
+            node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
         }
         let rows_as_string = get_most_recent_rows_as_string(ids_and_rows);
-        for i in 0..consistency_number {
-            let node_to_repair = next_node_in_the_round(node_id, i as u8, START_ID, LAST_ID);
+        let mut node_to_repair = node_id;
+        for _ in 0..consistency_number {
             if node_to_repair == self.id {
                 let table = self.get_table(table_name)?;
                 DiskHandler::repair_rows(
@@ -2080,6 +2459,7 @@ impl Node {
                     TIMEOUT_SECS,
                 )?;
             };
+            node_to_repair = next_node_in_the_cluster(node_to_repair, &nodes_ids);
         }
         Ok(true)
     }
@@ -2139,8 +2519,9 @@ impl Node {
     ) -> Result<()> {
         let mut consistency_counter = 0;
         let mut wait_response = true;
-        for i in 0..replication_factor {
-            let node_to_replicate = next_node_in_the_round(node_id, i as Byte, START_ID, LAST_ID);
+        let nodes_ids = Self::get_nodes_ids();
+        let mut node_to_replicate = node_id;
+        for _ in 0..replication_factor {
             let current_response = if node_to_replicate == self.id {
                 self.process_delete(delete, node_id)?
             } else {
@@ -2162,6 +2543,7 @@ impl Node {
             } else if verify_succesful_response(&current_response) {
                 consistency_counter += 1;
             }
+            node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
         }
         if consistency_counter < consistency_number {
             return Err(Error::ServerError(format!(
@@ -2196,6 +2578,9 @@ impl Node {
         _select: &Select,
     ) -> Result<()> {
         let mut res = result_from_actual_node.to_vec();
+        if res.is_empty() {
+            return Ok(());
+        }
         if results_from_another_nodes.is_empty() {
             results_from_another_nodes.append(&mut res);
             return Ok(());
@@ -2219,16 +2604,34 @@ impl Node {
         let final_length = (results_from_another_nodes.len() as u32) - 9;
         results_from_another_nodes[5..9].copy_from_slice(&final_length.to_be_bytes());
 
-        // No funciona, las filas no son un string largo, el formato es [largo del string][string], entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
-        // let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
-        //     results_from_another_nodes,
-        //     total_length_until_end_of_metadata,
-        //     select,
-        // )?;
+        /*No funciona, las filas no son un string largo, el formato es [largo del string][string],
+        entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
 
-        // le agrego el body de las filas a las que ya tenia
-        // results_from_another_nodes.truncate(total_length_until_end_of_metadata);
-        // results_from_another_nodes.append(&mut new_ordered_res_bytes);
+        let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
+            results_from_another_nodes,
+            total_length_until_end_of_metadata,
+            select,
+        )?;
+
+        le agrego el body de las filas a las que ya tenia
+        results_from_another_nodes.truncate(total_length_until_end_of_metadata);
+        results_from_another_nodes.append(&mut new_ordered_res_bytes);*/
+
+        /*Esta comprobacion podriamos usarla en handle_result_from_node:
+
+        match Opcode::try_from(res[4])? {
+            Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+            Opcode::Result => self.handle_result_from_node(
+                &mut results_from_another_nodes,
+                res,
+                &select,
+            )?,
+            _ => {
+                return Err(Error::ServerError(
+                    "Nodo manda opcode inesperado".to_string(),
+                ))
+            }
+        };*/
 
         Ok(())
     }
@@ -2484,7 +2887,40 @@ impl Node {
         }
         Ok(())
     }
+
+    /// Espera a que terminen todos los handlers.
+    ///
+    /// Esto idealmente sólo debería llamarse una vez, ya que consume los handlers y además
+    /// bloquea el hilo actual.
+    fn wait(mut handlers: Vec<Option<NodeHandle>>) {
+        // long live the option dance
+        for handler_opt in &mut handlers {
+            if let Some(handler) = handler_opt.take() {
+                if handler.join().is_err() {
+                    // Un hilo caído NO debería interrumpir el dropping de los demás
+                    println!("Ocurrió un error mientras se esperaba a que termine un hilo hijo.");
+                }
+            }
+        }
+    }
+
+//     fn check_if_response_is_error(&self, res: &[Byte]) -> Result<Vec<Byte>>{
+//         match Opcode::try_from(res[4])? {
+//             Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+//             Opcode::Result => self.handle_result_from_node(
+//                 &mut results_from_another_nodes,
+//                 res,
+//                 &select,
+//             )?,
+//             _ => {
+//                 return Err(Error::ServerError(
+//                     "Nodo manda opcode inesperado".to_string(),
+//                 ))
+//             }
+//         };
+//     }
 }
+
 
 fn wrap_header(mut response: Vec<Byte>, is_internal_request: bool, header: Headers) -> Vec<Byte> {
     if !is_internal_request {
@@ -2617,12 +3053,12 @@ fn add_metadata_to_internal_request_of_any_kind(
 }
 
 fn verify_succesful_response(response: &[Byte]) -> bool {
+    if response.len() < 9 {
+        return false;
+    };
     let opcode = match Opcode::try_from(response[4]) {
         Ok(opcode) => opcode,
         Err(_err) => Opcode::RequestError,
-    };
-    if response.len() < 9 {
-        return false;
     };
     match opcode {
         Opcode::Result => true, // Si la response tiene el opcode Result entonces es valida
@@ -2658,8 +3094,9 @@ impl Serializable for Node {
     }
 
     fn deserialize(data: &[Byte]) -> Result<Self> {
-        let line: String = String::from_utf8(data.to_vec())
-            .map_err(|_| Error::ServerError("No se pudieron deserializar los datos".to_string()))?;
+        let line: String = String::from_utf8(data.to_vec()).map_err(|e| {
+            Error::ServerError(format!("No se pudieron deserializar los datos: {}", e))
+        })?;
         let mut parameters: IntoIter<String> = line
             .split(",")
             .map(|s| s.to_string())
@@ -2672,7 +3109,7 @@ impl Serializable for Node {
                 "No se pudo obtener el ID del nodo".to_string(),
             ))?
             .parse()
-            .map_err(|_| Error::ServerError("No se pudo parsear el ID del nodo".to_string()))?;
+            .map_err(|e| Error::ServerError(format!("No se pudo parsear el ID del nodo: {}", e)))?;
 
         let default_keyspace_name: String = parameters
             .next()
@@ -2680,24 +3117,28 @@ impl Serializable for Node {
                 "No se pudo obtener el keyspace por defecto del nodo".to_string(),
             ))?
             .parse()
-            .map_err(|_| {
-                Error::ServerError(
-                    "No se pudo parsear el keyspace por defecto del nodo".to_string(),
-                )
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo parsear el keyspace por defecto del nodo: {}",
+                    e
+                ))
             })?;
 
         let keyspaces: String = parameters.next().ok_or(Error::ServerError(
             "No se pudo obtener los keyspaces del nodo".to_string(),
         ))?;
-        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|_| {
-            Error::ServerError("No se pudieron parsear los keyspaces del nodo".to_string())
+        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudieron parsear los keyspaces del nodo: {}",
+                e
+            ))
         })?;
 
         let tables: String = parameters.next().ok_or(Error::ServerError(
             "No se pudo obtener las tablas del nodo".to_string(),
         ))?;
-        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|_| {
-            Error::ServerError("No se pudieron parsear las tablas del nodo".to_string())
+        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|e| {
+            Error::ServerError(format!("No se pudieron parsear las tablas del nodo: {}", e))
         })?;
 
         let tables_and_partitions_keys_values: String =
@@ -2705,10 +3146,11 @@ impl Serializable for Node {
                 "No se pudo obtener las tablas y sus particiones del nodo".to_string(),
             ))?;
         let tables_and_partitions_keys_values: HashMap<String, Vec<String>> =
-            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|_| {
-                Error::ServerError(
-                    "No se pudieron parsear las tablas y sus particiones del nodo".to_string(),
-                )
+            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudieron parsear las tablas y sus particiones del nodo: {}",
+                    e
+                ))
             })?;
 
         Ok(Node {
@@ -2720,24 +3162,10 @@ impl Serializable for Node {
             users_default_keyspace_name: HashMap::new(),
             keyspaces,
             tables,
-            nodes_ranges: divide_range(0, 18446744073709551615, N_NODES as usize),
+            nodes_ranges: divide_range(0, NODES_RANGE_END, N_NODES as usize),
             tables_and_partitions_keys_values,
             open_connections: OpenConnectionsMap::new(),
+            nodes_weights: Vec::new(),
         })
     }
 }
-
-// esta comprobacion podriamos usarla en handle_result_from_node
-// match Opcode::try_from(res[4])? {
-//     Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-//     Opcode::Result => self.handle_result_from_node(
-//         &mut results_from_another_nodes,
-//         res,
-//         &select,
-//     )?,
-//     _ => {
-//         return Err(Error::ServerError(
-//             "Nodo manda opcode inesperado".to_string(),
-//         ))
-//     }
-// };
