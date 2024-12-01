@@ -44,7 +44,7 @@ fn test_1_simple_flight_adding() {
             sleep(Duration::from_secs(5));
 
             let client_lock = conn.get_cli();
-            let tls_res = conn.get_tls_and_login(&"juan".to_string(), &"1234".to_string());
+            let tls_res = conn.get_tls_and_login("juan", "1234");
 
             if let Ok(mut tls_stream) = tls_res {
                 if let Ok(mut client) = client_lock.lock() {

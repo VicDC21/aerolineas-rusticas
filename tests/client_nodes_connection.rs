@@ -26,25 +26,20 @@ fn test_1_simple_connection() {
     sleep(Duration::from_secs(5));
 
     if let Ok(mut conn) = conn_res {
-        println!("----------------------- ANTES");
-        let tls_res = conn.get_tls_and_login(&"juan".to_string(), &"1234".to_string());
-        println!("----------------------- DESPUÉS");
-        if let Ok(mut tls_stream) = tls_res {
-            let msg = "ping!";
-            assert!(tls_stream.write_all(msg.as_bytes()).is_ok());
-            assert!(tls_stream.flush().is_ok());
+        let msg = "ping!";
+        assert!(conn.tls_stream.write_all(msg.as_bytes()).is_ok());
+        assert!(conn.tls_stream.flush().is_ok());
 
-            sleep(Duration::from_secs(5));
+        sleep(Duration::from_secs(5));
 
-            let mut buffer = String::new();
-            let read_res = tls_stream.read_to_string(&mut buffer);
-            assert!(read_res.is_ok());
-            if let Ok(bytes_read) = read_res {
-                assert_eq!(msg.len(), bytes_read);
-            }
-
-            assert_eq!(msg, buffer);
+        let mut buffer = String::new();
+        let read_res = conn.tls_stream.read_to_string(&mut buffer);
+        assert!(read_res.is_ok());
+        if let Ok(bytes_read) = read_res {
+            assert_eq!(msg.len(), bytes_read);
         }
+
+        assert_eq!(msg, buffer);
     }
 
     assert!(Client::default().send_shutdown().is_ok());
@@ -65,7 +60,7 @@ fn test_2_simple_insert_and_select() {
 
     if let Ok(mut conn) = conn_res {
         let client_lock = conn.get_cli();
-        let tls_res = conn.get_tls_and_login(&"juan".to_string(), &"1234".to_string());
+        let tls_res = conn.get_tls_and_login("juan", "1234");
         if let Ok(mut tls_stream) = tls_res {
             if let Ok(mut client) = client_lock.lock() {
                 let insert_query = "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES (123456, 'SABE', 'SADL', 12345678, 'in_course');";

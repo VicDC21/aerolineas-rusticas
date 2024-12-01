@@ -16,7 +16,7 @@ pub struct ConnectionHolder {
     /// El cliente.
     client: Arc<Mutex<Client>>,
 
-    /// El _TCP Stream_.
+    /// El _TLS Stream_.
     pub tls_stream: TlsStream,
 }
 
@@ -72,22 +72,20 @@ impl ConnectionHolder {
                 )?;
 
                 match protocol_result {
-                    ProtocolResult::AuthSuccess => (),
+                    ProtocolResult::AuthSuccess => Ok(tls_stream),
                     ProtocolResult::QueryError(auth_err) => {
-                        return Err(Error::AuthenticationError(format!(
+                        Err(Error::AuthenticationError(format!(
                             "La autenticación con usuario '{}' y contraseña '{}' ha fallado:\n\n{}",
                             &user, &password, auth_err,
-                        )));
-                    }
+                        )))
+                    },
                     _ => {
-                        return Err(Error::AuthenticationError(format!(
+                        Err(Error::AuthenticationError(format!(
                             "La autenticación con usuario '{}' y contraseña '{}' ha fallado.\nSe reciibó un resultado de tipo {:?}.",
                             &user, &password, protocol_result,
-                        )));
+                        )))
                     }
                 }
-
-                Ok(tls_stream)
             }
         }
     }
