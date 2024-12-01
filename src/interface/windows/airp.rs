@@ -103,11 +103,11 @@ pub fn login_window(ui: &Ui, conn: &mut ConnectionHolder, login_info: &mut Login
         .anchor(Align2::RIGHT_TOP, [-10., -10.])
         .show(ctx, |win_ui| {
             win_ui.horizontal(|hor_ui| {
-                hor_ui.label(RichText::new("User:").heading());
+                hor_ui.label(RichText::new(format!("{:<15}", "User:")).heading());
                 hor_ui.text_edit_singleline(&mut login_info.user);
             });
             win_ui.horizontal(|hor_ui| {
-                hor_ui.label(RichText::new("Password:").heading());
+                hor_ui.label(RichText::new(format!("{:<15}", "Password:")).heading());
                 hor_ui.text_edit_singleline(&mut login_info.pass);
             });
             if win_ui.button(RichText::new("LOGIN").heading()).clicked() {
