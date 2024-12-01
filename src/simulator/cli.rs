@@ -8,7 +8,7 @@ use crate::{
     simulator::flight_simulator::FlightSimulator,
 };
 
-const MAX_THREADS: usize = 4;
+const MAX_THREADS: usize = 16;
 
 /// Ejecuta el simulador de vuelos.
 pub fn run_sim(client: Client) -> Result<()> {

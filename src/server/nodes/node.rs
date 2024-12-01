@@ -2414,6 +2414,9 @@ impl Node {
 
     fn get_columns_metadata_length(&self, results_from_another_nodes: &[Byte]) -> usize {
         let mut total_length_from_metadata: usize = 21;
+        if results_from_another_nodes.len() < total_length_from_metadata {
+            return 0;
+        }
         // el 13 al 17 son flags
         let column_quantity = &results_from_another_nodes[17..21];
         let column_quantity = i32::from_be_bytes([
