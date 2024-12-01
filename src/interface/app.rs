@@ -21,7 +21,7 @@ use crate::interface::{
         flights::{loader::FlightsLoader, updater::FlightsUpdater},
     },
     windows::{
-        airp::{airports_progress, clock_selector, date_selector},
+        airp::{airports_progress, clock_selector, date_selector, login_window},
         util::{go_to_my_position, zoom},
     },
 };
@@ -205,6 +205,8 @@ impl App for AerolineasApp {
             if airps_start < airps_end {
                 airports_progress(ui, airps_start, airps_end);
             }
+
+            login_window(ui, &mut self.con_info, &mut self.widget_details.login_info);
 
             if let Some(editor) = &mut self.widget_details.flight_editor {
                 let mut live_data = None;
