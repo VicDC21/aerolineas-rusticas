@@ -76,16 +76,6 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
     Ok(())
 }
 
-/// Manda un mensaje a un nodo específico y espera por la respuesta de este.
-pub fn _send_to_node_and_wait_response(
-    id: NodeId,
-    bytes: Vec<Byte>,
-    port_type: PortType,
-    wait_response: bool,
-) -> Result<Vec<Byte>> {
-    send_to_node_and_wait_response_with_timeout(id, bytes, port_type, wait_response, None)
-}
-
 /// Manda un mensaje a un nodo específico y espera por la respuesta de este, con un timeout.
 /// Si el timeout se alcanza, se devuelve un buffer vacío.
 ///

@@ -944,11 +944,6 @@ impl DiskHandler {
         Ok(())
     }
 
-    /// Borra todas las filas existentes, excepto la de los nombres de las columnas y inserta todas las filas pasadas por parametro
-    pub fn actualize_all_rows(_rows: &str) {
-        todo!() // ESTA SERIA LA FUNCION, HAY QUE VER LOS PARAMETROS QUE DEBERIA RECIBIR
-    }
-
     /// Lee la tabla de usuarios y contraseñas, y los devuelve como vector de tuplas.
     pub fn read_admitted_users(_storage_addr: &str) -> Result<Vec<(String, String)>> {
         let file = match File::open("users.csv") {

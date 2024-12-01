@@ -17,7 +17,7 @@ use crate::server::{
     utils::load_json,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{client::cql_frame::query_body::QueryBody, server::pool::threadpool::ThreadPool};
+use crate::client::cql_frame::query_body::QueryBody;
 use crate::{
     parser::{
         data_types::keyspace_name::KeyspaceName,
@@ -41,25 +41,14 @@ use crate::{
     protocol::utils::{parse_bytes_to_string, parse_bytes_to_string_map},
 };
 use chrono::Utc;
-use rustls::{
-    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
-    ServerConfig, ServerConnection,
-};
-use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
+
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    fmt,
-    io::{BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    io::{Read, Write},
+    net::TcpStream,
     path::Path,
-    sync::{
-        mpsc::{channel, Sender},
-        Arc, Mutex,
-    },
-    thread::{sleep, Builder, JoinHandle},
-    time::Duration,
-    vec::IntoIter,
+    thread::JoinHandle
 };
 
 use super::{
@@ -75,7 +64,7 @@ use super::{
     },
     table_metadata::table::Table,
     utils::{
-        _send_to_node_and_wait_response, divide_range, hash_value, next_node_in_the_cluster,
+        divide_range, hash_value, next_node_in_the_cluster,
         send_to_node, send_to_node_and_wait_response_with_timeout,
     },
 };
@@ -96,8 +85,6 @@ pub type NodeHandle = JoinHandle<Result<()>>;
 const N_NODES: Byte = 5;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
-/// El número de hilos para el [ThreadPool].
-const N_THREADS: usize = 20;
 /// El tiempo de espera _(en segundos)_ por una respuesta.
 const TIMEOUT_SECS: u64 = 2;
 
@@ -451,17 +438,6 @@ impl Node {
         send_to_node(self.select_node(&value), bytes, port_type)
     }
 
-    /// Manda un mensaje a un nodo específico y espera por la respuesta de este.
-    fn _send_message_and_wait_response(
-        &self,
-        bytes: Vec<Byte>,
-        node_id: Byte,
-        port_type: PortType,
-        wait_response: bool,
-    ) -> Result<Vec<Byte>> {
-        _send_to_node_and_wait_response(node_id, bytes, port_type, wait_response)
-    }
-
     /// Manda un mensaje a un nodo específico y espera por la respuesta de este, con un timeout.
     /// Si el timeout se alcanza, se devuelve un buffer vacío.
     ///
@@ -751,79 +727,6 @@ impl Node {
         closed_count
     }
 
-    /// Escucha por los eventos que recibe del cliente.
-    pub fn cli_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-        Self::listen(socket, PortType::Cli, node)
-    }
-
-    /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-    pub fn priv_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-        Self::listen(socket, PortType::Priv, node)
-    }
-
-    /// El escuchador de verdad.
-    ///
-    /// Las otras funciones son wrappers para no repetir código.
-    fn listen(socket: SocketAddr, port_type: PortType, node: Arc<Mutex<Node>>) -> Result<()> {
-        match port_type {
-            PortType::Cli => Node::listen_cli_port(socket, node),
-            PortType::Priv => Node::listen_priv_port(socket, node),
-        }
-    }
-
-    fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-        let server_config = Node::configure_tls()?;
-        let listener = Node::bind_with_socket(socket)?;
-        let addr_loader = AddrLoader::default_loaded();
-        let pool = ThreadPool::build(N_THREADS)?;
-        let exit = false;
-        for tcp_stream_res in listener.incoming() {
-            match tcp_stream_res {
-                Err(_) => return Node::tcp_stream_error(&PortType::Cli, &socket, &addr_loader),
-                Ok(tcp_stream) => {
-                    let config = Arc::clone(&server_config);
-                    let node = Arc::clone(&node);
-                    let arc_exit = Arc::new(Mutex::new(exit));
-                    pool.execute(move || {
-                        Node::listen_single_client(config, tcp_stream, arc_exit, node)
-                    })?;
-                }
-            };
-            if exit {
-                break;
-            }
-        }
-        Ok(())
-    }
-
-    fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-        let listener = Node::bind_with_socket(socket)?;
-        let addr_loader = AddrLoader::default_loaded();
-        for tcp_stream_res in listener.incoming() {
-            match tcp_stream_res {
-                Err(_) => return Node::tcp_stream_error(&PortType::Priv, &socket, &addr_loader),
-                Ok(mut tcp_stream) => {
-                    let buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
-                    let mut bufreader = BufReader::new(buffered_stream);
-                    let bytes_vec = Node::write_bytes_in_priv_buffer(&mut bufreader)?;
-                    // consumimos los bytes del stream para no mandarlos de vuelta en la response
-                    bufreader.consume(bytes_vec.len());
-                    if Self::is_exit(&bytes_vec[..]) {
-                        break;
-                    }
-                    match node.lock() {
-                        Ok(mut locked_in) => {
-                            locked_in.process_stream(&mut tcp_stream, bytes_vec, true)?;
-                        }
-                        Err(poison_err) => {
-                            println!("Error de lock envenenado:\n\n{}", poison_err);
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
 
     /// Procesa una _request_ en forma de [Byte]s.
     /// También devuelve un [bool] indicando si se debe parar el hilo.
@@ -846,16 +749,6 @@ impl Node {
                 Ok(vec![])
             }
             None => self.match_kind_of_conection_mode(bytes, stream, is_logged),
-        }
-    }
-
-    fn write_bytes_in_priv_buffer(bufreader: &mut BufReader<TcpStream>) -> Result<Vec<Byte>> {
-        match bufreader.fill_buf() {
-            Ok(recv) => Ok(recv.to_vec()),
-            Err(err) => Err(Error::ServerError(format!(
-                "No se pudo escribir los bytes:\n\n{}",
-                err
-            ))),
         }
     }
 
@@ -2098,12 +1991,12 @@ impl Node {
                 self.acknowledge_offline_neighbour(node_id);
                 result = self.forward_request_to_replicas(
                     node_id,
-                    request,
+                    (select, request),
                     wait_response,
                     responsive_replica,
                     replicas_asked,
                     replication_factor_quantity,
-                    select
+                    
                 )?;
             }
             result
@@ -2114,13 +2007,13 @@ impl Node {
     fn forward_request_to_replicas(
         &mut self,
         node_id: NodeId,
-        request: &[Byte],
+        select_and_request: (&Select, &[Byte]),
         wait_response: bool,
         responsive_replica: &mut NodeId,
         replicas_asked: &mut usize,
         replication_factor_quantity: u32,
-        select: &Select
     ) -> Result<Vec<Byte>> {
+        let (select, request) = select_and_request;
         let mut result: Vec<u8> = Vec::new();
         let nodes_ids = Self::get_nodes_ids();
         let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
@@ -2584,81 +2477,6 @@ impl Node {
         Ok(res_hashed_value)
     }
 
-    fn configure_tls() -> Result<Arc<ServerConfig>> {
-        let cert_file = "cert.pem";
-        let private_key_file = "custom.key";
-        let certs: Vec<CertificateDer<'_>> = CertificateDer::pem_file_iter(cert_file)
-            .unwrap()
-            .map(|cert| cert.unwrap())
-            .collect();
-        let private_key = PrivateKeyDer::from_pem_file(private_key_file).unwrap();
-        let config = match ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(certs, private_key)
-        {
-            Ok(value) => value,
-            Err(_err) => {
-                return Err(Error::ServerError(
-                    "No se pudo buildear la configuracion tls".to_string(),
-                ))
-            }
-        };
-        Ok(Arc::new(config))
-    }
-
-    fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
-        match TcpListener::bind(socket) {
-            Ok(tcp_listener) => Ok(tcp_listener),
-            Err(_) => Err(Error::ServerError(format!(
-                "No se pudo bindear a la dirección '{}'",
-                socket
-            ))),
-        }
-    }
-
-    fn tcp_stream_error(
-        port_type: &PortType,
-        socket: &SocketAddr,
-        addr_loader: &AddrLoader,
-    ) -> Result<()> {
-        let falla = match port_type {
-            PortType::Cli => "cliente",
-            PortType::Priv => "nodo o estructura interna",
-        };
-        println!(
-            "Un {} no pudo conectarse al nodo con ID {}",
-            falla,
-            addr_loader.get_id(&socket.ip())?,
-        );
-        Err(Error::ServerError(format!(
-            "Un {} no pudo conectarse al nodo con ID {}",
-            falla,
-            addr_loader.get_id(&socket.ip())?,
-        )))
-    }
-
-    fn clone_tcp_stream(tcp_stream: &TcpStream) -> Result<TcpStream> {
-        match tcp_stream.try_clone() {
-            Ok(cloned) => Ok(cloned),
-            Err(err) => Err(Error::ServerError(format!(
-                "No se pudo clonar el stream:\n\n{}",
-                err
-            ))),
-        }
-    }
-
-    // fn write_bytes_in_buffer(
-    //     bufreader: &mut BufReader<rustls::Stream<'_, ServerConnection, TcpStream>>,
-    // ) -> Result<Vec<Byte>> {
-    //     match bufreader.fill_buf() {
-    //         Ok(recv) => Ok(recv.to_vec()),
-    //         Err(err) => Err(Error::ServerError(format!(
-    //             "No se pudo escribir los bytes:\n\n{}",
-    //             err
-    //         ))),
-    //     }
-    // }
-
     fn match_kind_of_conection_mode<S>(&mut self, bytes: Vec<Byte>, mut stream: S, is_logged: bool) -> Result<Vec<Byte>>
     where
         S: Read + Write,
@@ -2689,57 +2507,7 @@ impl Node {
         Ok(vec![])
     }
 
-    fn listen_single_client(
-        config: Arc<ServerConfig>,
-        tcp_stream: TcpStream,
-        arc_exit: Arc<Mutex<bool>>,
-        node: Arc<Mutex<Node>>,
-    ) -> Result<()> {
-        let mut server_conn = match ServerConnection::new(config) {
-            Ok(conn) => conn,
-            Err(_) => {
-                return Err(Error::ServerError(
-                    "Error al crear la conexión TLS".to_string(),
-                ));
-            }
-        };
-        let mut buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
-        let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
-            rustls::Stream::new(&mut server_conn, &mut buffered_stream);
-        let tls = &mut tls_stream;
-        let mut is_logged = false;
-        loop {
-            let mut buffer: Vec<u8> = vec![0; 2048];
-            let size = match tls.read( &mut buffer) {
-                Ok(value) => value,
-                Err(_err) => {
-                    return Err(Error::ServerError("No se pudo leer el stream".to_string()))
-                }
-            };
-            buffer.truncate(size);
-            if Self::is_exit(&buffer[..]) {
-                match arc_exit.lock() {
-                    Ok(mut locked_in) => *locked_in = true,
-                    Err(poison_err) => {
-                        println!("Error de lock envenenado:\n\n{}", poison_err);
-                    }
-                }
-                break;
-            }
-            match node.lock() {
-                Ok(mut locked_in) => {
-                    let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
-                    if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0]{
-                        is_logged = true;
-                    }
-                }
-                Err(poison_err) => {
-                    println!("Error de lock envenenado:\n\n{}", poison_err);
-                }
-            }
-        }
-        Ok(())
-    }
+
 
     /// Espera a que terminen todos los handlers.
     ///
