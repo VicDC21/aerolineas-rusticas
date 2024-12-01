@@ -4,5 +4,4 @@ pub mod actions;
 pub mod modes;
 pub mod nodes;
 pub mod pool;
-pub mod traits;
 pub mod utils;

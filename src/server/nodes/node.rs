@@ -5,12 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
-    fmt,
     io::Write,
     net::TcpStream,
     path::Path,
     thread::JoinHandle,
-    vec::IntoIter,
 };
 
 use crate::client::cql_frame::query_body::QueryBody;
@@ -47,7 +45,6 @@ use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
     pool::threadpool::ThreadPool,
-    traits::Serializable,
     utils::load_json,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
@@ -65,9 +62,8 @@ use super::{
     },
     table_metadata::table::Table,
     utils::{
-        _send_to_node_and_wait_response, divide_range, hash_value, hashmap_to_string,
-        hashmap_vec_to_string, next_node_in_the_cluster, send_to_node,
-        send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
+        _send_to_node_and_wait_response, divide_range, hash_value,
+        next_node_in_the_cluster, send_to_node, send_to_node_and_wait_response_with_timeout,
     },
 };
 
@@ -2608,103 +2604,5 @@ fn verify_succesful_response(response: &[Byte]) -> bool {
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.endpoint_state.eq(&other.endpoint_state)
-    }
-}
-
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Se muestra en formato .csv
-        // id,default_keyspace,keyspaces,tables,tables_and_partitions_keys_values
-        writeln!(
-            f,
-            "{},{},{},{},{}",
-            self.id,
-            self.default_keyspace_name,
-            hashmap_to_string(&self.keyspaces),
-            hashmap_to_string(&self.tables),
-            hashmap_vec_to_string(&self.tables_and_partitions_keys_values),
-        )
-    }
-}
-
-impl Serializable for Node {
-    fn serialize(&self) -> Vec<Byte> {
-        self.to_string().into_bytes()
-    }
-
-    fn deserialize(data: &[Byte]) -> Result<Self> {
-        let line: String = String::from_utf8(data.to_vec()).map_err(|e| {
-            Error::ServerError(format!("No se pudieron deserializar los datos: {}", e))
-        })?;
-        let mut parameters: IntoIter<String> = line
-            .split(",")
-            .map(|s| s.to_string())
-            .collect::<Vec<String>>()
-            .into_iter();
-
-        let id: Byte = parameters
-            .next()
-            .ok_or(Error::ServerError(
-                "No se pudo obtener el ID del nodo".to_string(),
-            ))?
-            .parse()
-            .map_err(|e| Error::ServerError(format!("No se pudo parsear el ID del nodo: {}", e)))?;
-
-        let default_keyspace_name: String = parameters
-            .next()
-            .ok_or(Error::ServerError(
-                "No se pudo obtener el keyspace por defecto del nodo".to_string(),
-            ))?
-            .parse()
-            .map_err(|e| {
-                Error::ServerError(format!(
-                    "No se pudo parsear el keyspace por defecto del nodo: {}",
-                    e
-                ))
-            })?;
-
-        let keyspaces: String = parameters.next().ok_or(Error::ServerError(
-            "No se pudo obtener los keyspaces del nodo".to_string(),
-        ))?;
-        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|e| {
-            Error::ServerError(format!(
-                "No se pudieron parsear los keyspaces del nodo: {}",
-                e
-            ))
-        })?;
-
-        let tables: String = parameters.next().ok_or(Error::ServerError(
-            "No se pudo obtener las tablas del nodo".to_string(),
-        ))?;
-        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|e| {
-            Error::ServerError(format!("No se pudieron parsear las tablas del nodo: {}", e))
-        })?;
-
-        let tables_and_partitions_keys_values: String =
-            parameters.next().ok_or(Error::ServerError(
-                "No se pudo obtener las tablas y sus particiones del nodo".to_string(),
-            ))?;
-        let tables_and_partitions_keys_values: HashMap<String, Vec<String>> =
-            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|e| {
-                Error::ServerError(format!(
-                    "No se pudieron parsear las tablas y sus particiones del nodo: {}",
-                    e
-                ))
-            })?;
-
-        Ok(Node {
-            id,
-            neighbours_states: HashMap::new(),
-            endpoint_state: EndpointState::with_id(id),
-            storage_addr: DiskHandler::get_node_storage(id),
-            default_keyspace_name,
-            keyspaces,
-            tables,
-            nodes_ranges: divide_range(0, NODES_RANGE_END, N_NODES as usize),
-            tables_and_partitions_keys_values,
-            pool: ThreadPool::build(N_THREADS)?,
-            open_connections: OpenConnectionsMap::new(),
-            nodes_weights: Vec::new(),
-        })
     }
 }
