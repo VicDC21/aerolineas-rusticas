@@ -35,10 +35,13 @@ use crate::{
 };
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer},
-    ClientConfig, ClientConnection, RootCertStore,
+    ClientConfig, ClientConnection, RootCertStore, Stream as LsStream,
 };
 
 use super::{col_data::ColData, protocol_result::ProtocolResult};
+
+/// Un stream TLS.
+pub type TlsStream<'a> = LsStream<'a, ClientConnection, TcpStream>;
 
 /// Estructura principal de un cliente.
 #[derive(Clone)]
@@ -146,7 +149,7 @@ impl Client {
         &self,
         client_connection: &'a mut ClientConnection,
         tcp_stream: &'a mut TcpStream,
-    ) -> Result<rustls::Stream<'a, rustls::ClientConnection, TcpStream>> {
+    ) -> Result<TlsStream<'a>> {
         tcp_stream
             .set_nonblocking(false)
             .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {}", e)))?;
@@ -156,7 +159,7 @@ impl Client {
         tcp_stream
             .set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
-        Ok(rustls::Stream::new(client_connection, tcp_stream))
+        Ok(LsStream::new(client_connection, tcp_stream))
     }
 
     /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
@@ -242,7 +245,7 @@ impl Client {
     pub fn send_query(
         &mut self,
         query: &str,
-        tls_stream: &mut rustls::Stream<'_, rustls::ClientConnection, TcpStream>,
+        tls_stream: &mut TlsStream,
     ) -> Result<ProtocolResult> {
         let mut stream_id: i16 = 0;
         while self.requests_stream.contains(&stream_id) {

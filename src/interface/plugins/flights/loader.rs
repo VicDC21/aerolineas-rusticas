@@ -4,7 +4,7 @@ use std::{
     collections::hash_map::{Entry, HashMap},
     sync::{
         mpsc::{channel, Receiver, Sender},
-        Arc, Mutex,
+        Arc,
     },
     thread::{spawn, JoinHandle},
     time::{Duration, Instant},
@@ -15,12 +15,13 @@ use eframe::egui::{Painter, Response};
 use walkers::{Plugin, Projector};
 
 use crate::{
-    client::cli::Client,
+    client::{cli::Client, conn_holder::ConnectionHolder},
     data::{
         airports::airp::Airport,
         flights::{flight::Flight, types::FlightType},
         tracking::live_flight_data::LiveFlightData,
     },
+    interface::data::login_info::LoginInfo,
     protocol::{
         aliases::{
             results::Result,
@@ -37,7 +38,10 @@ pub type LiveDataMap = HashMap<Int, Vec<LiveFlightData>>;
 type ChildHandle = JoinHandle<Result<()>>;
 
 /// El tipo de hilo hijo para cargar datos según fecha.
-type DateChild = (Option<ChildHandle>, Sender<(Arc<Option<Airport>>, Long)>);
+type DateChild = (
+    Option<ChildHandle>,
+    Sender<(Arc<Option<Airport>>, Long, LoginInfo)>,
+);
 
 /// Tipo de hilo hijo para vuelos.
 type FlightChild = (DateChild, Receiver<Vec<Flight>>);
@@ -55,8 +59,8 @@ const DAY_IN_SECONDS: i64 = 86400;
 
 /// Cargador de vuelos.
 pub struct FlightsLoader {
-    /// El cliente para pedir las queries.
-    client: Arc<Mutex<Client>>,
+    /// La información de logueo para conectarse.
+    login_info: LoginInfo,
 
     /// El aeropuerto acualmente seleccionado.
     selected_airport: Arc<Option<Airport>>,
@@ -98,7 +102,7 @@ pub struct FlightsLoader {
 impl FlightsLoader {
     /// Crea una nueva instancia de cargador de vuelos.
     pub fn new(
-        client: Arc<Mutex<Client>>,
+        login_info: LoginInfo,
         selected_airport: Arc<Option<Airport>>,
         flights: (Option<Vec<Flight>>, Option<Vec<Flight>>),
         tracking: (Option<LiveDataMap>, Option<LiveDataMap>),
@@ -113,7 +117,7 @@ impl FlightsLoader {
             children;
 
         Self {
-            client,
+            login_info,
             selected_airport,
             incoming_flights,
             departing_flights,
@@ -130,35 +134,26 @@ impl FlightsLoader {
     }
 
     /// Genera el hilo hijo para cargar vuelos entrantes.
-    pub fn gen_inc_fl_child(
-        to_parent: Sender<Vec<Flight>>,
-        client: Arc<Mutex<Client>>,
-    ) -> DateChild {
-        Self::gen_date_fl_child(to_parent, FlightType::Incoming, client)
+    pub fn gen_inc_fl_child(to_parent: Sender<Vec<Flight>>) -> DateChild {
+        Self::gen_date_fl_child(to_parent, FlightType::Incoming)
     }
 
     /// Genera el hilo hijo para cargar vuelos salientes.
-    pub fn gen_dep_fl_child(
-        to_parent: Sender<Vec<Flight>>,
-        client: Arc<Mutex<Client>>,
-    ) -> DateChild {
-        Self::gen_date_fl_child(to_parent, FlightType::Departing, client)
+    pub fn gen_dep_fl_child(to_parent: Sender<Vec<Flight>>) -> DateChild {
+        Self::gen_date_fl_child(to_parent, FlightType::Departing)
     }
 
     /// Genera un hilo hijo para vuelos.
-    fn gen_date_fl_child(
-        to_parent: Sender<Vec<Flight>>,
-        flight_type: FlightType,
-        client: Arc<Mutex<Client>>,
-    ) -> DateChild {
-        let (date_sender, date_receiver) = channel::<(Arc<Option<Airport>>, Long)>();
+    fn gen_date_fl_child(to_parent: Sender<Vec<Flight>>, flight_type: FlightType) -> DateChild {
+        let (date_sender, date_receiver) = channel::<(Arc<Option<Airport>>, Long, LoginInfo)>();
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
             let airport_stop = Airport::dummy();
+            let mut con_info = ConnectionHolder::with_cli(Client::default())?;
 
             loop {
                 match date_receiver.recv() {
-                    Ok((selected_airport, timestamp)) => {
+                    Ok((selected_airport, timestamp, login_info)) => {
                         let mut stop_by_airport = false;
                         if let Some(airport) = selected_airport.as_ref() {
                             stop_by_airport = airport == &airport_stop;
@@ -168,7 +163,8 @@ impl FlightsLoader {
                             break;
                         }
                         let flights = Self::load_flights(
-                            Arc::clone(&client),
+                            &mut con_info,
+                            login_info,
                             &flight_type,
                             selected_airport.as_ref(),
                             &timestamp,
@@ -193,35 +189,26 @@ impl FlightsLoader {
     }
 
     /// Genera el hilo hijo para cargar datos de vuelos entrantes.
-    pub fn gen_inc_tr_child(
-        to_parent: Sender<LiveDataMap>,
-        client: Arc<Mutex<Client>>,
-    ) -> DateChild {
-        Self::gen_date_tr_child(to_parent, FlightType::Incoming, client)
+    pub fn gen_inc_tr_child(to_parent: Sender<LiveDataMap>) -> DateChild {
+        Self::gen_date_tr_child(to_parent, FlightType::Incoming)
     }
 
     /// Genera el hilo hijo para cargar datos de vuelos salientes.
-    pub fn gen_dep_tr_child(
-        to_parent: Sender<LiveDataMap>,
-        client: Arc<Mutex<Client>>,
-    ) -> DateChild {
-        Self::gen_date_tr_child(to_parent, FlightType::Departing, client)
+    pub fn gen_dep_tr_child(to_parent: Sender<LiveDataMap>) -> DateChild {
+        Self::gen_date_tr_child(to_parent, FlightType::Departing)
     }
 
     /// Genera un hilo hijo para datos de vuelos.
-    fn gen_date_tr_child(
-        to_parent: Sender<LiveDataMap>,
-        flight_type: FlightType,
-        client: Arc<Mutex<Client>>,
-    ) -> DateChild {
-        let (date_sender, date_receiver) = channel::<(Arc<Option<Airport>>, Long)>();
+    fn gen_date_tr_child(to_parent: Sender<LiveDataMap>, flight_type: FlightType) -> DateChild {
+        let (date_sender, date_receiver) = channel::<(Arc<Option<Airport>>, Long, LoginInfo)>();
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
             let airport_stop = Airport::dummy();
+            let mut con_info = ConnectionHolder::with_cli(Client::default())?;
 
             loop {
                 match date_receiver.recv() {
-                    Ok((selected_airport, timestamp)) => {
+                    Ok((selected_airport, timestamp, login_info)) => {
                         let mut stop_by_airport = false;
                         if let Some(airport) = selected_airport.as_ref() {
                             stop_by_airport = airport == &airport_stop;
@@ -231,7 +218,8 @@ impl FlightsLoader {
                             break;
                         }
                         let live_data = Self::load_live_data(
-                            Arc::clone(&client),
+                            &mut con_info,
+                            login_info,
                             &flight_type,
                             selected_airport.as_ref(),
                         )
@@ -292,9 +280,9 @@ impl FlightsLoader {
         self
     }
 
-    /// Sincroniza el cliente.
-    pub fn sync_client(&mut self, new_client: Arc<Mutex<Client>>) -> &mut Self {
-        self.client = new_client;
+    /// Sincroniza la información de logueo.
+    pub fn sync_login_info(&mut self, new_info: &LoginInfo) -> &mut Self {
+        self.login_info = new_info.clone();
         self
     }
 
@@ -328,11 +316,15 @@ impl FlightsLoader {
 
     /// Carga los vuelos con una _query_.
     fn load_flights(
-        client_lock: Arc<Mutex<Client>>,
+        con_info: &mut ConnectionHolder,
+        login_info: LoginInfo,
         flight_type: &FlightType,
         selected_airport: &Option<Airport>,
         timestamp: &Long,
     ) -> Result<Vec<Flight>> {
+        let client_lock = con_info.get_cli();
+        let mut tls_stream = con_info.get_tls_and_login(&login_info.user, &login_info.pass)?;
+
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
                 client_lock.clear_poison();
@@ -343,8 +335,6 @@ impl FlightsLoader {
             }
             Ok(cli) => cli,
         };
-
-        let mut tcp_stream = client.connect()?;
 
         let airport = match selected_airport {
             Some(airp) => airp,
@@ -365,7 +355,7 @@ impl FlightsLoader {
             ),
         };
 
-        let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
+        let protocol_result = client.send_query(query.as_str(), &mut tls_stream)?;
         let flights = Flight::try_from_protocol_result(protocol_result, flight_type)?;
 
         Ok(flights)
@@ -373,10 +363,14 @@ impl FlightsLoader {
 
     /// Carga los datos de vuelos con una _query_.
     fn load_live_data(
-        client_lock: Arc<Mutex<Client>>,
+        con_info: &mut ConnectionHolder,
+        login_info: LoginInfo,
         flight_type: &FlightType,
         selected_airport: &Option<Airport>,
     ) -> Result<LiveDataMap> {
+        let client_lock = con_info.get_cli();
+        let mut tls_stream = con_info.get_tls_and_login(&login_info.user, &login_info.pass)?;
+
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
                 client_lock.clear_poison();
@@ -387,8 +381,6 @@ impl FlightsLoader {
             }
             Ok(cli) => cli,
         };
-
-        let mut tcp_stream = client.connect()?;
 
         let airport = match selected_airport {
             Some(airp) => airp,
@@ -406,7 +398,7 @@ impl FlightsLoader {
         };
 
         let mut flights_by_id = LiveDataMap::new();
-        let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
+        let protocol_result = client.send_query(query.as_str(), &mut tls_stream)?;
         let live_data = LiveFlightData::try_from_protocol_result(protocol_result, flight_type)?;
         for data in live_data {
             println!("{:?}", &data);
@@ -433,7 +425,7 @@ impl FlightsLoader {
         let (date_child, date_sender) = child;
         if let Some(hanging) = date_child.take() {
             if date_sender
-                .send((Arc::new(Some(Airport::dummy())), 0))
+                .send((Arc::new(Some(Airport::dummy())), 0, LoginInfo::default()))
                 .is_err()
             {
                 println!("Error mandando un mensaje para parar hilo de fecha.")
@@ -447,19 +439,13 @@ impl FlightsLoader {
 
 impl Default for FlightsLoader {
     fn default() -> Self {
-        let client = Arc::new(Mutex::new(Client::default()));
         let (inc_fl_sender, inc_fl_receiver) = channel::<Vec<Flight>>();
         let (dep_fl_sender, dep_fl_receiver) = channel::<Vec<Flight>>();
         let (inc_tr_sender, inc_tr_receiver) = channel::<LiveDataMap>();
         let (dep_tr_sender, dep_tr_receiver) = channel::<LiveDataMap>();
 
-        let inc_fl_cli = Arc::clone(&client);
-        let dep_fl_cli = Arc::clone(&client);
-        let inc_tr_cli = Arc::clone(&client);
-        let dep_tr_cli = Arc::clone(&client);
-
         Self::new(
-            client,
+            LoginInfo::default(),
             Arc::new(None),
             (Some(Vec::<Flight>::new()), Some(Vec::<Flight>::new())),
             (Some(LiveDataMap::new()), Some(LiveDataMap::new())),
@@ -467,19 +453,19 @@ impl Default for FlightsLoader {
             Local::now(),
             (
                 (
-                    Self::gen_inc_fl_child(inc_fl_sender.clone(), inc_fl_cli),
+                    Self::gen_inc_fl_child(inc_fl_sender.clone()),
                     inc_fl_receiver,
                 ),
                 (
-                    Self::gen_dep_fl_child(dep_fl_sender.clone(), dep_fl_cli),
+                    Self::gen_dep_fl_child(dep_fl_sender.clone()),
                     dep_fl_receiver,
                 ),
                 (
-                    Self::gen_inc_tr_child(inc_tr_sender.clone(), inc_tr_cli),
+                    Self::gen_inc_tr_child(inc_tr_sender.clone()),
                     inc_tr_receiver,
                 ),
                 (
-                    Self::gen_dep_tr_child(dep_tr_sender.clone(), dep_tr_cli),
+                    Self::gen_dep_tr_child(dep_tr_sender.clone()),
                     dep_tr_receiver,
                 ),
             ),
@@ -493,9 +479,11 @@ impl Plugin for &mut FlightsLoader {
             self.reset_instant_fl();
 
             let ((_, inc_fl_sender), _) = &mut self.incoming_fl_child;
-            if let Err(err) =
-                inc_fl_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
-            {
+            if let Err(err) = inc_fl_sender.send((
+                Arc::clone(&self.selected_airport),
+                self.date.timestamp(),
+                self.login_info.clone(),
+            )) {
                 println!(
                     "Error al enviar timestamp al cargador de vuelos entrantes:\n\n{}",
                     err
@@ -503,9 +491,11 @@ impl Plugin for &mut FlightsLoader {
             }
 
             let ((_, dep_fl_sender), _) = &mut self.departing_fl_child;
-            if let Err(err) =
-                dep_fl_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
-            {
+            if let Err(err) = dep_fl_sender.send((
+                Arc::clone(&self.selected_airport),
+                self.date.timestamp(),
+                self.login_info.clone(),
+            )) {
                 println!(
                     "Error al enviar timestamp al cargador de vuelos salientes:\n\n{}",
                     err
@@ -517,9 +507,11 @@ impl Plugin for &mut FlightsLoader {
             self.reset_instant_tr();
 
             let ((_, inc_tr_sender), _) = &mut self.incoming_tr_child;
-            if let Err(err) =
-                inc_tr_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
-            {
+            if let Err(err) = inc_tr_sender.send((
+                Arc::clone(&self.selected_airport),
+                self.date.timestamp(),
+                self.login_info.clone(),
+            )) {
                 println!(
                     "Error al enviar timestamp al cargador de datos de vuelos entrantes:\n\n{}",
                     err
@@ -527,9 +519,11 @@ impl Plugin for &mut FlightsLoader {
             }
 
             let ((_, dep_tr_sender), _) = &mut self.departing_tr_child;
-            if let Err(err) =
-                dep_tr_sender.send((Arc::clone(&self.selected_airport), self.date.timestamp()))
-            {
+            if let Err(err) = dep_tr_sender.send((
+                Arc::clone(&self.selected_airport),
+                self.date.timestamp(),
+                self.login_info.clone(),
+            )) {
                 println!(
                     "Error al enviar timestamp al cargador de datos de vuelos salientes:\n\n{}",
                     err

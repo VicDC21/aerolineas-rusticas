@@ -10,16 +10,15 @@ use std::{
     thread::{spawn, JoinHandle},
 };
 
-use aerolineas_rusticas::{
-    protocol::aliases::results::Result,
-    server::nodes::{
-        disk_operations::disk_handler::{NODES_METADATA_PATH, STORAGE_PATH},
-        graph::NodesGraph,
-    },
-};
+use aerolineas_rusticas::{protocol::aliases::results::Result, server::nodes::graph::NodesGraph};
 
 /// Un handle común en nuestra librería.
 pub type ThreadHandle<T> = JoinHandle<Result<T>>;
+
+/// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
+pub const STORAGE_PATH: &str = "storage";
+/// La ruta para el almacenamiento de los metadatos de los nodos.
+pub const NODES_METADATA_PATH: &str = "nodes_metadata";
 
 /// Crea un [grafo](NodesGraph) en modo de [DEBUG](aerolineas_rusticas::server::modes::ConnectionMode::Echo)
 /// y lo corre en un hilo aparte.
