@@ -162,9 +162,6 @@ impl Client {
             .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
 
         let mut tls_stream = rustls::Stream::new(&mut client_connection, &mut tcp_stream);
-        // tls_stream
-        //     .write_all("GET / HTTP/1.1\r\nConnection: close\r\n\r\n".to_string().as_bytes())
-        //     .unwrap();
         println!(
             "ECHO MODE:\n \
             ----------\n \
@@ -174,16 +171,6 @@ impl Client {
             'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
             ----------\n"
         );
-        // tls_stream.write_all("STARTUP".as_bytes());
-        // tls_stream.flush();
-        // let mut buf = Vec::new();
-        // tls_stream.read_to_end(&mut buf);
-        // println!("Recibi del stream 1 {:?}", buf);
-        // tls_stream.write_all("STARTUP".as_bytes());
-        // tls_stream.read_to_end(&mut buf);
-
-        // println!("Recibi del stream 2 {:?}", buf);
-
         let reader = BufReader::new(stdin());
         for line in reader.lines() {
             match line {

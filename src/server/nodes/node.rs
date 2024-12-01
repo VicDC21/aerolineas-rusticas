@@ -2174,7 +2174,6 @@ impl Node {
                 let mut consistency_counter = 0;
                 let mut responsive_replica = node_id;
                 let mut replicas_asked = 0;
-
                 let mut actual_result = self.decide_how_to_request_internal_query_select(
                     node_id,
                     (&select, request),
@@ -2279,20 +2278,21 @@ impl Node {
                             None,
                             Some(node_id),
                         );
-                        let replica_response = self
-                            .send_message_and_wait_response_with_timeout(
+                        let replica_response = if node_replica == self.id{
+                            self.process_select(select, node_id)?
+                        } else {
+                            self.send_message_and_wait_response_with_timeout(
                                 request_with_metadata,
                                 node_replica,
                                 PortType::Priv,
                                 wait_response,
                                 TIMEOUT_SECS,
-                            )
-                            .unwrap_or_default();
-                        *replicas_asked += 1;
-
+                            )?
+                        };
                         if replica_response.is_empty() {
                             self.acknowledge_offline_neighbour(node_replica);
                         } else {
+                            *replicas_asked += 1;
                             result = replica_response;
                             *responsive_replica = node_replica;
                             break;
@@ -2857,13 +2857,14 @@ impl Node {
         let tls = &mut tls_stream;
         let mut is_logged = false;
         loop {
-            let mut buffer = [0u8; 2048];
-            match tls.read(&mut buffer) {
+            let mut buffer: Vec<u8> = vec![0; 2048];
+            let size = match tls.read( &mut buffer) {
                 Ok(value) => value,
                 Err(_err) => {
                     return Err(Error::ServerError("No se pudo leer el stream".to_string()))
                 }
             };
+            buffer.truncate(size);
             if Self::is_exit(&buffer[..]) {
                 match arc_exit.lock() {
                     Ok(mut locked_in) => *locked_in = true,
@@ -2875,7 +2876,7 @@ impl Node {
             }
             match node.lock() {
                 Ok(mut locked_in) => {
-                    let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
+                    let res = locked_in.process_stream(tls, buffer.to_vec(), true)?;
                     if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0]{
                         is_logged = true;
                     }
