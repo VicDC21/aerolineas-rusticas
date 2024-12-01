@@ -18,7 +18,7 @@ impl LoginInfo {
 
     /// Chequea si la info está vacía.
     pub fn is_empty(&self) -> bool {
-        self.user == "" && self.pass == ""
+        self.user.is_empty() && self.pass.is_empty()
     }
 }
 

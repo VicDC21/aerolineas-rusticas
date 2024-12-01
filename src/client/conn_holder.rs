@@ -54,7 +54,7 @@ impl ConnectionHolder {
     }
 
     /// Devuelve un _TLS Stream_ con los datos ya logueados.
-    pub fn get_tls_and_login(&mut self, user: &String, password: &String) -> Result<TlsStream> {
+    pub fn get_tls_and_login(&mut self, user: &str, password: &str) -> Result<TlsStream> {
         match self.client.lock() {
             Err(poison_err) => {
                 self.client.clear_poison();
