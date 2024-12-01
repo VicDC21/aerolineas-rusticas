@@ -813,48 +813,14 @@ impl Node {
                 };
             }
             SvAction::DigestReadRequest(bytes) => {
-                let response = self.handle_request(&bytes, true);
-                // Devolvemos además un opcode para poder saber si el resultado fue un error o no.
-                if verify_succesful_response(&response) {
-                    let mut res = Opcode::Result.as_bytes();
-                    res.extend_from_slice(&hash_value(&response).to_be_bytes());
-                    let _ = tcp_stream.write_all(&res);
-                } else {
-                    let mut res = Opcode::RequestError.as_bytes();
-                    res.extend_from_slice(&response);
-                    let _ = tcp_stream.write_all(&res);
-                }
+                let res = self.exec_digest_read_request(bytes);
+                let _ = tcp_stream.write_all(&res);
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
             SvAction::RepairRows(table_name, node_id, rows_bytes) => {
-                if !self.table_exists(&table_name) {
-                    return Err(Error::ServerError(format!(
-                        "La tabla `{}` no existe",
-                        table_name
-                    )));
-                }
-
-                let table = self.get_table(&table_name)?;
-                let keyspace_name = table.get_keyspace();
-                if !self.keyspace_exists(keyspace_name) {
-                    return Err(Error::ServerError(format!(
-                        "El keyspace `{}` asociado a la tabla `{}` no existe",
-                        keyspace_name, table_name
-                    )));
-                }
-                let rows = String::from_utf8(rows_bytes).map_err(|_| {
-                    Error::ServerError("Error al castear de bytes a string".to_string())
-                })?;
-                DiskHandler::repair_rows(
-                    &self.storage_addr,
-                    &table_name,
-                    keyspace_name,
-                    &self.get_default_keyspace_name()?,
-                    node_id,
-                    &rows,
-                )?;
+                self.repair_rows(table_name, node_id, rows_bytes)?;
             }
             SvAction::AddPartitionValueToMetadata(table_name, partition_value) => {
                 let table = self.get_table(&table_name)?;
@@ -873,20 +839,27 @@ impl Node {
     }
 
     fn exec_direct_read_request(&self, mut bytes: Vec<Byte>) -> Result<String> {
-        let node_number = bytes.pop().unwrap_or(0); // despues cambiar
-        let copia: &[u8] = &bytes;
-        let statement = match QueryBody::try_from(copia) {
+        let node_number = match bytes.pop() {
+            Some(node_number) => node_number,
+            None => {
+                return Err(Error::ServerError(
+                    "No se especificó el ID del nodo al hacer read-repair".to_string(),
+                ))
+            }
+        };
+        let bytes_borrowed: &[u8] = &bytes;
+        let statement = match QueryBody::try_from(bytes_borrowed) {
             Ok(query_body) => match make_parse(&mut tokenize_query(query_body.get_query())) {
                 Ok(statement) => statement,
                 Err(_err) => {
                     return Err(Error::ServerError(
-                        "No se cumplio el protocolo al hacer read-repair".to_string(),
+                        "No se pudo parsear el statement al hacer read-repair".to_string(),
                     ))
                 }
             },
             Err(_err) => {
                 return Err(Error::ServerError(
-                    "No se cumplio el protocolo al hacer read-repair".to_string(),
+                    "No se pudo parsear el body de la query al hacer read-repair".to_string(),
                 ))
             }
         };
@@ -906,6 +879,48 @@ impl Node {
             node_number,
         )?;
         Ok(res)
+    }
+
+    fn exec_digest_read_request(&mut self, bytes: Vec<Byte>) -> Vec<Byte> {
+        let response = self.handle_request(&bytes, true);
+        // Devolvemos además un opcode para poder saber si el resultado fue un error o no.
+        if verify_succesful_response(&response) {
+            let mut res = Opcode::Result.as_bytes();
+            res.extend_from_slice(&hash_value(&response).to_be_bytes());
+            res
+        } else {
+            let mut res = Opcode::RequestError.as_bytes();
+            res.extend_from_slice(&response);
+            res
+        }
+    }
+
+    fn repair_rows(&self, table_name: String, node_id: Byte, rows_bytes: Vec<Byte>) -> Result<()> {
+        if !self.table_exists(&table_name) {
+            return Err(Error::ServerError(format!(
+                "La tabla `{}` no existe",
+                table_name
+            )));
+        }
+
+        let table = self.get_table(&table_name)?;
+        let keyspace_name = table.get_keyspace();
+        if !self.keyspace_exists(keyspace_name) {
+            return Err(Error::ServerError(format!(
+                "El keyspace `{}` asociado a la tabla `{}` no existe",
+                keyspace_name, table_name
+            )));
+        }
+        let rows = String::from_utf8(rows_bytes)
+            .map_err(|_| Error::ServerError("Error al castear de bytes a string".to_string()))?;
+        DiskHandler::repair_rows(
+            &self.storage_addr,
+            &table_name,
+            keyspace_name,
+            &self.get_default_keyspace_name()?,
+            node_id,
+            &rows,
+        )
     }
 
     /// Maneja una request.
@@ -1107,11 +1122,11 @@ impl Node {
         let name = keyspace_name.get_name().to_string();
         if self.keyspaces.contains_key(&name) {
             self.set_default_keyspace_name(name.clone())?;
-            Ok(self.create_result_void())
+            Ok(Self::create_result_void())
         } else {
             if self.check_if_keyspace_exists(keyspace_name) {
                 self.set_default_keyspace_name(name.clone())?;
-                return Ok(self.create_result_void());
+                return Ok(Self::create_result_void());
             }
             Err(Error::ServerError(
                 "El keyspace solicitado no existe".to_string(),
@@ -1150,10 +1165,10 @@ impl Node {
     ) -> Result<Vec<Byte>> {
         match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
             Ok(Some(keyspace)) => self.add_keyspace(keyspace),
-            Ok(None) => return Ok(self.create_result_void()),
+            Ok(None) => return Ok(Self::create_result_void()),
             Err(err) => return Err(err),
         };
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn process_alter_statement(
@@ -1187,7 +1202,7 @@ impl Node {
             responses.push(response);
             actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn process_internal_alter_keyspace_statement(
@@ -1202,11 +1217,11 @@ impl Node {
                 {
                     keyspace.set_replication(new_replication);
                 }
-                Ok(self.create_result_void())
+                Ok(Self::create_result_void())
             }
             None => {
                 if alter_keyspace.if_exists {
-                    Ok(self.create_result_void())
+                    Ok(Self::create_result_void())
                 } else {
                     Err(Error::ServerError(format!(
                         "El keyspace {} no existe",
@@ -1248,7 +1263,7 @@ impl Node {
             responses.push(response);
             actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn process_internal_drop_keyspace_statement(
@@ -1259,11 +1274,11 @@ impl Node {
         if self.keyspaces.contains_key(keyspace_name) {
             self.keyspaces.remove(keyspace_name);
             match DiskHandler::drop_keyspace(keyspace_name, &self.storage_addr) {
-                Ok(_) => Ok(self.create_result_void()),
+                Ok(_) => Ok(Self::create_result_void()),
                 Err(e) => Err(e),
             }
         } else if drop_keyspace.if_exists {
-            Ok(self.create_result_void())
+            Ok(Self::create_result_void())
         } else {
             Err(Error::ServerError(format!(
                 "El keyspace {} no existe",
@@ -1272,7 +1287,7 @@ impl Node {
         }
     }
 
-    fn create_result_void(&mut self) -> Vec<Byte> {
+    fn create_result_void() -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
@@ -1302,7 +1317,7 @@ impl Node {
             Ok(None) => return Err(Error::ServerError("No se pudo crear la tabla".to_string())),
             Err(err) => return Err(err),
         };
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn process_create_table_statement(
@@ -1398,14 +1413,19 @@ impl Node {
             &self.get_default_keyspace_name()?,
             node_id,
         )?;
+
+        Ok(Self::create_result_select(&mut res))
+    }
+
+    fn create_result_select(res: &mut Vec<Byte>) -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
         response.append(&mut Stream::new(0).as_bytes());
         response.append(&mut Opcode::Result.as_bytes());
         response.append(&mut Length::new(res.len() as u32).as_bytes());
-        response.append(&mut res);
-        Ok(response)
+        response.append(res);
+        response
     }
 
     fn process_insert(
@@ -1433,7 +1453,7 @@ impl Node {
                 .insert(insert.table.get_name().to_string(), new_partition_values),
             None => None,
         };
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn check_if_has_new_partition_value(
@@ -1494,7 +1514,7 @@ impl Node {
             timestamp,
             node_number,
         )?;
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn handle_statement(
@@ -1766,7 +1786,7 @@ impl Node {
                 consistency_level, consistency_counter, consistency_number,
             )))
         } else {
-            Ok(self.create_result_void())
+            Ok(Self::create_result_void())
         }
     }
 
@@ -2162,7 +2182,7 @@ impl Node {
             node_number,
         )?;
 
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn delete_with_other_nodes(
@@ -2189,7 +2209,7 @@ impl Node {
                 )?;
             }
         }
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     // Función auxiliar para replicar el delete en otros nodos
