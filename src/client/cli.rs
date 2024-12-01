@@ -35,13 +35,13 @@ use crate::{
 };
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer},
-    ClientConfig, ClientConnection, RootCertStore, Stream as LsStream,
+    ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream,
 };
 
 use super::{col_data::ColData, protocol_result::ProtocolResult};
 
 /// Un stream TLS.
-pub type TlsStream<'a> = LsStream<'a, ClientConnection, TcpStream>;
+pub type TlsStream = LsStream<ClientConnection, TcpStream>;
 
 /// Estructura principal de un cliente.
 #[derive(Clone)]
@@ -145,11 +145,11 @@ impl Client {
     }
 
     /// Crea una conexion tls
-    pub fn create_tls_connection<'a>(
+    pub fn create_tls_connection(
         &self,
-        client_connection: &'a mut ClientConnection,
-        tcp_stream: &'a mut TcpStream,
-    ) -> Result<TlsStream<'a>> {
+        client_connection: ClientConnection,
+        tcp_stream: TcpStream,
+    ) -> Result<TlsStream> {
         tcp_stream
             .set_nonblocking(false)
             .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {}", e)))?;
@@ -159,7 +159,7 @@ impl Client {
         tcp_stream
             .set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
-        Ok(LsStream::new(client_connection, tcp_stream))
+        Ok(TlsStream::new(client_connection, tcp_stream))
     }
 
     /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
@@ -170,9 +170,9 @@ impl Client {
     ///
     /// </div>
     pub fn echo(&mut self) -> Result<()> {
-        let mut client_connection = get_client_connection()?;
-        let mut tcp_stream = self.connect()?;
-        let mut tls_stream = self.create_tls_connection(&mut client_connection, &mut tcp_stream)?;
+        let client_connection = get_client_connection()?;
+        let tcp_stream = self.connect()?;
+        let mut tls_stream: TlsStream = self.create_tls_connection(client_connection, tcp_stream)?;
         println!(
             "ECHO MODE:\n \
             ----------\n \
@@ -343,7 +343,7 @@ impl Client {
 
     fn read_complete_response(
         &mut self,
-        tls_stream: &mut rustls::Stream<'_, rustls::ClientConnection, TcpStream>,
+        tls_stream: &mut TlsStream,
     ) -> Result<ProtocolResult> {
         let mut response = Vec::new();
         let mut buffer = vec![0; 8192];

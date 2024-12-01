@@ -1,11 +1,7 @@
 //! Módulo para info de conexión.
 
-use std::{
-    net::TcpStream,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
-use rustls::ClientConnection;
 
 use crate::{
     client::{
@@ -20,11 +16,8 @@ pub struct ConnectionHolder {
     /// El cliente.
     client: Arc<Mutex<Client>>,
 
-    /// La conexión.
-    pub cli_con: ClientConnection,
-
     /// El _TCP Stream_.
-    pub tcp_stream: TcpStream,
+    pub tls_stream: TlsStream,
 }
 
 impl ConnectionHolder {
@@ -33,11 +26,11 @@ impl ConnectionHolder {
         client.set_consistency_level("Quorum")?;
         let cli_con = get_client_connection()?;
         let tcp_stream = client.connect()?;
+        let tls_stream = client.create_tls_connection(cli_con, tcp_stream)?;
 
         Ok(Self {
             client: Arc::new(Mutex::new(client)),
-            cli_con,
-            tcp_stream,
+            tls_stream,
         })
     }
 
@@ -56,7 +49,7 @@ impl ConnectionHolder {
                     poison_err
                 )))
             }
-            Ok(client) => client.create_tls_connection(&mut self.cli_con, &mut self.tcp_stream),
+            Ok(client) => client.create_tls_connection(get_client_connection()?, client.connect()?),
         }
     }
 
@@ -72,7 +65,7 @@ impl ConnectionHolder {
             }
             Ok(mut client) => {
                 let mut tls_stream =
-                    client.create_tls_connection(&mut self.cli_con, &mut self.tcp_stream)?;
+                    client.create_tls_connection(get_client_connection()?, client.connect()?)?;
                 let protocol_result = client.send_query(
                     format!("User: {} Password: {}", &user, &password,).as_str(),
                     &mut tls_stream,
