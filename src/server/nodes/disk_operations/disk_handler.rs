@@ -52,7 +52,7 @@ use super::{
 };
 
 /// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
-const STORAGE_PATH: &str = "storage";
+pub const STORAGE_PATH: &str = "storage";
 /// El nombre individual del directorio de un nodo.
 const STORAGE_NODE_PATH: &str = "storage_node";
 /// La ruta para el almacenamiento de los metadatos de los nodos.

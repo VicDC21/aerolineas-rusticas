@@ -916,6 +916,9 @@ impl Node {
 
     /// Maneja una request.
     fn handle_request(&mut self, request: &[Byte], is_internal_request: bool, is_logged: bool) -> Vec<Byte> {
+        if request.len() < 9 {
+            return Vec::<Byte>::new();
+        }
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return make_error_response(err),
