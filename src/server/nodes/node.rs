@@ -55,8 +55,8 @@ use crate::tokenizer::tokenizer::tokenize_query;
 use super::{
     addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
-    keyspace_metadata::keyspace::Keyspace,
     internal_threads::{beater, create_client_and_private_conexion, gossiper},
+    keyspace_metadata::keyspace::Keyspace,
     port_type::PortType,
     states::{
         appstatus::AppStatus,
@@ -65,8 +65,8 @@ use super::{
     },
     table_metadata::table::Table,
     utils::{
-        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string,
-        next_node_in_the_cluster, send_to_node, _send_to_node_and_wait_response,
+        _send_to_node_and_wait_response, divide_range, hash_value, hashmap_to_string,
+        hashmap_vec_to_string, next_node_in_the_cluster, send_to_node,
         send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
     },
 };
@@ -82,7 +82,7 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 pub type NodeHandle = JoinHandle<Result<()>>;
 
 /// Cantidad de nodos fija en cualquier momento.
-/// 
+///
 /// DEBE coincidir con la cantidad de nodos en el archivo de IPs `node_ips.csv`.
 const N_NODES: Byte = 5;
 /// El límite posible para los rangos de los nodos.
