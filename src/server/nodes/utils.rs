@@ -79,7 +79,7 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
 }
 
 /// Manda un mensaje a un nodo específico y espera por la respuesta de este.
-pub fn send_to_node_and_wait_response(
+pub fn _send_to_node_and_wait_response(
     id: NodeId,
     bytes: Vec<Byte>,
     port_type: PortType,

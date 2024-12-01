@@ -1,21 +1,15 @@
 //! Módulo de nodos.
 
 use chrono::Utc;
-use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
 use serde::{Deserialize, Serialize};
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
     fmt,
-    io::{BufRead, BufReader, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    io::Write,
+    net::TcpStream,
     path::Path,
-    sync::{
-        mpsc::{channel, Sender},
-        Arc, Mutex,
-    },
-    thread::{sleep, Builder, JoinHandle},
-    time::Duration,
+    thread::JoinHandle,
     vec::IntoIter,
 };
 
@@ -61,8 +55,8 @@ use crate::tokenizer::tokenizer::tokenize_query;
 use super::{
     addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
-    graph::{N_NODES, START_ID},
     keyspace_metadata::keyspace::Keyspace,
+    internal_threads::{beater, create_client_and_private_conexion, gossiper},
     port_type::PortType,
     states::{
         appstatus::AppStatus,
@@ -72,7 +66,7 @@ use super::{
     table_metadata::table::Table,
     utils::{
         divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string,
-        next_node_in_the_cluster, send_to_node, send_to_node_and_wait_response,
+        next_node_in_the_cluster, send_to_node, _send_to_node_and_wait_response,
         send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
     },
 };
@@ -87,8 +81,10 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
 
-/// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
-const HANDSHAKE_NEIGHBOURS: Byte = 3;
+/// Cantidad de nodos fija en cualquier momento.
+const N_NODES: Byte = 5;
+/// El ID con el que comenzar a contar los nodos.
+const START_ID: NodeId = 10;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
@@ -202,10 +198,9 @@ impl Node {
         let mut nodes_weights: Vec<usize> = Vec::new();
         let handlers = Self::bootstrap(id, mode, &mut nodes_weights)?;
 
-        let (_beater, _beat_stopper) = Self::beater(id)?;
-        let (_gossiper, _gossip_stopper) = Self::gossiper(id, &nodes_weights)?;
+        let (_beater, _beat_stopper) = beater(id)?;
+        let (_gossiper, _gossip_stopper) = gossiper(id, &nodes_weights)?;
 
-        // REVISAR
         /*Paramos los handlers especiales primero
         let _ = beat_stopper.send(true);
         let _ = beater.join();
@@ -217,38 +212,30 @@ impl Node {
         Ok(())
     }
 
-    /// Inicia todos los procesos necesarios para que el nodo se conecte al cluster.
+    /// Inicia la metadata y los hilos necesarios para que el nodo se conecte al cluster.
     fn bootstrap(
         id: NodeId,
         mode: ConnectionMode,
         nodes_weights: &mut Vec<usize>,
     ) -> Result<Vec<Option<NodeHandle>>> {
-        let metadata_path = DiskHandler::get_node_metadata_path(id);
-        let node_metadata_path = Path::new(&metadata_path);
-        if node_metadata_path.exists() {
-            Self::bootup_existing_node(id, mode, &metadata_path, nodes_weights)
-        } else {
-            Self::bootup_new_node(id, mode, nodes_weights)
-        }
-    }
-
-    /// Inicia un nuevo nodo.
-    fn bootup_new_node(
-        id: NodeId,
-        mode: ConnectionMode,
-        nodes_weights: &mut Vec<usize>,
-    ) -> Result<Vec<Option<NodeHandle>>> {
-        let nodes_ids = Self::get_nodes_ids();
-        if !nodes_ids.contains(&id) {
+        if !Self::id_exists(id) {
             return Err(Error::ServerError(format!(
-                "El ID {} no está en el archivo de nodos disponibles.",
+                "El ID {} no está en el archivo de IPs de los nodos.",
                 id
             )));
         }
 
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
-        let mut node = Self::new(id, mode)?;
+        let metadata_path = DiskHandler::get_node_metadata_path(id);
+        let node_metadata_path = Path::new(&metadata_path);
+        let mut node = if node_metadata_path.exists() {
+            let mut node: Node = load_json(&metadata_path)?;
+            node.set_default_fields(id, mode)?;
+            node
+        } else {
+            Self::new(id, mode)?
+        };
         node.inicialize_nodes_weights();
         *nodes_weights = node.nodes_weights.clone();
         let max_weight_id = node.max_weight();
@@ -256,46 +243,13 @@ impl Node {
         let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
         let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-        node.create_client_and_private_conexion(id, cli_socket, priv_socket, &mut node_listeners)?;
+        create_client_and_private_conexion(node, id, cli_socket, priv_socket, &mut node_listeners)?;
 
         handlers.append(&mut node_listeners);
 
         // Llenamos de información al nodo "seed". Arbitrariamente será el último.
-        // Si fue iniciado el último nodo, hacemos el envío de la información,
-        // pues se asume que los nodos fueron iniciados en orden.
-        let nodes_ids = Self::get_nodes_ids();
-        if id == nodes_ids[(N_NODES - 1) as usize] {
-            Self::send_states_to_node(max_weight_id);
-        }
-
-        Ok(handlers)
-    }
-
-    /// Inicia un nodo existente.
-    fn bootup_existing_node(
-        id: NodeId,
-        mode: ConnectionMode,
-        metadata_path: &str,
-        nodes_weights: &mut Vec<usize>,
-    ) -> Result<Vec<Option<NodeHandle>>> {
-        let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
-        let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
-        let mut node: Node = load_json(metadata_path)?;
-        node.set_default_fields(id, mode)?;
-        node.inicialize_nodes_weights();
-        *nodes_weights = node.nodes_weights.clone();
-        let max_weight_id = node.max_weight();
-
-        let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
-        let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
-
-        node.create_client_and_private_conexion(id, cli_socket, priv_socket, &mut node_listeners)?;
-
-        handlers.append(&mut node_listeners);
-
-        // Llenamos de información al nodo "seed". Arbitrariamente será el último.
-        // Si fue iniciado el último nodo, hacemos el envío de la información,
-        // pues se asume que los nodos fueron iniciados en orden.
+        // Cuando fue iniciado el último nodo (el de mayor ID), hacemos el envío de la información,
+        // pues asumimos que todos los demás ya fueron iniciados.
         let nodes_ids = Self::get_nodes_ids();
         if id == nodes_ids[(N_NODES - 1) as usize] {
             Self::send_states_to_node(max_weight_id);
@@ -309,50 +263,7 @@ impl Node {
         self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo tiene el triple de probabilidades de ser elegido.
     }
 
-    /// Crea los _handlers_ que escuchan por conexiones entrantes.
-    ///
-    /// <div class="warning">
-    ///
-    /// Esta función toma _ownership_ del [nodo](Node) que se le pasa.
-    ///
-    /// </div>
-    fn create_client_and_private_conexion(
-        self,
-        id: u8,
-        cli_socket: SocketAddr,
-        priv_socket: SocketAddr,
-        node_listeners: &mut Vec<Option<NodeHandle>>,
-    ) -> Result<()> {
-        let sendable_node = Arc::new(Mutex::new(self));
-        let cli_node = Arc::clone(&sendable_node);
-        let priv_node = Arc::clone(&sendable_node);
-
-        let cli_builder = Builder::new().name(format!("{}_cli", id));
-        let cli_res = cli_builder.spawn(move || Self::cli_listen(cli_socket, cli_node));
-        match cli_res {
-            Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
-            Err(err) => {
-                return Err(Error::ServerError(format!(
-                "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
-                id, err
-            )));
-            }
-        }
-        let priv_builder = Builder::new().name(format!("{}_priv", id));
-        let priv_res = priv_builder.spawn(move || Self::priv_listen(priv_socket, priv_node));
-        match priv_res {
-            Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
-            Err(err) => {
-                return Err(Error::ServerError(format!(
-                "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
-                id, err
-            )));
-            }
-        }
-        Ok(())
-    }
-
-    /// Ordena a todos los nodos existentes que envien su endpoint state al nodo con el ID correspondiente.
+    /// Se le ordena a todos los nodos existentes que envien su _endpoint state_ al nodo con el ID dado.
     fn send_states_to_node(id: NodeId) {
         for node_id in Self::get_nodes_ids() {
             if let Err(err) = send_to_node(
@@ -381,111 +292,6 @@ impl Node {
             }
         }
         nodes_ids[max_id]
-    }
-
-    /// Avanza a cada segundo el estado de _heartbeat_ de los nodos.
-    fn beater(id: NodeId) -> Result<(NodeHandle, Sender<bool>)> {
-        let (sender, receiver) = channel::<bool>();
-        let builder = Builder::new().name(format!("beater_node_{}", id));
-        match builder.spawn(move || Self::increase_heartbeat_and_store_metadata(receiver, id)) {
-            Ok(handler) => Ok((handler, sender.clone())),
-            Err(_) => Err(Error::ServerError(format!(
-                "Error procesando los beats del nodo {}.",
-                id
-            ))),
-        }
-    }
-
-    fn increase_heartbeat_and_store_metadata(
-        receiver: std::sync::mpsc::Receiver<bool>,
-        id: NodeId,
-    ) -> std::result::Result<(), Error> {
-        loop {
-            sleep(Duration::from_secs(1));
-            if let Ok(stop) = receiver.try_recv() {
-                if stop {
-                    break;
-                }
-            }
-            if send_to_node(id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
-                return Err(Error::ServerError(format!(
-                    "Error enviando mensaje de heartbeat a nodo {}",
-                    id
-                )));
-            }
-            if send_to_node(id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
-                return Err(Error::ServerError(format!(
-                    "Error enviando mensaje de almacenamiento de metadata a nodo {}",
-                    id
-                )));
-            }
-        }
-        Ok(())
-    }
-
-    fn gossiper(id: NodeId, nodes_weights: &[usize]) -> Result<(NodeHandle, Sender<bool>)> {
-        let (sender, receiver) = channel::<bool>();
-        let builder = Builder::new().name(format!("gossiper_node_{}", id));
-        let weights = nodes_weights.to_vec();
-        match builder.spawn(move || Self::exec_gossip(receiver, id, weights)) {
-            Ok(handler) => Ok((handler, sender.clone())),
-            Err(_) => Err(Error::ServerError(format!(
-                "Error procesando la ronda de gossip del nodo {}.",
-                id
-            ))),
-        }
-    }
-
-    fn exec_gossip(
-        receiver: std::sync::mpsc::Receiver<bool>,
-        id: NodeId,
-        weights: Vec<usize>,
-    ) -> Result<()> {
-        loop {
-            sleep(Duration::from_millis(200));
-            if let Ok(stop) = receiver.try_recv() {
-                if stop {
-                    break;
-                }
-            }
-
-            let dist = if let Ok(dist) = WeightedIndex::new(&weights) {
-                dist
-            } else {
-                return Err(Error::ServerError(format!(
-                    "No se pudo crear una distribución de pesos con {:?}.",
-                    &weights
-                )));
-            };
-
-            let nodes_ids = AddrLoader::default_loaded().get_ids();
-            let mut rng = thread_rng();
-            let selected_id = nodes_ids[dist.sample(&mut rng)];
-            if selected_id != id {
-                continue;
-            }
-
-            let mut neighbours: HashSet<NodeId> = HashSet::new();
-            while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
-                let selected_neighbour = nodes_ids[dist.sample(&mut rng)];
-                if (selected_neighbour != selected_id) && !neighbours.contains(&selected_neighbour)
-                {
-                    neighbours.insert(selected_neighbour);
-                }
-            }
-
-            if let Err(err) = send_to_node(
-                selected_id,
-                SvAction::Gossip(neighbours).as_bytes(),
-                PortType::Priv,
-            ) {
-                return Err(Error::ServerError(format!(
-                    "Ocurrió un error enviando mensaje de gossip desde el nodo {}:\n\n{}",
-                    id, err
-                )));
-            }
-        }
-        Ok(())
     }
 
     fn add_table(&mut self, table: Table) {
@@ -607,6 +413,11 @@ impl Node {
         nodes_ids
     }
 
+    /// Consulta si un ID de nodo existe en el archivo de IPs de los nodos.
+    fn id_exists(id: NodeId) -> bool {
+        Self::get_nodes_ids().contains(&id)
+    }
+
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
     fn select_node(&self, value: &str) -> NodeId {
         let hash_val = hash_value(value);
@@ -621,6 +432,16 @@ impl Node {
         START_ID + (i) as NodeId
     }
 
+    /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
+    fn _send_message(
+        &mut self,
+        bytes: Vec<Byte>,
+        value: String,
+        port_type: PortType,
+    ) -> Result<()> {
+        send_to_node(self.select_node(&value), bytes, port_type)
+    }
+
     /// Manda un mensaje a un nodo específico y espera por la respuesta de este.
     fn _send_message_and_wait_response(
         &self,
@@ -629,7 +450,7 @@ impl Node {
         port_type: PortType,
         wait_response: bool,
     ) -> Result<Vec<Byte>> {
-        send_to_node_and_wait_response(node_id, bytes, port_type, wait_response)
+        _send_to_node_and_wait_response(node_id, bytes, port_type, wait_response)
     }
 
     /// Manda un mensaje a un nodo específico y espera por la respuesta de este, con un timeout.
@@ -653,18 +474,8 @@ impl Node {
         )
     }
 
-    /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
-    fn _send_message(
-        &mut self,
-        bytes: Vec<Byte>,
-        value: String,
-        port_type: PortType,
-    ) -> Result<()> {
-        send_to_node(self.select_node(&value), bytes, port_type)
-    }
-
     /// Manda un mensaje en bytes a todos los vecinos del nodo.
-    pub fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
+    fn _notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
         for neighbour_id in Self::get_nodes_ids() {
             if neighbour_id == self.id {
                 continue;
@@ -677,16 +488,6 @@ impl Node {
     /// Compara si el _heartbeat_ de un nodo es más nuevo que otro.
     pub fn is_newer(&self, other: &Self) -> bool {
         self.endpoint_state.is_newer(&other.endpoint_state)
-    }
-
-    /// Verifica rápidamente si un mensaje es de tipo [EXIT](SvAction::Exit).
-    fn is_exit(bytes: &[Byte]) -> bool {
-        if let Some(action) = SvAction::get_action(bytes) {
-            if matches!(action, SvAction::Exit) {
-                return true;
-            }
-        }
-        false
     }
 
     /// Envia su endpoint state al nodo del ID correspondiente.
@@ -939,49 +740,6 @@ impl Node {
         });
 
         closed_count
-    }
-
-    /// Escucha por los eventos que recibe del cliente.
-    pub fn cli_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-        Self::listen(socket, PortType::Cli, node)
-    }
-
-    /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-    pub fn priv_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-        Self::listen(socket, PortType::Priv, node)
-    }
-
-    /// El escuchador de verdad.
-    ///
-    /// Las otras funciones son wrappers para no repetir código.
-    fn listen(socket: SocketAddr, port_type: PortType, node: Arc<Mutex<Node>>) -> Result<()> {
-        let listener = Node::bind_with_socket(socket)?;
-        let addr_loader = AddrLoader::default_loaded();
-        for tcp_stream_res in listener.incoming() {
-            match tcp_stream_res {
-                Err(_) => return Node::tcp_stream_error(&port_type, &socket, &addr_loader),
-                Ok(tcp_stream) => {
-                    let buffered_stream = Node::clone_tcp_stream(&tcp_stream)?;
-                    let mut bufreader = BufReader::new(buffered_stream);
-                    let bytes_vec = Node::write_bytes_in_buffer(&mut bufreader)?;
-                    // consumimos los bytes del stream para no mandarlos de vuelta en la response
-                    bufreader.consume(bytes_vec.len());
-                    if Self::is_exit(&bytes_vec[..]) {
-                        break;
-                    }
-                    match node.lock() {
-                        Ok(mut locked_in) => {
-                            locked_in.process_tcp(tcp_stream, bytes_vec)?;
-                        }
-                        Err(poison_err) => {
-                            println!("Error de lock envenenado:\n\n{}", poison_err);
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 
     /// Procesa una _request_ en forma de [Byte]s.
@@ -2171,42 +1929,65 @@ impl Node {
             // entonces se intenta con las replicas
             if result.is_empty() {
                 self.acknowledge_offline_neighbour(node_id);
-                let nodes_ids = Self::get_nodes_ids();
-                let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
-                for _ in 1..replication_factor_quantity {
-                    if self.neighbour_is_responsive(node_replica) {
-                        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                            None,
-                            Some(node_id),
-                        );
-                        let replica_response = self
-                            .send_message_and_wait_response_with_timeout(
-                                SvAction::InternalQuery(request_with_metadata).as_bytes(),
-                                node_replica,
-                                PortType::Priv,
-                                wait_response,
-                                TIMEOUT_SECS,
-                            )
-                            .unwrap_or_default();
-                        *replicas_asked += 1;
-
-                        if replica_response.is_empty() {
-                            self.acknowledge_offline_neighbour(node_replica);
-                        } else {
-                            result = replica_response;
-                            *responsive_replica = node_replica;
-                            break;
-                        }
-                    } else {
-                        *replicas_asked += 1;
-                    }
-                    node_replica = next_node_in_the_cluster(node_replica, &nodes_ids);
-                }
+                result = self.forward_request_to_replicas(
+                    node_id,
+                    request,
+                    wait_response,
+                    responsive_replica,
+                    replicas_asked,
+                    replication_factor_quantity,
+                );
             }
             result
         };
         Ok(actual_result)
+    }
+
+    fn forward_request_to_replicas(
+        &mut self,
+        node_id: NodeId,
+        request: &[Byte],
+        wait_response: bool,
+        responsive_replica: &mut NodeId,
+        replicas_asked: &mut usize,
+        replication_factor_quantity: u32,
+    ) -> Vec<Byte> {
+        let mut result: Vec<u8> = Vec::new();
+        let nodes_ids = Self::get_nodes_ids();
+        let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
+
+        for _ in 1..replication_factor_quantity {
+            if self.neighbour_is_responsive(node_replica) {
+                let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    None,
+                    Some(node_id),
+                );
+                let replica_response = self
+                    .send_message_and_wait_response_with_timeout(
+                        request_with_metadata,
+                        node_replica,
+                        PortType::Priv,
+                        wait_response,
+                        TIMEOUT_SECS,
+                    )
+                    .unwrap_or_default();
+                *replicas_asked += 1;
+
+                if replica_response.is_empty() {
+                    self.acknowledge_offline_neighbour(node_replica);
+                } else {
+                    result = replica_response;
+                    *responsive_replica = node_replica;
+                    break;
+                }
+            } else {
+                *replicas_asked += 1;
+            }
+            node_replica = next_node_in_the_cluster(node_replica, &nodes_ids);
+        }
+
+        result
     }
 
     /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
@@ -2631,52 +2412,6 @@ impl Node {
         };
         let res_hashed_value = u64::from_be_bytes(array);
         Ok(res_hashed_value)
-    }
-
-    fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
-        match TcpListener::bind(socket) {
-            Ok(tcp_listener) => Ok(tcp_listener),
-            Err(_) => Err(Error::ServerError(format!(
-                "No se pudo bindear a la dirección '{}'",
-                socket
-            ))),
-        }
-    }
-
-    fn tcp_stream_error(
-        port_type: &PortType,
-        socket: &SocketAddr,
-        addr_loader: &AddrLoader,
-    ) -> Result<()> {
-        let falla = match port_type {
-            PortType::Cli => "cliente",
-            PortType::Priv => "nodo o estructura interna",
-        };
-        Err(Error::ServerError(format!(
-            "Un {} no pudo conectarse al nodo con ID {}",
-            falla,
-            addr_loader.get_id(&socket.ip())?,
-        )))
-    }
-
-    fn clone_tcp_stream(tcp_stream: &TcpStream) -> Result<TcpStream> {
-        match tcp_stream.try_clone() {
-            Ok(cloned) => Ok(cloned),
-            Err(err) => Err(Error::ServerError(format!(
-                "No se pudo clonar el stream:\n\n{}",
-                err
-            ))),
-        }
-    }
-
-    fn write_bytes_in_buffer(bufreader: &mut BufReader<TcpStream>) -> Result<Vec<Byte>> {
-        match bufreader.fill_buf() {
-            Ok(recv) => Ok(recv.to_vec()),
-            Err(err) => Err(Error::ServerError(format!(
-                "No se pudo escribir los bytes:\n\n{}",
-                err
-            ))),
-        }
     }
 
     fn match_kind_of_conection_mode(
