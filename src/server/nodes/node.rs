@@ -82,9 +82,9 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 pub type NodeHandle = JoinHandle<Result<()>>;
 
 /// Cantidad de nodos fija en cualquier momento.
+/// 
+/// DEBE coincidir con la cantidad de nodos en el archivo de IPs `node_ips.csv`.
 const N_NODES: Byte = 5;
-/// El ID con el que comenzar a contar los nodos.
-const START_ID: NodeId = 10;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
@@ -218,7 +218,14 @@ impl Node {
         mode: ConnectionMode,
         nodes_weights: &mut Vec<usize>,
     ) -> Result<Vec<Option<NodeHandle>>> {
-        if !Self::id_exists(id) {
+        let nodes_ids = Self::get_nodes_ids();
+        if nodes_ids.len() != N_NODES as usize {
+            return Err(Error::ServerError(format!(
+                "El archivo de IPs de los nodos no tiene la cantidad correcta de nodos. Se esperaban {} nodos, se encontraron {}.",
+                N_NODES, nodes_ids.len()
+            )));
+        }
+        if !nodes_ids.contains(&id) {
             return Err(Error::ServerError(format!(
                 "El ID {} no está en el archivo de IPs de los nodos.",
                 id
@@ -250,7 +257,6 @@ impl Node {
         // Llenamos de información al nodo "seed". Arbitrariamente será el último.
         // Cuando fue iniciado el último nodo (el de mayor ID), hacemos el envío de la información,
         // pues asumimos que todos los demás ya fueron iniciados.
-        let nodes_ids = Self::get_nodes_ids();
         if id == nodes_ids[(N_NODES - 1) as usize] {
             Self::send_states_to_node(max_weight_id);
         }
@@ -413,23 +419,19 @@ impl Node {
         nodes_ids
     }
 
-    /// Consulta si un ID de nodo existe en el archivo de IPs de los nodos.
-    fn id_exists(id: NodeId) -> bool {
-        Self::get_nodes_ids().contains(&id)
-    }
-
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
     fn select_node(&self, value: &str) -> NodeId {
+        let nodes_ids = Self::get_nodes_ids();
         let hash_val = hash_value(value);
 
         let mut i = 0;
         for (a, b) in &self.nodes_ranges {
             if *a <= hash_val && hash_val < *b {
-                return START_ID + i as NodeId;
+                return nodes_ids[i];
             }
             i += 1;
         }
-        START_ID + (i) as NodeId
+        nodes_ids[i]
     }
 
     /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
