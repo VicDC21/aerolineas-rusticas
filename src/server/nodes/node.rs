@@ -1,5 +1,5 @@
 //! Módulo de nodos.
-use serde::{Deserialize, Serialize};
+use crate::client::cql_frame::query_body::QueryBody;
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -17,7 +17,6 @@ use crate::server::{
     utils::load_json,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
-use crate::client::cql_frame::query_body::QueryBody;
 use crate::{
     parser::{
         data_types::keyspace_name::KeyspaceName,
@@ -41,6 +40,7 @@ use crate::{
     protocol::utils::{parse_bytes_to_string, parse_bytes_to_string_map},
 };
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
 use std::{
     cmp::PartialEq,
@@ -48,7 +48,7 @@ use std::{
     io::{Read, Write},
     net::TcpStream,
     path::Path,
-    thread::JoinHandle
+    thread::JoinHandle,
 };
 
 use super::{
@@ -64,8 +64,8 @@ use super::{
     },
     table_metadata::table::Table,
     utils::{
-        divide_range, hash_value, next_node_in_the_cluster,
-        send_to_node, send_to_node_and_wait_response_with_timeout,
+        divide_range, hash_value, next_node_in_the_cluster, send_to_node,
+        send_to_node_and_wait_response_with_timeout,
     },
 };
 
@@ -727,10 +727,14 @@ impl Node {
         closed_count
     }
 
-
     /// Procesa una _request_ en forma de [Byte]s.
     /// También devuelve un [bool] indicando si se debe parar el hilo.
-    pub fn process_stream<S>(&mut self, stream: &mut S, bytes: Vec<Byte>, is_logged: bool) -> Result<Vec<Byte>>
+    pub fn process_stream<S>(
+        &mut self,
+        stream: &mut S,
+        bytes: Vec<Byte>,
+        is_logged: bool,
+    ) -> Result<Vec<Byte>>
     where
         S: Read + Write,
     {
@@ -915,7 +919,12 @@ impl Node {
     }
 
     /// Maneja una request.
-    fn handle_request(&mut self, request: &[Byte], is_internal_request: bool, is_logged: bool) -> Vec<Byte> {
+    fn handle_request(
+        &mut self,
+        request: &[Byte],
+        is_internal_request: bool,
+        is_logged: bool,
+    ) -> Vec<Byte> {
         if request.len() < 9 {
             return Vec::<Byte>::new();
         }
@@ -926,7 +935,9 @@ impl Node {
         let left_response = match header.opcode {
             Opcode::Startup => self.handle_startup(&request[9..]),
             Opcode::Options => self.handle_options(),
-            Opcode::Query => self.handle_query(request, &header.length, is_internal_request, is_logged),
+            Opcode::Query => {
+                self.handle_query(request, &header.length, is_internal_request, is_logged)
+            }
             Opcode::Prepare => self.handle_prepare(),
             Opcode::Execute => self.handle_execute(),
             Opcode::Register => self.handle_register(),
@@ -977,10 +988,12 @@ impl Node {
         request: &[Byte],
         lenght: &Length,
         internal_request: bool,
-        is_logged: bool
+        is_logged: bool,
     ) -> Result<Vec<Byte>> {
-        if !is_logged{
-            return Err(Error::AuthenticationError("No se pueden mandar queries antes de autenticar el usuario".to_string()))
+        if !is_logged {
+            return Err(Error::AuthenticationError(
+                "No se pueden mandar queries antes de autenticar el usuario".to_string(),
+            ));
         }
         if let Ok(query_body) = QueryBody::try_from(&request[9..(lenght.len as usize) + 9]) {
             let res = match make_parse(&mut tokenize_query(query_body.get_query())) {
@@ -1999,7 +2012,6 @@ impl Node {
                     responsive_replica,
                     replicas_asked,
                     replication_factor_quantity,
-                    
                 )?;
             }
             result
@@ -2028,15 +2040,16 @@ impl Node {
                     None,
                     Some(node_id),
                 );
-                let replica_response = if node_replica == self.id{
+                let replica_response = if node_replica == self.id {
                     self.process_select(select, node_id)?
-                } else { self
-                    .send_message_and_wait_response_with_timeout(
+                } else {
+                    self.send_message_and_wait_response_with_timeout(
                         request_with_metadata,
                         node_replica,
                         PortType::Priv,
                         wait_response,
-                        TIMEOUT_SECS,)?
+                        TIMEOUT_SECS,
+                    )?
                 };
                 *replicas_asked += 1;
 
@@ -2480,7 +2493,12 @@ impl Node {
         Ok(res_hashed_value)
     }
 
-    fn match_kind_of_conection_mode<S>(&mut self, bytes: Vec<Byte>, mut stream: S, is_logged: bool) -> Result<Vec<Byte>>
+    fn match_kind_of_conection_mode<S>(
+        &mut self,
+        bytes: Vec<Byte>,
+        mut stream: S,
+        is_logged: bool,
+    ) -> Result<Vec<Byte>>
     where
         S: Read + Write,
     {
@@ -2504,13 +2522,11 @@ impl Node {
                 if let Err(err) = stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);
                 }
-                return Ok(res)
+                return Ok(res);
             }
         }
         Ok(vec![])
     }
-
-
 
     /// Espera a que terminen todos los handlers.
     ///
@@ -2528,23 +2544,22 @@ impl Node {
         }
     }
 
-//     fn check_if_response_is_error(&self, res: &[Byte]) -> Result<Vec<Byte>>{
-//         match Opcode::try_from(res[4])? {
-//             Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-//             Opcode::Result => self.handle_result_from_node(
-//                 &mut results_from_another_nodes,
-//                 res,
-//                 &select,
-//             )?,
-//             _ => {
-//                 return Err(Error::ServerError(
-//                     "Nodo manda opcode inesperado".to_string(),
-//                 ))
-//             }
-//         };
-//     }
+    //     fn check_if_response_is_error(&self, res: &[Byte]) -> Result<Vec<Byte>>{
+    //         match Opcode::try_from(res[4])? {
+    //             Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+    //             Opcode::Result => self.handle_result_from_node(
+    //                 &mut results_from_another_nodes,
+    //                 res,
+    //                 &select,
+    //             )?,
+    //             _ => {
+    //                 return Err(Error::ServerError(
+    //                     "Nodo manda opcode inesperado".to_string(),
+    //                 ))
+    //             }
+    //         };
+    //     }
 }
-
 
 fn wrap_header(mut response: Vec<Byte>, is_internal_request: bool, header: Headers) -> Vec<Byte> {
     if !is_internal_request {

@@ -1,7 +1,10 @@
 //! Módulo que contiene las funciones que implementan los hilos internos de un nodo.
 
 use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
-use rustls::{pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer}, ServerConfig, ServerConnection};
+use rustls::{
+    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
+    ServerConfig, ServerConnection,
+};
 use std::{
     collections::HashSet,
     io::{BufRead, BufReader, Read},
@@ -14,9 +17,6 @@ use std::{
     time::Duration,
 };
 
-use crate::{protocol::{
-    aliases::{results::Result, types::Byte}, errors::error::Error, headers::opcode::Opcode, traits::Byteable
-}, server::pool::threadpool::ThreadPool};
 use crate::server::{
     actions::opcode::SvAction,
     nodes::{
@@ -25,6 +25,15 @@ use crate::server::{
         port_type::PortType,
         utils::send_to_node,
     },
+};
+use crate::{
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        headers::opcode::Opcode,
+        traits::Byteable,
+    },
+    server::pool::threadpool::ThreadPool,
 };
 
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
@@ -109,9 +118,7 @@ fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
                 let config = Arc::clone(&server_config);
                 let node = Arc::clone(&node);
                 let arc_exit = Arc::new(Mutex::new(exit));
-                pool.execute(move || {
-                    listen_single_client(config, tcp_stream, arc_exit, node)
-                })?;
+                pool.execute(move || listen_single_client(config, tcp_stream, arc_exit, node))?;
             }
         };
         if exit {
@@ -172,11 +179,9 @@ fn listen_single_client(
     let mut is_logged = false;
     loop {
         let mut buffer: Vec<u8> = vec![0; 2048];
-        let size = match tls.read( &mut buffer) {
+        let size = match tls.read(&mut buffer) {
             Ok(value) => value,
-            Err(_err) => {
-                return Err(Error::ServerError("No se pudo leer el stream".to_string()))
-            }
+            Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string())),
         };
         buffer.truncate(size);
         if is_exit(&buffer[..]) {
@@ -191,13 +196,14 @@ fn listen_single_client(
         }
         match node.lock() {
             Ok(mut locked_in) => {
-                let res = locked_in.process_stream(tls, buffer.to_vec(), true)?;
-                if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0]{
+                let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
+                if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
                     is_logged = true;
                 }
             }
             Err(poison_err) => {
                 println!("Error de lock envenenado:\n\n{}", poison_err);
+                node.clear_poison();
             }
         }
     }
@@ -225,39 +231,6 @@ fn configure_tls() -> Result<Arc<ServerConfig>> {
     };
     Ok(Arc::new(config))
 }
-
-// / El escuchador de verdad.
-// /
-// / Las otras funciones son wrappers para no repetir código.
-// fn listen(socket: SocketAddr, port_type: PortType, node: Arc<Mutex<Node>>) -> Result<()> {
-//     let listener = bind_with_socket(socket)?;
-//     let addr_loader = AddrLoader::default_loaded();
-//     for tcp_stream_res in listener.incoming() {
-//         match tcp_stream_res {
-//             Err(_) => return tcp_stream_error(&port_type, &socket, &addr_loader),
-//             Ok(tcp_stream) => {
-//                 let buffered_stream = clone_tcp_stream(&tcp_stream)?;
-//                 let mut bufreader = BufReader::new(buffered_stream);
-//                 let bytes_vec = write_bytes_in_buffer(&mut bufreader)?;
-//                 // consumimos los bytes del stream para no mandarlos de vuelta en la response
-//                 bufreader.consume(bytes_vec.len());
-//                 if is_exit(&bytes_vec[..]) {
-//                     break;
-//                 }
-//                 match node.lock() {
-//                     Ok(mut locked_in) => {
-//                         locked_in.process_tcp(tcp_stream, bytes_vec)?;
-//                     }
-//                     Err(poison_err) => {
-//                         println!("Error de lock envenenado:\n\n{}", poison_err);
-//                     }
-//                 }
-//             }
-//         }
-//     }
-
-//     Ok(())
-// }
 
 fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
     match TcpListener::bind(socket) {
