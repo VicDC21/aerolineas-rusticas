@@ -172,7 +172,8 @@ impl Client {
     pub fn echo(&mut self) -> Result<()> {
         let client_connection = get_client_connection()?;
         let tcp_stream = self.connect()?;
-        let mut tls_stream: TlsStream = self.create_tls_connection(client_connection, tcp_stream)?;
+        let mut tls_stream: TlsStream =
+            self.create_tls_connection(client_connection, tcp_stream)?;
         println!(
             "ECHO MODE:\n \
             ----------\n \
@@ -341,10 +342,7 @@ impl Client {
     //     }
     // }
 
-    fn read_complete_response(
-        &mut self,
-        tls_stream: &mut TlsStream,
-    ) -> Result<ProtocolResult> {
+    fn read_complete_response(&mut self, tls_stream: &mut TlsStream) -> Result<ProtocolResult> {
         let mut response = Vec::new();
         let mut buffer = vec![0; 8192];
         const HEADER_SIZE: usize = 9;

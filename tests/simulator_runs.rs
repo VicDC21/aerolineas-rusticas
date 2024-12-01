@@ -44,40 +44,39 @@ fn test_1_simple_flight_adding() {
             sleep(Duration::from_secs(5));
 
             let client_lock = conn.get_cli();
-            let tls_res = conn.get_tls_and_login("juan", "1234");
+            let login_res = conn.login("juan", "1234");
+            assert!(login_res.is_ok());
 
-            if let Ok(mut tls_stream) = tls_res {
-                if let Ok(mut client) = client_lock.lock() {
-                    let select_query = "SELECT * FROM vuelos_salientes_en_vivo;";
-                    let select_res = client.send_query(select_query, &mut tls_stream);
-                    if let Err(err) = &select_res {
-                        println!("{}", err);
-                    }
-                    assert!(select_res.is_ok());
+            if let Ok(mut client) = client_lock.lock() {
+                let select_query = "SELECT * FROM vuelos_salientes_en_vivo;";
+                let select_res = client.send_query(select_query, &mut conn.tls_stream);
+                if let Err(err) = &select_res {
+                    println!("{}", err);
+                }
+                assert!(select_res.is_ok());
 
-                    if let Ok(protocol_res) = select_res {
-                        assert!(matches!(&protocol_res, ProtocolResult::Rows(_)));
-                        let live_data_res = LiveFlightData::try_from_protocol_result(
-                            protocol_res.clone(),
-                            &FlightType::Incoming,
-                        );
+                if let Ok(protocol_res) = select_res {
+                    assert!(matches!(&protocol_res, ProtocolResult::Rows(_)));
+                    let live_data_res = LiveFlightData::try_from_protocol_result(
+                        protocol_res.clone(),
+                        &FlightType::Incoming,
+                    );
 
-                        if let ProtocolResult::Rows(rows) = protocol_res {
-                            assert!(rows.len() > 1);
+                    if let ProtocolResult::Rows(rows) = protocol_res {
+                        assert!(rows.len() > 1);
 
-                            assert!(live_data_res.is_ok());
-                            if let Ok(live_data) = live_data_res {
-                                let latest_opt = LiveFlightData::most_recent(&live_data);
-                                assert!(latest_opt.is_some());
+                        assert!(live_data_res.is_ok());
+                        if let Ok(live_data) = live_data_res {
+                            let latest_opt = LiveFlightData::most_recent(&live_data);
+                            assert!(latest_opt.is_some());
 
-                                if let Some(latest) = latest_opt {
-                                    assert!(matches!(latest.state, FlightState::InCourse));
-                                }
+                            if let Some(latest) = latest_opt {
+                                assert!(matches!(latest.state, FlightState::InCourse));
                             }
                         }
                     }
                 }
-            }
+            };
         }
     }
 

@@ -323,7 +323,7 @@ impl FlightsLoader {
         timestamp: &Long,
     ) -> Result<Vec<Flight>> {
         let client_lock = con_info.get_cli();
-        let mut tls_stream = con_info.get_tls_and_login(&login_info.user, &login_info.pass)?;
+        con_info.login(&login_info.user, &login_info.pass)?;
 
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
@@ -355,7 +355,7 @@ impl FlightsLoader {
             ),
         };
 
-        let protocol_result = client.send_query(query.as_str(), &mut tls_stream)?;
+        let protocol_result = client.send_query(query.as_str(), &mut con_info.tls_stream)?;
         let flights = Flight::try_from_protocol_result(protocol_result, flight_type)?;
 
         Ok(flights)
@@ -369,7 +369,7 @@ impl FlightsLoader {
         selected_airport: &Option<Airport>,
     ) -> Result<LiveDataMap> {
         let client_lock = con_info.get_cli();
-        let mut tls_stream = con_info.get_tls_and_login(&login_info.user, &login_info.pass)?;
+        con_info.login(&login_info.user, &login_info.pass)?;
 
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
@@ -398,7 +398,7 @@ impl FlightsLoader {
         };
 
         let mut flights_by_id = LiveDataMap::new();
-        let protocol_result = client.send_query(query.as_str(), &mut tls_stream)?;
+        let protocol_result = client.send_query(query.as_str(), &mut con_info.tls_stream)?;
         let live_data = LiveFlightData::try_from_protocol_result(protocol_result, flight_type)?;
         for data in live_data {
             println!("{:?}", &data);

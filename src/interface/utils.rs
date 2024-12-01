@@ -14,7 +14,7 @@ pub fn send_client_query(
     query: &str,
 ) -> Result<()> {
     let client_lock = con_info.get_cli();
-    let mut tls_stream = con_info.get_tls_and_login(&login_info.user, &login_info.pass)?;
+    con_info.login(&login_info.user, &login_info.pass)?;
 
     let mut client = match client_lock.lock() {
         Ok(cli) => cli,
@@ -27,7 +27,7 @@ pub fn send_client_query(
         }
     };
 
-    let protocol_result = client.send_query(query, &mut tls_stream)?;
+    let protocol_result = client.send_query(query, &mut con_info.tls_stream)?;
 
     if let ProtocolResult::QueryError(err) = protocol_result {
         println!("{}", err);

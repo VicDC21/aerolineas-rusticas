@@ -227,8 +227,7 @@ impl FlightSimulator {
     fn send_insert_query(query: &str, client: &mut Client) -> Result<(), Error> {
         let tcp_stream = client.connect()?;
         let client_connection = get_client_connection()?;
-        let mut tls_stream: TlsStream =
-            rustls::StreamOwned::new( client_connection, tcp_stream);
+        let mut tls_stream: TlsStream = rustls::StreamOwned::new(client_connection, tcp_stream);
         let protocol_result = client.send_query(query, &mut tls_stream)?;
 
         if let ProtocolResult::QueryError(err) = protocol_result {
