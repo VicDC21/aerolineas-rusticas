@@ -9,7 +9,10 @@ use std::{
 };
 
 use aerolineas_rusticas::{
-    client::{cli::Client, protocol_result::ProtocolResult},
+    client::{
+        cli::{get_client_connection, Client},
+        protocol_result::ProtocolResult,
+    },
     data::flights::{flight::Flight, states::FlightState, types::FlightType},
 };
 use common::{clean_nodes, init_graph_echo, init_graph_parsing};
@@ -63,8 +66,11 @@ fn test_2_simple_insert_and_select() {
 
     if let Ok(mut tcp_stream) = con_res {
         let insert_query = "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES (123456, 'SABE', 'SADL', 12345678, 'in_course');";
-
-        let insert_res = client.send_query(insert_query, &mut tcp_stream);
+        let mut client_connection = get_client_connection().unwrap();
+        let mut tls_stream = client
+            .create_tls_connection(&mut client_connection, &mut tcp_stream)
+            .unwrap();
+        let insert_res = client.send_query(insert_query, &mut tls_stream);
         assert!(insert_res.is_ok());
         if let Ok(protocol_res) = insert_res {
             // el resultado de un insert es VOID
@@ -74,7 +80,7 @@ fn test_2_simple_insert_and_select() {
         sleep(Duration::from_secs(5));
 
         let select_query = "SELECT * FROM vuelos_entrantes;";
-        let select_res = client.send_query(select_query, &mut tcp_stream);
+        let select_res = client.send_query(select_query, &mut tls_stream);
         assert!(select_res.is_ok());
         if let Ok(protocol_res) = select_res {
             assert!(matches!(&protocol_res, ProtocolResult::Rows(_)));

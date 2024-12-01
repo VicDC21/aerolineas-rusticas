@@ -5,7 +5,10 @@ mod common;
 use std::{thread::sleep, time::Duration};
 
 use aerolineas_rusticas::{
-    client::{cli::Client, protocol_result::ProtocolResult},
+    client::{
+        cli::{get_client_connection, Client},
+        protocol_result::ProtocolResult,
+    },
     data::{
         flights::{states::FlightState, types::FlightType},
         tracking::live_flight_data::LiveFlightData,
@@ -44,7 +47,11 @@ fn test_1_simple_flight_adding() {
 
         if let Ok(mut tcp_stream) = con_res {
             let select_query = "SELECT * FROM vuelos_salientes_en_vivo;";
-            let select_res = client.send_query(select_query, &mut tcp_stream);
+            let mut client_connection = get_client_connection().unwrap();
+            let mut tls_stream = client
+                .create_tls_connection(&mut client_connection, &mut tcp_stream)
+                .unwrap();
+            let select_res = client.send_query(select_query, &mut tls_stream);
             if let Err(err) = &select_res {
                 println!("{}", err);
             }

@@ -666,7 +666,7 @@ impl Default for Client {
     }
 }
 
-///TODO
+/// Obtiene una conexión de cliente TLS en base a un archivo de certificado y el servidor.
 pub fn get_client_connection() -> Result<rustls::ClientConnection> {
     let cert_file = "cert.pem";
     let mut root_store = RootCertStore::empty();

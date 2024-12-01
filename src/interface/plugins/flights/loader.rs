@@ -15,7 +15,7 @@ use eframe::egui::{Painter, Response};
 use walkers::{Plugin, Projector};
 
 use crate::{
-    client::cli::Client,
+    client::cli::{get_client_connection, Client},
     data::{
         airports::airp::Airport,
         flights::{flight::Flight, types::FlightType},
@@ -365,7 +365,10 @@ impl FlightsLoader {
             ),
         };
 
-        let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
+        let mut client_connection = get_client_connection()?;
+        let mut tls_stream =
+            client.create_tls_connection(&mut client_connection, &mut tcp_stream)?;
+        let protocol_result = client.send_query(query.as_str(), &mut tls_stream)?;
         let flights = Flight::try_from_protocol_result(protocol_result, flight_type)?;
 
         Ok(flights)
@@ -406,7 +409,10 @@ impl FlightsLoader {
         };
 
         let mut flights_by_id = LiveDataMap::new();
-        let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
+        let mut client_connection = get_client_connection()?;
+        let mut tls_stream =
+            client.create_tls_connection(&mut client_connection, &mut tcp_stream)?;
+        let protocol_result = client.send_query(query.as_str(), &mut tls_stream)?;
         let live_data = LiveFlightData::try_from_protocol_result(protocol_result, flight_type)?;
         for data in live_data {
             println!("{:?}", &data);

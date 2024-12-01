@@ -3,7 +3,10 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    client::{cli::Client, protocol_result::ProtocolResult},
+    client::{
+        cli::{get_client_connection, Client},
+        protocol_result::ProtocolResult,
+    },
     protocol::{aliases::results::Result, errors::error::Error},
 };
 
@@ -20,8 +23,10 @@ pub fn send_client_query(client_lock: Arc<Mutex<Client>>, query: &str) -> Result
         }
     };
 
+    let mut client_connection = get_client_connection()?;
     let mut tcp_stream = client.connect()?;
-    let protocol_result = client.send_query(query, &mut tcp_stream)?;
+    let mut tls_stream = client.create_tls_connection(&mut client_connection, &mut tcp_stream)?;
+    let protocol_result = client.send_query(query, &mut tls_stream)?;
 
     if let ProtocolResult::QueryError(err) = protocol_result {
         println!("{}", err);
