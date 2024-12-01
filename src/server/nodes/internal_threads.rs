@@ -142,6 +142,7 @@ fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
                     }
                     Err(poison_err) => {
                         println!("Error de lock envenenado:\n\n{}", poison_err);
+                        node.clear_poison();
                     }
                 }
             }
@@ -183,6 +184,7 @@ fn listen_single_client(
                 Ok(mut locked_in) => *locked_in = true,
                 Err(poison_err) => {
                     println!("Error de lock envenenado:\n\n{}", poison_err);
+                    node.clear_poison();
                 }
             }
             break;
