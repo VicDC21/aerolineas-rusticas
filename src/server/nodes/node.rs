@@ -1,4 +1,5 @@
 //! Módulo de nodos.
+use serde::{Deserialize, Serialize};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
@@ -13,7 +14,6 @@ use crate::protocol::{
 use crate::server::{
     actions::opcode::{GossipInfo, SvAction},
     modes::ConnectionMode,
-    traits::Serializable,
     utils::load_json,
 };
 use crate::tokenizer::tokenizer::tokenize_query;
@@ -46,7 +46,6 @@ use rustls::{
     ServerConfig, ServerConnection,
 };
 use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::PartialEq,
     collections::{HashMap, HashSet},
@@ -66,7 +65,7 @@ use std::{
 use super::{
     addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
-    graph::{N_NODES, START_ID},
+    internal_threads::{beater, create_client_and_private_conexion, gossiper},
     keyspace_metadata::keyspace::Keyspace,
     port_type::PortType,
     states::{
@@ -76,9 +75,8 @@ use super::{
     },
     table_metadata::table::Table,
     utils::{
-        divide_range, hash_value, hashmap_to_string, hashmap_vec_to_string,
-        next_node_in_the_cluster, send_to_node, send_to_node_and_wait_response,
-        send_to_node_and_wait_response_with_timeout, string_to_hashmap, string_to_hashmap_vec,
+        _send_to_node_and_wait_response, divide_range, hash_value, next_node_in_the_cluster,
+        send_to_node, send_to_node_and_wait_response_with_timeout,
     },
 };
 
@@ -92,8 +90,10 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
 
-/// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
-const HANDSHAKE_NEIGHBOURS: Byte = 3;
+/// Cantidad de nodos fija en cualquier momento.
+///
+/// DEBE coincidir con la cantidad de nodos en el archivo de IPs `node_ips.csv`.
+const N_NODES: Byte = 5;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El número de hilos para el [ThreadPool].
@@ -205,10 +205,9 @@ impl Node {
         let mut nodes_weights: Vec<usize> = Vec::new();
         let handlers = Self::bootstrap(id, mode, &mut nodes_weights)?;
 
-        let (_beater, _beat_stopper) = Self::beater(id)?;
-        let (_gossiper, _gossip_stopper) = Self::gossiper(id, &nodes_weights)?;
+        let (_beater, _beat_stopper) = beater(id)?;
+        let (_gossiper, _gossip_stopper) = gossiper(id, &nodes_weights)?;
 
-        // REVISAR
         /*Paramos los handlers especiales primero
         let _ = beat_stopper.send(true);
         let _ = beater.join();
@@ -220,38 +219,37 @@ impl Node {
         Ok(())
     }
 
-    /// Inicia todos los procesos necesarios para que el nodo se conecte al cluster.
+    /// Inicia la metadata y los hilos necesarios para que el nodo se conecte al cluster.
     fn bootstrap(
         id: NodeId,
         mode: ConnectionMode,
         nodes_weights: &mut Vec<usize>,
     ) -> Result<Vec<Option<NodeHandle>>> {
-        let metadata_path = DiskHandler::get_node_metadata_path(id);
-        let node_metadata_path = Path::new(&metadata_path);
-        if node_metadata_path.exists() {
-            Self::bootup_existing_node(id, mode, &metadata_path, nodes_weights)
-        } else {
-            Self::bootup_new_node(id, mode, nodes_weights)
-        }
-    }
-
-    /// Inicia un nuevo nodo.
-    fn bootup_new_node(
-        id: NodeId,
-        mode: ConnectionMode,
-        nodes_weights: &mut Vec<usize>,
-    ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_nodes_ids();
+        if nodes_ids.len() != N_NODES as usize {
+            return Err(Error::ServerError(format!(
+                "El archivo de IPs de los nodos no tiene la cantidad correcta de nodos. Se esperaban {} nodos, se encontraron {}.",
+                N_NODES, nodes_ids.len()
+            )));
+        }
         if !nodes_ids.contains(&id) {
             return Err(Error::ServerError(format!(
-                "El ID {} no está en el archivo de nodos disponibles.",
+                "El ID {} no está en el archivo de IPs de los nodos.",
                 id
             )));
         }
 
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
-        let mut node = Self::new(id, mode)?;
+        let metadata_path = DiskHandler::get_node_metadata_path(id);
+        let node_metadata_path = Path::new(&metadata_path);
+        let mut node = if node_metadata_path.exists() {
+            let mut node: Node = load_json(&metadata_path)?;
+            node.set_default_fields(id, mode)?;
+            node
+        } else {
+            Self::new(id, mode)?
+        };
         node.inicialize_nodes_weights();
         *nodes_weights = node.nodes_weights.clone();
         let max_weight_id = node.max_weight();
@@ -259,47 +257,13 @@ impl Node {
         let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
         let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-        node.create_client_and_private_conexion(id, cli_socket, priv_socket, &mut node_listeners)?;
+        create_client_and_private_conexion(node, id, cli_socket, priv_socket, &mut node_listeners)?;
 
         handlers.append(&mut node_listeners);
 
         // Llenamos de información al nodo "seed". Arbitrariamente será el último.
-        // Si fue iniciado el último nodo, hacemos el envío de la información,
-        // pues se asume que los nodos fueron iniciados en orden.
-        let nodes_ids = Self::get_nodes_ids();
-        if id == nodes_ids[(N_NODES - 1) as usize] {
-            Self::send_states_to_node(max_weight_id);
-        }
-
-        Ok(handlers)
-    }
-
-    /// Inicia un nodo existente.
-    fn bootup_existing_node(
-        id: NodeId,
-        mode: ConnectionMode,
-        metadata_path: &str,
-        nodes_weights: &mut Vec<usize>,
-    ) -> Result<Vec<Option<NodeHandle>>> {
-        let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
-        let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
-        let mut node: Node = load_json(metadata_path)?;
-        node.set_default_fields(id, mode)?;
-        node.inicialize_nodes_weights();
-        *nodes_weights = node.nodes_weights.clone();
-        let max_weight_id = node.max_weight();
-
-        let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
-        let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
-
-        node.create_client_and_private_conexion(id, cli_socket, priv_socket, &mut node_listeners)?;
-
-        handlers.append(&mut node_listeners);
-
-        // Llenamos de información al nodo "seed". Arbitrariamente será el último.
-        // Si fue iniciado el último nodo, hacemos el envío de la información,
-        // pues se asume que los nodos fueron iniciados en orden.
-        let nodes_ids = Self::get_nodes_ids();
+        // Cuando fue iniciado el último nodo (el de mayor ID), hacemos el envío de la información,
+        // pues asumimos que todos los demás ya fueron iniciados.
         if id == nodes_ids[(N_NODES - 1) as usize] {
             Self::send_states_to_node(max_weight_id);
         }
@@ -312,50 +276,7 @@ impl Node {
         self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo tiene el triple de probabilidades de ser elegido.
     }
 
-    /// Crea los _handlers_ que escuchan por conexiones entrantes.
-    ///
-    /// <div class="warning">
-    ///
-    /// Esta función toma _ownership_ del [nodo](Node) que se le pasa.
-    ///
-    /// </div>
-    fn create_client_and_private_conexion(
-        self,
-        id: u8,
-        cli_socket: SocketAddr,
-        priv_socket: SocketAddr,
-        node_listeners: &mut Vec<Option<NodeHandle>>,
-    ) -> Result<()> {
-        let sendable_node = Arc::new(Mutex::new(self));
-        let cli_node = Arc::clone(&sendable_node);
-        let priv_node = Arc::clone(&sendable_node);
-
-        let cli_builder = Builder::new().name(format!("{}_cli", id));
-        let cli_res = cli_builder.spawn(move || Self::cli_listen(cli_socket, cli_node));
-        match cli_res {
-            Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
-            Err(err) => {
-                return Err(Error::ServerError(format!(
-                "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
-                id, err
-            )));
-            }
-        }
-        let priv_builder = Builder::new().name(format!("{}_priv", id));
-        let priv_res = priv_builder.spawn(move || Self::priv_listen(priv_socket, priv_node));
-        match priv_res {
-            Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
-            Err(err) => {
-                return Err(Error::ServerError(format!(
-                "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
-                id, err
-            )));
-            }
-        }
-        Ok(())
-    }
-
-    /// Ordena a todos los nodos existentes que envien su endpoint state al nodo con el ID correspondiente.
+    /// Se le ordena a todos los nodos existentes que envien su _endpoint state_ al nodo con el ID dado.
     fn send_states_to_node(id: NodeId) {
         for node_id in Self::get_nodes_ids() {
             if let Err(err) = send_to_node(
@@ -384,111 +305,6 @@ impl Node {
             }
         }
         nodes_ids[max_id]
-    }
-
-    /// Avanza a cada segundo el estado de _heartbeat_ de los nodos.
-    fn beater(id: NodeId) -> Result<(NodeHandle, Sender<bool>)> {
-        let (sender, receiver) = channel::<bool>();
-        let builder = Builder::new().name(format!("beater_node_{}", id));
-        match builder.spawn(move || Self::increase_heartbeat_and_store_metadata(receiver, id)) {
-            Ok(handler) => Ok((handler, sender.clone())),
-            Err(_) => Err(Error::ServerError(format!(
-                "Error procesando los beats del nodo {}.",
-                id
-            ))),
-        }
-    }
-
-    fn increase_heartbeat_and_store_metadata(
-        receiver: std::sync::mpsc::Receiver<bool>,
-        id: NodeId,
-    ) -> std::result::Result<(), Error> {
-        loop {
-            sleep(Duration::from_secs(1));
-            if let Ok(stop) = receiver.try_recv() {
-                if stop {
-                    break;
-                }
-            }
-            if send_to_node(id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
-                return Err(Error::ServerError(format!(
-                    "Error enviando mensaje de heartbeat a nodo {}",
-                    id
-                )));
-            }
-            if send_to_node(id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
-                return Err(Error::ServerError(format!(
-                    "Error enviando mensaje de almacenamiento de metadata a nodo {}",
-                    id
-                )));
-            }
-        }
-        Ok(())
-    }
-
-    fn gossiper(id: NodeId, nodes_weights: &[usize]) -> Result<(NodeHandle, Sender<bool>)> {
-        let (sender, receiver) = channel::<bool>();
-        let builder = Builder::new().name(format!("gossiper_node_{}", id));
-        let weights = nodes_weights.to_vec();
-        match builder.spawn(move || Self::exec_gossip(receiver, id, weights)) {
-            Ok(handler) => Ok((handler, sender.clone())),
-            Err(_) => Err(Error::ServerError(format!(
-                "Error procesando la ronda de gossip del nodo {}.",
-                id
-            ))),
-        }
-    }
-
-    fn exec_gossip(
-        receiver: std::sync::mpsc::Receiver<bool>,
-        id: NodeId,
-        weights: Vec<usize>,
-    ) -> Result<()> {
-        loop {
-            sleep(Duration::from_millis(200));
-            if let Ok(stop) = receiver.try_recv() {
-                if stop {
-                    break;
-                }
-            }
-
-            let dist = if let Ok(dist) = WeightedIndex::new(&weights) {
-                dist
-            } else {
-                return Err(Error::ServerError(format!(
-                    "No se pudo crear una distribución de pesos con {:?}.",
-                    &weights
-                )));
-            };
-
-            let nodes_ids = AddrLoader::default_loaded().get_ids();
-            let mut rng = thread_rng();
-            let selected_id = nodes_ids[dist.sample(&mut rng)];
-            if selected_id != id {
-                continue;
-            }
-
-            let mut neighbours: HashSet<NodeId> = HashSet::new();
-            while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
-                let selected_neighbour = nodes_ids[dist.sample(&mut rng)];
-                if (selected_neighbour != selected_id) && !neighbours.contains(&selected_neighbour)
-                {
-                    neighbours.insert(selected_neighbour);
-                }
-            }
-
-            if let Err(err) = send_to_node(
-                selected_id,
-                SvAction::Gossip(neighbours).as_bytes(),
-                PortType::Priv,
-            ) {
-                return Err(Error::ServerError(format!(
-                    "Ocurrió un error enviando mensaje de gossip desde el nodo {}:\n\n{}",
-                    id, err
-                )));
-            }
-        }
-        Ok(())
     }
 
     fn add_table(&mut self, table: Table) {
@@ -612,16 +428,27 @@ impl Node {
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
     fn select_node(&self, value: &str) -> NodeId {
+        let nodes_ids = Self::get_nodes_ids();
         let hash_val = hash_value(value);
 
         let mut i = 0;
         for (a, b) in &self.nodes_ranges {
             if *a <= hash_val && hash_val < *b {
-                return START_ID + i as NodeId;
+                return nodes_ids[i];
             }
             i += 1;
         }
-        START_ID + (i) as NodeId
+        nodes_ids[i]
+    }
+
+    /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
+    fn _send_message(
+        &mut self,
+        bytes: Vec<Byte>,
+        value: String,
+        port_type: PortType,
+    ) -> Result<()> {
+        send_to_node(self.select_node(&value), bytes, port_type)
     }
 
     /// Manda un mensaje a un nodo específico y espera por la respuesta de este.
@@ -632,7 +459,7 @@ impl Node {
         port_type: PortType,
         wait_response: bool,
     ) -> Result<Vec<Byte>> {
-        send_to_node_and_wait_response(node_id, bytes, port_type, wait_response)
+        _send_to_node_and_wait_response(node_id, bytes, port_type, wait_response)
     }
 
     /// Manda un mensaje a un nodo específico y espera por la respuesta de este, con un timeout.
@@ -656,18 +483,8 @@ impl Node {
         )
     }
 
-    /// Manda un mensaje en bytes al nodo correspondiente mediante el _hashing_ del valor del _partition key_.
-    fn _send_message(
-        &mut self,
-        bytes: Vec<Byte>,
-        value: String,
-        port_type: PortType,
-    ) -> Result<()> {
-        send_to_node(self.select_node(&value), bytes, port_type)
-    }
-
     /// Manda un mensaje en bytes a todos los vecinos del nodo.
-    pub fn notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
+    fn _notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
         for neighbour_id in Self::get_nodes_ids() {
             if neighbour_id == self.id {
                 continue;
@@ -680,16 +497,6 @@ impl Node {
     /// Compara si el _heartbeat_ de un nodo es más nuevo que otro.
     pub fn is_newer(&self, other: &Self) -> bool {
         self.endpoint_state.is_newer(&other.endpoint_state)
-    }
-
-    /// Verifica rápidamente si un mensaje es de tipo [EXIT](SvAction::Exit).
-    fn is_exit(bytes: &[Byte]) -> bool {
-        if let Some(action) = SvAction::get_action(bytes) {
-            if matches!(action, SvAction::Exit) {
-                return true;
-            }
-        }
-        false
     }
 
     /// Envia su endpoint state al nodo del ID correspondiente.
@@ -1104,48 +911,14 @@ impl Node {
                 };
             }
             SvAction::DigestReadRequest(bytes) => {
-                let response = self.handle_request(&bytes, true, true);
-                // Devolvemos además un opcode para poder saber si el resultado fue un error o no.
-                if verify_succesful_response(&response) {
-                    let mut res = Opcode::Result.as_bytes();
-                    res.extend_from_slice(&hash_value(&response).to_be_bytes());
-                    let _ = tcp_stream.write_all(&res);
-                } else {
-                    let mut res = Opcode::RequestError.as_bytes();
-                    res.extend_from_slice(&response);
-                    let _ = tcp_stream.write_all(&res);
-                }
+                let res = self.exec_digest_read_request(bytes);
+                let _ = tcp_stream.write_all(&res);
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
             SvAction::RepairRows(table_name, node_id, rows_bytes) => {
-                if !self.table_exists(&table_name) {
-                    return Err(Error::ServerError(format!(
-                        "La tabla `{}` no existe",
-                        table_name
-                    )));
-                }
-
-                let table = self.get_table(&table_name)?;
-                let keyspace_name = table.get_keyspace();
-                if !self.keyspace_exists(keyspace_name) {
-                    return Err(Error::ServerError(format!(
-                        "El keyspace `{}` asociado a la tabla `{}` no existe",
-                        keyspace_name, table_name
-                    )));
-                }
-                let rows = String::from_utf8(rows_bytes).map_err(|_| {
-                    Error::ServerError("Error al castear de bytes a string".to_string())
-                })?;
-                DiskHandler::repair_rows(
-                    &self.storage_addr,
-                    &table_name,
-                    keyspace_name,
-                    &self.get_default_keyspace_name()?,
-                    node_id,
-                    &rows,
-                )?;
+                self.repair_rows(table_name, node_id, rows_bytes)?;
             }
             SvAction::AddPartitionValueToMetadata(table_name, partition_value) => {
                 let table = self.get_table(&table_name)?;
@@ -1164,20 +937,27 @@ impl Node {
     }
 
     fn exec_direct_read_request(&self, mut bytes: Vec<Byte>) -> Result<String> {
-        let node_number = bytes.pop().unwrap_or(0); // despues cambiar
-        let copia: &[u8] = &bytes;
-        let statement = match QueryBody::try_from(copia) {
+        let node_number = match bytes.pop() {
+            Some(node_number) => node_number,
+            None => {
+                return Err(Error::ServerError(
+                    "No se especificó el ID del nodo al hacer read-repair".to_string(),
+                ))
+            }
+        };
+        let bytes_borrowed: &[u8] = &bytes;
+        let statement = match QueryBody::try_from(bytes_borrowed) {
             Ok(query_body) => match make_parse(&mut tokenize_query(query_body.get_query())) {
                 Ok(statement) => statement,
                 Err(_err) => {
                     return Err(Error::ServerError(
-                        "No se cumplio el protocolo al hacer read-repair".to_string(),
+                        "No se pudo parsear el statement al hacer read-repair".to_string(),
                     ))
                 }
             },
             Err(_err) => {
                 return Err(Error::ServerError(
-                    "No se cumplio el protocolo al hacer read-repair".to_string(),
+                    "No se pudo parsear el body de la query al hacer read-repair".to_string(),
                 ))
             }
         };
@@ -1197,6 +977,48 @@ impl Node {
             node_number,
         )?;
         Ok(res)
+    }
+
+    fn exec_digest_read_request(&mut self, bytes: Vec<Byte>) -> Vec<Byte> {
+        let response = self.handle_request(&bytes, true, true);
+        // Devolvemos además un opcode para poder saber si el resultado fue un error o no.
+        if verify_succesful_response(&response) {
+            let mut res = Opcode::Result.as_bytes();
+            res.extend_from_slice(&hash_value(&response).to_be_bytes());
+            res
+        } else {
+            let mut res = Opcode::RequestError.as_bytes();
+            res.extend_from_slice(&response);
+            res
+        }
+    }
+
+    fn repair_rows(&self, table_name: String, node_id: Byte, rows_bytes: Vec<Byte>) -> Result<()> {
+        if !self.table_exists(&table_name) {
+            return Err(Error::ServerError(format!(
+                "La tabla `{}` no existe",
+                table_name
+            )));
+        }
+
+        let table = self.get_table(&table_name)?;
+        let keyspace_name = table.get_keyspace();
+        if !self.keyspace_exists(keyspace_name) {
+            return Err(Error::ServerError(format!(
+                "El keyspace `{}` asociado a la tabla `{}` no existe",
+                keyspace_name, table_name
+            )));
+        }
+        let rows = String::from_utf8(rows_bytes)
+            .map_err(|_| Error::ServerError("Error al castear de bytes a string".to_string()))?;
+        DiskHandler::repair_rows(
+            &self.storage_addr,
+            &table_name,
+            keyspace_name,
+            &self.get_default_keyspace_name()?,
+            node_id,
+            &rows,
+        )
     }
 
     /// Maneja una request.
@@ -1436,11 +1258,11 @@ impl Node {
         let name = keyspace_name.get_name().to_string();
         if self.keyspaces.contains_key(&name) {
             self.set_default_keyspace_name(name.clone())?;
-            Ok(self.create_result_void())
+            Ok(Self::create_result_void())
         } else {
             if self.check_if_keyspace_exists(keyspace_name) {
                 self.set_default_keyspace_name(name.clone())?;
-                return Ok(self.create_result_void());
+                return Ok(Self::create_result_void());
             }
             Err(Error::ServerError(
                 "El keyspace solicitado no existe".to_string(),
@@ -1479,10 +1301,10 @@ impl Node {
     ) -> Result<Vec<Byte>> {
         match DiskHandler::create_keyspace(create_keyspace, &self.storage_addr) {
             Ok(Some(keyspace)) => self.add_keyspace(keyspace),
-            Ok(None) => return Ok(self.create_result_void()),
+            Ok(None) => return Ok(Self::create_result_void()),
             Err(err) => return Err(err),
         };
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn process_alter_statement(
@@ -1516,7 +1338,7 @@ impl Node {
             responses.push(response);
             actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn process_internal_alter_keyspace_statement(
@@ -1531,11 +1353,11 @@ impl Node {
                 {
                     keyspace.set_replication(new_replication);
                 }
-                Ok(self.create_result_void())
+                Ok(Self::create_result_void())
             }
             None => {
                 if alter_keyspace.if_exists {
-                    Ok(self.create_result_void())
+                    Ok(Self::create_result_void())
                 } else {
                     Err(Error::ServerError(format!(
                         "El keyspace {} no existe",
@@ -1577,7 +1399,7 @@ impl Node {
             responses.push(response);
             actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
         }
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn process_internal_drop_keyspace_statement(
@@ -1588,11 +1410,11 @@ impl Node {
         if self.keyspaces.contains_key(keyspace_name) {
             self.keyspaces.remove(keyspace_name);
             match DiskHandler::drop_keyspace(keyspace_name, &self.storage_addr) {
-                Ok(_) => Ok(self.create_result_void()),
+                Ok(_) => Ok(Self::create_result_void()),
                 Err(e) => Err(e),
             }
         } else if drop_keyspace.if_exists {
-            Ok(self.create_result_void())
+            Ok(Self::create_result_void())
         } else {
             Err(Error::ServerError(format!(
                 "El keyspace {} no existe",
@@ -1601,7 +1423,7 @@ impl Node {
         }
     }
 
-    fn create_result_void(&mut self) -> Vec<Byte> {
+    fn create_result_void() -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
@@ -1631,7 +1453,7 @@ impl Node {
             Ok(None) => return Err(Error::ServerError("No se pudo crear la tabla".to_string())),
             Err(err) => return Err(err),
         };
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn process_create_table_statement(
@@ -1727,14 +1549,19 @@ impl Node {
             &self.get_default_keyspace_name()?,
             node_id,
         )?;
+
+        Ok(Self::create_result_select(&mut res))
+    }
+
+    fn create_result_select(res: &mut Vec<Byte>) -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
         response.append(&mut Flag::Default.as_bytes());
         response.append(&mut Stream::new(0).as_bytes());
         response.append(&mut Opcode::Result.as_bytes());
         response.append(&mut Length::new(res.len() as u32).as_bytes());
-        response.append(&mut res);
-        Ok(response)
+        response.append(res);
+        response
     }
 
     fn process_insert(
@@ -1762,7 +1589,7 @@ impl Node {
                 .insert(insert.table.get_name().to_string(), new_partition_values),
             None => None,
         };
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn check_if_has_new_partition_value(
@@ -1823,7 +1650,7 @@ impl Node {
             timestamp,
             node_number,
         )?;
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn handle_statement(
@@ -2101,7 +1928,7 @@ impl Node {
                 consistency_level, consistency_counter, consistency_number,
             )))
         } else {
-            Ok(self.create_result_void())
+            Ok(Self::create_result_void())
         }
     }
 
@@ -2269,43 +2096,68 @@ impl Node {
             // entonces se intenta con las replicas
             if result.is_empty() {
                 self.acknowledge_offline_neighbour(node_id);
-                let nodes_ids = Self::get_nodes_ids();
-                let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
-                for _ in 1..replication_factor_quantity {
-                    if self.neighbour_is_responsive(node_replica) {
-                        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                            SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                            None,
-                            Some(node_id),
-                        );
-                        let replica_response = if node_replica == self.id{
-                            self.process_select(select, node_id)?
-                        } else {
-                            self.send_message_and_wait_response_with_timeout(
-                                request_with_metadata,
-                                node_replica,
-                                PortType::Priv,
-                                wait_response,
-                                TIMEOUT_SECS,
-                            )?
-                        };
-                        if replica_response.is_empty() {
-                            self.acknowledge_offline_neighbour(node_replica);
-                        } else {
-                            *replicas_asked += 1;
-                            result = replica_response;
-                            *responsive_replica = node_replica;
-                            break;
-                        }
-                    } else {
-                        *replicas_asked += 1;
-                    }
-                    node_replica = next_node_in_the_cluster(node_replica, &nodes_ids);
-                }
+                result = self.forward_request_to_replicas(
+                    node_id,
+                    request,
+                    wait_response,
+                    responsive_replica,
+                    replicas_asked,
+                    replication_factor_quantity,
+                    select
+                )?;
             }
             result
         };
         Ok(actual_result)
+    }
+
+    fn forward_request_to_replicas(
+        &mut self,
+        node_id: NodeId,
+        request: &[Byte],
+        wait_response: bool,
+        responsive_replica: &mut NodeId,
+        replicas_asked: &mut usize,
+        replication_factor_quantity: u32,
+        select: &Select
+    ) -> Result<Vec<Byte>> {
+        let mut result: Vec<u8> = Vec::new();
+        let nodes_ids = Self::get_nodes_ids();
+        let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
+
+        for _ in 1..replication_factor_quantity {
+            if self.neighbour_is_responsive(node_replica) {
+                let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
+                    None,
+                    Some(node_id),
+                );
+                let replica_response = if node_replica == self.id{
+                    self.process_select(select, node_id)?
+                } else { self
+                    .send_message_and_wait_response_with_timeout(
+                        request_with_metadata,
+                        node_replica,
+                        PortType::Priv,
+                        wait_response,
+                        TIMEOUT_SECS,)?
+                };
+                *replicas_asked += 1;
+
+                if replica_response.is_empty() {
+                    self.acknowledge_offline_neighbour(node_replica);
+                } else {
+                    result = replica_response;
+                    *responsive_replica = node_replica;
+                    break;
+                }
+            } else {
+                *replicas_asked += 1;
+            }
+            node_replica = next_node_in_the_cluster(node_replica, &nodes_ids);
+        }
+
+        Ok(result)
     }
 
     /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
@@ -2478,7 +2330,7 @@ impl Node {
             node_number,
         )?;
 
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     fn delete_with_other_nodes(
@@ -2505,7 +2357,7 @@ impl Node {
                 )?;
             }
         }
-        Ok(self.create_result_void())
+        Ok(Self::create_result_void())
     }
 
     // Función auxiliar para replicar el delete en otros nodos
@@ -3070,103 +2922,5 @@ fn verify_succesful_response(response: &[Byte]) -> bool {
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.endpoint_state.eq(&other.endpoint_state)
-    }
-}
-
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Se muestra en formato .csv
-        // id,default_keyspace,keyspaces,tables,tables_and_partitions_keys_values
-        writeln!(
-            f,
-            "{},{},{},{},{}",
-            self.id,
-            self.default_keyspace_name,
-            hashmap_to_string(&self.keyspaces),
-            hashmap_to_string(&self.tables),
-            hashmap_vec_to_string(&self.tables_and_partitions_keys_values),
-        )
-    }
-}
-
-impl Serializable for Node {
-    fn serialize(&self) -> Vec<Byte> {
-        self.to_string().into_bytes()
-    }
-
-    fn deserialize(data: &[Byte]) -> Result<Self> {
-        let line: String = String::from_utf8(data.to_vec()).map_err(|e| {
-            Error::ServerError(format!("No se pudieron deserializar los datos: {}", e))
-        })?;
-        let mut parameters: IntoIter<String> = line
-            .split(",")
-            .map(|s| s.to_string())
-            .collect::<Vec<String>>()
-            .into_iter();
-
-        let id: Byte = parameters
-            .next()
-            .ok_or(Error::ServerError(
-                "No se pudo obtener el ID del nodo".to_string(),
-            ))?
-            .parse()
-            .map_err(|e| Error::ServerError(format!("No se pudo parsear el ID del nodo: {}", e)))?;
-
-        let default_keyspace_name: String = parameters
-            .next()
-            .ok_or(Error::ServerError(
-                "No se pudo obtener el keyspace por defecto del nodo".to_string(),
-            ))?
-            .parse()
-            .map_err(|e| {
-                Error::ServerError(format!(
-                    "No se pudo parsear el keyspace por defecto del nodo: {}",
-                    e
-                ))
-            })?;
-
-        let keyspaces: String = parameters.next().ok_or(Error::ServerError(
-            "No se pudo obtener los keyspaces del nodo".to_string(),
-        ))?;
-        let keyspaces: HashMap<String, Keyspace> = string_to_hashmap(&keyspaces).map_err(|e| {
-            Error::ServerError(format!(
-                "No se pudieron parsear los keyspaces del nodo: {}",
-                e
-            ))
-        })?;
-
-        let tables: String = parameters.next().ok_or(Error::ServerError(
-            "No se pudo obtener las tablas del nodo".to_string(),
-        ))?;
-        let tables: HashMap<String, Table> = string_to_hashmap(&tables).map_err(|e| {
-            Error::ServerError(format!("No se pudieron parsear las tablas del nodo: {}", e))
-        })?;
-
-        let tables_and_partitions_keys_values: String =
-            parameters.next().ok_or(Error::ServerError(
-                "No se pudo obtener las tablas y sus particiones del nodo".to_string(),
-            ))?;
-        let tables_and_partitions_keys_values: HashMap<String, Vec<String>> =
-            string_to_hashmap_vec(&tables_and_partitions_keys_values).map_err(|e| {
-                Error::ServerError(format!(
-                    "No se pudieron parsear las tablas y sus particiones del nodo: {}",
-                    e
-                ))
-            })?;
-
-        Ok(Node {
-            id,
-            neighbours_states: HashMap::new(),
-            endpoint_state: EndpointState::with_id(id),
-            storage_addr: DiskHandler::get_node_storage(id),
-            default_keyspace_name,
-            users_default_keyspace_name: HashMap::new(),
-            keyspaces,
-            tables,
-            nodes_ranges: divide_range(0, NODES_RANGE_END, N_NODES as usize),
-            tables_and_partitions_keys_values,
-            open_connections: OpenConnectionsMap::new(),
-            nodes_weights: Vec::new(),
-        })
     }
 }

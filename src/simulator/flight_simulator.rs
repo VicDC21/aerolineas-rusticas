@@ -411,7 +411,7 @@ impl FlightSimulator {
 
 impl Default for FlightSimulator {
     fn default() -> Self {
-        Self::new(4, Client::default()).unwrap()
+        Self::new(4, Client::default()).unwrap() // solo es usado para tests
     }
 }
 
