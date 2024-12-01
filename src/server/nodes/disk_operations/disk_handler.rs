@@ -41,8 +41,8 @@ use crate::server::{
 };
 
 use std::{
-    fs::{create_dir, OpenOptions},
-    io::{BufWriter, Write},
+    fs::{create_dir, File, OpenOptions},
+    io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
     str::FromStr,
 };
@@ -52,7 +52,7 @@ use super::{
 };
 
 /// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
-const STORAGE_PATH: &str = "storage";
+pub const STORAGE_PATH: &str = "storage";
 /// El nombre individual del directorio de un nodo.
 const STORAGE_NODE_PATH: &str = "storage_node";
 /// La ruta para el almacenamiento de los metadatos de los nodos.
@@ -352,9 +352,7 @@ impl DiskHandler {
         if query_cols.len() != 1 && query_cols[0] != "*" {
             table_ops.validate_columns(&query_cols)?;
         }
-
         let mut result = Vec::new();
-
         let mut rows = table_ops.read_rows(true)?;
         if let Some(the_where) = &statement.options.the_where {
             rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
@@ -946,8 +944,37 @@ impl DiskHandler {
         Ok(())
     }
 
-    /// Borra todas las filas existentes, excepto la de los nombres de las columnas y inserta todas las filas pasadas por parametro
-    pub fn actualize_all_rows(_rows: &str) {
-        todo!() // ESTA SERIA LA FUNCION, HAY QUE VER LOS PARAMETROS QUE DEBERIA RECIBIR
+    /// Lee la tabla de usuarios y contraseñas, y los devuelve como vector de tuplas.
+    pub fn read_admitted_users(_storage_addr: &str) -> Result<Vec<(String, String)>> {
+        let file = match File::open("users.csv") {
+            Ok(value) => value,
+            Err(_err) => {
+                return Err(Error::ServerError(
+                    "Error abriendo la tabla de usuarios para la autenticacion".to_string(),
+                ))
+            }
+        };
+        let reader = BufReader::new(file);
+        let mut result = Vec::new();
+
+        for (index, line) in reader.lines().enumerate() {
+            let line = match line {
+                Ok(value) => value,
+                Err(_err) => {
+                    return Err(Error::ServerError(
+                        "Error al leer tabla de usuarios para la autenticacion".to_string(),
+                    ))
+                }
+            };
+            if index == 0 {
+                continue;
+            }
+            let columns: Vec<&str> = line.split(',').collect();
+            if columns.len() >= 2 {
+                result.push((columns[0].to_string(), columns[1].to_string()));
+            }
+        }
+
+        Ok(result)
     }
 }

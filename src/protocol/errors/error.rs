@@ -17,7 +17,7 @@ use crate::protocol::{notations::consistency::Consistency, traits::Byteable};
 /// La forma del mensaje de error es `<code><message>[...]`.
 /// Luego, dependiendo del código de error, tendrá más información o no luego del mensaje.
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Error {
     /// Un error del lado del servidor.
     ServerError(String),

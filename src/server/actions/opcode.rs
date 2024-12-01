@@ -70,7 +70,7 @@ pub enum SvAction {
     /// Query enviada internamente por otro nodo.
     InternalQuery(Vec<Byte>),
 
-    /// Guardar metadatos de un nodo en el archivo de metadatos de los nodos `nodes.csv`.
+    /// Guardar metadatos de un nodo en la carpeta de metadatos de los nodos `nodes_metadata`.
     StoreMetadata,
 
     /// Obtiene unicamente las filas de la tabla solicitada, pero con sus timestamps.

@@ -1,6 +1,9 @@
 use {
     crate::{
-        client::{cli::Client, protocol_result::ProtocolResult},
+        client::{
+            cli::{get_client_connection, Client},
+            protocol_result::ProtocolResult,
+        },
         data::{
             airports::airp::{Airport, AirportsMap},
             flights::{states::FlightState, types::FlightType},
@@ -15,6 +18,7 @@ use {
     },
     rand::thread_rng,
     std::{
+        net::TcpStream,
         sync::{Arc, Mutex},
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -210,7 +214,10 @@ impl FlightSimulator {
 
     fn send_insert_query(query: &str, client: &mut Client) -> Result<(), Error> {
         let mut tcp_stream = client.connect()?;
-        let protocol_result = client.send_query(query, &mut tcp_stream)?;
+        let mut client_connection = get_client_connection()?;
+        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
+            rustls::Stream::new(&mut client_connection, &mut tcp_stream);
+        let protocol_result = client.send_query(query, &mut tls_stream)?;
 
         if let ProtocolResult::QueryError(err) = protocol_result {
             println!("{}", err);
@@ -385,7 +392,7 @@ impl FlightSimulator {
 
 impl Default for FlightSimulator {
     fn default() -> Self {
-        Self::new(4, Client::default()).unwrap()
+        Self::new(4, Client::default()).unwrap() // solo es usado para tests
     }
 }
 

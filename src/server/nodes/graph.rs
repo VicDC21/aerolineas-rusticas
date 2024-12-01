@@ -36,7 +36,10 @@ use crate::server::{
 };
 use crate::tokenizer::tokenizer::tokenize_query;
 
-use super::disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH};
+use super::{
+    disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH},
+    internal_threads::{cli_listen, priv_listen},
+};
 
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
@@ -150,6 +153,16 @@ impl NodesGraph {
                         } // Valor arbitrario por ahora
                         Statement::UdtStatement(_) => {
                             return Err(Error::ServerError("UDT statements no soportados".into()))
+                        }
+                        Statement::LoginUser(_) => {
+                            return Err(Error::Invalid(
+                                "No se deberia haber mandado el login por este canal".to_string(),
+                            ))
+                        }
+                        Statement::Startup => {
+                            return Err(Error::Invalid(
+                                "No se deberia haber mandado el startup por este canal".to_string(),
+                            ))
                         }
                     };
                     send_to_node(node_id, frame.as_bytes(), PortType::Priv)?;
@@ -366,7 +379,7 @@ fn create_client_and_private_conexion(
     let priv_node = Arc::clone(&sendable_node);
 
     let cli_builder = Builder::new().name(format!("{}_cli", current_id));
-    let cli_res = cli_builder.spawn(move || Node::cli_listen(cli_socket, cli_node));
+    let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));
     match cli_res {
         Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
         Err(err) => {
@@ -377,7 +390,7 @@ fn create_client_and_private_conexion(
         }
     }
     let priv_builder = Builder::new().name(format!("{}_priv", current_id));
-    let priv_res = priv_builder.spawn(move || Node::priv_listen(priv_socket, priv_node));
+    let priv_res = priv_builder.spawn(move || priv_listen(priv_socket, priv_node));
     match priv_res {
         Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
         Err(err) => {

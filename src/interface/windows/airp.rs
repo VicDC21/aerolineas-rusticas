@@ -37,21 +37,21 @@ pub fn clock_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTim
             ui.collapsing(
                 RichText::new(format!("{:0>2}:{:0>2}:{:0>2}", &hour, &minute, &second)),
                 |ui| {
-                    ComboBox::from_label("Hora")
+                    ComboBox::from_label("Hour")
                         .selected_text(format!("{}", hour))
                         .show_ui(ui, |ui| {
                             for h in 0..24 {
                                 ui.selectable_value(&mut hour, h, format!("{:0>2}", h));
                             }
                         });
-                    ComboBox::from_label("Minutos")
+                    ComboBox::from_label("Minutes")
                         .selected_text(format!("{}", minute))
                         .show_ui(ui, |ui| {
                             for m in 0..60 {
                                 ui.selectable_value(&mut minute, m, format!("{:0>2}", m));
                             }
                         });
-                    ComboBox::from_label("Segundos")
+                    ComboBox::from_label("Seconds")
                         .selected_text(format!("{}", second))
                         .show_ui(ui, |ui| {
                             for s in 0..60 {

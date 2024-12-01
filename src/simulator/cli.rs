@@ -1,12 +1,17 @@
 use crate::{
-    client::cli::Client, protocol::aliases::types::Int, protocol::errors::error::Error,
+    client::cli::Client,
+    protocol::aliases::{
+        results::Result,
+        types::{Double, Int},
+    },
+    protocol::errors::error::Error,
     simulator::flight_simulator::FlightSimulator,
 };
 
-const MAX_THREADS: usize = 4;
+const MAX_THREADS: usize = 16;
 
 /// Ejecuta el simulador de vuelos.
-pub fn run_sim(client: Client) -> Result<(), Error> {
+pub fn run_sim(client: Client) -> Result<()> {
     match FlightSimulator::new(MAX_THREADS, client) {
         Ok(simulator) => loop {
             println!("\nSimulador de Vuelos");
@@ -17,11 +22,16 @@ pub fn run_sim(client: Client) -> Result<(), Error> {
             println!("5. Salir");
 
             let mut input = String::new();
-            std::io::stdin().read_line(&mut input).unwrap();
+            if let Err(err) = std::io::stdin().read_line(&mut input) {
+                break Err(Error::ServerError(format!(
+                    "Error al leer la entrada: {}",
+                    err
+                )));
+            }
 
             match input.trim() {
-                "1" => handle_add_flight(&simulator),
-                "2" => handle_view_flight(&simulator),
+                "1" => handle_add_flight(&simulator)?,
+                "2" => handle_view_flight(&simulator)?,
                 "3" => handle_view_all_flights(&simulator),
                 "4" => handle_view_airports(&simulator),
                 "5" => break Ok(()),
@@ -32,18 +42,33 @@ pub fn run_sim(client: Client) -> Result<(), Error> {
     }
 }
 
-fn handle_add_flight(simulator: &FlightSimulator) {
+fn handle_add_flight(simulator: &FlightSimulator) -> Result<()> {
     println!("ID de vuelo:");
     let mut flight_id = String::new();
-    std::io::stdin().read_line(&mut flight_id).unwrap();
+    if let Err(err) = std::io::stdin().read_line(&mut flight_id) {
+        return Err(Error::ServerError(format!(
+            "Error al leer la entrada: {}",
+            err
+        )));
+    }
 
     println!("Código del aeropuerto de origen:");
     let mut origin = String::new();
-    std::io::stdin().read_line(&mut origin).unwrap();
+    if let Err(err) = std::io::stdin().read_line(&mut origin) {
+        return Err(Error::ServerError(format!(
+            "Error al leer la entrada: {}",
+            err
+        )));
+    }
 
     println!("Código del aeropuerto de destino:");
     let mut dest = String::new();
-    std::io::stdin().read_line(&mut dest).unwrap();
+    if let Err(err) = std::io::stdin().read_line(&mut dest) {
+        return Err(Error::ServerError(format!(
+            "Error al leer la entrada: {}",
+            err
+        )));
+    }
 
     match flight_id.trim().parse::<Int>() {
         Ok(id) => {
@@ -71,7 +96,12 @@ fn handle_view_flight(simulator: &FlightSimulator) {
 
     println!("Ingrese el ID de vuelo:");
     let mut flight_id = String::new();
-    std::io::stdin().read_line(&mut flight_id).unwrap();
+    if let Err(err) = std::io::stdin().read_line(&mut flight_id) {
+        return Err(Error::ServerError(format!(
+            "Error al leer la entrada: {}",
+            err
+        )));
+    }
 
     match flight_id.trim().parse::<Int>() {
         Ok(id) => match simulator.get_flight_data(id) {
@@ -92,8 +122,13 @@ fn handle_view_flight(simulator: &FlightSimulator) {
             }
             None => println!("Vuelo no encontrado"),
         },
-        Err(_) => println!("Error: El ID de vuelo debe ser un número entero válido"),
+        Err(_) => {
+            return Err(Error::ServerError(
+                "El ID de vuelo debe ser un número entero válido".to_string(),
+            ))
+        }
     }
+    Ok(())
 }
 
 fn handle_view_all_flights(simulator: &FlightSimulator) {

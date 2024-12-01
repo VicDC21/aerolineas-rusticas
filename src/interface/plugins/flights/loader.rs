@@ -46,9 +46,9 @@ type FlightChild = (DateChild, Receiver<Vec<Flight>>);
 type FlightDataChild = (DateChild, Receiver<LiveDataMap>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
-const FLIGHTS_INTERVAL_SECS: u64 = 3;
+const FLIGHTS_INTERVAL_SECS: u64 = 5;
 /// Intervalo (en segundos) antes de cargar los datos de vuelos de nuevo, como mínimo.
-const TRACKING_INTERVAL_SECS: u64 = 1;
+const TRACKING_INTERVAL_SECS: u64 = 3;
 
 /// Un día en segundos.
 const DAY_IN_SECONDS: i64 = 86400;
@@ -167,18 +167,13 @@ impl FlightsLoader {
                         if stop_by_airport && (timestamp == stop_value) {
                             break;
                         }
-                        let flights = match Self::load_flights(
+                        let flights = Self::load_flights(
                             Arc::clone(&client),
                             &flight_type,
                             selected_airport.as_ref(),
                             &timestamp,
-                        ) {
-                            Ok(loaded) => loaded,
-                            Err(err) => {
-                                println!("Error cargando los vuelos:\n\n{}", err);
-                                Vec::new()
-                            }
-                        };
+                        )
+                        .unwrap_or_default();
 
                         if let Err(err) = to_parent.send(flights) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);
@@ -235,17 +230,12 @@ impl FlightsLoader {
                         if stop_by_airport && (timestamp == stop_value) {
                             break;
                         }
-                        let live_data = match Self::load_live_data(
+                        let live_data = Self::load_live_data(
                             Arc::clone(&client),
                             &flight_type,
                             selected_airport.as_ref(),
-                        ) {
-                            Ok(loaded) => loaded,
-                            Err(err) => {
-                                println!("Error cargando los vuelos:\n\n{}", err);
-                                LiveDataMap::new()
-                            }
-                        };
+                        )
+                        .unwrap_or_default();
 
                         if let Err(err) = to_parent.send(live_data) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);
@@ -345,6 +335,7 @@ impl FlightsLoader {
     ) -> Result<Vec<Flight>> {
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
+                client_lock.clear_poison();
                 return Err(Error::ServerError(format!(
                     "Error de lock envenenado al cargar vuelos:\n\n{}",
                     poison_err
@@ -388,6 +379,7 @@ impl FlightsLoader {
     ) -> Result<LiveDataMap> {
         let mut client = match client_lock.lock() {
             Err(poison_err) => {
+                client_lock.clear_poison();
                 return Err(Error::ServerError(format!(
                     "Error de lock envenenado al cargar vuelos:\n\n{}",
                     poison_err
@@ -417,6 +409,7 @@ impl FlightsLoader {
         let protocol_result = client.send_query(query.as_str(), &mut tcp_stream)?;
         let live_data = LiveFlightData::try_from_protocol_result(protocol_result, flight_type)?;
         for data in live_data {
+            println!("{:?}", &data);
             if let Entry::Vacant(entry) = flights_by_id.entry(data.flight_id) {
                 entry.insert(Vec::<LiveFlightData>::new());
             } else if let Some(entries) = flights_by_id.get_mut(&data.flight_id) {
@@ -557,12 +550,14 @@ impl Plugin for &mut FlightsLoader {
         }
 
         if let Ok(new_tr_incoming) = self.incoming_tr_child.1.try_recv() {
+            println!("INCOMING: {:?}", new_tr_incoming);
             if !new_tr_incoming.is_empty() {
                 self.incoming_tracking = Some(new_tr_incoming);
             }
         }
 
         if let Ok(new_tr_departing) = self.departing_tr_child.1.try_recv() {
+            println!("DEPARTING: {:?}", new_tr_departing);
             if !new_tr_departing.is_empty() {
                 self.departing_tracking = Some(new_tr_departing);
             }

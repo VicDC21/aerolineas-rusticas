@@ -1,5 +1,5 @@
 /// Representa el tipo de dato y el dato en cuestión que se almacena en una columna de una tabla.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ColData {
     /// Representa un dato de tipo String.
     String(String),

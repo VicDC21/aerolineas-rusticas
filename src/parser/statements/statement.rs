@@ -3,6 +3,8 @@ use crate::parser::statements::dml_statement::dml_statement_parser::DmlStatement
 //use crate::parser::statements::role_or_permission_statement::role_or_permission_statement_parser::RoleOrPermissionStatement;
 use crate::parser::statements::udt_statement::udt_statement_parser::UdtStatement;
 
+use super::login_user_statement::LoginUserStatement;
+
 /// Representa una declaración CQL (Cassandra Query Language).
 /// Las declaraciones CQL se utilizan para definir y manipular la estructura y los datos de la base de datos.
 
@@ -21,4 +23,10 @@ pub enum Statement {
     /// Las declaraciones UDT se utilizan para definir un nuevo tipo de datos personalizado.
     /// Este tipo de datos personalizado se puede utilizar en la definición de columnas de una tabla.
     UdtStatement(UdtStatement),
+
+    ///Representa el logueo de usuarios (es una implementacion por fuera de cassandra creada por nosotros)
+    LoginUser(LoginUserStatement),
+
+    ///TODO
+    Startup,
 }

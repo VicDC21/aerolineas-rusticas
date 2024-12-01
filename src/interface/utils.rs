@@ -12,10 +12,11 @@ pub fn send_client_query(client_lock: Arc<Mutex<Client>>, query: &str) -> Result
     let mut client = match client_lock.lock() {
         Ok(cli) => cli,
         Err(poison_err) => {
+            client_lock.clear_poison();
             return Err(Error::ServerError(format!(
                 "Error de lock envenenado tratando de leer un cliente:\n\n{}",
                 poison_err
-            )))
+            )));
         }
     };
 
