@@ -2121,6 +2121,10 @@ impl Node {
                         replication_factor_quantity,
                     )?;
                 };
+                // if actual_result[4] == 0 {
+                //     let a: Error = Err(Error::try_from(actual_result[9..].to_vec())?)?;
+                //     println!("El error es {:?}", a)
+                // }
                 self.handle_result_from_node(
                     &mut results_from_another_nodes,
                     &actual_result,
@@ -2182,7 +2186,7 @@ impl Node {
                         );
                         let replica_response = self
                             .send_message_and_wait_response_with_timeout(
-                                SvAction::InternalQuery(request_with_metadata).as_bytes(),
+                                request_with_metadata,
                                 node_replica,
                                 PortType::Priv,
                                 wait_response,
@@ -2724,6 +2728,22 @@ impl Node {
             }
         }
     }
+
+//     fn check_if_response_is_error(&self, res: &[Byte]) -> Result<Vec<Byte>>{
+//         match Opcode::try_from(res[4])? {
+//             Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
+//             Opcode::Result => self.handle_result_from_node(
+//                 &mut results_from_another_nodes,
+//                 res,
+//                 &select,
+//             )?,
+//             _ => {
+//                 return Err(Error::ServerError(
+//                     "Nodo manda opcode inesperado".to_string(),
+//                 ))
+//             }
+//         };
+//     }
 }
 
 fn check_consistency_of_the_responses(
