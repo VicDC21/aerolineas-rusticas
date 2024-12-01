@@ -4,10 +4,7 @@ use std::fs::{self, File};
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{
-    aliases::results::Result,
-    errors::error::Error,
-};
+use crate::protocol::{aliases::results::Result, errors::error::Error};
 
 /// Toma un elemento serializable y lo convierte a JSON, escribiendo el contenido en un archivo en la ruta recibida.
 pub fn store_json<T: Serialize>(serializable: &T, path: &str) -> Result<()> {

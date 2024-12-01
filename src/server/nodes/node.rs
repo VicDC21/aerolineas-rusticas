@@ -62,8 +62,8 @@ use super::{
     },
     table_metadata::table::Table,
     utils::{
-        _send_to_node_and_wait_response, divide_range, hash_value,
-        next_node_in_the_cluster, send_to_node, send_to_node_and_wait_response_with_timeout,
+        _send_to_node_and_wait_response, divide_range, hash_value, next_node_in_the_cluster,
+        send_to_node, send_to_node_and_wait_response_with_timeout,
     },
 };
 
