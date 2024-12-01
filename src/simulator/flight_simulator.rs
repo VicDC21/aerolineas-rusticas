@@ -402,8 +402,16 @@ mod tests {
 
     #[test]
     fn test_flight_simulator() -> Result<(), Error> {
-        let simulator = FlightSimulator::default();
+        let mut simulator = FlightSimulator::default();
+        simulator.client.set_consistency_level("One")?;
+        let mut tcp_stream = simulator.client.connect()?;
+        let mut client_connection = get_client_connection()?;
+        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
+            rustls::Stream::new(&mut client_connection, &mut tcp_stream);
 
+        simulator
+            .client
+            .send_query("User: carlitos Password: 1234", &mut tls_stream)?;
         simulator.add_flight(123456, "SAEZ".to_string(), "LEMD".to_string())?;
 
         assert!(simulator.get_flight_data(123456).is_some());
@@ -434,8 +442,16 @@ mod tests {
 
     #[test]
     fn test_concurrent_flights_simulation() -> Result<(), Error> {
-        let simulator = FlightSimulator::new(8, Client::default())?;
+        let mut simulator = FlightSimulator::new(8, Client::default())?;
+        simulator.client.set_consistency_level("One")?;
+        let mut tcp_stream = simulator.client.connect()?;
+        let mut client_connection = get_client_connection()?;
+        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
+            rustls::Stream::new(&mut client_connection, &mut tcp_stream);
 
+        simulator
+            .client
+            .send_query("User: carlitos Password: 1234", &mut tls_stream)?;
         let flight_configs = vec![
             (123456, "SAEZ", "LEMD"),
             (234567, "SBGR", "KJFK"),

@@ -1,9 +1,6 @@
 use crate::{
     client::cli::Client,
-    protocol::aliases::{
-        results::Result,
-        types::{Double, Int},
-    },
+    protocol::aliases::{results::Result, types::Int},
     protocol::errors::error::Error,
     simulator::flight_simulator::FlightSimulator,
 };
@@ -79,6 +76,7 @@ fn handle_add_flight(simulator: &FlightSimulator) -> Result<()> {
         }
         Err(_) => println!("Error: El ID de vuelo debe ser un entero válido"),
     }
+    Ok(())
 }
 
 fn check_if_there_are_flights(simulator: &FlightSimulator) -> bool {
@@ -89,9 +87,9 @@ fn check_if_there_are_flights(simulator: &FlightSimulator) -> bool {
     true
 }
 
-fn handle_view_flight(simulator: &FlightSimulator) {
+fn handle_view_flight(simulator: &FlightSimulator) -> Result<()> {
     if !check_if_there_are_flights(simulator) {
-        return;
+        return Ok(());
     }
 
     println!("Ingrese el ID de vuelo:");
