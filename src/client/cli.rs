@@ -549,8 +549,10 @@ impl Client {
     }
 
     fn read_bytes_to_int(&self, request: &[Byte], actual_position: usize) -> Result<i32> {
-        if request.len() < actual_position + 4{
-            return Err(Error::Invalid("No se recibio una query con el largo esperado".to_string()))
+        if request.len() < actual_position + 4 {
+            return Err(Error::Invalid(
+                "No se recibio una query con el largo esperado".to_string(),
+            ));
         }
         let number = i32::from_be_bytes([
             request[actual_position],
