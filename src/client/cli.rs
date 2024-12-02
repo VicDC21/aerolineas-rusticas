@@ -172,17 +172,15 @@ impl Client {
     pub fn echo(&mut self) -> Result<()> {
         let client_connection = get_client_connection()?;
         let tcp_stream = self.connect()?;
-        let mut tls_stream: TlsStream =
+        let tls_stream: TlsStream =
             self.create_tls_connection(client_connection, tcp_stream)?;
-        println!(
-            "ECHO MODE:\n \
-            ----------\n \
-            Escribe tus queries. Cada línea se enviará al presionar Enter.\n \
-            ----------\n \
-            'q' o línea vacía para salir\n \
-            'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
-            ----------\n"
-        );
+        print_initial_message();
+        self.read_console_input(tls_stream)?;
+        Ok(())
+    }
+
+    /// Lee la consola como input y se encarga de handelear lo que se escriba
+    fn read_console_input(&mut self, mut tls_stream: LsStream<ClientConnection, TcpStream>) -> Result<()> {
         let reader = BufReader::new(stdin());
         for line in reader.lines() {
             match line {
@@ -202,31 +200,6 @@ impl Client {
                         }
                         Err(e) => {
                             eprintln!("Error al enviar la query: {}", e);
-                            // Intentar reconectar si es necesario
-                            if let Error::ServerError(msg) = &e {
-                                if msg.contains("conexión") {
-                                    println!("No volvemos a reconectar")
-                                    // match self.reconnect(&mut tcp_stream) {
-                                    //     Ok(_) => {
-                                    //         // Reintentar la query después de reconectar
-                                    //         if let Err(retry_err) =
-                                    //             self.send_query(&input, &mut tcp_stream)
-                                    //         {
-                                    //             eprintln!(
-                                    //                 "Error al reintentar la query: {}",
-                                    //                 retry_err
-                                    //             );
-                                    //         }
-                                    //     }
-                                    //     Err(e) => {
-                                    //         eprintln!("No se pudo reconectar: {}", e);
-                                    //         break;
-                                    //     }
-                                    // }
-                                } else {
-                                    eprintln!("Error en la query: {}", e);
-                                }
-                            }
                         }
                     }
                 }
@@ -236,10 +209,9 @@ impl Client {
                 }
             }
         }
-
         Ok(())
     }
-
+    
     /// Envía una query al servidor y devuelve la respuesta del mismo.
     ///
     /// La query será enviada con el _Consistency Level_ actual.
@@ -269,22 +241,9 @@ impl Client {
                         return Err(Error::ServerError("UDT statements no soportados".into()));
                     }
                 };
-
                 const MAX_RETRIES: u32 = 2;
                 let mut last_error = None;
-
                 for _retry in 0..=MAX_RETRIES {
-                    // VER ESTE CASO
-                    // if retry > 0 {
-                    //     match self.reconnect(tls_stream) {
-                    //         Ok(_) => (),
-                    //         Err(e) => {
-                    //             last_error = Some(e);
-                    //             continue;
-                    //         }
-                    //     }
-                    // }
-
                     match tls_stream.write_all(&frame) {
                         Ok(_) => match tls_stream.flush() {
                             Ok(_) => match self.read_complete_response(tls_stream) {
@@ -302,7 +261,6 @@ impl Client {
                         }
                     }
                 }
-
                 Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
             }
             Err(err) => Err(Error::ServerError(err.to_string())),
@@ -311,7 +269,30 @@ impl Client {
         self.requests_stream.remove(&stream_id);
         result
     }
-
+    // // Si una query falla al enviarse aca se intenta reenviarla de nuevo por el tls stream
+    // fn retry_send_query(&mut self, tls_stream: &mut LsStream<ClientConnection, TcpStream>, frame: Vec<u8>) -> Result<ProtocolResult> {
+    //     const MAX_RETRIES: u32 = 2;
+    //     let mut last_error = None;
+    //     for _retry in 0..=MAX_RETRIES {
+    //         match tls_stream.write_all(&frame) {
+    //             Ok(_) => match tls_stream.flush() {
+    //                 Ok(_) => match self.read_complete_response(tls_stream) {
+    //                     Ok(response) => return Ok(response),
+    //                     Err(e) => last_error = Some(e),
+    //                 },
+    //                 Err(e) => {
+    //                     last_error =
+    //                         Some(Error::ServerError(format!("Error al flush: {}", e)))
+    //                 }
+    //             },
+    //             Err(e) => {
+    //                 last_error =
+    //                     Some(Error::ServerError(format!("Error al escribir: {}", e)))
+    //             }
+    //         }
+    //     }
+    //     Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
+    // }
     // fn reconnect(&mut self, tcp_stream: &mut TcpStream) -> Result<()> {
     //     // Cerrar explícitamente la conexión anterior
     //     let _ = tcp_stream.shutdown(std::net::Shutdown::Both);
@@ -451,8 +432,7 @@ impl Client {
     }
 
     fn handle_ready(&self) -> Result<ProtocolResult> {
-        println!("Entra a ready");
-        todo!()
+        Err(Error::ConfigError("Esta funcionalidad aun no es valida".to_string()))
     }
 
     fn handle_authenticate(&self) -> Result<ProtocolResult> {
@@ -460,7 +440,7 @@ impl Client {
     }
 
     fn handle_supported(&self) -> Result<ProtocolResult> {
-        todo!()
+        Err(Error::ConfigError("Esta funcionalidad aun no es valida".to_string()))
     }
 
     fn handle_result(&self, lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
@@ -474,11 +454,11 @@ impl Client {
     }
 
     fn handle_event(&self) -> Result<ProtocolResult> {
-        todo!()
+        Err(Error::ConfigError("Esta funcionalidad aun no es valida".to_string()))
     }
 
     fn handle_auth_challenge(&self) -> Result<ProtocolResult> {
-        todo!()
+        Err(Error::ConfigError("Esta funcionalidad aun no es valida".to_string()))
     }
 
     fn handle_auth_success(&self) -> Result<ProtocolResult> {
@@ -499,48 +479,17 @@ impl Client {
             col_types.push(ColType::try_from(&request[actual_position..])?);
             actual_position += 2;
         }
-        let rows_count = i32::from_be_bytes([
-            request[actual_position],
-            request[actual_position + 1],
-            request[actual_position + 2],
-            request[actual_position + 3],
-        ]);
+        let rows_count = self.read_bytes_to_int(request, actual_position);
         actual_position += 4;
         let mut rows: Vec<Vec<ColData>> = Vec::new(); // usar las filas ya parseadas
         for _ in 0..rows_count {
             let mut columns: Vec<ColData> = Vec::new();
             for i in 0..columns_count {
-                let col_data = match ColumnDataType::from(col_types[i as usize].clone()) {
-                    ColumnDataType::String => {
-                        let value = self.parse_string(request, &mut actual_position)?;
-                        actual_position += value.len();
-                        ColData::String(value)
-                    }
-                    ColumnDataType::Timestamp => {
-                        let value =
-                            self.parse_column_value::<i64>(request, &mut actual_position)?;
-                        actual_position += value.to_string().len();
-                        ColData::Timestamp(value)
-                    }
-                    ColumnDataType::Double => {
-                        let value =
-                            self.parse_column_value::<f64>(request, &mut actual_position)?;
-                        actual_position += value.to_string().len();
-                        ColData::Double(value)
-                    }
-                    ColumnDataType::Int => {
-                        let value =
-                            self.parse_column_value::<i32>(request, &mut actual_position)?;
-                        actual_position += value.to_string().len();
-                        ColData::Int(value)
-                    }
-                };
-
+                let col_data = self.match_col_type(&col_types, i, request, &mut actual_position)?;
                 columns.push(col_data);
             }
             rows.push(columns);
         }
-
         println!("Las rows son:");
         for row in &rows {
             println!("{:?}", row);
@@ -548,6 +497,35 @@ impl Client {
         Ok(ProtocolResult::Rows(rows))
     }
 
+    fn match_col_type(&self, col_types: &[ColType], i: u32, request: &[u8], actual_position: &mut usize) -> Result<ColData> {
+        let col_data = match ColumnDataType::from(col_types[i as usize].clone()) {
+            ColumnDataType::String => {
+                let value = self.parse_string(request, actual_position)?;
+                *actual_position += value.len();
+                ColData::String(value)
+            }
+            ColumnDataType::Timestamp => {
+                let value =
+                    self.parse_column_value::<i64>(request, actual_position)?;
+                *actual_position += value.to_string().len();
+                ColData::Timestamp(value)
+            }
+            ColumnDataType::Double => {
+                let value =
+                    self.parse_column_value::<f64>(request, actual_position)?;
+                *actual_position += value.to_string().len();
+                ColData::Double(value)
+            }
+            ColumnDataType::Int => {
+                let value =
+                    self.parse_column_value::<i32>(request, actual_position)?;
+                *actual_position += value.to_string().len();
+                ColData::Int(value)
+            }
+        };
+        Ok(col_data)
+    }
+    
     fn set_keyspace(&self, lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
         match String::from_utf8(request[0..lenght.len as usize].to_vec()) {
             Ok(value) => Ok(ProtocolResult::SetKeyspace(value)),
@@ -557,7 +535,7 @@ impl Client {
         }
     }
 
-    fn get_length(&self, request: &[Byte], actual_position: usize) -> i32 {
+    fn read_bytes_to_int(&self, request: &[Byte], actual_position: usize) -> i32 {
         i32::from_be_bytes([
             request[actual_position],
             request[actual_position + 1],
@@ -571,7 +549,7 @@ impl Client {
         T: std::str::FromStr,
         T::Err: std::fmt::Display,
     {
-        let value_len = self.get_length(request, *actual_position);
+        let value_len = self.read_bytes_to_int(request, *actual_position);
         *actual_position += 4;
         let right_position = *actual_position + value_len as usize;
         let str_value = std::str::from_utf8(&request[*actual_position..right_position])
@@ -583,7 +561,7 @@ impl Client {
     }
 
     fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {
-        let string_len = self.get_length(request, *actual_position);
+        let string_len = self.read_bytes_to_int(request, *actual_position);
         *actual_position += 4;
         let right_position = *actual_position + string_len as usize;
 
@@ -661,20 +639,29 @@ impl Client {
     }
 }
 
+fn print_initial_message() {
+    println!(
+        "ECHO MODE:\n \
+            ----------\n \
+            Escribe tus queries. Cada línea se enviará al presionar Enter.\n \
+            ----------\n \
+            'q' o línea vacía para salir\n \
+            'shutdown' para mandar un mensaje de apagado al servidor (y salir)\n \
+            ----------\n"
+    );
+}
+
 impl Default for Client {
     fn default() -> Self {
         Self::new(AddrLoader::default_loaded(), HashSet::<i16>::new())
     }
 }
 
-///TODO
+/// Realiza el seteo del cliente para luego usarse en un tls_stream
 pub fn get_client_connection() -> Result<rustls::ClientConnection> {
-    let cert_file = "cert.pem";
+
     let mut root_store = RootCertStore::empty();
-    let certs: Vec<CertificateDer<'_>> = CertificateDer::pem_file_iter(cert_file)
-        .unwrap()
-        .map(|cert| cert.unwrap())
-        .collect();
+    let certs = handle_pem_file_iter()?;
     for cert in certs {
         match root_store.add(cert) {
             Ok(_) => (),
@@ -688,4 +675,22 @@ pub fn get_client_connection() -> Result<rustls::ClientConnection> {
     let client_connection: rustls::ClientConnection =
         rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
     Ok(client_connection)
+}
+
+fn handle_pem_file_iter() -> Result<Vec<CertificateDer<'static>>>{
+    let cert_file = "cert.pem";
+    let certs: Vec<CertificateDer<'_>> = match CertificateDer::pem_file_iter(cert_file) {
+        Ok(certs_iter) => {
+            certs_iter
+                .map(|cert_res| {
+                    cert_res.map_err(|_| Error::Invalid("No se pudo leer un certificado".to_string()))
+                })
+                .collect()
+        }
+        Err(_) => Err(Error::Invalid("No se pudo leer el archivo de certificados".to_string())),
+    }?;
+    Ok(certs)
+
+
+
 }

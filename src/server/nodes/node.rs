@@ -1951,10 +1951,6 @@ impl Node {
                         replication_factor_quantity,
                     )?;
                 };
-                // if actual_result[4] == 0 {
-                //     let a: Error = Err(Error::try_from(actual_result[9..].to_vec())?)?;
-                //     println!("El error es {:?}", a)
-                // }
                 self.handle_result_from_node(
                     &mut results_from_another_nodes,
                     &actual_result,
@@ -2363,36 +2359,6 @@ impl Node {
 
         let final_length = (results_from_another_nodes.len() as u32) - 9;
         results_from_another_nodes[5..9].copy_from_slice(&final_length.to_be_bytes());
-
-        /*No funciona, las filas no son un string largo, el formato es [largo del string][string],
-        entonces si intentas parsear todo como si fuese un string te va a devolver cualquier cosa
-
-        let mut new_ordered_res_bytes = self.get_ordered_new_res_bytes(
-            results_from_another_nodes,
-            total_length_until_end_of_metadata,
-            select,
-        )?;
-
-        le agrego el body de las filas a las que ya tenia
-        results_from_another_nodes.truncate(total_length_until_end_of_metadata);
-        results_from_another_nodes.append(&mut new_ordered_res_bytes);*/
-
-        /*Esta comprobacion podriamos usarla en handle_result_from_node:
-
-        match Opcode::try_from(res[4])? {
-            Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-            Opcode::Result => self.handle_result_from_node(
-                &mut results_from_another_nodes,
-                res,
-                &select,
-            )?,
-            _ => {
-                return Err(Error::ServerError(
-                    "Nodo manda opcode inesperado".to_string(),
-                ))
-            }
-        };*/
-
         Ok(())
     }
 
@@ -2403,7 +2369,6 @@ impl Node {
     ) -> i32 {
         let new_quantity_rows =
             &results_from_another_nodes[rows_quantity_position..(rows_quantity_position + 4)];
-        println!("Rompe get_quantity_of_rows");
         i32::from_be_bytes([
             new_quantity_rows[0],
             new_quantity_rows[1],
@@ -2419,7 +2384,6 @@ impl Node {
         }
         // el 13 al 17 son flags
         let column_quantity = &results_from_another_nodes[17..21];
-        println!("Rompe get_columns_metadata_length");
         let column_quantity = i32::from_be_bytes([
             column_quantity[0],
             column_quantity[1],
