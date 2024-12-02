@@ -677,7 +677,8 @@ pub fn get_client_connection() -> Result<rustls::ClientConnection> {
     Ok(client_connection)
 }
 
-fn handle_pem_file_iter() -> Result<Vec<CertificateDer<'static>>>{
+/// Handelea los results que se devuelven al cargar el certificado
+pub fn handle_pem_file_iter() -> Result<Vec<CertificateDer<'static>>>{
     let cert_file = "cert.pem";
     let certs: Vec<CertificateDer<'_>> = match CertificateDer::pem_file_iter(cert_file) {
         Ok(certs_iter) => {
