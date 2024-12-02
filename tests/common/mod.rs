@@ -7,19 +7,24 @@
 use std::{
     fs::remove_dir_all,
     io::{ErrorKind, Result as IOResult},
-    thread::{spawn, JoinHandle},
+    thread::{sleep, spawn, JoinHandle},
+    time::Duration,
 };
 
 use aerolineas_rusticas::{
     protocol::aliases::results::Result,
-    server::nodes::{
-        disk_operations::disk_handler::{NODES_METADATA_PATH, STORAGE_PATH},
-        graph::NodesGraph,
-    },
+    server::nodes::{graph::NodesGraph, node::Node},
 };
 
 /// Un handle común en nuestra librería.
 pub type ThreadHandle<T> = JoinHandle<Result<T>>;
+/// Lista de handles simples.
+pub type HandlesVec = Vec<Option<JoinHandle<()>>>;
+
+/// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
+pub const STORAGE_PATH: &str = "storage";
+/// La ruta para el almacenamiento de los metadatos de los nodos.
+pub const NODES_METADATA_PATH: &str = "nodes_metadata";
 
 /// Crea un [grafo](NodesGraph) en modo de [DEBUG](aerolineas_rusticas::server::modes::ConnectionMode::Echo)
 /// y lo corre en un hilo aparte.
@@ -53,4 +58,43 @@ fn rmdir(path: &str) -> IOResult<()> {
     }
 
     Ok(())
+}
+
+/// Crea una lista de nodos en modo ECHO.
+pub fn create_echo_nodes(nodes: u8, duration: Duration) -> HandlesVec {
+    let mut handles = HandlesVec::with_capacity(nodes as usize);
+    for i in 0..nodes {
+        handles.push(Some(spawn(move || {
+            if let Err(err) = Node::init_in_echo_mode(10 + i) {
+                println!("Error:\n{}", err);
+            };
+        })));
+        sleep(duration);
+    }
+
+    handles
+}
+
+/// Crea una lista de nodos en modo PARSING.
+pub fn create_parsing_nodes(nodes: u8, duration: Duration) -> HandlesVec {
+    let mut handles = HandlesVec::with_capacity(nodes as usize);
+    for i in 0..nodes {
+        handles.push(Some(spawn(move || {
+            if let Err(err) = Node::init_in_parsing_mode(10 + i) {
+                println!("Error:\n{}", err);
+            };
+        })));
+        sleep(duration);
+    }
+
+    handles
+}
+
+/// Espera a que todos los handles terminen.
+pub fn handles_join(handles: &mut HandlesVec) {
+    for handle_opt in handles {
+        if let Some(handle) = handle_opt.take() {
+            let _ = handle.join();
+        }
+    }
 }

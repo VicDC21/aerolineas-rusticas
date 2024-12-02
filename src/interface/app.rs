@@ -1,7 +1,6 @@
 //! Módulo para la estructura de la aplicación en sí.
 
 use std::env::var;
-use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Local};
 use eframe::egui::{CentralPanel, Context};
@@ -11,6 +10,7 @@ use walkers::sources::OpenStreetMap;
 use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position};
 
 use crate::client::cli::Client;
+use crate::client::conn_holder::ConnectionHolder;
 use crate::data::flights::types::FlightType;
 use crate::data::tracking::live_flight_data::LiveFlightData;
 use crate::interface::{
@@ -21,7 +21,7 @@ use crate::interface::{
         flights::{loader::FlightsLoader, updater::FlightsUpdater},
     },
     windows::{
-        airp::{airports_progress, clock_selector, date_selector},
+        airp::{airports_progress, clock_selector, date_selector, login_window},
         util::{go_to_my_position, zoom},
     },
 };
@@ -33,8 +33,8 @@ pub const ORIG_LONG: f64 = -58.36909719124974;
 
 /// La app de aerolíneas misma.
 pub struct AerolineasApp {
-    /// El cliente interno de la aplicación.
-    client: Arc<Mutex<Client>>,
+    /// La información de la conexión actual.
+    con_info: ConnectionHolder,
 
     /// Guarda el estado del widget del mapa.
     map_memory: MapMemory,
@@ -75,8 +75,10 @@ impl AerolineasApp {
         let mut mem = MapMemory::default();
         let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
 
+        let con_info = ConnectionHolder::with_cli(Client::default()).unwrap();
+
         Self {
-            client: Arc::new(Mutex::new(Client::default())),
+            con_info,
             map_memory: mem,
             map_tiles: Self::open_street_tiles(&egui_ctx),
             airports_loader: AirportsLoader::default(),
@@ -115,6 +117,7 @@ impl App for AerolineasApp {
                 &mut self.map_memory,
                 Position::from_lat_lon(ORIG_LAT, ORIG_LONG),
             );
+            let login_info = self.widget_details.login_info.clone();
 
             self.airlines_details
                 .set_airports(self.airports_loader.take_airports());
@@ -151,7 +154,7 @@ impl App for AerolineasApp {
 
             self.flights_loader
                 .sync_date(self.datetime)
-                .sync_client(Arc::clone(&self.client))
+                .sync_login_info(&login_info)
                 .sync_selected_airport(self.airlines_details.get_selected_airport());
 
             let map = map
@@ -173,7 +176,7 @@ impl App for AerolineasApp {
                 self.datetime = valid_time;
             }
             let (show_incoming, show_departing) = cur_airport_info(
-                Arc::clone(&self.client),
+                (&mut self.con_info, &login_info),
                 ui,
                 self.airlines_details.get_ref_selected_airport(),
                 (
@@ -192,7 +195,7 @@ impl App for AerolineasApp {
                 .set_show_departing_flights(show_departing);
 
             extra_airport_info(
-                Arc::clone(&self.client),
+                (&mut self.con_info, &login_info),
                 ui,
                 self.airlines_details.get_ref_selected_airport(),
                 self.airlines_details.get_ref_extra_airport(),
@@ -202,6 +205,8 @@ impl App for AerolineasApp {
             if airps_start < airps_end {
                 airports_progress(ui, airps_start, airps_end);
             }
+
+            login_window(ui, &mut self.con_info, &mut self.widget_details.login_info);
 
             if let Some(editor) = &mut self.widget_details.flight_editor {
                 let mut live_data = None;
@@ -215,7 +220,12 @@ impl App for AerolineasApp {
                         None => None,
                     };
                 }
-                if !editor.show(ui, Arc::clone(&self.client), self.datetime, live_data) {
+                if !editor.show(
+                    (&mut self.con_info, &login_info),
+                    ui,
+                    self.datetime,
+                    live_data,
+                ) {
                     self.widget_details.flight_editor = None;
                 }
             }

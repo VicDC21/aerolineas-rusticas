@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt, str::FromStr};
+use std::str::FromStr;
 
 use crate::protocol::{aliases::results::Result, errors::error::Error};
 
@@ -10,15 +10,6 @@ pub enum ProtocolOrdering {
     Asc,
     /// Orden descendente.
     Desc,
-}
-
-impl fmt::Display for ProtocolOrdering {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ProtocolOrdering::Asc => write!(f, "Asc"),
-            ProtocolOrdering::Desc => write!(f, "Desc"),
-        }
-    }
 }
 
 impl FromStr for ProtocolOrdering {

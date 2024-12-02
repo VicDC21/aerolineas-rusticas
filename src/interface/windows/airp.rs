@@ -4,6 +4,8 @@ use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
 use eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window};
 use egui_extras::DatePickerButton;
 
+use crate::{client::conn_holder::ConnectionHolder, interface::data::login_info::LoginInfo};
+
 /// Seleccionar la fecha actual.
 pub fn date_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
     let mut date = datetime.date_naive();
@@ -88,5 +90,28 @@ pub fn airports_progress(ui: &Ui, start: usize, end: usize) {
                     progress * 100.
                 ));
             ui.add(progress_bar);
+        });
+}
+
+/// Crea una ventanita de logueo.
+pub fn login_window(ui: &Ui, conn: &mut ConnectionHolder, login_info: &mut LoginInfo) {
+    let ctx = ui.ctx();
+
+    Window::new("Login")
+        .collapsible(true)
+        .resizable(false)
+        .anchor(Align2::RIGHT_TOP, [-10., -10.])
+        .show(ctx, |win_ui| {
+            win_ui.horizontal(|hor_ui| {
+                hor_ui.label(RichText::new(format!("{:<15}", "User:")).heading());
+                hor_ui.text_edit_singleline(&mut login_info.user);
+            });
+            win_ui.horizontal(|hor_ui| {
+                hor_ui.label(RichText::new(format!("{:<15}", "Password:")).heading());
+                hor_ui.text_edit_singleline(&mut login_info.pass);
+            });
+            if win_ui.button(RichText::new("LOGIN").heading()).clicked() {
+                let _ = conn.login(&login_info.user, &login_info.pass);
+            }
         });
 }

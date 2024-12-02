@@ -2,7 +2,7 @@ use std::env::args;
 
 use aerolineas_rusticas::{
     client::cli::Client,
-    protocol::aliases::results::Result,
+    protocol::aliases::{results::Result, types::Byte},
     server::nodes::{graph::NodesGraph, node::Node},
     simulator::cli::run_sim,
 };
@@ -36,7 +36,7 @@ fn main() {
         }
         "nd" => {
             if argv.len() >= 3 {
-                match argv[2].parse::<u8>() {
+                match argv[2].parse::<Byte>() {
                     Ok(id) => {
                         if argv.len() == 4 && argv[3].to_ascii_lowercase() == "echo" {
                             print_err(Node::init_in_echo_mode(id))
@@ -65,7 +65,7 @@ fn main() {
         }
         "sim" => {
             let client = Client::default();
-            print_err(run_sim(client));
+            print_err(run_sim(client, &[]));
         }
         _ => {
             println!("{}", how_to_use);
