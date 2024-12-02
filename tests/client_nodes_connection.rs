@@ -3,50 +3,22 @@
 mod common;
 
 use std::{
-    io::{Read, Write}, thread::{self, sleep}, time::Duration
+    io::{Read, Write}, thread::sleep, time::Duration
 };
 
 use aerolineas_rusticas::{
     client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
-    data::flights::{flight::Flight, states::FlightState, types::FlightType}, server:: nodes::node::Node,
+    data::flights::{flight::Flight, states::FlightState, types::FlightType}
 };
-use common::clean_nodes;
+use common::{clean_nodes, create_echo_nodes, create_parsing_nodes};
 
 #[test]
 fn test_1_simple_connection() {
     assert!(clean_nodes().is_ok());
 
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_echo_mode(10) {
-            println!("El error fue {}", _err);
-        };
-    });
-    sleep(Duration::from_secs(1));
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_echo_mode(11) {
-            println!("El error fue {}", _err);
-        };
-    });
-    sleep(Duration::from_secs(1));
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_echo_mode(12) {
-            println!("El error fue {}", _err);
-        };
-    });
-    sleep(Duration::from_secs(1));
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_echo_mode(13) {
-            println!("El error fue {}", _err);
-        };
-    });
-    sleep(Duration::from_secs(1));
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_echo_mode(14) {
-            println!("El error fue {}", _err);
-        };
-    });
+    let _ = create_echo_nodes(5, Duration::from_secs(1));
 
-    sleep(Duration::from_secs(1));
+    sleep(Duration::from_secs(10));
     let conn_res = ConnectionHolder::with_cli(Client::default());
     sleep(Duration::from_secs(1));
 
@@ -73,7 +45,6 @@ fn test_1_simple_connection() {
     }
 
     assert!(Client::default().send_shutdown().is_ok());
-    // assert!(graph_handle.join().is_ok());
     assert!(clean_nodes().is_ok());
 }
 
@@ -81,7 +52,8 @@ fn test_1_simple_connection() {
 fn test_2_simple_insert_and_select() {
     assert!(clean_nodes().is_ok());
 
-    create_parsing_nodes();
+    let _ = create_parsing_nodes(5, Duration::from_secs(1));
+
     sleep(Duration::from_secs(1));
     let conn_res = ConnectionHolder::with_cli(Client::default());
     sleep(Duration::from_secs(1));
@@ -154,38 +126,5 @@ fn test_2_simple_insert_and_select() {
     }
 
     assert!(Client::default().send_shutdown().is_ok());
-    // assert!(graph_handle.join().is_ok());
     assert!(clean_nodes().is_ok());
 }
-
-fn create_parsing_nodes() {
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_parsing_mode(10) {
-            println!("El error fue");
-        };
-    });
-    sleep(Duration::from_secs(1));
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_parsing_mode(11) {
-            println!("El error fue");
-        };
-    });
-    sleep(Duration::from_secs(1));
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_parsing_mode(12) {
-            println!("El error fue");
-        };
-    });
-    sleep(Duration::from_secs(1));
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_parsing_mode(13) {
-            println!("El error fue");
-        };
-    });
-    sleep(Duration::from_secs(1));
-    thread::spawn(||{
-        if let Err(_err) = Node::init_in_parsing_mode(14) {
-            println!("El error fue");
-        };
-    });
-    }

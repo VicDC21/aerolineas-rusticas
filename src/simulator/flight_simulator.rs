@@ -215,7 +215,7 @@ impl FlightSimulator {
         let tcp_stream = client.connect()?;
         let client_connection = get_client_connection()?;
         let mut tls_stream: TlsStream = rustls::StreamOwned::new(client_connection, tcp_stream);
-        client.send_query("User: carlitos Password: 1234", &mut tls_stream)?;
+        client.send_query("User: juan Password: 1234", &mut tls_stream)?;
         let protocol_result = client.send_query(query, &mut tls_stream)?;
 
         if let ProtocolResult::QueryError(err) = protocol_result {
@@ -249,7 +249,7 @@ impl FlightSimulator {
             flight_id,
             (origin_airport.ident, destination_airport.ident),
             (timestamp, 0.0),
-            (6000.0, 100.0),
+            (1000.0, 100.0),
             origin_coords,
             origin_airport.elevation_ft.unwrap_or(0) as Double,
             (FlightType::Departing, FlightState::Preparing),
