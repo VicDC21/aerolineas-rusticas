@@ -172,15 +172,17 @@ impl Client {
     pub fn echo(&mut self) -> Result<()> {
         let client_connection = get_client_connection()?;
         let tcp_stream = self.connect()?;
-        let tls_stream: TlsStream =
-            self.create_tls_connection(client_connection, tcp_stream)?;
+        let tls_stream: TlsStream = self.create_tls_connection(client_connection, tcp_stream)?;
         print_initial_message();
         self.read_console_input(tls_stream)?;
         Ok(())
     }
 
     /// Lee la consola como input y se encarga de handelear lo que se escriba
-    fn read_console_input(&mut self, mut tls_stream: LsStream<ClientConnection, TcpStream>) -> Result<()> {
+    fn read_console_input(
+        &mut self,
+        mut tls_stream: LsStream<ClientConnection, TcpStream>,
+    ) -> Result<()> {
         let reader = BufReader::new(stdin());
         for line in reader.lines() {
             match line {
@@ -211,7 +213,7 @@ impl Client {
         }
         Ok(())
     }
-    
+
     /// Envía una query al servidor y devuelve la respuesta del mismo.
     ///
     /// La query será enviada con el _Consistency Level_ actual.
@@ -432,7 +434,9 @@ impl Client {
     }
 
     fn handle_ready(&self) -> Result<ProtocolResult> {
-        Err(Error::ConfigError("Esta funcionalidad aun no es valida".to_string()))
+        Err(Error::ConfigError(
+            "Esta funcionalidad aun no es valida".to_string(),
+        ))
     }
 
     fn handle_authenticate(&self) -> Result<ProtocolResult> {
@@ -440,7 +444,9 @@ impl Client {
     }
 
     fn handle_supported(&self) -> Result<ProtocolResult> {
-        Err(Error::ConfigError("Esta funcionalidad aun no es valida".to_string()))
+        Err(Error::ConfigError(
+            "Esta funcionalidad aun no es valida".to_string(),
+        ))
     }
 
     fn handle_result(&self, lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
@@ -454,11 +460,15 @@ impl Client {
     }
 
     fn handle_event(&self) -> Result<ProtocolResult> {
-        Err(Error::ConfigError("Esta funcionalidad aun no es valida".to_string()))
+        Err(Error::ConfigError(
+            "Esta funcionalidad aun no es valida".to_string(),
+        ))
     }
 
     fn handle_auth_challenge(&self) -> Result<ProtocolResult> {
-        Err(Error::ConfigError("Esta funcionalidad aun no es valida".to_string()))
+        Err(Error::ConfigError(
+            "Esta funcionalidad aun no es valida".to_string(),
+        ))
     }
 
     fn handle_auth_success(&self) -> Result<ProtocolResult> {
@@ -497,7 +507,13 @@ impl Client {
         Ok(ProtocolResult::Rows(rows))
     }
 
-    fn match_col_type(&self, col_types: &[ColType], i: u32, request: &[u8], actual_position: &mut usize) -> Result<ColData> {
+    fn match_col_type(
+        &self,
+        col_types: &[ColType],
+        i: u32,
+        request: &[u8],
+        actual_position: &mut usize,
+    ) -> Result<ColData> {
         let col_data = match ColumnDataType::from(col_types[i as usize].clone()) {
             ColumnDataType::String => {
                 let value = self.parse_string(request, actual_position)?;
@@ -505,27 +521,24 @@ impl Client {
                 ColData::String(value)
             }
             ColumnDataType::Timestamp => {
-                let value =
-                    self.parse_column_value::<i64>(request, actual_position)?;
+                let value = self.parse_column_value::<i64>(request, actual_position)?;
                 *actual_position += value.to_string().len();
                 ColData::Timestamp(value)
             }
             ColumnDataType::Double => {
-                let value =
-                    self.parse_column_value::<f64>(request, actual_position)?;
+                let value = self.parse_column_value::<f64>(request, actual_position)?;
                 *actual_position += value.to_string().len();
                 ColData::Double(value)
             }
             ColumnDataType::Int => {
-                let value =
-                    self.parse_column_value::<i32>(request, actual_position)?;
+                let value = self.parse_column_value::<i32>(request, actual_position)?;
                 *actual_position += value.to_string().len();
                 ColData::Int(value)
             }
         };
         Ok(col_data)
     }
-    
+
     fn set_keyspace(&self, lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
         match String::from_utf8(request[0..lenght.len as usize].to_vec()) {
             Ok(value) => Ok(ProtocolResult::SetKeyspace(value)),
@@ -659,7 +672,6 @@ impl Default for Client {
 
 /// Realiza el seteo del cliente para luego usarse en un tls_stream
 pub fn get_client_connection() -> Result<rustls::ClientConnection> {
-
     let mut root_store = RootCertStore::empty();
     let certs = handle_pem_file_iter()?;
     for cert in certs {
@@ -678,20 +690,17 @@ pub fn get_client_connection() -> Result<rustls::ClientConnection> {
 }
 
 /// Handelea los results que se devuelven al cargar el certificado
-pub fn handle_pem_file_iter() -> Result<Vec<CertificateDer<'static>>>{
+pub fn handle_pem_file_iter() -> Result<Vec<CertificateDer<'static>>> {
     let cert_file = "cert.pem";
     let certs: Vec<CertificateDer<'_>> = match CertificateDer::pem_file_iter(cert_file) {
-        Ok(certs_iter) => {
-            certs_iter
-                .map(|cert_res| {
-                    cert_res.map_err(|_| Error::Invalid("No se pudo leer un certificado".to_string()))
-                })
-                .collect()
-        }
-        Err(_) => Err(Error::Invalid("No se pudo leer el archivo de certificados".to_string())),
+        Ok(certs_iter) => certs_iter
+            .map(|cert_res| {
+                cert_res.map_err(|_| Error::Invalid("No se pudo leer un certificado".to_string()))
+            })
+            .collect(),
+        Err(_) => Err(Error::Invalid(
+            "No se pudo leer el archivo de certificados".to_string(),
+        )),
     }?;
     Ok(certs)
-
-
-
 }

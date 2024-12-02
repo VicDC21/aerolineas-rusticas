@@ -1,40 +1,77 @@
-use crate::{
-    client::cli::Client,
-    protocol::aliases::{results::Result, types::Int},
-    protocol::errors::error::Error,
-    simulator::flight_simulator::FlightSimulator,
+use {
+    crate::{
+        client::cli::Client,
+        protocol::aliases::{results::Result, types::Int},
+        protocol::errors::error::Error,
+        simulator::flight_simulator::FlightSimulator,
+    },
+    std::{thread, time::Duration},
 };
 
+/// Configuración de un vuelo.
+pub struct FlightConfig {
+    /// ID del vuelo.
+    pub flight_id: Int,
+    /// Código del aeropuerto de origen.
+    pub origin: &'static str,
+    /// Código del aeropuerto de destino.
+    pub destination: &'static str,
+}
+
 const MAX_THREADS: usize = 16;
+/// El límite de tiempo para el simulador de vuelos.
+pub const FLIGHT_LIMIT_SECS: u64 = 60;
 
 /// Ejecuta el simulador de vuelos.
-pub fn run_sim(client: Client) -> Result<()> {
+pub fn run_sim(client: Client, flights: &[FlightConfig]) -> Result<()> {
     match FlightSimulator::new(MAX_THREADS, client) {
-        Ok(simulator) => loop {
-            println!("\nSimulador de Vuelos");
-            println!("1. Añadir vuelo");
-            println!("2. Ver estado de un vuelo");
-            println!("3. Ver todos los vuelos");
-            println!("4. Ver aeropuertos disponibles");
-            println!("5. Salir");
+        Ok(simulator) => {
+            if !flights.is_empty() {
+                for flight in flights {
+                    println!(
+                        "Añadiendo vuelo {} con origen {} y {}",
+                        flight.flight_id, flight.origin, flight.destination
+                    );
 
-            let mut input = String::new();
-            if let Err(err) = std::io::stdin().read_line(&mut input) {
-                break Err(Error::ServerError(format!(
-                    "Error al leer la entrada: {}",
-                    err
-                )));
+                    match simulator.add_flight(
+                        flight.flight_id,
+                        flight.origin.to_string(),
+                        flight.destination.to_string(),
+                    ) {
+                        Ok(_) => println!("Vuelo añadido exitosamente"),
+                        Err(e) => println!("Error al añadir vuelo: {}", e),
+                    }
+
+                    thread::sleep(Duration::from_secs(1));
+                }
             }
 
-            match input.trim() {
-                "1" => handle_add_flight(&simulator)?,
-                "2" => handle_view_flight(&simulator)?,
-                "3" => handle_view_all_flights(&simulator),
-                "4" => handle_view_airports(&simulator),
-                "5" => break Ok(()),
-                _ => println!("Opción no válida"),
+            loop {
+                println!("\nSimulador de Vuelos");
+                println!("1. Añadir vuelo");
+                println!("2. Ver estado de un vuelo");
+                println!("3. Ver todos los vuelos");
+                println!("4. Ver aeropuertos disponibles");
+                println!("5. Salir");
+
+                let mut input = String::new();
+                if let Err(err) = std::io::stdin().read_line(&mut input) {
+                    break Err(Error::ServerError(format!(
+                        "Error al leer la entrada: {}",
+                        err
+                    )));
+                }
+
+                match input.trim() {
+                    "1" => handle_add_flight(&simulator)?,
+                    "2" => handle_view_flight(&simulator)?,
+                    "3" => handle_view_all_flights(&simulator),
+                    "4" => handle_view_airports(&simulator),
+                    "5" => break Ok(()),
+                    _ => println!("Opción no válida"),
+                }
             }
-        },
+        }
         Err(e) => Err(e),
     }
 }

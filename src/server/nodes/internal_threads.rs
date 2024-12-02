@@ -17,15 +17,18 @@ use std::{
     time::Duration,
 };
 
-use crate::{client::cli::handle_pem_file_iter, server::{
-    actions::opcode::SvAction,
-    nodes::{
-        addr::loader::AddrLoader,
-        node::{Node, NodeHandle, NodeId},
-        port_type::PortType,
-        utils::send_to_node,
+use crate::{
+    client::cli::handle_pem_file_iter,
+    server::{
+        actions::opcode::SvAction,
+        nodes::{
+            addr::loader::AddrLoader,
+            node::{Node, NodeHandle, NodeId},
+            port_type::PortType,
+            utils::send_to_node,
+        },
     },
-}};
+};
 use crate::{
     protocol::{
         aliases::{results::Result, types::Byte},
@@ -197,7 +200,6 @@ fn listen_single_client(
             break;
         }
         match node.lock() {
-            
             Ok(mut locked_in) => {
                 let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
                 if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {

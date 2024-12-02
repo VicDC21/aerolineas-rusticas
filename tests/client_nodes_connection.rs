@@ -3,12 +3,14 @@
 mod common;
 
 use std::{
-    io::{Read, Write}, thread::sleep, time::Duration
+    io::{Read, Write},
+    thread::sleep,
+    time::Duration,
 };
 
 use aerolineas_rusticas::{
     client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
-    data::flights::{flight::Flight, states::FlightState, types::FlightType}
+    data::flights::{flight::Flight, states::FlightState, types::FlightType},
 };
 use common::{clean_nodes, create_echo_nodes, create_parsing_nodes};
 

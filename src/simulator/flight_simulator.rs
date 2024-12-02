@@ -14,7 +14,7 @@ use {
             errors::error::Error,
         },
         server::pool::threadpool::ThreadPool,
-        simulator::utils::FlightCalculations,
+        simulator::{cli::FLIGHT_LIMIT_SECS, utils::FlightCalculations},
     },
     rand::thread_rng,
     std::{
@@ -23,9 +23,6 @@ use {
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     },
 };
-
-/// La duración de una simulación.
-const FLIGHT_LIMIT_SECS: u64 = 60;
 
 struct FlightSimulationParams {
     dest_coords: (Double, Double),

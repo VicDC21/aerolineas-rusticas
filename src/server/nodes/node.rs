@@ -2530,7 +2530,7 @@ impl Node {
 }
 
 fn wrap_header(mut response: Vec<Byte>, is_internal_request: bool, header: Headers) -> Vec<Byte> {
-    if response.is_empty(){
+    if response.is_empty() {
         response.append(&mut Node::create_result_void())
     }
     if !is_internal_request {

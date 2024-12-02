@@ -7,10 +7,14 @@
 use std::{
     fs::remove_dir_all,
     io::{ErrorKind, Result as IOResult},
-    thread::{sleep, spawn, JoinHandle}, time::Duration,
+    thread::{sleep, spawn, JoinHandle},
+    time::Duration,
 };
 
-use aerolineas_rusticas::{protocol::aliases::results::Result, server::nodes::{graph::NodesGraph, node::Node}};
+use aerolineas_rusticas::{
+    protocol::aliases::results::Result,
+    server::nodes::{graph::NodesGraph, node::Node},
+};
 
 /// Un handle común en nuestra librería.
 pub type ThreadHandle<T> = JoinHandle<Result<T>>;
@@ -60,15 +64,11 @@ fn rmdir(path: &str) -> IOResult<()> {
 pub fn create_echo_nodes(nodes: u8, duration: Duration) -> HandlesVec {
     let mut handles = HandlesVec::with_capacity(nodes as usize);
     for i in 0..nodes {
-        handles.push(
-            Some(
-                spawn(move || {
-                    if let Err(err) = Node::init_in_echo_mode(10 + i) {
-                        println!("Error:\n{}", err);
-                    };
-                })
-            )
-        );
+        handles.push(Some(spawn(move || {
+            if let Err(err) = Node::init_in_echo_mode(10 + i) {
+                println!("Error:\n{}", err);
+            };
+        })));
         sleep(duration);
     }
 
@@ -79,15 +79,11 @@ pub fn create_echo_nodes(nodes: u8, duration: Duration) -> HandlesVec {
 pub fn create_parsing_nodes(nodes: u8, duration: Duration) -> HandlesVec {
     let mut handles = HandlesVec::with_capacity(nodes as usize);
     for i in 0..nodes {
-        handles.push(
-            Some(
-                spawn(move || {
-                    if let Err(err) = Node::init_in_parsing_mode(10 + i) {
-                        println!("Error:\n{}", err);
-                    };
-                })
-            )
-        );
+        handles.push(Some(spawn(move || {
+            if let Err(err) = Node::init_in_parsing_mode(10 + i) {
+                println!("Error:\n{}", err);
+            };
+        })));
         sleep(duration);
     }
 
