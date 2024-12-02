@@ -9,7 +9,6 @@ use crate::{
     },
     protocol::{aliases::results::Result, errors::error::Error},
 };
-
 /// Estructura que guarda información de la conexión a un nodo.
 pub struct ConnectionHolder {
     /// El cliente.
