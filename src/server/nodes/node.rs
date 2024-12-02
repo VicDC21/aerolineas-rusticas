@@ -438,6 +438,17 @@ impl Node {
         send_to_node(self.select_node(&value), bytes, port_type)
     }
 
+    /// Manda un mensaje a un nodo específico y espera su respuesta o no dependiendo del valor de `wait_response`.
+    fn _send_message_and_wait_response(
+        &self,
+        bytes: Vec<Byte>,
+        node_id: Byte,
+        port_type: PortType,
+        wait_response: bool,
+    ) -> Result<Vec<Byte>> {
+        send_to_node_and_wait_response_with_timeout(node_id, bytes, port_type, wait_response, None)
+    }
+
     /// Manda un mensaje a un nodo específico y espera por la respuesta de este, con un timeout.
     /// Si el timeout se alcanza, se devuelve un buffer vacío.
     ///
@@ -1671,13 +1682,22 @@ impl Node {
                         Some(timestamp),
                         Some(node_id),
                     );
-                    self.send_message_and_wait_response_with_timeout(
-                        request_with_metadata,
-                        node_to_replicate,
-                        PortType::Priv,
-                        wait_response,
-                        TIMEOUT_SECS,
-                    )?
+                    let mut res: Vec<Byte> = Vec::new();
+                    if self.neighbour_is_responsive(node_to_replicate) {
+                        res = self
+                            .send_message_and_wait_response_with_timeout(
+                                request_with_metadata,
+                                node_to_replicate,
+                                PortType::Priv,
+                                wait_response,
+                                TIMEOUT_SECS,
+                            )
+                            .unwrap_or_default();
+                    }
+                    if res.is_empty() {
+                        self.acknowledge_offline_neighbour(node_to_replicate);
+                    }
+                    res
                 }
             } else if node_to_replicate == self.id {
                 let table = self.get_table(&table_name)?;
@@ -1701,13 +1721,19 @@ impl Node {
                     None,
                     None,
                 );
-                self.send_message_and_wait_response_with_timeout(
-                    request_with_metadata,
-                    node_to_replicate,
-                    PortType::Priv,
-                    false,
-                    TIMEOUT_SECS,
-                )?;
+                if self.neighbour_is_responsive(node_to_replicate)
+                    && self
+                        .send_message_and_wait_response_with_timeout(
+                            request_with_metadata,
+                            node_to_replicate,
+                            PortType::Priv,
+                            wait_response,
+                            TIMEOUT_SECS,
+                        )
+                        .is_err()
+                {
+                    self.acknowledge_offline_neighbour(node_to_replicate);
+                }
             };
             node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
 
@@ -1790,10 +1816,10 @@ impl Node {
         let table_name = update.table_name.get_name();
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut consulted_nodes: Vec<String> = Vec::new();
-        let consistency_number = consistency_level.as_usize(N_NODES as usize);
-        let mut consistency_counter = 0;
-        let mut wait_response = true;
+        let replication_factor_quantity = self.get_replicas_from_table_name(&table_name)?;
+        let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
         for partition_key_value in partitions_keys_to_nodes {
+            let mut consistency_counter = 0;
             let node_id = self.select_node(&partition_key_value);
             if !consulted_nodes.contains(&partition_key_value) {
                 let current_response = if node_id == self.id {
@@ -1804,14 +1830,26 @@ impl Node {
                         Some(timestamp),
                         Some(node_id),
                     );
-                    self.send_message_and_wait_response_with_timeout(
-                        request_with_metadata,
-                        node_id,
-                        PortType::Priv,
-                        wait_response,
-                        TIMEOUT_SECS,
-                    )?
+                    let mut res: Vec<Byte> = Vec::new();
+                    if self.neighbour_is_responsive(node_id) {
+                        res = self
+                            .send_message_and_wait_response_with_timeout(
+                                request_with_metadata,
+                                node_id,
+                                PortType::Priv,
+                                true,
+                                TIMEOUT_SECS,
+                            )
+                            .unwrap_or_default();
+                    }
+                    if res.is_empty() {
+                        self.acknowledge_offline_neighbour(node_id);
+                    }
+                    res
                 };
+                if verify_succesful_response(&current_response) {
+                    consistency_counter += 1;
+                }
 
                 consulted_nodes.push(partition_key_value.clone());
                 let replication_factor = self.get_replicas_from_table_name(&table_name)?;
@@ -1821,24 +1859,19 @@ impl Node {
                     request,
                     &update,
                     timestamp,
+                    &mut consistency_counter,
                 )?;
 
-                if consistency_counter >= consistency_number {
-                    wait_response = false;
-                } else if verify_succesful_response(&current_response) {
-                    consistency_counter += 1;
+                if consistency_counter < consistency_number {
+                    return Err(Error::ServerError(format!(
+                        "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
+                        consistency_level, consistency_counter, consistency_number,
+                    )));
                 }
             }
         }
 
-        if consistency_counter < consistency_number {
-            Err(Error::ServerError(format!(
-                "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
-                consistency_level, consistency_counter, consistency_number,
-            )))
-        } else {
-            Ok(Self::create_result_void())
-        }
+        Ok(Self::create_result_void())
     }
 
     fn replicate_update_in_other_nodes(
@@ -1848,26 +1881,35 @@ impl Node {
         request: &[Byte],
         update: &Update,
         timestamp: i64,
+        consistency_counter: &mut usize,
     ) -> Result<()> {
         let nodes_ids = Self::get_nodes_ids();
-        let mut node_to_replicate = node_id;
+        let mut node_to_replicate = next_node_in_the_cluster(node_id, &nodes_ids);
         for _ in 1..replication_factor {
-            if node_to_replicate == self.id {
-                self.process_update(update, timestamp, node_id)?;
+            let current_response = if node_to_replicate == self.id {
+                self.process_update(update, timestamp, node_id)?
             } else {
                 let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
                     Some(timestamp),
                     Some(node_id),
                 );
-                let replica_response = self.send_message_and_wait_response_with_timeout(
-                    request_with_metadata,
-                    node_to_replicate,
-                    PortType::Priv,
-                    true,
-                    TIMEOUT_SECS,
-                )?;
-                match Opcode::try_from(replica_response[4])? {
+                let mut replica_response: Vec<Byte> = Vec::new();
+                if self.neighbour_is_responsive(node_to_replicate) {
+                    replica_response = self
+                        .send_message_and_wait_response_with_timeout(
+                            request_with_metadata,
+                            node_to_replicate,
+                            PortType::Priv,
+                            true,
+                            TIMEOUT_SECS,
+                        )
+                        .unwrap_or_default();
+                }
+                if replica_response.is_empty() {
+                    self.acknowledge_offline_neighbour(node_to_replicate);
+                }
+                /*match Opcode::try_from(replica_response[4])? {
                     Opcode::RequestError => {
                         return Err(Error::try_from(replica_response[9..].to_vec())?)
                     }
@@ -1877,15 +1919,14 @@ impl Node {
                             "Nodo de réplica manda opcode inesperado".to_string(),
                         ))
                     }
-                }
-            }
+                }*/
+                replica_response
+            };
             node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
 
-            // if consistency_counter >= consistency_number {
-            //     wait_response = false;
-            // } else if verify_succesful_response(&current_response) {
-            //     consistency_counter += 1;
-            // }
+            if verify_succesful_response(&current_response) {
+                *consistency_counter += 1;
+            }
         }
         Ok(())
     }
@@ -2005,7 +2046,7 @@ impl Node {
             // entonces se intenta con las replicas
             if result.is_empty() {
                 self.acknowledge_offline_neighbour(node_id);
-                result = self.forward_request_to_replicas(
+                result = self.forward_select_request_to_replicas(
                     node_id,
                     (select, request),
                     wait_response,
@@ -2019,7 +2060,7 @@ impl Node {
         Ok(actual_result)
     }
 
-    fn forward_request_to_replicas(
+    fn forward_select_request_to_replicas(
         &mut self,
         node_id: NodeId,
         select_and_request: (&Select, &[Byte]),
@@ -2251,7 +2292,8 @@ impl Node {
         let table_name = delete.from.get_name();
         let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut consulted_nodes: Vec<String> = Vec::new();
-        let consistency_number = consistency_level.as_usize(N_NODES as usize);
+        let replication_factor_quantity = self.get_replicas_from_table_name(&table_name)?;
+        let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
         for partition_key_value in partitions_keys_to_nodes {
             let node_id = self.select_node(&partition_key_value);
             if !consulted_nodes.contains(&partition_key_value) {
@@ -2291,13 +2333,22 @@ impl Node {
                     None,
                     Some(node_id),
                 );
-                self.send_message_and_wait_response_with_timeout(
-                    request_with_metadata,
-                    node_to_replicate,
-                    PortType::Priv,
-                    wait_response,
-                    TIMEOUT_SECS,
-                )?
+                let mut res: Vec<Byte> = Vec::new();
+                if self.neighbour_is_responsive(node_to_replicate) {
+                    res = self
+                        .send_message_and_wait_response_with_timeout(
+                            request_with_metadata,
+                            node_to_replicate,
+                            PortType::Priv,
+                            wait_response,
+                            TIMEOUT_SECS,
+                        )
+                        .unwrap_or_default()
+                };
+                if res.is_empty() {
+                    self.acknowledge_offline_neighbour(node_to_replicate);
+                }
+                res
             };
             if consistency_counter >= consistency_number {
                 wait_response = false;
