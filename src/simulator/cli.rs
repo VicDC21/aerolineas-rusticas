@@ -19,12 +19,10 @@ pub struct FlightConfig {
 }
 
 const MAX_THREADS: usize = 16;
-/// El límite de tiempo para el simulador de vuelos.
-pub const FLIGHT_LIMIT_SECS: u64 = 60;
 
 /// Ejecuta el simulador de vuelos.
 pub fn run_sim(client: Client, flights: &[FlightConfig]) -> Result<()> {
-    match FlightSimulator::new(MAX_THREADS, client) {
+    match FlightSimulator::new(MAX_THREADS, client, true) {
         Ok(simulator) => {
             if !flights.is_empty() {
                 for flight in flights {
