@@ -191,7 +191,7 @@ impl Node {
     fn init(id: NodeId, mode: ConnectionMode) -> Result<()> {
         let mut nodes_weights: Vec<usize> = Vec::new();
         let handlers = Self::bootstrap(id, mode, &mut nodes_weights)?;
-        
+
         let (_beater, _beat_stopper) = beater(id)?;
         let (_gossiper, _gossip_stopper) = gossiper(id, &nodes_weights)?;
 

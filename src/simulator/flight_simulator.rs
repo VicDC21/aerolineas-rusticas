@@ -212,9 +212,10 @@ impl FlightSimulator {
     }
 
     fn send_insert_query(query: &str, client: &mut Client) -> Result<(), Error> {
-        let tcp_stream = client.connect()?;
         let client_connection = get_client_connection()?;
-        let mut tls_stream: TlsStream = rustls::StreamOwned::new(client_connection, tcp_stream);
+        let tcp_stream = client.connect()?;
+        let mut tls_stream: TlsStream =
+            client.create_tls_connection(client_connection, tcp_stream)?;
         client.send_query("User: juan Password: 1234", &mut tls_stream)?;
         let protocol_result = client.send_query(query, &mut tls_stream)?;
 
@@ -401,18 +402,9 @@ mod tests {
 
     #[test]
     fn test_flight_simulator() -> Result<(), Error> {
-        let mut simulator = FlightSimulator::default();
-        simulator.client.set_consistency_level("One")?;
-        let tcp_stream = simulator.client.connect()?;
-        let client_connection = get_client_connection()?;
-        let mut tls_stream: TlsStream =
-            rustls::StreamOwned::new(client_connection, tcp_stream);
+        let simulator = FlightSimulator::default();
 
-        simulator
-            .client
-            .send_query("User: carlitos Password: 1234", &mut tls_stream)?;
         simulator.add_flight(123456, "SAEZ".to_string(), "LEMD".to_string())?;
-
         assert!(simulator.get_flight_data(123456).is_some());
 
         if let Some(data) = simulator.get_flight_data(123456) {
@@ -441,16 +433,8 @@ mod tests {
 
     #[test]
     fn test_concurrent_flights_simulation() -> Result<(), Error> {
-        let mut simulator = FlightSimulator::new(8, Client::default())?;
-        simulator.client.set_consistency_level("One")?;
-        let tcp_stream = simulator.client.connect()?;
-        let client_connection = get_client_connection()?;
-        let mut tls_stream: TlsStream =
-            rustls::StreamOwned::new(client_connection, tcp_stream);
+        let simulator = FlightSimulator::new(8, Client::default())?;
 
-        simulator
-            .client
-            .send_query("User: carlitos Password: 1234", &mut tls_stream)?;
         let flight_configs = vec![
             (123456, "SAEZ", "LEMD"),
             (234567, "SBGR", "KJFK"),

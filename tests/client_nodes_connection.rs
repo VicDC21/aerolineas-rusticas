@@ -99,7 +99,7 @@ fn test_2_simple_insert_and_select() {
             let select_res = client.send_query(select_query, &mut conn.tls_stream);
             sleep(Duration::from_secs(1));
             assert!(select_res.is_ok());
-            
+
             if let Ok(protocol_res) = select_res {
                 assert!(matches!(&protocol_res, ProtocolResult::Rows(_)));
                 let flights_res =
