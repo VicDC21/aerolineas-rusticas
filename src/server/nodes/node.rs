@@ -1976,7 +1976,6 @@ impl Node {
         replication_factor_quantity: u32,
     ) -> Result<Vec<Byte>> {
         let (select, request) = select_and_request;
-
         let actual_result = if node_id == self.id {
             self.process_select(select, node_id)?
         } else {
@@ -2404,6 +2403,7 @@ impl Node {
     ) -> i32 {
         let new_quantity_rows =
             &results_from_another_nodes[rows_quantity_position..(rows_quantity_position + 4)];
+        println!("Rompe get_quantity_of_rows");
         i32::from_be_bytes([
             new_quantity_rows[0],
             new_quantity_rows[1],
@@ -2419,6 +2419,7 @@ impl Node {
         }
         // el 13 al 17 son flags
         let column_quantity = &results_from_another_nodes[17..21];
+        println!("Rompe get_columns_metadata_length");
         let column_quantity = i32::from_be_bytes([
             column_quantity[0],
             column_quantity[1],
@@ -2565,6 +2566,9 @@ impl Node {
 }
 
 fn wrap_header(mut response: Vec<Byte>, is_internal_request: bool, header: Headers) -> Vec<Byte> {
+    if response.is_empty(){
+        response.append(&mut Node::create_result_void())
+    }
     if !is_internal_request {
         let ver = Version::ResponseV5.as_bytes();
         let stream = header.stream.as_bytes();

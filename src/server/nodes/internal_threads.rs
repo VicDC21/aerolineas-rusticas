@@ -197,6 +197,7 @@ fn listen_single_client(
             break;
         }
         match node.lock() {
+            
             Ok(mut locked_in) => {
                 let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
                 if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {

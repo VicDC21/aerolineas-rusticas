@@ -222,7 +222,7 @@ impl FlightEditorWindow {
                                 con_info,
                                 login_info,
                                 format!(
-                                    "UPDATE {} SET state = '{}' WHERE id = {};",
+                                    "UPDATE {} SET estado = '{}' WHERE id = {};",
                                     table, self.state, flight.id,
                                 )
                                 .as_str(),
