@@ -489,7 +489,7 @@ impl Client {
             col_types.push(ColType::try_from(&request[actual_position..])?);
             actual_position += 2;
         }
-        let rows_count = self.read_bytes_to_int(request, actual_position);
+        let rows_count = self.read_bytes_to_int(request, actual_position)?;
         actual_position += 4;
         let mut rows: Vec<Vec<ColData>> = Vec::new(); // usar las filas ya parseadas
         for _ in 0..rows_count {
@@ -548,13 +548,17 @@ impl Client {
         }
     }
 
-    fn read_bytes_to_int(&self, request: &[Byte], actual_position: usize) -> i32 {
-        i32::from_be_bytes([
+    fn read_bytes_to_int(&self, request: &[Byte], actual_position: usize) -> Result<i32> {
+        if request.len() < actual_position + 4{
+            return Err(Error::Invalid("No se recibio una query con el largo esperado".to_string()))
+        }
+        let number = i32::from_be_bytes([
             request[actual_position],
             request[actual_position + 1],
             request[actual_position + 2],
             request[actual_position + 3],
-        ])
+        ]);
+        Ok(number)
     }
 
     fn parse_column_value<T>(&self, request: &[Byte], actual_position: &mut usize) -> Result<T>
@@ -562,7 +566,7 @@ impl Client {
         T: std::str::FromStr,
         T::Err: std::fmt::Display,
     {
-        let value_len = self.read_bytes_to_int(request, *actual_position);
+        let value_len = self.read_bytes_to_int(request, *actual_position)?;
         *actual_position += 4;
         let right_position = *actual_position + value_len as usize;
         let str_value = std::str::from_utf8(&request[*actual_position..right_position])
@@ -574,7 +578,7 @@ impl Client {
     }
 
     fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {
-        let string_len = self.read_bytes_to_int(request, *actual_position);
+        let string_len = self.read_bytes_to_int(request, *actual_position)?;
         *actual_position += 4;
         let right_position = *actual_position + string_len as usize;
 

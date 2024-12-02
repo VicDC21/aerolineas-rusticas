@@ -21,7 +21,8 @@ pub struct FlightConfig {
 const MAX_THREADS: usize = 16;
 
 /// Ejecuta el simulador de vuelos.
-pub fn run_sim(client: Client, flights: &[FlightConfig]) -> Result<()> {
+pub fn run_sim(mut client: Client, flights: &[FlightConfig]) -> Result<()> {
+    client.set_consistency_level("One")?;
     match FlightSimulator::new(MAX_THREADS, client, true) {
         Ok(simulator) => {
             if !flights.is_empty() {
@@ -39,7 +40,6 @@ pub fn run_sim(client: Client, flights: &[FlightConfig]) -> Result<()> {
                         Ok(_) => println!("Vuelo añadido exitosamente"),
                         Err(e) => println!("Error al añadir vuelo: {}", e),
                     }
-
                     thread::sleep(Duration::from_secs(1));
                 }
             }
