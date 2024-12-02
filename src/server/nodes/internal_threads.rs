@@ -3,7 +3,7 @@
 use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
 use rustls::{
     pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
-    ServerConfig, ServerConnection,
+    ServerConfig, ServerConnection, Stream,
 };
 use std::{
     collections::HashSet,
@@ -35,6 +35,9 @@ use crate::{
     },
     server::pool::threadpool::ThreadPool,
 };
+
+/// Un stream TLS.
+type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
 
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
@@ -173,8 +176,7 @@ fn listen_single_client(
         }
     };
     let mut buffered_stream = clone_tcp_stream(&tcp_stream)?;
-    let mut tls_stream: rustls::Stream<'_, ServerConnection, TcpStream> =
-        rustls::Stream::new(&mut server_conn, &mut buffered_stream);
+    let mut tls_stream: TlsStream = Stream::new(&mut server_conn, &mut buffered_stream);
     let tls = &mut tls_stream;
     let mut is_logged = false;
     loop {

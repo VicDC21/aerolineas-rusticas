@@ -254,7 +254,6 @@ impl NodesGraph {
 
                 let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
                 let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
-
                 create_client_and_private_conexion(
                     current_id,
                     cli_socket,

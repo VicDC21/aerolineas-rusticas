@@ -1,18 +1,16 @@
 //! Módulo para el editor de detalles de un vuelo.
 
-use std::sync::{Arc, Mutex};
-
 use chrono::{DateTime, Local};
 use eframe::egui::{Align2, Color32, ComboBox, Frame, Key, RichText, Ui, Window};
 
 use crate::{
-    client::cli::Client,
+    client::conn_holder::ConnectionHolder,
     data::{
         flights::{flight::Flight, states::FlightState, types::FlightType},
         tracking::live_flight_data::LiveFlightData,
         traits::PrettyShow,
     },
-    interface::utils::send_client_query,
+    interface::{data::login_info::LoginInfo, utils::send_client_query},
 };
 
 /// Editor para modificar detalles de un vuelo en curso y sus datos en vivo.
@@ -54,11 +52,12 @@ impl FlightEditorWindow {
     /// Muestra la ventana del editor.
     pub fn show(
         &mut self,
+        conn_login: (&mut ConnectionHolder, &LoginInfo),
         ui: &Ui,
-        client: Arc<Mutex<Client>>,
         local_date: DateTime<Local>,
         live_data: Option<LiveFlightData>,
     ) -> bool {
+        let (con_info, login_info) = conn_login;
         let ctx = ui.ctx();
         let mut keep_open = true;
 
@@ -100,7 +99,8 @@ impl FlightEditorWindow {
                             && hor_ui.input(|i| i.key_pressed(Key::Enter))
                         {
                             if let Err(err) = send_client_query(
-                                Arc::clone(&client),
+                                con_info,
+                                login_info,
                                 format!(
                                     "UPDATE {} SET orig = '{}' WHERE id = {};",
                                     table, self.orig, flight.id,
@@ -124,7 +124,8 @@ impl FlightEditorWindow {
                             && hor_ui.input(|i| i.key_pressed(Key::Enter))
                         {
                             if let Err(err) = send_client_query(
-                                Arc::clone(&client),
+                                con_info,
+                                login_info,
                                 format!(
                                     "UPDATE {} SET dest = '{}' WHERE id = {};",
                                     table, self.dest, flight.id,
@@ -162,7 +163,8 @@ impl FlightEditorWindow {
                                 FlightType::Departing => "salida",
                             };
                             if let Err(err) = send_client_query(
-                                Arc::clone(&client),
+                                con_info,
+                                login_info,
                                 format!(
                                     "UPDATE {} SET {} = {} WHERE id = {};",
                                     table,
@@ -217,7 +219,8 @@ impl FlightEditorWindow {
                             });
                         if self.state != flight.state {
                             if let Err(err) = send_client_query(
-                                Arc::clone(&client),
+                                con_info,
+                                login_info,
                                 format!(
                                     "UPDATE {} SET state = '{}' WHERE id = {};",
                                     table, self.state, flight.id,
