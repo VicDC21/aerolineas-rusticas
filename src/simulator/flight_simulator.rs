@@ -215,6 +215,7 @@ impl FlightSimulator {
         let tcp_stream = client.connect()?;
         let client_connection = get_client_connection()?;
         let mut tls_stream: TlsStream = rustls::StreamOwned::new(client_connection, tcp_stream);
+        client.send_query("User: carlitos Password: 1234", &mut tls_stream)?;
         let protocol_result = client.send_query(query, &mut tls_stream)?;
 
         if let ProtocolResult::QueryError(err) = protocol_result {
@@ -402,10 +403,10 @@ mod tests {
     fn test_flight_simulator() -> Result<(), Error> {
         let mut simulator = FlightSimulator::default();
         simulator.client.set_consistency_level("One")?;
-        let mut tcp_stream = simulator.client.connect()?;
-        let mut client_connection = get_client_connection()?;
-        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
-            rustls::Stream::new(&mut client_connection, &mut tcp_stream);
+        let tcp_stream = simulator.client.connect()?;
+        let client_connection = get_client_connection()?;
+        let mut tls_stream: TlsStream =
+            rustls::StreamOwned::new(client_connection, tcp_stream);
 
         simulator
             .client
@@ -442,10 +443,10 @@ mod tests {
     fn test_concurrent_flights_simulation() -> Result<(), Error> {
         let mut simulator = FlightSimulator::new(8, Client::default())?;
         simulator.client.set_consistency_level("One")?;
-        let mut tcp_stream = simulator.client.connect()?;
-        let mut client_connection = get_client_connection()?;
-        let mut tls_stream: rustls::Stream<'_, rustls::ClientConnection, TcpStream> =
-            rustls::Stream::new(&mut client_connection, &mut tcp_stream);
+        let tcp_stream = simulator.client.connect()?;
+        let client_connection = get_client_connection()?;
+        let mut tls_stream: TlsStream =
+            rustls::StreamOwned::new(client_connection, tcp_stream);
 
         simulator
             .client
