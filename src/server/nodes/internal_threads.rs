@@ -17,7 +17,7 @@ use std::{
     time::Duration,
 };
 
-use crate::server::{
+use crate::{client::cli::handle_pem_file_iter, server::{
     actions::opcode::SvAction,
     nodes::{
         addr::loader::AddrLoader,
@@ -25,7 +25,7 @@ use crate::server::{
         port_type::PortType,
         utils::send_to_node,
     },
-};
+}};
 use crate::{
     protocol::{
         aliases::{results::Result, types::Byte},
@@ -197,6 +197,7 @@ fn listen_single_client(
             break;
         }
         match node.lock() {
+            
             Ok(mut locked_in) => {
                 let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
                 if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
@@ -213,12 +214,8 @@ fn listen_single_client(
 }
 
 fn configure_tls() -> Result<Arc<ServerConfig>> {
-    let cert_file = "cert.pem";
     let private_key_file = "custom.key";
-    let certs: Vec<CertificateDer<'_>> = CertificateDer::pem_file_iter(cert_file)
-        .unwrap()
-        .map(|cert| cert.unwrap())
-        .collect();
+    let certs: Vec<CertificateDer<'_>> = handle_pem_file_iter()?;
     let private_key = PrivateKeyDer::from_pem_file(private_key_file).unwrap();
     let config = match ServerConfig::builder()
         .with_no_client_auth()

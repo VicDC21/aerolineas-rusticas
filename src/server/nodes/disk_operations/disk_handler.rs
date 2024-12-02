@@ -812,6 +812,8 @@ impl DiskHandler {
         values_to_insert.join(",") + "\n"
     }
 
+
+
     fn serialize_select_result(
         result: Vec<Vec<String>>,
         query_cols: &[String],
