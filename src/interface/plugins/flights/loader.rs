@@ -15,7 +15,7 @@ use eframe::egui::{Painter, Response};
 use walkers::{Plugin, Projector};
 
 use crate::{
-    client::{cli::Client, conn_holder::ConnectionHolder},
+    client::{cli::{get_client_connection, Client}, conn_holder::ConnectionHolder},
     data::{
         airports::airp::Airport,
         flights::{flight::Flight, types::FlightType},
