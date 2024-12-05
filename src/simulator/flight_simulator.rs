@@ -231,14 +231,7 @@ impl FlightSimulator {
         {
             let progress = params.simulation_start.elapsed().as_secs_f64()
                 / params.simulation_limit.as_secs_f64();
-            Self::update_flight_position(
-                flight,
-                params.origin_coords,
-                params.dest_coords,
-                params.dest_elevation,
-                progress,
-                rng,
-            );
+            Self::update_flight_position(flight, params, progress, rng);
 
             flight.fuel = (flight.fuel - params.fuel_consumption_rate).max(0.0);
             Self::update_flight_in_list(flights, flight);
@@ -412,17 +405,15 @@ impl FlightSimulator {
 
     fn update_flight_position(
         flight: &mut LiveFlightData,
-        origin_coords: (Double, Double),
-        dest_coords: (Double, Double),
-        dest_elevation: Double,
+        params: &FlightSimulationParams,
         progress: Double,
         rng: &mut rand::rngs::ThreadRng,
     ) {
         let (new_lat, new_lon) = FlightCalculations::calculate_next_position(
-            origin_coords.0,
-            origin_coords.1,
-            dest_coords.0,
-            dest_coords.1,
+            params.origin_coords.0,
+            params.origin_coords.1,
+            params.dest_coords.0,
+            params.dest_coords.1,
             progress,
         );
 
@@ -431,10 +422,13 @@ impl FlightSimulator {
             flight.avg_spd(),
             rng,
         ));
-
-        flight.altitude_ft =
-            FlightCalculations::calculate_current_altitude(flight.altitude_ft, rng, progress)
-                .max(dest_elevation);
+        flight.altitude_ft = FlightCalculations::calculate_current_altitude(
+            flight.altitude_ft,
+            params.dest_elevation,
+            params.simulation_limit.as_secs_f64(),
+            params.simulation_start.elapsed().as_secs_f64(),
+            rng,
+        );
     }
 
     fn update_flight_in_list(flights: &Arc<Mutex<Vec<LiveFlightData>>>, flight: &LiveFlightData) {

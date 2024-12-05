@@ -51,19 +51,28 @@ impl FlightCalculations {
 
     /// Calcula la altitud actual agregando una variación aleatoria
     pub fn calculate_current_altitude(
-        altitude: Double,
+        initial_altitude: Double,
+        dest_elevation: Double,
+        total_flight_time: Double,
+        current_time: Double,
         rng: &mut ThreadRng,
-        progress: Double,
     ) -> Double {
         const CRUISE_ALTITUDE: Double = 35000.0;
+        const MAX_VARIATION: Double = 250.0;
+        let progress = current_time / total_flight_time;
+    
         if progress < 0.1 {
-            let climb_variation = rng.gen_range(2000.0..3000.0);
-            altitude + climb_variation
+            let climb_rate = (CRUISE_ALTITUDE - initial_altitude) / (total_flight_time * 0.1);
+            let climb_variation = rng.gen_range(-MAX_VARIATION..MAX_VARIATION);
+            initial_altitude + (climb_rate * current_time) + climb_variation
         } else if progress > 0.9 {
-            let descent_variation = rng.gen_range(-4000.0..-3000.0);
-            altitude + descent_variation
+            let descent_rate = (dest_elevation - CRUISE_ALTITUDE) / (total_flight_time * 0.1);
+            let descent_variation = rng.gen_range(-MAX_VARIATION..MAX_VARIATION);
+            CRUISE_ALTITUDE
+                + (descent_rate * (current_time - total_flight_time * 0.9))
+                + descent_variation
         } else {
-            let variation = rng.gen_range(-500.0..500.0);
+            let variation = rng.gen_range(-MAX_VARIATION..MAX_VARIATION);
             CRUISE_ALTITUDE + variation
         }
     }
@@ -72,12 +81,14 @@ impl FlightCalculations {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::thread_rng;
+
     /// Función auxiliar para comparar números de punto flotante con tolerancia
     fn assert_approx_eq(a: f64, b: f64) {
         let epsilon = 1e-6;
         assert!(
             (a - b).abs() < epsilon,
-            "Expected {} to be approximately equal to {}",
+            "Se espera que {} sea aproximadamente igual a {}",
             a,
             b
         );
@@ -126,7 +137,7 @@ mod tests {
             40.7128, -74.0060,
         );
 
-        assert!(distance < 1.0, "Expected near-zero distance");
+        assert!(distance < 1.0, "Se espera un valor bastante cercano a cero");
     }
 
     #[test]
@@ -166,5 +177,34 @@ mod tests {
 
         assert!(min_speed >= avg_speed - 50.0, "Velocidad demasiado baja");
         assert!(max_speed <= avg_speed + 50.0, "Velocidad demasiado alta");
+    }
+
+    #[test]
+    fn test_altitude_variability() {
+        let mut rng = thread_rng();
+        let initial_altitude = 0.0;
+        let dest_elevation = 500.0;
+        let total_flight_time = 10.0;
+        let current_time = 5.0;
+
+        let mut altitudes = Vec::new();
+        for _ in 0..100 {
+            let altitude = FlightCalculations::calculate_current_altitude(
+                initial_altitude,
+                dest_elevation,
+                total_flight_time,
+                current_time,
+                &mut rng,
+            );
+            altitudes.push(altitude);
+        }
+
+        let min_altitude = altitudes.iter().cloned().fold(f64::INFINITY, f64::min);
+        let max_altitude = altitudes.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+        assert!(
+            (max_altitude - min_altitude).abs() > 0.1,
+            "La variabilidad de la altitud es demasiado baja"
+        );
     }
 }
