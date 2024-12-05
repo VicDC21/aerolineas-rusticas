@@ -26,14 +26,14 @@ use {
 };
 
 /// La duración de una simulación.
-const FLIGHT_LIMIT_SECS: u64 = 60;
+const FLIGHT_LIMIT_SECS: u64 = 10;
 
 struct FlightSimulationParams {
+    origin_coords: (Double, Double),
     dest_coords: (Double, Double),
     dest_elevation: Double,
     simulation_start: Instant,
     simulation_limit: Duration,
-    total_distance: Double,
     fuel_consumption_rate: Double,
 }
 
@@ -83,7 +83,7 @@ impl FlightSimulator {
         flight_id: Int,
         origin: String,
         destination: String,
-        avg_speed: Double,
+        avg_spd: Double,
     ) -> Result<(), Error> {
         if self.get_flight_data(flight_id).is_some() {
             return Err(Error::ServerError(format!(
@@ -93,7 +93,7 @@ impl FlightSimulator {
         }
 
         let (flight, dest_coords, dest_elevation) =
-            self.initialize_flight(flight_id, origin, destination, avg_speed)?;
+            self.initialize_flight(flight_id, origin, destination, avg_spd)?;
 
         if let Ok(mut flight_list) = self.flights.lock() {
             flight_list.push(flight.clone());
@@ -170,17 +170,19 @@ impl FlightSimulator {
 
         let simulation_start = Instant::now();
         let simulation_limit = if _has_to_connect {
-            Duration::from_secs((total_distance * 3600.0 / flight.get_spd()) as u64)
+            Duration::from_secs(
+                ((total_distance * (FLIGHT_LIMIT_SECS as Double)) / flight.get_spd()) as u64,
+            )
         } else {
             Duration::from_secs(FLIGHT_LIMIT_SECS)
         };
 
         let params = FlightSimulationParams {
+            origin_coords: flight.pos,
             dest_coords,
             dest_elevation,
             simulation_start,
             simulation_limit,
-            total_distance,
             fuel_consumption_rate,
         };
 
@@ -224,23 +226,22 @@ impl FlightSimulator {
         rng: &mut rand::rngs::ThreadRng,
         tls_stream: Option<Arc<Mutex<TlsStream>>>,
     ) {
-        while params.simulation_start.elapsed() < params.simulation_limit {
+        while params.simulation_start.elapsed().as_secs_f64()
+            < params.simulation_limit.as_secs_f64()
+        {
             let progress = params.simulation_start.elapsed().as_secs_f64()
                 / params.simulation_limit.as_secs_f64();
-
             Self::update_flight_position(
                 flight,
+                params.origin_coords,
                 params.dest_coords,
-                params.total_distance,
-                progress,
                 params.dest_elevation,
+                progress,
                 rng,
             );
 
             flight.fuel = (flight.fuel - params.fuel_consumption_rate).max(0.0);
-
             Self::update_flight_in_list(flights, flight);
-
             let timestamp = match Self::get_current_timestamp() {
                 Ok(ts) => ts,
                 Err(err) => {
@@ -297,7 +298,7 @@ impl FlightSimulator {
         };
 
         if let ProtocolResult::QueryError(err) = protocol_result {
-            println!("{}", err);
+            eprintln!("{}", err);
         }
 
         Ok(())
@@ -317,7 +318,7 @@ impl FlightSimulator {
         flight_id: Int,
         origin: String,
         destination: String,
-        avg_speed: Double,
+        avg_spd: Double,
     ) -> Result<(LiveFlightData, (Double, Double), Double), Error> {
         let (origin_airport, destination_airport) =
             self.validate_airports(&origin, &destination)?;
@@ -333,7 +334,7 @@ impl FlightSimulator {
                     flight_id,
                     (origin_airport.ident, destination_airport.ident),
                     (timestamp, 0.0),
-                    (avg_speed, 100.0),
+                    (avg_spd, 100.0),
                     origin_airport.position,
                     origin_elevation as Double,
                     (FlightType::Departing, FlightState::Preparing),
@@ -384,7 +385,6 @@ impl FlightSimulator {
         client: &Client,
         tls_stream: Option<Arc<Mutex<TlsStream>>>,
     ) -> Result<(), Error> {
-        flight.set_spd(0.0);
         flight.state = FlightState::Preparing;
 
         Self::update_flight_in_list(flights, flight);
@@ -407,39 +407,34 @@ impl FlightSimulator {
             dest_coords.0,
             dest_coords.1,
         );
-        (total_distance, flight.fuel / total_distance)
+        (total_distance, flight.fuel * 10.0 / total_distance)
     }
 
     fn update_flight_position(
         flight: &mut LiveFlightData,
+        origin_coords: (Double, Double),
         dest_coords: (Double, Double),
-        total_distance: Double,
-        progress: Double,
         dest_elevation: Double,
+        progress: Double,
         rng: &mut rand::rngs::ThreadRng,
     ) {
         let (new_lat, new_lon) = FlightCalculations::calculate_next_position(
-            flight.lat(),
-            flight.lon(),
+            origin_coords.0,
+            origin_coords.1,
             dest_coords.0,
             dest_coords.1,
-            total_distance,
             progress,
         );
 
         flight.pos = (new_lat, new_lon);
         flight.set_spd(FlightCalculations::calculate_current_speed(
             flight.avg_spd(),
-            progress,
             rng,
         ));
 
-        let base_altitude = FlightCalculations::calculate_cruise_altitude(
-            flight.altitude_ft,
-            dest_elevation,
-            progress,
-        );
-        flight.altitude_ft = FlightCalculations::calculate_current_altitude(base_altitude, rng);
+        flight.altitude_ft =
+            FlightCalculations::calculate_current_altitude(flight.altitude_ft, rng, progress)
+                .max(dest_elevation);
     }
 
     fn update_flight_in_list(flights: &Arc<Mutex<Vec<LiveFlightData>>>, flight: &LiveFlightData) {
@@ -541,12 +536,12 @@ mod tests {
             (456789, "LFPG", "SVMI", 850.0),
         ];
 
-        for &(flight_id, origin, destination, avg_speed) in &flight_configs {
+        for &(flight_id, origin, destination, avg_spd) in &flight_configs {
             simulator.add_flight(
                 flight_id,
                 origin.to_string(),
                 destination.to_string(),
-                avg_speed as Double,
+                avg_spd as Double,
             )?;
         }
 

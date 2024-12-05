@@ -22,8 +22,8 @@ pub struct FlightConfig {
     pub origin: &'static str,
     /// Código del aeropuerto de destino.
     pub destination: &'static str,
-    /// Velocidad promedio del vuelo.
-    pub avg_speed: Double,
+    /// Velocidad inicial del vuelo.
+    pub spd: Double,
 }
 
 const MAX_THREADS: usize = 16;
@@ -64,9 +64,9 @@ fn script_loop(simulator: &FlightSimulator, flights: &[FlightConfig]) {
                 flight.flight_id,
                 flight.origin.to_string(),
                 flight.destination.to_string(),
-                flight.avg_speed,
+                flight.spd,
             ) {
-                Ok(_) => println!("Vuelo añadido exitosamente"),
+                Ok(_) => println!("Vuelo añadido exitosamente!"),
                 Err(e) => println!("Error al añadir vuelo: {}", e),
             }
             thread::sleep(Duration::from_millis(500));
@@ -107,26 +107,25 @@ fn get_initial_data() -> Result<(String, String, String, String)> {
     let dest = read_line()?;
 
     if origin.trim() == dest.trim() {
-        return Err(Error::ServerError(
-            "El origen y destino no pueden ser el mismo aeropuerto".to_string(),
-        ));
+        println!("Error: El origen y destino no pueden ser iguales");
+        return get_initial_data();
     }
 
-    println!("Velocidad promedio");
-    let avg_speed = read_line()?;
+    println!("Velocidad inicial:");
+    let spd = read_line()?;
 
-    Ok((flight_id, origin, dest, avg_speed))
+    Ok((flight_id, origin, dest, spd))
 }
 
 fn handle_add_flight(simulator: &FlightSimulator) -> Result<()> {
     match get_initial_data() {
-        Ok((flight_id, origin, dest, avg_speed)) => match flight_id.trim().parse::<Int>() {
+        Ok((flight_id, origin, dest, spd)) => match flight_id.trim().parse::<Int>() {
             Ok(id) => {
                 match simulator.add_flight(
                     id,
                     origin.trim().to_string(),
                     dest.trim().to_string(),
-                    match avg_speed.trim().parse::<Double>() {
+                    match spd.trim().parse::<Double>() {
                         Ok(speed) => speed,
                         Err(err) => {
                             return Err(Error::ServerError(format!(

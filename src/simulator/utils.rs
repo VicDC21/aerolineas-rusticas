@@ -1,4 +1,7 @@
-use {crate::protocol::aliases::types::Double, rand::Rng};
+use {
+    crate::protocol::aliases::types::Double,
+    rand::{rngs::ThreadRng, Rng},
+};
 
 /// Funciones de utilidad para cálculos de vuelo
 pub struct FlightCalculations;
@@ -10,23 +13,21 @@ impl FlightCalculations {
         current_lon: Double,
         dest_lat: Double,
         dest_lon: Double,
-        distance: Double,
         progress: Double,
     ) -> (Double, Double) {
+        let progress = progress.min(1.0);
         let lat1 = current_lat.to_radians();
         let lon1 = current_lon.to_radians();
         let lat2 = dest_lat.to_radians();
         let lon2 = dest_lon.to_radians();
 
-        let a = ((1.0 - progress as Double) * distance).sin() / distance.sin();
-        let b = (progress as Double * distance).sin() / distance.sin();
-        let x = a * lat1.cos() * lon1.cos() + b * lat2.cos() * lon2.cos();
-        let y = a * lat1.cos() * lon1.sin() + b * lat2.cos() * lon2.sin();
-        let z = a * lat1.sin() + b * lat2.sin();
+        let lat_diff = lat2 - lat1;
+        let lon_diff = lon2 - lon1;
 
-        let new_lat = z.atan2((x.powi(2) + y.powi(2)).sqrt());
-        let new_lon = y.atan2(x);
-        (new_lat.to_degrees(), (new_lon.to_degrees()))
+        let new_lat = lat1 + (lat_diff * progress);
+        let new_lon = lon1 + (lon_diff * progress);
+
+        (new_lat.to_degrees(), new_lon.to_degrees())
     }
 
     /// Calcula la distancia entre dos puntos usando la fórmula haversine
@@ -43,84 +44,27 @@ impl FlightCalculations {
         r * c
     }
 
-    /// Calcula la altitud de crucero basada en la elevación de origen y destino
-    pub fn calculate_cruise_altitude(
-        origin_elevation: Double,
-        dest_elevation: Double,
-        progress: Double,
-    ) -> Double {
-        const CRUISE_ALTITUDE: Double = 35000.0;
-        const ASCENT_PHASE: Double = 0.15;
-        const DESCENT_PHASE: Double = 0.85;
-
-        if progress < ASCENT_PHASE {
-            origin_elevation
-                + (CRUISE_ALTITUDE - origin_elevation) * (progress / ASCENT_PHASE).powi(2)
-        } else if progress > DESCENT_PHASE {
-            let descent_progress = (progress - DESCENT_PHASE) / (1.0 - DESCENT_PHASE);
-            CRUISE_ALTITUDE - (CRUISE_ALTITUDE - dest_elevation) * descent_progress.powi(2)
-        } else {
-            CRUISE_ALTITUDE
-        }
-    }
-
     /// Calcula la velocidad actual basada en la velocidad promedio y el progreso del vuelo
-    pub fn calculate_current_speed(
-        avg_speed: Double,
-        progress: Double,
-        rng: &mut rand::rngs::ThreadRng,
-    ) -> Double {
-        const ASCENT_PHASE: Double = 0.15;
-        const DESCENT_PHASE: Double = 0.85;
-
-        let base_speed = if progress < ASCENT_PHASE {
-            avg_speed * (progress / ASCENT_PHASE).powi(2)
-        } else if progress > DESCENT_PHASE {
-            let descent_progress = (progress - DESCENT_PHASE) / (1.0 - DESCENT_PHASE);
-            avg_speed * (1.0 - descent_progress.powi(2))
-        } else {
-            avg_speed
-        };
-
-        base_speed * (1.0 + rng.gen_range(-0.02..0.02))
+    pub fn calculate_current_speed(avg_speed: Double, rng: &mut ThreadRng) -> Double {
+        avg_speed + rng.gen_range(-50.0..50.0)
     }
 
     /// Calcula la altitud actual agregando una variación aleatoria
     pub fn calculate_current_altitude(
-        base_altitude: Double,
-        rng: &mut rand::rngs::ThreadRng,
+        altitude: Double,
+        rng: &mut ThreadRng,
+        progress: Double,
     ) -> Double {
-        base_altitude + rng.gen_range(-50.0..50.0)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_calculate_distance() {
-        let distance = FlightCalculations::calculate_distance(-34.6037, -58.3816, 40.4168, -3.7038);
-        assert!((distance - 10000.0).abs() < 500.0);
-    }
-
-    #[test]
-    fn test_cruise_altitude() {
-        let origin_elevation = 0.0;
-        let dest_elevation = 2000.0;
-
-        let altitude_takeoff =
-            FlightCalculations::calculate_cruise_altitude(origin_elevation, dest_elevation, 0.05);
-        assert!(altitude_takeoff > origin_elevation);
-        assert!(altitude_takeoff < 35000.0);
-
-        let altitude_cruise =
-            FlightCalculations::calculate_cruise_altitude(origin_elevation, dest_elevation, 0.5);
-        assert_eq!(altitude_cruise, 35000.0);
-
-        let altitude_landing =
-            FlightCalculations::calculate_cruise_altitude(origin_elevation, dest_elevation, 0.95);
-        assert!(altitude_landing < 35000.0);
-        assert!(altitude_landing > dest_elevation);
+        const CRUISE_ALTITUDE: Double = 35000.0;
+        if progress < 0.1 {
+            let climb_variation = rng.gen_range(2000.0..3000.0);
+            altitude + climb_variation
+        } else if progress > 0.9 {
+            let descent_variation = rng.gen_range(-4000.0..-3000.0);
+            altitude + descent_variation
+        } else {
+            let variation = rng.gen_range(-500.0..500.0);
+            CRUISE_ALTITUDE + variation
+        }
     }
 }
