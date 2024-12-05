@@ -18,6 +18,7 @@ use {
     },
     rand::thread_rng,
     std::{
+        process::exit,
         sync::{Arc, Mutex},
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -32,7 +33,7 @@ struct FlightSimulationParams {
     dest_elevation: Double,
     simulation_start: Instant,
     simulation_limit: Duration,
-    step_size: Double,
+    total_distance: Double,
     fuel_consumption_rate: Double,
 }
 
@@ -62,19 +63,18 @@ impl FlightSimulator {
 
     /// Obtiene los datos específicos de un vuelo según el id solicitado.
     pub fn get_flight_data(&self, flight_id: Int) -> Option<LiveFlightData> {
-        if let Ok(flights) = self.flights.lock() {
-            flights.iter().find(|f| f.flight_id == flight_id).cloned()
-        } else {
-            None
+        match self.flights.lock() {
+            Ok(flights) => flights.iter().find(|f| f.flight_id == flight_id).cloned(),
+            Err(_) => None,
         }
     }
 
     /// Obtiene datos principales de todos los vuelos cargados al simulador.
     pub fn get_all_flights(&self) -> Vec<LiveFlightData> {
-        self.flights
-            .lock()
-            .map(|flights| flights.clone())
-            .unwrap_or_default()
+        match self.flights.lock() {
+            Ok(flights) => flights.clone(),
+            Err(_) => Vec::new(),
+        }
     }
 
     /// Agrega un vuelo al simulador con un id, aeropuerto de origen y destino, y velocidad promedio.
@@ -83,6 +83,7 @@ impl FlightSimulator {
         flight_id: Int,
         origin: String,
         destination: String,
+        avg_speed: Double,
     ) -> Result<(), Error> {
         if self.get_flight_data(flight_id).is_some() {
             return Err(Error::ServerError(format!(
@@ -92,7 +93,7 @@ impl FlightSimulator {
         }
 
         let (flight, dest_coords, dest_elevation) =
-            self.initialize_flight(flight_id, origin, destination)?;
+            self.initialize_flight(flight_id, origin, destination, avg_speed)?;
 
         if let Ok(mut flight_list) = self.flights.lock() {
             flight_list.push(flight.clone());
@@ -119,6 +120,7 @@ impl FlightSimulator {
                         dest_coords,
                         dest_elevation,
                         Some(tls_stream),
+                        true,
                     );
                 });
                 Ok(())
@@ -133,6 +135,7 @@ impl FlightSimulator {
                         dest_coords,
                         dest_elevation,
                         None,
+                        false,
                     );
                 });
                 Ok(())
@@ -147,6 +150,7 @@ impl FlightSimulator {
         dest_coords: (Double, Double),
         dest_elevation: Double,
         tls_stream: Option<Arc<Mutex<TlsStream>>>,
+        _has_to_connect: bool,
     ) {
         let mut rng = thread_rng();
         if let Some(ref tls_stream) = tls_stream {
@@ -165,15 +169,18 @@ impl FlightSimulator {
         Self::update_flight_in_list(&flights, &flight);
 
         let simulation_start = Instant::now();
-        let simulation_limit = Duration::from_secs(FLIGHT_LIMIT_SECS);
-        let step_size = total_distance / 50.0;
+        let simulation_limit = if _has_to_connect {
+            Duration::from_secs((total_distance * 3600.0 / flight.get_spd()) as u64)
+        } else {
+            Duration::from_secs(FLIGHT_LIMIT_SECS)
+        };
 
         let params = FlightSimulationParams {
             dest_coords,
             dest_elevation,
             simulation_start,
             simulation_limit,
-            step_size,
+            total_distance,
             fuel_consumption_rate,
         };
 
@@ -224,7 +231,7 @@ impl FlightSimulator {
             Self::update_flight_position(
                 flight,
                 params.dest_coords,
-                params.step_size,
+                params.total_distance,
                 progress,
                 params.dest_elevation,
                 rng,
@@ -234,10 +241,13 @@ impl FlightSimulator {
 
             Self::update_flight_in_list(flights, flight);
 
-            let timestamp = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_else(|_| Duration::from_secs(0))
-                .as_secs() as Long;
+            let timestamp = match Self::get_current_timestamp() {
+                Ok(ts) => ts,
+                Err(err) => {
+                    eprintln!("Error obteniendo timestamp actual: {}", err);
+                    return;
+                }
+            };
 
             if let Some(ref tls_stream) = tls_stream {
                 let _ = Self::send_flight_update(
@@ -293,41 +303,52 @@ impl FlightSimulator {
         Ok(())
     }
 
+    fn get_current_timestamp() -> Result<Long, Error> {
+        match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(time) => Ok(time.as_secs() as Long),
+            Err(_) => Err(Error::ServerError(
+                "No se pudo obtener el timestamp actual".to_string(),
+            )),
+        }
+    }
+
     fn initialize_flight(
         &self,
         flight_id: Int,
         origin: String,
         destination: String,
+        avg_speed: Double,
     ) -> Result<(LiveFlightData, (Double, Double), Double), Error> {
         let (origin_airport, destination_airport) =
             self.validate_airports(&origin, &destination)?;
 
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| Duration::from_secs(0))
-            .as_secs() as Long;
+        let timestamp = Self::get_current_timestamp()?;
 
-        let origin_coords = (origin_airport.position.0, origin_airport.position.1);
-        let dest_coords = (
-            destination_airport.position.0,
-            destination_airport.position.1,
-        );
+        match (
+            origin_airport.elevation_ft,
+            destination_airport.elevation_ft,
+        ) {
+            (Some(origin_elevation), Some(dest_elevation)) => {
+                let flight = LiveFlightData::new(
+                    flight_id,
+                    (origin_airport.ident, destination_airport.ident),
+                    (timestamp, 0.0),
+                    (avg_speed, 100.0),
+                    origin_airport.position,
+                    origin_elevation as Double,
+                    (FlightType::Departing, FlightState::Preparing),
+                );
 
-        let flight = LiveFlightData::new(
-            flight_id,
-            (origin_airport.ident, destination_airport.ident),
-            (timestamp, 0.0),
-            (6000.0, 100.0),
-            origin_coords,
-            origin_airport.elevation_ft.unwrap_or(0) as Double,
-            (FlightType::Departing, FlightState::Preparing),
-        );
-
-        Ok((
-            flight,
-            dest_coords,
-            destination_airport.elevation_ft.unwrap_or(0) as Double,
-        ))
+                Ok((
+                    flight,
+                    destination_airport.position,
+                    dest_elevation as Double,
+                ))
+            }
+            (_, _) => Err(Error::ServerError(
+                "No se pudo obtener la elevación de los aeropuertos".to_string(),
+            )),
+        }
     }
 
     fn validate_airports(
@@ -368,10 +389,7 @@ impl FlightSimulator {
 
         Self::update_flight_in_list(flights, flight);
 
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| Duration::from_secs(0))
-            .as_secs() as Long;
+        let timestamp = Self::get_current_timestamp()?;
         if tls_stream.is_some() {
             let _ =
                 Self::send_flight_update(flight, timestamp, client, flight.fuel, 0.0, tls_stream);
@@ -383,21 +401,19 @@ impl FlightSimulator {
         flight: &LiveFlightData,
         dest_coords: (Double, Double),
     ) -> (Double, Double) {
-        (
-            FlightCalculations::calculate_distance(
-                flight.lat(),
-                flight.lon(),
-                dest_coords.0,
-                dest_coords.1,
-            ),
-            0.5,
-        )
+        let total_distance = FlightCalculations::calculate_distance(
+            flight.lat(),
+            flight.lon(),
+            dest_coords.0,
+            dest_coords.1,
+        );
+        (total_distance, flight.fuel / total_distance)
     }
 
     fn update_flight_position(
         flight: &mut LiveFlightData,
         dest_coords: (Double, Double),
-        step_size: Double,
+        total_distance: Double,
         progress: Double,
         dest_elevation: Double,
         rng: &mut rand::rngs::ThreadRng,
@@ -407,7 +423,8 @@ impl FlightSimulator {
             flight.lon(),
             dest_coords.0,
             dest_coords.1,
-            step_size,
+            total_distance,
+            progress,
         );
 
         flight.pos = (new_lat, new_lon);
@@ -451,11 +468,7 @@ impl FlightSimulator {
         flight.altitude_ft = dest_elevation;
 
         Self::update_flight_in_list(flights, flight);
-
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| Duration::from_secs(0))
-            .as_secs() as Long;
+        let timestamp = Self::get_current_timestamp()?;
 
         if tls_stream.is_some() {
             let _ = Self::send_flight_update(
@@ -473,7 +486,13 @@ impl FlightSimulator {
 
 impl Default for FlightSimulator {
     fn default() -> Self {
-        Self::new(8, Client::default(), false).unwrap() // solo es usado para tests
+        match Self::new(8, Client::default(), false) {
+            Ok(simulator) => simulator,
+            Err(err) => {
+                eprintln!("{}", err);
+                exit(1);
+            }
+        }
     }
 }
 
@@ -485,7 +504,7 @@ mod tests {
     fn test_flight_simulator() -> Result<(), Error> {
         let simulator = FlightSimulator::default();
 
-        simulator.add_flight(123456, "SAEZ".to_string(), "LEMD".to_string())?;
+        simulator.add_flight(123456, "SAEZ".to_string(), "LEMD".to_string(), 900.0)?;
         assert!(simulator.get_flight_data(123456).is_some());
 
         if let Some(data) = simulator.get_flight_data(123456) {
@@ -517,13 +536,18 @@ mod tests {
         let simulator = FlightSimulator::default();
 
         let flight_configs = vec![
-            (234567, "SBGR", "KJFK"),
-            (345678, "KLAX", "RJAA"),
-            (456789, "LFPG", "SVMI"),
+            (234567, "SBGR", "KJFK", 900.0),
+            (345678, "KLAX", "RJAA", 950.0),
+            (456789, "LFPG", "SVMI", 850.0),
         ];
 
-        for &(flight_id, origin, destination) in &flight_configs {
-            simulator.add_flight(flight_id, origin.to_string(), destination.to_string())?;
+        for &(flight_id, origin, destination, avg_speed) in &flight_configs {
+            simulator.add_flight(
+                flight_id,
+                origin.to_string(),
+                destination.to_string(),
+                avg_speed as Double,
+            )?;
         }
 
         let check_intervals = 5;
@@ -533,13 +557,13 @@ mod tests {
         for _ in 0..check_intervals {
             thread::sleep(Duration::from_secs(check_interval_duration));
 
-            for &(flight_id, _, _) in &flight_configs {
+            for &(flight_id, _, _, _) in &flight_configs {
                 let flight_data = simulator.get_flight_data(flight_id);
                 assert!(flight_data.is_some(), "Vuelo {} no encontrado", flight_id);
             }
         }
 
-        for &(flight_id, _, _) in &flight_configs {
+        for &(flight_id, _, _, _) in &flight_configs {
             let flight_data = simulator.get_flight_data(flight_id);
             assert!(flight_data.is_some(), "Vuelo {} no encontrado", flight_id);
 
