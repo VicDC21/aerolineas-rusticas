@@ -304,9 +304,17 @@ impl FlightSimulator {
         tls_stream: Option<Arc<Mutex<TlsStream>>>,
     ) -> Result<(), Error> {
         let protocol_result = {
-            let tls_stream = tls_stream.unwrap();
-            let mut tls_stream = tls_stream.lock().unwrap();
-            client.send_query(query, &mut tls_stream)?
+            if let Some(tls_stream) = tls_stream {
+                if let Ok(mut tls_stream) = tls_stream.lock() {
+                    client.send_query(query, &mut tls_stream)?
+                } else {
+                    return Err(Error::ServerError(
+                        "No se pudo bloquear el stream TLS".to_string(),
+                    ));
+                }
+            } else {
+                return Err(Error::ServerError("TLS stream no disponible".to_string()));
+            }
         };
 
         if let ProtocolResult::QueryError(err) = protocol_result {
