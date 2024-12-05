@@ -44,20 +44,49 @@ pub struct FlightSimulator {
     flights: Arc<Mutex<Vec<LiveFlightData>>>,
     thread_pool: ThreadPool,
     client: Client,
-    has_to_connect: bool,
+    tls_stream: Option<Arc<Mutex<TlsStream>>>,
 }
 
 impl FlightSimulator {
     /// Crea un nuevo simulador de vuelos con un número máximo de hilos y un cliente.
-    pub fn new(max_threads: usize, client: Client, has_to_connect: bool) -> Result<Self, Error> {
+    pub fn new(
+        max_threads: usize,
+        mut client: Client,
+        has_to_connect: bool,
+    ) -> Result<Self, Error> {
         let airports = Airport::get_all()?;
+
+        let tls_stream = if has_to_connect {
+            let client_connection = get_client_connection()?;
+            let tcp_stream = client.connect()?;
+            let tls_stream = match Some(Arc::new(Mutex::new(
+                client.create_tls_connection(client_connection, tcp_stream)?,
+            ))) {
+                Some(tls_stream) => tls_stream,
+                None => {
+                    return Err(Error::ServerError(
+                        "No se pudo crear el stream TLS".to_string(),
+                    ))
+                }
+            };
+            if let Ok(mut tls_stream) = tls_stream.lock() {
+                client.send_query("User: juan Password: 1234", &mut tls_stream)?;
+            } else {
+                return Err(Error::ServerError(
+                    "No se pudo bloquear el stream TLS".to_string(),
+                ));
+            }
+            Some(tls_stream)
+        } else {
+            None
+        };
 
         Ok(FlightSimulator {
             flights: Arc::new(Mutex::new(Vec::new())),
             thread_pool: ThreadPool::build(max_threads)?,
             client,
             airports: Arc::new(airports),
-            has_to_connect,
+            tls_stream,
         })
     }
 
@@ -100,17 +129,10 @@ impl FlightSimulator {
         }
 
         let flights = Arc::clone(&self.flights);
-        let mut client = self.client.clone();
+        let client = self.client.clone();
+        let tls_stream = self.tls_stream.clone();
 
-        if self.has_to_connect {
-            let client_connection = get_client_connection()?;
-            let tcp_stream = client.connect()?;
-            let tls_stream = Arc::new(Mutex::new(
-                client.create_tls_connection(client_connection, tcp_stream)?,
-            ));
-            if let Ok(mut tls_stream) = tls_stream.lock() {
-                client.send_query("User: juan Password: 1234", &mut tls_stream)?;
-            }
+        if let Some(tls_stream) = tls_stream {
             self.thread_pool.execute(move || {
                 thread::spawn(move || {
                     Self::simulate_flight(
@@ -120,7 +142,6 @@ impl FlightSimulator {
                         dest_coords,
                         dest_elevation,
                         Some(tls_stream),
-                        true,
                     );
                 });
                 Ok(())
@@ -135,7 +156,6 @@ impl FlightSimulator {
                         dest_coords,
                         dest_elevation,
                         None,
-                        false,
                     );
                 });
                 Ok(())
@@ -150,7 +170,6 @@ impl FlightSimulator {
         dest_coords: (Double, Double),
         dest_elevation: Double,
         tls_stream: Option<Arc<Mutex<TlsStream>>>,
-        _has_to_connect: bool,
     ) {
         let mut rng = thread_rng();
         if let Some(ref tls_stream) = tls_stream {
@@ -169,7 +188,7 @@ impl FlightSimulator {
         Self::update_flight_in_list(&flights, &flight);
 
         let simulation_start = Instant::now();
-        let simulation_limit = if _has_to_connect {
+        let simulation_limit = if tls_stream.is_some() {
             Duration::from_secs(
                 ((total_distance * (FLIGHT_LIMIT_SECS as Double)) / flight.get_spd()) as u64,
             )

@@ -60,7 +60,7 @@ impl FlightCalculations {
         const CRUISE_ALTITUDE: Double = 35000.0;
         const MAX_VARIATION: Double = 250.0;
         let progress = current_time / total_flight_time;
-    
+
         if progress < 0.1 {
             let climb_rate = (CRUISE_ALTITUDE - initial_altitude) / (total_flight_time * 0.1);
             let climb_variation = rng.gen_range(-MAX_VARIATION..MAX_VARIATION);
