@@ -853,38 +853,14 @@ impl Node {
                 ))
             }
         };
-        let bytes_borrowed: &[u8] = &bytes;
-        let statement = match QueryBody::try_from(bytes_borrowed) {
-            Ok(query_body) => match make_parse(&mut tokenize_query(query_body.get_query())) {
-                Ok(statement) => statement,
-                Err(_err) => {
-                    return Err(Error::ServerError(
-                        "No se pudo parsear el statement al hacer read-repair".to_string(),
-                    ))
-                }
-            },
-            Err(_err) => {
-                return Err(Error::ServerError(
-                    "No se pudo parsear el body de la query al hacer read-repair".to_string(),
-                ))
-            }
-        };
-        let select = match statement {
-            Statement::DmlStatement(DmlStatement::SelectStatement(select)) => select,
-            _ => {
-                return Err(Error::ServerError(
-                    "La declaración no es un SELECT".to_string(),
-                ))
-            }
-        };
+        let select = parse_select_from_query_body_as_bytes(&bytes)?;
 
-        let res = DiskHandler::get_rows_with_timestamp_as_string(
+        DiskHandler::get_rows_with_timestamp_as_string(
             &self.storage_addr,
             &self.get_default_keyspace_name()?,
             &select,
             node_number,
-        )?;
-        Ok(res)
+        )
     }
 
     fn exec_digest_read_request(&mut self, bytes: Vec<Byte>) -> Vec<Byte> {
@@ -2162,7 +2138,7 @@ impl Node {
             first_hashed_value,
         );
         if exec_read_repair && self.neighbour_is_responsive(node_id) {
-            return self.exec_read_repair(node_id, request, consistency_number, table_name);
+            return self.start_read_repair(node_id, request, consistency_number, table_name);
         };
         Ok(false)
     }
@@ -2203,7 +2179,7 @@ impl Node {
         Ok(opcode_with_hashed_value)
     }
 
-    fn exec_read_repair(
+    fn start_read_repair(
         &self,
         node_id: u8,
         request: &[Byte],
@@ -2233,6 +2209,25 @@ impl Node {
             add_rows_with_his_node(res, &mut ids_and_rows, node_to_consult);
             node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
         }
+        self.execute_read_repair(
+            node_id,
+            &nodes_ids,
+            table_name,
+            consistency_number,
+            ids_and_rows,
+        )?;
+
+        Ok(true)
+    }
+
+    fn execute_read_repair(
+        &self,
+        node_id: NodeId,
+        nodes_ids: &[NodeId],
+        table_name: &str,
+        consistency_number: usize,
+        ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)>,
+    ) -> Result<()> {
         let rows_as_string = get_most_recent_rows_as_string(ids_and_rows);
         let mut node_to_repair = node_id;
         for _ in 0..consistency_number {
@@ -2262,9 +2257,9 @@ impl Node {
                     TIMEOUT_SECS,
                 )?;
             };
-            node_to_repair = next_node_in_the_cluster(node_to_repair, &nodes_ids);
+            node_to_repair = next_node_in_the_cluster(node_to_repair, nodes_ids);
         }
-        Ok(true)
+        Ok(())
     }
 
     fn process_delete(&mut self, delete: &Delete, node_number: Byte) -> Result<Vec<Byte>> {
@@ -2663,6 +2658,30 @@ fn add_rows_with_his_node(
         .map(|row| row.split(",").map(|col| col.to_string()).collect())
         .collect();
     ids_and_rows.push((node_to_consult, rows));
+}
+
+fn parse_select_from_query_body_as_bytes(bytes: &[Byte]) -> Result<Select> {
+    let statement = match QueryBody::try_from(bytes) {
+        Ok(query_body) => match make_parse(&mut tokenize_query(query_body.get_query())) {
+            Ok(statement) => statement,
+            Err(_err) => {
+                return Err(Error::ServerError(
+                    "No se pudo parsear el statement, durante read-repair".to_string(),
+                ))
+            }
+        },
+        Err(_err) => {
+            return Err(Error::ServerError(
+                "No se pudo parsear el body de la query, durante read-repair".to_string(),
+            ))
+        }
+    };
+    match statement {
+        Statement::DmlStatement(DmlStatement::SelectStatement(select)) => Ok(select),
+        _ => Err(Error::ServerError(
+            "La declaración no es un SELECT, durante read-repair".to_string(),
+        )),
+    }
 }
 
 fn create_utf8_string_from_bytes(extern_response: Vec<u8>) -> Result<String> {
