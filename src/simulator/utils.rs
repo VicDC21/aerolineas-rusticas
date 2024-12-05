@@ -68,3 +68,103 @@ impl FlightCalculations {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    /// Función auxiliar para comparar números de punto flotante con tolerancia
+    fn assert_approx_eq(a: f64, b: f64) {
+        let epsilon = 1e-6;
+        assert!(
+            (a - b).abs() < epsilon,
+            "Expected {} to be approximately equal to {}",
+            a,
+            b
+        );
+    }
+
+    #[test]
+    fn test_calculate_next_position_start() {
+        let (new_lat, new_lon) =
+            FlightCalculations::calculate_next_position(10.0, 20.0, 30.0, 40.0, 0.0);
+
+        assert_approx_eq(new_lat, 10.0);
+        assert_approx_eq(new_lon, 20.0);
+    }
+
+    #[test]
+    fn test_calculate_next_position_end() {
+        let (new_lat, new_lon) =
+            FlightCalculations::calculate_next_position(10.0, 20.0, 30.0, 40.0, 1.0);
+
+        assert_approx_eq(new_lat, 30.0);
+        assert_approx_eq(new_lon, 40.0);
+    }
+
+    #[test]
+    fn test_calculate_next_position_midpoint() {
+        let (new_lat, new_lon) =
+            FlightCalculations::calculate_next_position(10.0, 20.0, 30.0, 40.0, 0.5);
+
+        assert_approx_eq(new_lat, 20.0);
+        assert_approx_eq(new_lon, 30.0);
+    }
+
+    #[test]
+    fn test_calculate_next_position_overflow() {
+        let (new_lat, new_lon) =
+            FlightCalculations::calculate_next_position(10.0, 20.0, 30.0, 40.0, 1.5);
+
+        assert_approx_eq(new_lat, 30.0);
+        assert_approx_eq(new_lon, 40.0);
+    }
+
+    #[test]
+    fn test_calculate_distance_same_point() {
+        let distance = FlightCalculations::calculate_distance(
+            40.7128, -74.0060, // Coordenadas de Nueva York
+            40.7128, -74.0060,
+        );
+
+        assert!(distance < 1.0, "Expected near-zero distance");
+    }
+
+    #[test]
+    fn test_calculate_distance_known_cities() {
+        let distance = FlightCalculations::calculate_distance(
+            40.7128, -74.0060, // Coordenadas de Nueva York
+            34.0522, -118.2437, // Coordenadas de Los Ángeles
+        );
+
+        assert!(
+            distance > 3900.0 && distance < 3970.0,
+            "Distancia inesperada: {}",
+            distance
+        );
+    }
+
+    #[test]
+    fn test_calculate_current_speed() {
+        let avg_speed = 500.0; // km/h
+        let mut seed: u32 = 42;
+
+        let mut speed_results = Vec::new();
+
+        for _ in 0..100 {
+            seed = seed.wrapping_mul(1103515245).wrapping_add(12345) & 0x7fffffff;
+            let random_factor = (seed as f64 / 0x7fffffff as f64) * 100.0 - 50.0;
+
+            let speed = avg_speed + random_factor;
+            speed_results.push(speed);
+        }
+
+        let min_speed = speed_results.iter().cloned().fold(f64::INFINITY, f64::min);
+        let max_speed = speed_results
+            .iter()
+            .cloned()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        assert!(min_speed >= avg_speed - 50.0, "Velocidad demasiado baja");
+        assert!(max_speed <= avg_speed + 50.0, "Velocidad demasiado alta");
+    }
+}
