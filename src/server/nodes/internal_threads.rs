@@ -11,9 +11,9 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
         mpsc::{channel, Sender},
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard, RwLock,
     },
-    thread::{sleep, Builder},
+    thread::{self, sleep, Builder},
     time::Duration,
 };
 
@@ -29,15 +29,13 @@ use crate::{
         },
     },
 };
-use crate::{
-    protocol::{
+use crate::protocol::{
         aliases::{results::Result, types::Byte},
         errors::error::Error,
         headers::opcode::Opcode,
         traits::Byteable,
-    },
-    server::pool::threadpool::ThreadPool,
-};
+    }
+;
 
 /// Un stream TLS.
 type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
@@ -46,7 +44,6 @@ type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
 
 /// El número de hilos para el [ThreadPool].
-const N_THREADS: usize = 20;
 
 /// Crea los _handlers_ que escuchan por conexiones entrantes.
 ///
@@ -63,8 +60,11 @@ pub fn create_client_and_private_conexion(
     node_listeners: &mut Vec<Option<NodeHandle>>,
 ) -> Result<()> {
     let sendable_node = Arc::new(Mutex::new(node));
+    // let sendable_node = RwLock::new(Arc::new(node));
+    // creamos de esta manera el RwLock
     let cli_node = Arc::clone(&sendable_node);
     let priv_node = Arc::clone(&sendable_node);
+
 
     let cli_builder = Builder::new().name(format!("{}_cli", id));
     let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));
@@ -115,7 +115,6 @@ fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
-    let pool = ThreadPool::build(N_THREADS)?;
     let exit = false;
     for tcp_stream_res in listener.incoming() {
         match tcp_stream_res {
@@ -124,7 +123,8 @@ fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
                 let config = Arc::clone(&server_config);
                 let node = Arc::clone(&node);
                 let arc_exit = Arc::new(Mutex::new(exit));
-                pool.execute(move || listen_single_client(config, tcp_stream, arc_exit, node))?;
+                println!("Se conectan a este nodo");
+                thread::spawn(move || listen_single_client(config, tcp_stream, arc_exit, node));
             }
         };
         if exit {
@@ -133,6 +133,10 @@ fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
     }
     Ok(())
 }
+
+
+
+
 
 fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
     let listener = bind_with_socket(socket)?;
@@ -182,6 +186,8 @@ fn listen_single_client(
     let mut tls_stream: TlsStream = Stream::new(&mut server_conn, &mut buffered_stream);
     let tls = &mut tls_stream;
     let mut is_logged = false;
+
+    // aca crear una nueva estructura que se encargue de handelear las queries y que tenga el Arc del nodo
     loop {
         let mut buffer: Vec<u8> = vec![0; 2048];
         let size = match tls.read(&mut buffer) {
@@ -199,6 +205,7 @@ fn listen_single_client(
             }
             break;
         }
+        // aca sacar el lock del node, no vamos a lockear tan temprano
         match node.lock() {
             Ok(mut locked_in) => {
                 let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
@@ -214,6 +221,21 @@ fn listen_single_client(
     }
     Ok(())
 }
+
+// fn get_node_mutex(node: &mut Arc<Mutex<Node>>) -> Result<MutexGuard<'static, Node>>{
+//     match node.lock() {
+//         Ok(mut locked_in) => {
+//             Ok(locked_in)
+//         }
+//         Err(poison_err) => {
+//             println!("Error de lock envenenado:\n\n{}", poison_err);
+//             node.clear_poison();
+//             Err(Error::ServerError(format!("Error de lock envenenado:\n\n{}", poison_err)))
+//         }
+//     }
+// }
+
+
 
 fn configure_tls() -> Result<Arc<ServerConfig>> {
     let private_key_file = "custom.key";
@@ -351,7 +373,7 @@ fn exec_gossip(
     weights: Vec<usize>,
 ) -> Result<()> {
     loop {
-        sleep(Duration::from_millis(200));
+        sleep(Duration::from_millis(1500));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
                 break;

@@ -86,7 +86,7 @@ const N_NODES: Byte = 5;
 /// El límite posible para los rangos de los nodos.
 const NODES_RANGE_END: u64 = 18446744073709551615;
 /// El tiempo de espera _(en segundos)_ por una respuesta.
-const TIMEOUT_SECS: u64 = 2;
+const TIMEOUT_SECS: u64 = 1;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 #[derive(Serialize, Deserialize)]
@@ -127,7 +127,7 @@ pub struct Node {
     nodes_ranges: Vec<(u64, u64)>,
 
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
-    tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
+    pub tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 
     /// Mapa de conexiones abiertas entre el nodo y otros clientes.
     #[serde(skip)]
@@ -936,6 +936,7 @@ impl Node {
         is_internal_request: bool,
         is_logged: bool,
     ) -> Vec<Byte> {
+        // El Arc<RwLock<Node>> tiene que llegar al menos hasta aca sin lockear
         if request.len() < 9 {
             return Vec::<Byte>::new();
         }
@@ -1164,6 +1165,7 @@ impl Node {
                     TIMEOUT_SECS,
                 )?
             } else {
+                // LOCKEAR ACA
                 self.process_internal_use_statement(&keyspace_name)?
             };
             actual_node_id = next_node_in_the_cluster(actual_node_id, &nodes_ids);
@@ -1462,6 +1464,7 @@ impl Node {
             Ok(table) => table,
             Err(err) => return Err(err),
         };
+        // SIEMPRE ANTES DE UN DISKHANDLER HACER UN LOCK/WRITE
         let mut res = DiskHandler::do_select(
             select,
             &self.storage_addr,
@@ -2212,6 +2215,8 @@ impl Node {
         req_with_node_replica.push(node_id);
         let nodes_ids = Self::get_nodes_ids();
         let mut node_to_consult = node_id;
+        // LOCK?
+        // si ejecutamos read-repair deberiamos lockear todo el read-repair aun mientras esperamos la respuesta?
         for _ in 0..consistency_number {
             let res = if node_to_consult == self.id {
                 self.exec_direct_read_request(req_with_node_replica.clone())?
@@ -2233,6 +2238,7 @@ impl Node {
         for _ in 0..consistency_number {
             if node_to_repair == self.id {
                 let table = self.get_table(table_name)?;
+                // LOCKEAR NODO
                 DiskHandler::repair_rows(
                     &self.storage_addr,
                     table_name,
@@ -2521,6 +2527,8 @@ impl Node {
     where
         S: Read + Write,
     {
+        // let mode = node.read().mode()
+        // match mode
         match self.mode() {
             ConnectionMode::Echo => {
                 let printable_bytes = bytes
