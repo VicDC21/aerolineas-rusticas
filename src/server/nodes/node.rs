@@ -487,7 +487,7 @@ impl Node {
     }
 
     /// Envia su endpoint state al nodo del ID correspondiente.
-    fn send_endpoint_state(&mut self, id: NodeId) {
+    pub fn send_endpoint_state(&self, id: NodeId) {
         if let Err(err) = send_to_node(
             id,
             SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
@@ -529,11 +529,11 @@ impl Node {
     }
 
     /// Consulta el modo de conexión del nodo.
-    fn mode(&self) -> &ConnectionMode {
+    pub fn mode(&self) -> &ConnectionMode {
         self.endpoint_state.get_appstate().get_mode()
     }
 
-    fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
+    pub fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
         let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
         if !self.has_endpoint_state_by_id(&guessed_id) {
             self.neighbours_states.insert(guessed_id, state);
@@ -583,7 +583,7 @@ impl Node {
     }
 
     /// Avanza el tiempo para el nodo.
-    fn beat(&mut self) -> VerType {
+    pub fn beat(&mut self) -> VerType {
         self.endpoint_state.beat();
         self.neighbours_states
             .insert(self.id, self.endpoint_state.clone());
@@ -601,7 +601,7 @@ impl Node {
     }
 
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
-    fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
+    pub fn gossip(&mut self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done();
 
         for neighbour_id in neighbours {
@@ -620,7 +620,7 @@ impl Node {
     }
 
     /// Se recibe un mensaje [SYN](crate::server::actions::opcode::SvAction::Syn).
-    fn syn(&mut self, emissor_id: NodeId, emissor_gossip_info: GossipInfo) -> Result<()> {
+    pub fn syn(&self, emissor_id: NodeId, emissor_gossip_info: GossipInfo) -> Result<()> {
         let mut own_gossip_info = GossipInfo::new(); // quiero info de estos nodos
         let mut response_nodes = NodesMap::new(); // doy info de estos nodos
 
@@ -653,7 +653,7 @@ impl Node {
     /// Clasifica los nodos en el _SYN_ recibido. Determina cuales deben ser pedidos (_own_gossip_info_) y cuales
     /// deben ser compartidos _(response_nodes)_.
     fn classify_nodes_in_gossip(
-        &mut self,
+        &self,
         emissor_gossip_info: &HashMap<Byte, HeartbeatState>,
         own_gossip_info: &mut HashMap<Byte, HeartbeatState>,
         response_nodes: &mut HashMap<Byte, EndpointState>,
@@ -683,7 +683,7 @@ impl Node {
     }
 
     /// Se recibe un mensaje [ACK](crate::server::actions::opcode::SvAction::Ack).
-    fn ack(
+    pub fn ack(
         &mut self,
         receptor_id: NodeId,
         receptor_gossip_info: GossipInfo,
@@ -717,7 +717,7 @@ impl Node {
     }
 
     /// Se recibe un mensaje [ACK2](crate::server::actions::opcode::SvAction::Ack2).
-    fn ack2(&mut self, nodes_map: NodesMap) -> Result<()> {
+    pub fn ack2(&mut self, nodes_map: NodesMap) -> Result<()> {
         self.update_neighbours(nodes_map)
     }
 
@@ -736,112 +736,6 @@ impl Node {
         });
 
         closed_count
-    }
-
-    /// Procesa una _request_ en forma de [Byte]s.
-    /// También devuelve un [bool] indicando si se debe parar el hilo.
-    pub fn process_stream<S>(
-        &mut self,
-        stream: &mut S,
-        bytes: Vec<Byte>,
-        is_logged: bool,
-    ) -> Result<Vec<Byte>>
-    where
-        S: Read + Write,
-    {
-        if bytes.is_empty() {
-            return Ok(vec![]);
-        }
-        // println!("Esta en process_tcp");
-        match SvAction::get_action(&bytes[..]) {
-            Some(action) => {
-                if let Err(err) = self.handle_sv_action(action, stream) {
-                    println!(
-                        "[{} - ACTION] Error en la acción del servidor: {}",
-                        self.id, err
-                    );
-                }
-                Ok(vec![])
-            }
-            None => self.match_kind_of_conection_mode(bytes, stream, is_logged),
-        }
-    }
-
-    /// Maneja una acción de servidor.
-    fn handle_sv_action<S>(&mut self, action: SvAction, mut tcp_stream: S) -> Result<bool>
-    where
-        S: Read + Write,
-    {
-        let mut stop = false;
-        match action {
-            SvAction::Exit => stop = true, // La comparación para salir ocurre en otro lado
-            SvAction::Beat => {
-                self.beat();
-            }
-            SvAction::Gossip(neighbours) => {
-                self.gossip(neighbours)?;
-            }
-            SvAction::Syn(emissor_id, gossip_info) => {
-                self.syn(emissor_id, gossip_info)?;
-            }
-            SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
-                self.ack(receptor_id, gossip_info, nodes_map)?;
-            }
-            SvAction::Ack2(nodes_map) => {
-                self.ack2(nodes_map)?;
-            }
-            SvAction::NewNeighbour(state) => {
-                self.add_neighbour_state(state)?;
-            }
-            SvAction::SendEndpointState(id) => {
-                self.send_endpoint_state(id);
-            }
-            SvAction::InternalQuery(bytes) => {
-                let response = self.handle_request(&bytes, true, true);
-                let _ = tcp_stream.write_all(&response[..]);
-                if let Err(err) = tcp_stream.flush() {
-                    return Err(Error::ServerError(err.to_string()));
-                };
-            }
-            SvAction::StoreMetadata => {
-                if let Err(err) = DiskHandler::store_node_metadata(self) {
-                    return Err(Error::ServerError(format!(
-                        "Error guardando metadata del nodo {}: {}",
-                        &self.id, err
-                    )));
-                }
-            }
-            SvAction::DirectReadRequest(bytes) => {
-                let res = self.exec_direct_read_request(bytes)?;
-                let _ = tcp_stream.write_all(res.as_bytes());
-                if let Err(err) = tcp_stream.flush() {
-                    return Err(Error::ServerError(err.to_string()));
-                };
-            }
-            SvAction::DigestReadRequest(bytes) => {
-                let res = self.exec_digest_read_request(bytes);
-                let _ = tcp_stream.write_all(&res);
-                if let Err(err) = tcp_stream.flush() {
-                    return Err(Error::ServerError(err.to_string()));
-                };
-            }
-            SvAction::RepairRows(table_name, node_id, rows_bytes) => {
-                self.repair_rows(table_name, node_id, rows_bytes)?;
-            }
-            SvAction::AddPartitionValueToMetadata(table_name, partition_value) => {
-                let table = self.get_table(&table_name)?;
-                match self.check_if_has_new_partition_value(
-                    partition_value,
-                    &table.get_name().to_string(),
-                )? {
-                    Some(new_partition_values) => self
-                        .tables_and_partitions_keys_values
-                        .insert(table_name, new_partition_values),
-                    None => None,
-                };
-            }
-        };
-        Ok(stop)
     }
 
     fn exec_direct_read_request(&self, mut bytes: Vec<Byte>) -> Result<String> {
@@ -2511,43 +2405,6 @@ impl Node {
         };
         let res_hashed_value = u64::from_be_bytes(array);
         Ok(res_hashed_value)
-    }
-
-    fn match_kind_of_conection_mode<S>(
-        &mut self,
-        bytes: Vec<Byte>,
-        mut stream: S,
-        is_logged: bool,
-    ) -> Result<Vec<Byte>>
-    where
-        S: Read + Write,
-    {
-        // let mode = node.read().mode()
-        // match mode
-        match self.mode() {
-            ConnectionMode::Echo => {
-                let printable_bytes = bytes
-                    .iter()
-                    .map(|b| format!("{:#X}", b))
-                    .collect::<Vec<String>>();
-                println!("[{} - ECHO] {}", self.id, printable_bytes.join(" "));
-                if let Err(err) = stream.write_all(&bytes) {
-                    println!("Error al escribir en el TCPStream:\n\n{}", err);
-                }
-                if let Err(err) = stream.flush() {
-                    println!("Error haciendo flush desde el nodo:\n\n{}", err);
-                }
-            }
-            ConnectionMode::Parsing => {
-                let res = self.handle_request(&bytes[..], false, is_logged);
-                let _ = stream.write_all(&res[..]);
-                if let Err(err) = stream.flush() {
-                    println!("Error haciendo flush desde el nodo:\n\n{}", err);
-                }
-                return Ok(res);
-            }
-        }
-        Ok(vec![])
     }
 
     /// Espera a que terminen todos los handlers.

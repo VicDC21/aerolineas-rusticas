@@ -17,6 +17,12 @@ use std::{
     time::Duration,
 };
 
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    headers::opcode::Opcode,
+    traits::Byteable,
+};
 use crate::{
     client::cli::handle_pem_file_iter,
     server::{
@@ -29,13 +35,8 @@ use crate::{
         },
     },
 };
-use crate::protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        headers::opcode::Opcode,
-        traits::Byteable,
-    }
-;
+
+use super::node_guard::NodeGuard;
 
 /// Un stream TLS.
 type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
@@ -59,12 +60,10 @@ pub fn create_client_and_private_conexion(
     priv_socket: SocketAddr,
     node_listeners: &mut Vec<Option<NodeHandle>>,
 ) -> Result<()> {
-    let sendable_node = Arc::new(Mutex::new(node));
-    // let sendable_node = RwLock::new(Arc::new(node));
-    // creamos de esta manera el RwLock
-    let cli_node = Arc::clone(&sendable_node);
-    let priv_node = Arc::clone(&sendable_node);
-
+    //let sendable_node = Arc::new(Mutex::new(node));
+    let sendable_node = NodeGuard::new(id, node);
+    let cli_node = sendable_node.clone();
+    let priv_node = sendable_node.clone();
 
     let cli_builder = Builder::new().name(format!("{}_cli", id));
     let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));
@@ -92,26 +91,16 @@ pub fn create_client_and_private_conexion(
 }
 
 /// Escucha por los eventos que recibe del cliente.
-pub fn cli_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-    listen(socket, PortType::Cli, node)
+pub fn cli_listen(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
+    listen_cli_port(socket, node_guard)
 }
 
 /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-pub fn priv_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-    listen(socket, PortType::Priv, node)
+pub fn priv_listen(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
+    listen_priv_port(socket, node_guard)
 }
 
-/// El escuchador de verdad.
-///
-/// Las otras funciones son wrappers para no repetir código.
-fn listen(socket: SocketAddr, port_type: PortType, node: Arc<Mutex<Node>>) -> Result<()> {
-    match port_type {
-        PortType::Cli => listen_cli_port(socket, node),
-        PortType::Priv => listen_priv_port(socket, node),
-    }
-}
-
-fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
+fn listen_cli_port(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
@@ -121,10 +110,10 @@ fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
             Err(_) => return tcp_stream_error(&PortType::Cli, &socket, &addr_loader),
             Ok(tcp_stream) => {
                 let config = Arc::clone(&server_config);
-                let node = Arc::clone(&node);
+                let node_guard = node_guard.clone();
                 let arc_exit = Arc::new(Mutex::new(exit));
                 println!("Se conectan a este nodo");
-                thread::spawn(move || listen_single_client(config, tcp_stream, arc_exit, node));
+                thread::spawn(move || listen_single_client(config, tcp_stream, arc_exit, node_guard));
             }
         };
         if exit {
@@ -134,11 +123,7 @@ fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
     Ok(())
 }
 
-
-
-
-
-fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
+fn listen_priv_port(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
     for tcp_stream_res in listener.incoming() {
@@ -153,15 +138,8 @@ fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
                 if is_exit(&bytes_vec[..]) {
                     break;
                 }
-                match node.lock() {
-                    Ok(mut locked_in) => {
-                        locked_in.process_stream(&mut tcp_stream, bytes_vec, true)?;
-                    }
-                    Err(poison_err) => {
-                        println!("Error de lock envenenado:\n\n{}", poison_err);
-                        node.clear_poison();
-                    }
-                }
+
+                node_guard.process_stream(&mut tcp_stream, bytes_vec, true)?;
             }
         }
     }
@@ -172,7 +150,7 @@ fn listen_single_client(
     config: Arc<ServerConfig>,
     tcp_stream: TcpStream,
     arc_exit: Arc<Mutex<bool>>,
-    node: Arc<Mutex<Node>>,
+    node_guard: NodeGuard,
 ) -> Result<()> {
     let mut server_conn = match ServerConnection::new(config) {
         Ok(conn) => conn,
@@ -187,7 +165,6 @@ fn listen_single_client(
     let tls = &mut tls_stream;
     let mut is_logged = false;
 
-    // aca crear una nueva estructura que se encargue de handelear las queries y que tenga el Arc del nodo
     loop {
         let mut buffer: Vec<u8> = vec![0; 2048];
         let size = match tls.read(&mut buffer) {
@@ -199,24 +176,15 @@ fn listen_single_client(
             match arc_exit.lock() {
                 Ok(mut locked_in) => *locked_in = true,
                 Err(poison_err) => {
-                    println!("Error de lock envenenado:\n\n{}", poison_err);
-                    node.clear_poison();
+                    println!("Error de lock envenenado:\n\n{}", &poison_err);
+                    arc_exit.clear_poison();
                 }
             }
             break;
         }
-        // aca sacar el lock del node, no vamos a lockear tan temprano
-        match node.lock() {
-            Ok(mut locked_in) => {
-                let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
-                if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
-                    is_logged = true;
-                }
-            }
-            Err(poison_err) => {
-                println!("Error de lock envenenado:\n\n{}", poison_err);
-                node.clear_poison();
-            }
+        let res = node_guard.process_stream(tls, buffer.to_vec(), is_logged)?;
+        if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
+            is_logged = true;
         }
     }
     Ok(())
@@ -234,8 +202,6 @@ fn listen_single_client(
 //         }
 //     }
 // }
-
-
 
 fn configure_tls() -> Result<Arc<ServerConfig>> {
     let private_key_file = "custom.key";
