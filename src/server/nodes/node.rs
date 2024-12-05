@@ -1,52 +1,48 @@
 //! Módulo de nodos.
 
+use crate::parser::{
+    data_types::keyspace_name::KeyspaceName,
+    statements::{
+        ddl_statement::{
+            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+            create_table::CreateTable, ddl_statement_parser::DdlStatement,
+            drop_keyspace::DropKeyspace,
+        },
+        dml_statement::{
+            dml_statement_parser::DmlStatement,
+            main_statements::{
+                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
+            },
+        },
+    },
+};
 use crate::protocol::{
     aliases::{results::Result, types::Byte},
     errors::error::Error,
-    headers::{
-        flags::Flag, length::Length, opcode::Opcode, stream::Stream,
-        version::Version,
-    },
+    headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
     messages::responses::result_kinds::ResultKind,
     traits::Byteable,
 };
-use crate::server::{
-    actions::opcode::SvAction,
-    modes::ConnectionMode,
-    utils::load_json,
-};
-use crate::parser::{
-        data_types::keyspace_name::KeyspaceName,
-        statements::{
-            ddl_statement::{
-                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-                create_table::CreateTable, ddl_statement_parser::DdlStatement,
-                drop_keyspace::DropKeyspace,
-            },
-            dml_statement::{
-                dml_statement_parser::DmlStatement,
-                main_statements::{
-                    delete::Delete, insert::Insert, select::select_operation::Select,
-                    update::Update,
-                },
-            },
-        },
-    };
+use crate::server::{actions::opcode::SvAction, modes::ConnectionMode, utils::load_json};
 
 use serde::{Deserialize, Serialize};
 
-use std::{
-    collections::HashMap, net::TcpStream, path::Path, thread::JoinHandle
-};
+use std::{collections::HashMap, net::TcpStream, path::Path, thread::JoinHandle};
 
 use super::{
-    addr::loader::AddrLoader, disk_operations::disk_handler::DiskHandler, internal_threads::{beater, create_client_and_private_conexion, gossiper}, keyspace_metadata::keyspace::Keyspace, session_handler::get_partition_value_from_insert, port_type::PortType, states::{
+    addr::loader::AddrLoader,
+    disk_operations::disk_handler::DiskHandler,
+    internal_threads::{beater, create_client_and_private_conexion, gossiper},
+    keyspace_metadata::keyspace::Keyspace,
+    port_type::PortType,
+    session_handler::get_partition_value_from_insert,
+    states::{
         appstatus::AppStatus,
         endpoints::EndpointState,
         heartbeat::{GenType, VerType},
-    }, table_metadata::table::Table, utils::{
-        divide_range, hash_value, send_to_node
-    }
+    },
+    table_metadata::table::Table,
+    utils::{divide_range, hash_value, send_to_node},
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -532,10 +528,6 @@ impl Node {
         closed_count
     }
 
-
-
-
-
     /// Maneja una declaración DDL.
     pub fn handle_internal_ddl_statement(
         &mut self,
@@ -575,7 +567,6 @@ impl Node {
         path_folder.exists() && path_folder.is_dir()
     }
 
-
     /// TODO
     pub fn process_internal_use_statement(
         &mut self,
@@ -596,7 +587,6 @@ impl Node {
         }
     }
 
-
     /// TODO
     pub fn process_internal_create_keyspace_statement(
         &mut self,
@@ -609,7 +599,6 @@ impl Node {
         };
         Ok(Self::create_result_void())
     }
-
 
     /// TODO
     pub fn process_internal_alter_keyspace_statement(
@@ -638,7 +627,6 @@ impl Node {
             }
         }
     }
-
 
     /// TODO
     pub fn process_internal_drop_keyspace_statement(
@@ -697,8 +685,6 @@ impl Node {
         Ok(Self::create_result_void())
     }
 
-
-
     /// Maneja una declaración DML.
     pub fn handle_internal_dml_statement(
         &mut self,
@@ -743,7 +729,6 @@ impl Node {
             DmlStatement::BatchStatement(_batch) => todo!(),
         }
     }
-
 
     /// TODO
     pub fn process_select(&self, select: &Select, node_id: Byte) -> Result<Vec<Byte>> {
@@ -968,8 +953,6 @@ impl Node {
         };
         Ok(replicas)
     }
-
-
 
     /// Espera a que terminen todos los handlers.
     ///

@@ -35,7 +35,8 @@ use crate::tokenizer::tokenizer::tokenize_query;
 
 use super::{
     disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH},
-    internal_threads::{cli_listen, priv_listen}, session_handler::SessionHandler,
+    internal_threads::{cli_listen, priv_listen},
+    session_handler::SessionHandler,
 };
 
 /// El handle donde vive una operación de nodo.

@@ -44,7 +44,8 @@ use std::{
     fs::{create_dir, File, OpenOptions},
     io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
-    str::FromStr, sync::RwLockWriteGuard,
+    str::FromStr,
+    sync::RwLockWriteGuard,
 };
 
 use super::{

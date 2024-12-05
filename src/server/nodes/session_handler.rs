@@ -1,13 +1,62 @@
 //! Módulo para el manejo de una sesión del cliente, para decidir el bloqueo o no de un nodo.
 
-use std::{collections::{HashMap, HashSet}, io::{Read, Write}, sync::{Arc, RwLock}};
+use std::{
+    collections::{HashMap, HashSet},
+    io::{Read, Write},
+    sync::{Arc, RwLock},
+};
 
 use chrono::Utc;
 
 use crate::protocol::headers::{msg_headers::Headers, opcode::Opcode};
-use crate::{client::cql_frame::query_body::QueryBody, parser::{data_types::keyspace_name::KeyspaceName, main_parser::make_parse, statements::{ddl_statement::{alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace, create_table::CreateTable, ddl_statement_parser::DdlStatement, drop_keyspace::DropKeyspace}, dml_statement::{dml_statement_parser::DmlStatement, main_statements::{delete::Delete, insert::Insert, select::select_operation::Select, update::Update}}, statement::Statement}}, protocol::{aliases::{results::Result, types::Byte}, errors::error::Error, headers::{flags::Flag, length::Length, stream::Stream, version::Version}, notations::consistency::Consistency, traits::Byteable, utils::{parse_bytes_to_string, parse_bytes_to_string_map}}, server::{actions::opcode::{GossipInfo, SvAction}, modes::ConnectionMode}, tokenizer::tokenizer::tokenize_query};
+use crate::{
+    client::cql_frame::query_body::QueryBody,
+    parser::{
+        data_types::keyspace_name::KeyspaceName,
+        main_parser::make_parse,
+        statements::{
+            ddl_statement::{
+                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+                create_table::CreateTable, ddl_statement_parser::DdlStatement,
+                drop_keyspace::DropKeyspace,
+            },
+            dml_statement::{
+                dml_statement_parser::DmlStatement,
+                main_statements::{
+                    delete::Delete, insert::Insert, select::select_operation::Select,
+                    update::Update,
+                },
+            },
+            statement::Statement,
+        },
+    },
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        headers::{flags::Flag, length::Length, stream::Stream, version::Version},
+        notations::consistency::Consistency,
+        traits::Byteable,
+        utils::{parse_bytes_to_string, parse_bytes_to_string_map},
+    },
+    server::{
+        actions::opcode::{GossipInfo, SvAction},
+        modes::ConnectionMode,
+    },
+    tokenizer::tokenizer::tokenize_query,
+};
 
-use super::{table_metadata::table::Table, disk_operations::disk_handler::DiskHandler, graph::N_NODES, node::{Node, NodeId, NodesMap, TIMEOUT_SECS}, port_type::PortType, states::{appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState}, utils::{hash_value, next_node_in_the_cluster, send_to_node, send_to_node_and_wait_response_with_timeout}};
+use super::{
+    disk_operations::disk_handler::DiskHandler,
+    graph::N_NODES,
+    node::{Node, NodeId, NodesMap, TIMEOUT_SECS},
+    port_type::PortType,
+    states::{appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState},
+    table_metadata::table::Table,
+    utils::{
+        hash_value, next_node_in_the_cluster, send_to_node,
+        send_to_node_and_wait_response_with_timeout,
+    },
+};
 
 /// Guarda una referencia compartida a un nodo, con la posibilidad de decidir si se quiere
 /// lockear o no al nodo durante las operaciones que correspondan.
@@ -38,7 +87,10 @@ impl SessionHandler {
                 )));
                 let _unused: std::sync::RwLockWriteGuard<'_, Node> = poisoned.into_inner();
                 err*/
-                println!("Lock envenenado desde el nodo con ID {} para escritura: {}", self.id, &poisoned);
+                println!(
+                    "Lock envenenado desde el nodo con ID {} para escritura: {}",
+                    self.id, &poisoned
+                );
 
                 let unpoisoned_guard: std::sync::RwLockWriteGuard<'_, Node> = poisoned.into_inner();
                 Ok(unpoisoned_guard)
@@ -158,7 +210,8 @@ impl SessionHandler {
                     partition_value,
                     &table.get_name().to_string(),
                 )? {
-                    Some(new_partition_values) => self.write()?
+                    Some(new_partition_values) => self
+                        .write()?
                         .tables_and_partitions_keys_values
                         .insert(table_name, new_partition_values),
                     None => None,
@@ -497,9 +550,11 @@ impl SessionHandler {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let node_reader = self.read()?;
-        let keyspace_name = node_reader.choose_available_keyspace_name(create_table.name.get_keyspace())?;
+        let keyspace_name =
+            node_reader.choose_available_keyspace_name(create_table.name.get_keyspace())?;
         let keyspace = node_reader.get_keyspace_from_name(&keyspace_name)?;
-        let quantity_replicas: u32 = node_reader.get_quantity_of_replicas_from_keyspace(keyspace)?;
+        let quantity_replicas: u32 =
+            node_reader.get_quantity_of_replicas_from_keyspace(keyspace)?;
         let mut response: Vec<Byte> = Vec::new();
         let nodes_ids = Node::get_nodes_ids();
         for actual_node_id in &nodes_ids {
@@ -507,7 +562,8 @@ impl SessionHandler {
             for _ in 0..quantity_replicas {
                 response = if next_node_id == self.id {
                     let mut node_writer = self.write()?;
-                    node_writer.process_internal_create_table_statement(&create_table, *actual_node_id)?
+                    node_writer
+                        .process_internal_create_table_statement(&create_table, *actual_node_id)?
                 } else {
                     let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                         SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -602,7 +658,6 @@ impl SessionHandler {
         (None, None)
     }
 
-
     fn handle_prepare(&self) -> Result<Vec<Byte>> {
         // El body es <query><flags>[<keyspace>]
         Ok(vec![0])
@@ -638,8 +693,12 @@ impl SessionHandler {
                 response.append(&mut Opcode::AuthSuccess.as_bytes());
                 response.append(&mut Length::new(0).as_bytes());
                 // REVISAR AL TESTEAR
-                if !node_writer.users_default_keyspace_name.contains_key(&user.0) {
-                    node_writer.users_default_keyspace_name
+                if !node_writer
+                    .users_default_keyspace_name
+                    .contains_key(&user.0)
+                {
+                    node_writer
+                        .users_default_keyspace_name
                         .insert(user.0.to_string(), "".to_string());
                 }
                 return Ok(response);
@@ -746,15 +805,15 @@ impl SessionHandler {
             let mut result: Vec<u8> = Vec::new();
             *responsive_replica = node_id;
             *replicas_asked = 0;
-            if self.neighbour_is_responsive(node_id)?{
+            if self.neighbour_is_responsive(node_id)? {
                 result = send_to_node_and_wait_response_with_timeout(
-                        node_id,
-                        request_with_metadata,
-                        PortType::Priv,
-                        wait_response,
-                        Some(TIMEOUT_SECS),
-                    )
-                    .unwrap_or_default()
+                    node_id,
+                    request_with_metadata,
+                    PortType::Priv,
+                    wait_response,
+                    Some(TIMEOUT_SECS),
+                )
+                .unwrap_or_default()
             }
             *replicas_asked += 1;
 
@@ -777,7 +836,6 @@ impl SessionHandler {
         };
         Ok(actual_result)
     }
-
 
     fn forward_select_request_to_replicas(
         &self,
@@ -1047,9 +1105,6 @@ impl SessionHandler {
         Ok(())
     }
 
-
-
-
     fn insert_with_other_nodes(
         &self,
         insert: Insert,
@@ -1061,7 +1116,10 @@ impl SessionHandler {
         // let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
         let mut response: Vec<Byte> = Vec::new();
         let node_reader = self.read()?;
-        let partition_key_value = get_partition_key_value_from_insert_statement(&insert, node_reader.get_table(&table_name)?)?;
+        let partition_key_value = get_partition_key_value_from_insert_statement(
+            &insert,
+            node_reader.get_table(&table_name)?,
+        )?;
         let node_id = node_reader.select_node(&partition_key_value);
         let replication_factor_quantity = node_reader.get_replicas_from_table_name(&table_name)?;
         let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
@@ -1069,7 +1127,7 @@ impl SessionHandler {
         let mut wait_response = true;
         let nodes_ids = Node::get_nodes_ids();
         let mut node_to_replicate = node_id;
-        
+
         for i in 0..N_NODES {
             if (i as u32) < replication_factor_quantity {
                 response = if node_to_replicate == self.id {
@@ -1085,15 +1143,16 @@ impl SessionHandler {
                     if self.neighbour_is_responsive(node_to_replicate)? {
                         res = send_to_node_and_wait_response_with_timeout(
                             node_to_replicate,
-                                request_with_metadata,
-                                PortType::Priv,
-                                wait_response,
-                                Some(TIMEOUT_SECS),
-                            )
-                            .unwrap_or_default();
+                            request_with_metadata,
+                            PortType::Priv,
+                            wait_response,
+                            Some(TIMEOUT_SECS),
+                        )
+                        .unwrap_or_default();
                     }
                     if res.is_empty() {
-                        self.write()?.acknowledge_offline_neighbour(node_to_replicate);
+                        self.write()?
+                            .acknowledge_offline_neighbour(node_to_replicate);
                     }
                     res
                 }
@@ -1105,7 +1164,8 @@ impl SessionHandler {
                     partition_value,
                     &table.get_name().to_string(),
                 )? {
-                    Some(new_partition_values) => self.write()?
+                    Some(new_partition_values) => self
+                        .write()?
                         .tables_and_partitions_keys_values
                         .insert(insert.table.get_name().to_string(), new_partition_values),
                     None => None,
@@ -1121,15 +1181,16 @@ impl SessionHandler {
                 );
                 if self.neighbour_is_responsive(node_to_replicate)?
                     && send_to_node_and_wait_response_with_timeout(
-                            node_to_replicate,
-                            request_with_metadata,
-                            PortType::Priv,
-                            wait_response,
-                            Some(TIMEOUT_SECS),
-                        )
-                        .is_err()
+                        node_to_replicate,
+                        request_with_metadata,
+                        PortType::Priv,
+                        wait_response,
+                        Some(TIMEOUT_SECS),
+                    )
+                    .is_err()
                 {
-                    self.write()?.acknowledge_offline_neighbour(node_to_replicate);
+                    self.write()?
+                        .acknowledge_offline_neighbour(node_to_replicate);
                 }
             };
             node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
@@ -1244,13 +1305,13 @@ impl SessionHandler {
                 let mut replica_response: Vec<Byte> = Vec::new();
                 if self.neighbour_is_responsive(node_to_replicate)? {
                     replica_response = send_to_node_and_wait_response_with_timeout(
-                            node_to_replicate,
-                            request_with_metadata,
-                            PortType::Priv,
-                            true,
-                            Some(TIMEOUT_SECS),
-                        )
-                        .unwrap_or_default();
+                        node_to_replicate,
+                        request_with_metadata,
+                        PortType::Priv,
+                        true,
+                        Some(TIMEOUT_SECS),
+                    )
+                    .unwrap_or_default();
                 }
                 if replica_response.is_empty() {
                     let mut node_writer = self.write()?;
@@ -1332,16 +1393,17 @@ impl SessionHandler {
                 let mut res: Vec<Byte> = Vec::new();
                 if self.neighbour_is_responsive(node_to_replicate)? {
                     res = send_to_node_and_wait_response_with_timeout(
-                            node_to_replicate,
-                            request_with_metadata,
-                            PortType::Priv,
-                            wait_response,
-                            Some(TIMEOUT_SECS),
-                        )
-                        .unwrap_or_default()
+                        node_to_replicate,
+                        request_with_metadata,
+                        PortType::Priv,
+                        wait_response,
+                        Some(TIMEOUT_SECS),
+                    )
+                    .unwrap_or_default()
                 };
                 if res.is_empty() {
-                    self.write()?.acknowledge_offline_neighbour(node_to_replicate);
+                    self.write()?
+                        .acknowledge_offline_neighbour(node_to_replicate);
                 }
                 res
             };
@@ -1361,15 +1423,15 @@ impl SessionHandler {
         Ok(())
     }
 
-
-
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
         if node_reader.neighbours_states.len() == N_NODES as usize
             && *node_reader.endpoint_state.get_appstate_status() != AppStatus::Normal
         {
-            self.write()?.endpoint_state.set_appstate_status(AppStatus::Normal);
+            self.write()?
+                .endpoint_state
+                .set_appstate_status(AppStatus::Normal);
             println!("El nodo {} fue iniciado correctamente.", self.id);
         }
         Ok(())
@@ -1580,11 +1642,10 @@ impl SessionHandler {
         let mut is_ready = false;
         let node_reader = self.read()?;
         if let Some(endpoint_state) = node_reader.neighbours_states.get(&node_id) {
-            is_ready =  *endpoint_state.get_appstate_status() == AppStatus::Normal;
+            is_ready = *endpoint_state.get_appstate_status() == AppStatus::Normal;
         }
         Ok(is_ready)
     }
-
 
     fn handle_result_from_node(
         &self,
@@ -1607,8 +1668,8 @@ impl SessionHandler {
             results_from_another_nodes,
             total_length_until_end_of_metadata,
         );
-        let new_quantity_rows =
-            node_reader.get_quantity_of_rows(result_from_actual_node, total_length_until_end_of_metadata);
+        let new_quantity_rows = node_reader
+            .get_quantity_of_rows(result_from_actual_node, total_length_until_end_of_metadata);
         quantity_rows += new_quantity_rows;
         results_from_another_nodes
             [total_length_until_end_of_metadata..total_lenght_until_rows_content]
@@ -1621,7 +1682,6 @@ impl SessionHandler {
         results_from_another_nodes[5..9].copy_from_slice(&final_length.to_be_bytes());
         Ok(())
     }
-
 }
 
 impl Clone for SessionHandler {
@@ -1713,7 +1773,6 @@ fn add_metadata_to_internal_request_of_any_kind(
     sv_action_with_request
 }
 
-
 fn check_if_read_repair_is_neccesary(
     consistency_counter: &mut usize,
     consistency_number: usize,
@@ -1738,13 +1797,11 @@ fn check_if_read_repair_is_neccesary(
     }
 }
 
-
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.endpoint_state.eq(&other.endpoint_state)
     }
 }
-
 
 fn create_utf8_string_from_bytes(extern_response: Vec<u8>) -> Result<String> {
     Ok(match String::from_utf8(extern_response) {
@@ -1768,7 +1825,6 @@ fn add_rows_with_his_node(
         .collect();
     ids_and_rows.push((node_to_consult, rows));
 }
-
 
 fn get_most_recent_rows_as_string(ids_and_rows: Vec<(u8, Vec<Vec<String>>)>) -> String {
     let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
@@ -1798,10 +1854,7 @@ fn get_most_recent_rows_as_string(ids_and_rows: Vec<(u8, Vec<Vec<String>>)>) -> 
     rows_as_string
 }
 
-fn get_partition_key_value_from_insert_statement(
-    insert: &Insert,
-    table: &Table,
-) -> Result<String> {
+fn get_partition_key_value_from_insert_statement(insert: &Insert, table: &Table) -> Result<String> {
     let insert_columns = insert.get_columns_names();
     let position = match insert_columns
         .iter()

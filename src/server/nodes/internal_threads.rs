@@ -112,7 +112,9 @@ fn listen_cli_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()>
                 let node_guard = node_guard.clone();
                 let arc_exit = Arc::new(Mutex::new(exit));
                 println!("Se conectan a este nodo");
-                thread::spawn(move || listen_single_client(config, tcp_stream, arc_exit, node_guard));
+                thread::spawn(move || {
+                    listen_single_client(config, tcp_stream, arc_exit, node_guard)
+                });
             }
         };
         if exit {
