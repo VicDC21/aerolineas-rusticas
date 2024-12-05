@@ -8,10 +8,7 @@ use std::{
     collections::HashSet,
     net::SocketAddr,
     path::Path,
-    sync::{
-        mpsc::{channel, Sender},
-        Arc, Mutex,
-    },
+    sync::mpsc::{channel, Sender},
     thread::{sleep, Builder, JoinHandle},
     time::Duration,
 };
@@ -38,7 +35,7 @@ use crate::tokenizer::tokenizer::tokenize_query;
 
 use super::{
     disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH},
-    internal_threads::{cli_listen, priv_listen},
+    internal_threads::{cli_listen, priv_listen}, session_handler::SessionHandler,
 };
 
 /// El handle donde vive una operación de nodo.
@@ -373,9 +370,9 @@ fn create_client_and_private_conexion(
     priv_socket: SocketAddr,
     node: Node,
 ) -> Result<()> {
-    let sendable_node = Arc::new(Mutex::new(node));
-    let cli_node = Arc::clone(&sendable_node);
-    let priv_node = Arc::clone(&sendable_node);
+    let sendable_node = SessionHandler::new(current_id, node);
+    let cli_node = sendable_node.clone();
+    let priv_node = sendable_node.clone();
 
     let cli_builder = Builder::new().name(format!("{}_cli", current_id));
     let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));

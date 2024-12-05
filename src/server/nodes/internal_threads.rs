@@ -11,7 +11,7 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
         mpsc::{channel, Sender},
-        Arc, Mutex, MutexGuard, RwLock,
+        Arc, Mutex,
     },
     thread::{self, sleep, Builder},
     time::Duration,
@@ -36,7 +36,7 @@ use crate::{
     },
 };
 
-use super::node_guard::NodeGuard;
+use super::session_handler::SessionHandler;
 
 /// Un stream TLS.
 type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
@@ -60,8 +60,7 @@ pub fn create_client_and_private_conexion(
     priv_socket: SocketAddr,
     node_listeners: &mut Vec<Option<NodeHandle>>,
 ) -> Result<()> {
-    //let sendable_node = Arc::new(Mutex::new(node));
-    let sendable_node = NodeGuard::new(id, node);
+    let sendable_node = SessionHandler::new(id, node);
     let cli_node = sendable_node.clone();
     let priv_node = sendable_node.clone();
 
@@ -91,16 +90,16 @@ pub fn create_client_and_private_conexion(
 }
 
 /// Escucha por los eventos que recibe del cliente.
-pub fn cli_listen(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
+pub fn cli_listen(socket: SocketAddr, node_guard: SessionHandler) -> Result<()> {
     listen_cli_port(socket, node_guard)
 }
 
 /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-pub fn priv_listen(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
+pub fn priv_listen(socket: SocketAddr, node_guard: SessionHandler) -> Result<()> {
     listen_priv_port(socket, node_guard)
 }
 
-fn listen_cli_port(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
+fn listen_cli_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()> {
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
@@ -123,7 +122,7 @@ fn listen_cli_port(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
     Ok(())
 }
 
-fn listen_priv_port(socket: SocketAddr, node_guard: NodeGuard) -> Result<()> {
+fn listen_priv_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()> {
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
     for tcp_stream_res in listener.incoming() {
@@ -150,7 +149,7 @@ fn listen_single_client(
     config: Arc<ServerConfig>,
     tcp_stream: TcpStream,
     arc_exit: Arc<Mutex<bool>>,
-    node_guard: NodeGuard,
+    node_guard: SessionHandler,
 ) -> Result<()> {
     let mut server_conn = match ServerConnection::new(config) {
         Ok(conn) => conn,

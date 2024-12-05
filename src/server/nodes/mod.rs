@@ -6,7 +6,7 @@ pub mod graph;
 mod internal_threads;
 mod keyspace_metadata;
 pub mod node;
-mod node_guard;
+mod session_handler;
 pub mod port_type;
 pub mod states;
 pub mod table_metadata;

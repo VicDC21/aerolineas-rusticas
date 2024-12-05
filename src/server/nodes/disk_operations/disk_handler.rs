@@ -44,7 +44,7 @@ use std::{
     fs::{create_dir, File, OpenOptions},
     io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
-    str::FromStr,
+    str::FromStr, sync::RwLockWriteGuard,
 };
 
 use super::{
@@ -97,7 +97,7 @@ impl DiskHandler {
     }
 
     /// Almacena los metadatos de un nodo en un archivo JSON.
-    pub fn store_node_metadata(node: &Node) -> Result<()> {
+    pub fn store_node_metadata(node: RwLockWriteGuard<Node>) -> Result<()> {
         let path_folder = Path::new(NODES_METADATA_PATH);
         if !path_folder.exists() {
             create_dir(path_folder).map_err(|e| {
@@ -109,7 +109,7 @@ impl DiskHandler {
         }
 
         if path_folder.is_dir() {
-            store_json(node, &Self::get_node_metadata_path(node.get_id()))
+            store_json(&*node, &Self::get_node_metadata_path(node.get_id()))
         } else {
             Err(Error::ServerError(
                 "El directorio de metadatos de nodos no es un directorio".to_string(),
