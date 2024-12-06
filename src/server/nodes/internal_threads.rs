@@ -142,7 +142,7 @@ fn listen_priv_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()
                 if is_exit(&bytes_vec[..]) {
                     break;
                 }
-
+                println!("Entra por pierto privado");
                 node_guard.process_stream(&mut tcp_stream, bytes_vec, true)?;
             }
         }

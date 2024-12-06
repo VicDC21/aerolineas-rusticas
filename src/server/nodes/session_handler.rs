@@ -206,10 +206,12 @@ impl SessionHandler {
             SvAction::AddPartitionValueToMetadata(table_name, partition_value) => {
                 let node_reader = self.read()?;
                 let table = node_reader.get_table(&table_name)?;
-                match self.read()?.check_if_has_new_partition_value(
+                let has_partition_value = node_reader.check_if_has_new_partition_value(
                     partition_value,
                     &table.get_name().to_string(),
-                )? {
+                )?;
+                drop(node_reader);
+                match has_partition_value {
                     Some(new_partition_values) => self
                         .write()?
                         .tables_and_partitions_keys_values
@@ -230,7 +232,9 @@ impl SessionHandler {
     where
         S: Read + Write,
     {
-        let mode = self.read()?.mode().clone();
+        let node_reader = self.read()?;
+        let mode = node_reader.mode().clone();
+        drop(node_reader);
         match mode {
             ConnectionMode::Echo => {
                 let printable_bytes = bytes
@@ -483,13 +487,14 @@ impl SessionHandler {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let keyspace_name = alter_keyspace.name.get_name();
-        if !self.read()?.keyspaces.contains_key(keyspace_name) && !alter_keyspace.if_exists {
+        let node_reader = self.read()?;
+        if !node_reader.keyspaces.contains_key(keyspace_name) && !alter_keyspace.if_exists {
             return Err(Error::ServerError(format!(
                 "El keyspace {} no existe",
                 keyspace_name
             )));
         }
-
+        drop(node_reader);
         let mut responses = Vec::new();
         let mut actual_node_id = self.id;
         let nodes_ids = Node::get_nodes_ids();
@@ -681,7 +686,7 @@ impl SessionHandler {
 
     fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
         println!("Entra a auth_response");
-        let req = &request[9..(lenght.len as usize) + 9];
+        let req: &[u8] = &request[9..(lenght.len as usize) + 9];
         let node_reader = self.read()?;
         let users = DiskHandler::read_admitted_users(&node_reader.storage_addr)?;
         let mut response: Vec<Byte> = Vec::new();
@@ -1433,9 +1438,11 @@ impl SessionHandler {
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
+        println!("Intenta escribir");
         if node_reader.neighbours_states.len() == N_NODES as usize
             && *node_reader.endpoint_state.get_appstate_status() != AppStatus::Normal
         {
+            drop(node_reader);
             self.write()?
                 .endpoint_state
                 .set_appstate_status(AppStatus::Normal);
