@@ -210,9 +210,10 @@ impl TryFrom<Byte> for Opcode {
             0x0E => Ok(Opcode::AuthChallenge),
             0x0F => Ok(Opcode::AuthResponse),
             0x10 => Ok(Opcode::AuthSuccess),
-            _ => Err(Error::ConfigError(
-                "El opcode recibido no es valido".to_string(),
-            )), // TODO: Ver que mandar en el mensaje
+            _ => Err(Error::ConfigError(format!(
+                "El opcode recibido no es valido: {}",
+                byte
+            ))),
         }
     }
 }

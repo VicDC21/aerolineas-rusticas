@@ -2,7 +2,7 @@ use crate::protocol::errors::error::Error;
 
 use super::ddl_statement::ddl_statement_parser::check_words;
 
-/// TODO
+/// Representa una sentencia de un login de usuario.
 #[derive(Debug)]
 pub struct LoginUserStatement {
     /// El usuario del login
@@ -11,7 +11,8 @@ pub struct LoginUserStatement {
     pub password: String,
 }
 
-/// TODO
+/// Verifica si la lista dada es una sentencia de un login de usuario. Si lo es, lo retorna, si no, retorna None.
+/// Devuelve error si hay campos faltantes o errores de sintaxis.
 pub fn login_statement(lista: &mut Vec<String>) -> Result<Option<LoginUserStatement>, Error> {
     let mut login = LoginUserStatement {
         user: "".to_string(),

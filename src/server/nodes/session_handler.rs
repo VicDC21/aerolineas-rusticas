@@ -8,47 +8,46 @@ use std::{
 
 use chrono::Utc;
 
-use crate::protocol::headers::{msg_headers::Headers, opcode::Opcode};
-use crate::{
-    client::cql_frame::query_body::QueryBody,
-    parser::{
-        data_types::keyspace_name::KeyspaceName,
-        main_parser::make_parse,
-        statements::{
-            ddl_statement::{
-                alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-                create_table::CreateTable, ddl_statement_parser::DdlStatement,
-                drop_keyspace::DropKeyspace,
-            },
-            dml_statement::{
-                dml_statement_parser::DmlStatement,
-                main_statements::{
-                    delete::Delete, insert::Insert, select::select_operation::Select,
-                    update::Update,
-                },
-            },
-            statement::Statement,
+use crate::client::cql_frame::query_body::QueryBody;
+use crate::parser::{
+    data_types::keyspace_name::KeyspaceName,
+    main_parser::make_parse,
+    statements::{
+        ddl_statement::{
+            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+            create_table::CreateTable, ddl_statement_parser::DdlStatement,
+            drop_keyspace::DropKeyspace,
         },
+        dml_statement::{
+            dml_statement_parser::DmlStatement,
+            main_statements::{
+                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
+            },
+        },
+        statement::Statement,
     },
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        headers::{flags::Flag, length::Length, stream::Stream, version::Version},
-        notations::consistency::Consistency,
-        traits::Byteable,
-        utils::{parse_bytes_to_string, parse_bytes_to_string_map},
-    },
-    server::{
-        actions::opcode::{GossipInfo, SvAction},
-        modes::ConnectionMode,
-    },
-    tokenizer::tokenizer::tokenize_query,
 };
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    headers::{
+        flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
+        version::Version,
+    },
+    notations::consistency::Consistency,
+    traits::Byteable,
+    utils::{parse_bytes_to_string, parse_bytes_to_string_map},
+};
+use crate::server::{
+    actions::opcode::{GossipInfo, SvAction},
+    modes::ConnectionMode,
+};
+use crate::tokenizer::tokenizer::tokenize_query;
 
 use super::{
     disk_operations::disk_handler::DiskHandler,
     graph::N_NODES,
-    node::{Node, NodeId, NodesMap, TIMEOUT_SECS},
+    node::{Node, NodeId, NodesMap},
     port_type::PortType,
     states::{appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState},
     table_metadata::table::Table,
@@ -57,6 +56,9 @@ use super::{
         send_to_node_and_wait_response_with_timeout,
     },
 };
+
+/// El tiempo de espera _(en segundos)_ por una respuesta.
+pub const TIMEOUT_SECS: u64 = 1;
 
 /// Guarda una referencia compartida a un nodo, con la posibilidad de decidir si se quiere
 /// lockear o no al nodo durante las operaciones que correspondan.

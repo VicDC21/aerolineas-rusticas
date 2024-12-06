@@ -18,8 +18,8 @@ pub mod statement;
 /// Las sentencias UDT se utilizan para definir un nuevo tipo de datos personalizado.
 pub mod udt_statement;
 
-/// TODO
+/// Módulo para sentencias de login de usuarios.
 pub mod login_user_statement;
 
-/// TODO
+/// Módulo para sentencias de STARTUP.
 pub mod startup_statement;
