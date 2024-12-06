@@ -17,12 +17,6 @@ use std::{
     time::Duration,
 };
 
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    headers::opcode::Opcode,
-    traits::Byteable,
-};
 use crate::{
     client::cli::handle_pem_file_iter,
     server::{
@@ -34,6 +28,15 @@ use crate::{
             utils::send_to_node,
         },
     },
+};
+use crate::{
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        headers::opcode::Opcode,
+        traits::Byteable,
+    },
+    server::pool::threadpool::ThreadPool,
 };
 
 use super::session_handler::SessionHandler;

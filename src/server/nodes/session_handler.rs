@@ -127,7 +127,7 @@ impl SessionHandler {
         if bytes.is_empty() {
             return Ok(vec![]);
         }
-        // println!("Esta en process_tcp");
+        println!("Esta en process_tcp");
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
                 if let Err(err) = self.handle_sv_action(action, stream) {
@@ -230,7 +230,8 @@ impl SessionHandler {
     where
         S: Read + Write,
     {
-        match self.read()?.mode() {
+        let mode = self.read()?.mode().clone();
+        match mode {
             ConnectionMode::Echo => {
                 let printable_bytes = bytes
                     .iter()
@@ -245,7 +246,9 @@ impl SessionHandler {
                 }
             }
             ConnectionMode::Parsing => {
+                println!("Llega aca antes de handle_request");
                 let res = self.handle_request(&bytes[..], false, is_logged);
+                println!("Llega aca despues de handle_request");
                 let _ = stream.write_all(&res[..]);
                 if let Err(err) = stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);
@@ -263,10 +266,10 @@ impl SessionHandler {
         is_internal_request: bool,
         is_logged: bool,
     ) -> Vec<Byte> {
-        // El Arc<RwLock<Node>> tiene que llegar al menos hasta aca sin lockear
         if request.len() < 9 {
             return Vec::<Byte>::new();
         }
+        println!("La request es {:?}", request);
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return make_error_response(err),
@@ -677,6 +680,7 @@ impl SessionHandler {
     }
 
     fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
+        println!("Entra a auth_response");
         let req = &request[9..(lenght.len as usize) + 9];
         let node_reader = self.read()?;
         let users = DiskHandler::read_admitted_users(&node_reader.storage_addr)?;
@@ -684,6 +688,7 @@ impl SessionHandler {
         let mut i = 0;
         let user_from_req = parse_bytes_to_string(req, &mut i)?;
         let password_from_req = parse_bytes_to_string(&req[i..], &mut i)?;
+        println!("Intenta usar el write");
         let mut node_writer = self.write()?;
         for user in users {
             if user.0 == user_from_req && user.1 == password_from_req {
@@ -704,6 +709,8 @@ impl SessionHandler {
                 return Ok(response);
             }
         }
+        println!("Va a dejar de usar el write");
+
         response = make_error_response(Error::AuthenticationError(
             "Las credenciales pasadas no son validas".to_string(),
         ));
