@@ -313,6 +313,9 @@ impl NodesGraph {
     /// Ordena a todos los nodos existentes que envien su endpoint state al nodo con el ID correspondiente.
     fn send_states_to_node(&self, id: NodeId) {
         for node_id in self.get_ids() {
+            if id == node_id {
+                continue;
+            }
             if let Err(err) = send_to_node(
                 node_id,
                 SvAction::SendEndpointState(id).as_bytes(),

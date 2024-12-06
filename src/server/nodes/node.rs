@@ -242,6 +242,9 @@ impl Node {
     /// Se le ordena a todos los nodos existentes que envien su _endpoint state_ al nodo con el ID dado.
     fn send_states_to_node(id: NodeId) {
         for node_id in Self::get_nodes_ids() {
+            if id == node_id {
+                continue;
+            }
             if let Err(err) = send_to_node(
                 node_id,
                 SvAction::SendEndpointState(id).as_bytes(),
