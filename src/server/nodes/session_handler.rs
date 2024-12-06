@@ -88,11 +88,11 @@ impl SessionHandler {
                 let _unused: std::sync::RwLockWriteGuard<'_, Node> = poisoned.into_inner();
                 err*/
                 println!(
-                    "Lock envenenado desde el nodo con ID {} para escritura: {}",
+                    "Lock envenenado detectado desde el nodo con ID {} para escritura: {}",
                     self.id, &poisoned
                 );
 
-                let unpoisoned_guard: std::sync::RwLockWriteGuard<'_, Node> = poisoned.into_inner();
+                let unpoisoned_guard = poisoned.into_inner();
                 Ok(unpoisoned_guard)
             }
         }
@@ -103,12 +103,19 @@ impl SessionHandler {
         match self.lock.read() {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
-                let err = Err(Error::ServerError(format!(
-                    "Lock envenenado del nodo con ID {} para lectura: {}",
+                /*let err = Err(Error::ServerError(format!(
+                    "Lock envenenado desde nodo con ID {} para lectura: {}",
                     self.id, &poisoned
                 )));
-                let _unused = poisoned.into_inner();
-                err
+                let _unused: std::sync::RwLockWriteGuard<'_, Node> = poisoned.into_inner();
+                err*/
+                println!(
+                    "Lock envenenado detectado desde el nodo con ID {} para lectura: {}",
+                    self.id, &poisoned
+                );
+
+                let unpoisoned_guard = poisoned.into_inner();
+                Ok(unpoisoned_guard)
             }
         }
     }
@@ -127,7 +134,7 @@ impl SessionHandler {
         if bytes.is_empty() {
             return Ok(vec![]);
         }
-        println!("Esta en process_tcp");
+        //println!("Esta en process_tcp");
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
                 if let Err(err) = self.handle_sv_action(action, stream) {
@@ -366,7 +373,6 @@ impl SessionHandler {
                 }
             };
             return res;
-            // aca usariamos la query como corresponda
         }
         Err(Error::ServerError(
             "No se pudieron transformar los bytes al body de la query".to_string(),
@@ -495,6 +501,7 @@ impl SessionHandler {
             )));
         }
         drop(node_reader);
+
         let mut responses = Vec::new();
         let mut actual_node_id = self.id;
         let nodes_ids = Node::get_nodes_ids();
@@ -523,12 +530,14 @@ impl SessionHandler {
         request: &[Byte],
     ) -> Result<Vec<Byte>> {
         let keyspace_name = drop_keyspace.name.get_name();
-        if !self.read()?.keyspaces.contains_key(keyspace_name) && !drop_keyspace.if_exists {
+        let node_reader = self.read()?;
+        if !node_reader.keyspaces.contains_key(keyspace_name) && !drop_keyspace.if_exists {
             return Err(Error::ServerError(format!(
                 "El keyspace {} no existe",
                 keyspace_name
             )));
         }
+        drop(node_reader);
 
         let mut responses = Vec::new();
         let mut actual_node_id = self.id;
@@ -560,9 +569,12 @@ impl SessionHandler {
         let node_reader = self.read()?;
         let keyspace_name =
             node_reader.choose_available_keyspace_name(create_table.name.get_keyspace())?;
-        let keyspace = node_reader.get_keyspace_from_name(&keyspace_name)?;
+        let keyspace: &super::keyspace_metadata::keyspace::Keyspace =
+            node_reader.get_keyspace_from_name(&keyspace_name)?;
         let quantity_replicas: u32 =
             node_reader.get_quantity_of_replicas_from_keyspace(keyspace)?;
+        drop(node_reader);
+
         let mut response: Vec<Byte> = Vec::new();
         let nodes_ids = Node::get_nodes_ids();
         for actual_node_id in &nodes_ids {
@@ -689,6 +701,8 @@ impl SessionHandler {
         let req: &[u8] = &request[9..(lenght.len as usize) + 9];
         let node_reader = self.read()?;
         let users = DiskHandler::read_admitted_users(&node_reader.storage_addr)?;
+        drop(node_reader);
+
         let mut response: Vec<Byte> = Vec::new();
         let mut i = 0;
         let user_from_req = parse_bytes_to_string(req, &mut i)?;
@@ -714,7 +728,6 @@ impl SessionHandler {
                 return Ok(response);
             }
         }
-        println!("Va a dejar de usar el write");
 
         response = make_error_response(Error::AuthenticationError(
             "Las credenciales pasadas no son validas".to_string(),
@@ -735,8 +748,13 @@ impl SessionHandler {
         let replication_factor_quantity = node_reader.get_replicas_from_table_name(&table_name)?;
         let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
         let partitions_keys_to_nodes = node_reader.get_partition_keys_values(&table_name)?.clone(); // Tuve que agregar un clone para que no me tire error de referencia mutable e inmutable al mismo tiempo
+        drop(node_reader);
+
         for partition_key_value in partitions_keys_to_nodes {
+            let node_reader = self.read()?;
             let node_id = node_reader.select_node(&partition_key_value);
+            drop(node_reader);
+
             if !consulted_nodes.contains(&node_id) {
                 let wait_response = true;
                 let mut read_repair_executed = false;
@@ -835,6 +853,7 @@ impl SessionHandler {
                 let mut node_writer = self.write()?;
                 node_writer.acknowledge_offline_neighbour(node_id);
                 drop(node_writer);
+
                 result = self.forward_select_request_to_replicas(
                     node_id,
                     (select, request),
@@ -955,6 +974,7 @@ impl SessionHandler {
             first_hashed_value,
         );
         if exec_read_repair && self.neighbour_is_responsive(node_id)? {
+            println!("Se ejecuta el read-repair");
             return self.start_read_repair(node_id, request, consistency_number, table_name);
         };
         Ok(false)
@@ -1139,6 +1159,7 @@ impl SessionHandler {
         let mut wait_response = true;
         let nodes_ids = Node::get_nodes_ids();
         let mut node_to_replicate = node_id;
+        drop(node_reader);
 
         for i in 0..N_NODES {
             if (i as u32) < replication_factor_quantity {
@@ -1169,22 +1190,31 @@ impl SessionHandler {
                     res
                 }
             } else if node_to_replicate == self.id {
+                let node_reader = self.read()?;
                 let table = node_reader.get_table(&table_name)?;
                 let partition_value =
                     get_partition_key_value_from_insert_statement(&insert, table)?;
-                match node_reader.check_if_has_new_partition_value(
+                let partition_values = node_reader.check_if_has_new_partition_value(
                     partition_value,
                     &table.get_name().to_string(),
-                )? {
-                    Some(new_partition_values) => self
-                        .write()?
-                        .tables_and_partitions_keys_values
-                        .insert(insert.table.get_name().to_string(), new_partition_values),
+                )?;
+                drop(node_reader);
+
+                match partition_values {
+                    Some(new_partition_values) => {
+                        let mut node_writer = self.write()?;
+                        node_writer
+                            .tables_and_partitions_keys_values
+                            .insert(insert.table.get_name().to_string(), new_partition_values)
+                    }
                     None => None,
                 };
             } else {
+                let node_reader = self.read()?;
                 let partition_value =
                     get_partition_value_from_insert(&insert, node_reader.get_table(&table_name)?)?;
+                drop(node_reader);
+
                 let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                     SvAction::AddPartitionValueToMetadata(table_name.clone(), partition_value)
                         .as_bytes(),
@@ -1237,9 +1267,14 @@ impl SessionHandler {
         let mut consulted_nodes: Vec<String> = Vec::new();
         let replication_factor_quantity = node_reader.get_replicas_from_table_name(&table_name)?;
         let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
+        drop(node_reader);
+
         for partition_key_value in partitions_keys_to_nodes {
             let mut consistency_counter = 0;
+            let node_reader = self.read()?;
             let node_id = node_reader.select_node(&partition_key_value);
+            drop(node_reader);
+
             if !consulted_nodes.contains(&partition_key_value) {
                 let current_response = if node_id == self.id {
                     let mut node_writer = self.write()?;
@@ -1270,8 +1305,11 @@ impl SessionHandler {
                     consistency_counter += 1;
                 }
 
+                let node_reader = self.read()?;
                 consulted_nodes.push(partition_key_value.clone());
                 let replication_factor = node_reader.get_replicas_from_table_name(&table_name)?;
+                drop(node_reader);
+
                 self.replicate_update_in_other_nodes(
                     replication_factor,
                     node_id,
@@ -1363,11 +1401,19 @@ impl SessionHandler {
         let partitions_keys_to_nodes = node_reader.get_partition_keys_values(&table_name)?.clone();
         let replication_factor_quantity = node_reader.get_replicas_from_table_name(&table_name)?;
         let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
+        drop(node_reader);
+
         for partition_key_value in partitions_keys_to_nodes {
+            let node_reader = self.read()?;
             let node_id = node_reader.select_node(&partition_key_value);
+            drop(node_reader);
+
             if !consulted_nodes.contains(&partition_key_value) {
                 consulted_nodes.push(partition_key_value.clone());
+                let node_reader = self.read()?;
                 let replication_factor = node_reader.get_replicas_from_table_name(&table_name)?;
+                drop(node_reader);
+
                 self.replicate_delete_in_other_nodes(
                     replication_factor,
                     node_id,
@@ -1395,7 +1441,8 @@ impl SessionHandler {
         let mut node_to_replicate = node_id;
         for _ in 0..replication_factor {
             let current_response = if node_to_replicate == self.id {
-                self.write()?.process_delete(delete, node_id)?
+                let mut node_writer = self.write()?;
+                node_writer.process_delete(delete, node_id)?
             } else {
                 let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
                     SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -1414,8 +1461,8 @@ impl SessionHandler {
                     .unwrap_or_default()
                 };
                 if res.is_empty() {
-                    self.write()?
-                        .acknowledge_offline_neighbour(node_to_replicate);
+                    let mut node_writer = self.write()?;
+                    node_writer.acknowledge_offline_neighbour(node_to_replicate);
                 }
                 res
             };
@@ -1438,12 +1485,14 @@ impl SessionHandler {
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
-        println!("Intenta escribir");
+        //println!("Intenta escribir");
         if node_reader.neighbours_states.len() == N_NODES as usize
             && *node_reader.endpoint_state.get_appstate_status() != AppStatus::Normal
         {
             drop(node_reader);
-            self.write()?
+
+            let mut node_writer = self.write()?;
+            node_writer
                 .endpoint_state
                 .set_appstate_status(AppStatus::Normal);
             println!("El nodo {} fue iniciado correctamente.", self.id);
@@ -1622,17 +1671,19 @@ impl SessionHandler {
     }
 
     fn repair_rows(&self, table_name: String, node_id: Byte, rows_bytes: Vec<Byte>) -> Result<()> {
-        let node_reader = self.read()?;
-        if !node_reader.table_exists(&table_name) {
+        // Inicio aca el lockeo porque estas variables son referencias, entonces se dropearian con el reader
+        // y no podria usarlas en el disk handler
+        let node_writer = self.write()?;
+        if !node_writer.table_exists(&table_name) {
             return Err(Error::ServerError(format!(
                 "La tabla `{}` no existe",
                 table_name
             )));
         }
 
-        let table = node_reader.get_table(&table_name)?;
+        let table = node_writer.get_table(&table_name)?;
         let keyspace_name = table.get_keyspace();
-        if !node_reader.keyspace_exists(keyspace_name) {
+        if !node_writer.keyspace_exists(keyspace_name) {
             return Err(Error::ServerError(format!(
                 "El keyspace `{}` asociado a la tabla `{}` no existe",
                 keyspace_name, table_name
@@ -1641,7 +1692,6 @@ impl SessionHandler {
         let rows = String::from_utf8(rows_bytes)
             .map_err(|_| Error::ServerError("Error al castear de bytes a string".to_string()))?;
 
-        let node_writer = self.write()?;
         DiskHandler::repair_rows(
             &node_writer.storage_addr,
             &table_name,

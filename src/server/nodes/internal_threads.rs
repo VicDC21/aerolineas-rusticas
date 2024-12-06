@@ -90,16 +90,16 @@ pub fn create_client_and_private_conexion(
 }
 
 /// Escucha por los eventos que recibe del cliente.
-pub fn cli_listen(socket: SocketAddr, node_guard: SessionHandler) -> Result<()> {
-    listen_cli_port(socket, node_guard)
+pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
+    listen_cli_port(socket, session_handler)
 }
 
 /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-pub fn priv_listen(socket: SocketAddr, node_guard: SessionHandler) -> Result<()> {
-    listen_priv_port(socket, node_guard)
+pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
+    listen_priv_port(socket, session_handler)
 }
 
-fn listen_cli_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()> {
+fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
@@ -109,11 +109,11 @@ fn listen_cli_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()>
             Err(_) => return tcp_stream_error(&PortType::Cli, &socket, &addr_loader),
             Ok(tcp_stream) => {
                 let config = Arc::clone(&server_config);
-                let node_guard = node_guard.clone();
+                let session_handler = session_handler.clone();
                 let arc_exit = Arc::new(Mutex::new(exit));
                 println!("Se conectan a este nodo");
                 thread::spawn(move || {
-                    listen_single_client(config, tcp_stream, arc_exit, node_guard)
+                    listen_single_client(config, tcp_stream, arc_exit, session_handler)
                 });
             }
         };
@@ -124,7 +124,7 @@ fn listen_cli_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()>
     Ok(())
 }
 
-fn listen_priv_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()> {
+fn listen_priv_port(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
     for tcp_stream_res in listener.incoming() {
@@ -139,8 +139,8 @@ fn listen_priv_port(socket: SocketAddr, node_guard: SessionHandler) -> Result<()
                 if is_exit(&bytes_vec[..]) {
                     break;
                 }
-                println!("Entra por pierto privado");
-                node_guard.process_stream(&mut tcp_stream, bytes_vec, true)?;
+                //println!("Entra por puerto privado");
+                session_handler.process_stream(&mut tcp_stream, bytes_vec, true)?;
             }
         }
     }
@@ -151,7 +151,7 @@ fn listen_single_client(
     config: Arc<ServerConfig>,
     tcp_stream: TcpStream,
     arc_exit: Arc<Mutex<bool>>,
-    node_guard: SessionHandler,
+    session_handler: SessionHandler,
 ) -> Result<()> {
     let mut server_conn = match ServerConnection::new(config) {
         Ok(conn) => conn,
@@ -183,7 +183,7 @@ fn listen_single_client(
             }
             break;
         }
-        let res = node_guard.process_stream(tls, buffer.to_vec(), is_logged)?;
+        let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
         if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
             is_logged = true;
         }
