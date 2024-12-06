@@ -61,8 +61,6 @@ pub type NodeHandle = JoinHandle<Result<()>>;
 pub const N_NODES: Byte = 5;
 /// El límite posible para los rangos de los nodos.
 pub const NODES_RANGE_END: u64 = 18446744073709551615;
-/// El tiempo de espera _(en segundos)_ por una respuesta.
-pub const TIMEOUT_SECS: u64 = 1;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 #[derive(Serialize, Deserialize)]
@@ -242,6 +240,9 @@ impl Node {
     /// Se le ordena a todos los nodos existentes que envien su _endpoint state_ al nodo con el ID dado.
     fn send_states_to_node(id: NodeId) {
         for node_id in Self::get_nodes_ids() {
+            if id == node_id {
+                continue;
+            }
             if let Err(err) = send_to_node(
                 node_id,
                 SvAction::SendEndpointState(id).as_bytes(),
@@ -278,7 +279,7 @@ impl Node {
             .insert(table_name, partition_key);
     }
 
-    /// TODO
+    /// Obtiene una tabla dado su nombre.
     pub fn get_table(&self, table_name: &str) -> Result<&Table> {
         match self.tables.get(table_name) {
             Some(table) => Ok(table),
@@ -289,7 +290,7 @@ impl Node {
         }
     }
 
-    /// TODO
+    /// Responde si una tabla existe o no dado su nombre.
     pub fn table_exists(&self, table_name: &str) -> bool {
         self.tables.contains_key(table_name)
     }
@@ -323,7 +324,7 @@ impl Node {
         }
     }
 
-    /// TODO
+    /// Respuesta si un keyspace existe o no dado su nombre.
     pub fn keyspace_exists(&self, keyspace_name: &str) -> bool {
         self.keyspaces.contains_key(keyspace_name)
     }
@@ -340,7 +341,7 @@ impl Node {
         }
     }
 
-    /// TODO
+    /// Obtiene el nombre del keyspace por defecto. Devuelve error si no se ha seleccionado uno.
     pub fn get_default_keyspace_name(&self) -> Result<String> {
         if !self.default_keyspace_name.is_empty() {
             Ok(self.default_keyspace_name.clone())
@@ -408,17 +409,6 @@ impl Node {
         nodes_ids[i]
     }
 
-    /// Manda un mensaje en bytes a todos los vecinos del nodo.
-    fn _notice_all_neighbours(&self, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
-        for neighbour_id in Self::get_nodes_ids() {
-            if neighbour_id == self.id {
-                continue;
-            }
-            send_to_node(neighbour_id, bytes.clone(), port_type.clone())?;
-        }
-        Ok(())
-    }
-
     /// Compara si el _heartbeat_ de un nodo es más nuevo que otro.
     pub fn is_newer(&self, other: &Self) -> bool {
         self.endpoint_state.is_newer(&other.endpoint_state)
@@ -471,7 +461,7 @@ impl Node {
         self.endpoint_state.get_appstate().get_mode()
     }
 
-    /// TODO
+    /// Agrega un nuevo vecino conocido por el nodo.
     pub fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
         let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
         if !self.has_endpoint_state_by_id(&guessed_id) {
@@ -528,7 +518,7 @@ impl Node {
         closed_count
     }
 
-    /// Maneja una declaración DDL.
+    /// Maneja una declaración DDL interna.
     pub fn handle_internal_ddl_statement(
         &mut self,
         ddl_statement: DdlStatement,
@@ -567,7 +557,7 @@ impl Node {
         path_folder.exists() && path_folder.is_dir()
     }
 
-    /// TODO
+    /// Procesa una declaración USE interna.
     pub fn process_internal_use_statement(
         &mut self,
         keyspace_name: &KeyspaceName,
@@ -587,7 +577,7 @@ impl Node {
         }
     }
 
-    /// TODO
+    /// Procesa una declaración CREATE KEYSPACE interna.
     pub fn process_internal_create_keyspace_statement(
         &mut self,
         create_keyspace: &CreateKeyspace,
@@ -600,7 +590,7 @@ impl Node {
         Ok(Self::create_result_void())
     }
 
-    /// TODO
+    /// Procesa una declaración ALTER KEYSPACE interna.
     pub fn process_internal_alter_keyspace_statement(
         &mut self,
         alter_keyspace: &AlterKeyspace,
@@ -628,7 +618,7 @@ impl Node {
         }
     }
 
-    /// TODO
+    /// Procesa una declaración DROP KEYSPACE interna.
     pub fn process_internal_drop_keyspace_statement(
         &mut self,
         drop_keyspace: &DropKeyspace,
@@ -650,19 +640,7 @@ impl Node {
         }
     }
 
-    /// TODO
-    pub fn create_result_void() -> Vec<Byte> {
-        let mut response: Vec<Byte> = Vec::new();
-        response.append(&mut Version::ResponseV5.as_bytes());
-        response.append(&mut Flag::Default.as_bytes());
-        response.append(&mut Stream::new(0).as_bytes());
-        response.append(&mut Opcode::Result.as_bytes());
-        response.append(&mut Length::new(4).as_bytes());
-        response.append(&mut ResultKind::Void.as_bytes());
-        response
-    }
-
-    /// TODO
+    /// Procesa una declaración CREATE TABLE interna.
     pub fn process_internal_create_table_statement(
         &mut self,
         create_table: &CreateTable,
@@ -685,7 +663,7 @@ impl Node {
         Ok(Self::create_result_void())
     }
 
-    /// Maneja una declaración DML.
+    /// Maneja una declaración DML interna.
     pub fn handle_internal_dml_statement(
         &mut self,
         dml_statement: DmlStatement,
@@ -730,7 +708,7 @@ impl Node {
         }
     }
 
-    /// TODO
+    /// Procesa una declaración SELECT.
     pub fn process_select(&self, select: &Select, node_id: Byte) -> Result<Vec<Byte>> {
         let table = match self.get_table(&select.from.get_name()) {
             Ok(table) => table,
@@ -748,7 +726,7 @@ impl Node {
         Ok(Self::create_result_select(&mut res))
     }
 
-    /// TODO
+    /// Crea un result de tipo select.
     pub fn create_result_select(res: &mut Vec<Byte>) -> Vec<Byte> {
         let mut response: Vec<Byte> = Vec::new();
         response.append(&mut Version::ResponseV5.as_bytes());
@@ -760,7 +738,7 @@ impl Node {
         response
     }
 
-    /// TODO
+    /// Procesa una declaración INSERT.
     pub fn process_insert(
         &mut self,
         insert: &Insert,
@@ -789,7 +767,8 @@ impl Node {
         Ok(Self::create_result_void())
     }
 
-    /// TODO
+    /// Revisa si hay un nuevo valor de partición que no tenga. Si lo hay, lo agrega y lo devuelve junto al resto.
+    /// Caso contrario, devuelve None.
     pub fn check_if_has_new_partition_value(
         &self,
         partition_value: String,
@@ -812,7 +791,7 @@ impl Node {
         Ok(None)
     }
 
-    /// TODO
+    /// Procesa una declaración UPDATE.
     pub fn process_update(
         &mut self,
         update: &Update,
@@ -834,7 +813,7 @@ impl Node {
         Ok(Self::create_result_void())
     }
 
-    /// TODO
+    /// Procesa una declaración DELETE.
     pub fn process_delete(&mut self, delete: &Delete, node_number: Byte) -> Result<Vec<Byte>> {
         let table = match self.get_table(&delete.from.get_name()) {
             Ok(table) => table,
@@ -852,7 +831,19 @@ impl Node {
         Ok(Self::create_result_void())
     }
 
-    /// TODO
+    /// Crea un result de tipo void.
+    pub fn create_result_void() -> Vec<Byte> {
+        let mut response: Vec<Byte> = Vec::new();
+        response.append(&mut Version::ResponseV5.as_bytes());
+        response.append(&mut Flag::Default.as_bytes());
+        response.append(&mut Stream::new(0).as_bytes());
+        response.append(&mut Opcode::Result.as_bytes());
+        response.append(&mut Length::new(4).as_bytes());
+        response.append(&mut ResultKind::Void.as_bytes());
+        response
+    }
+
+    /// Obtiene los valores de las _partition keys_ de una tabla dado su nombre.
     pub fn get_partition_keys_values(&self, table_name: &String) -> Result<&Vec<String>> {
         match self.tables_and_partitions_keys_values.get(table_name) {
             Some(partitions_keys_to_nodes) => Ok(partitions_keys_to_nodes),
@@ -862,7 +853,7 @@ impl Node {
         }
     }
 
-    /// TODO
+    /// Dado el nombre de una tabla, obtiene la cantidad de replicación del keyspace al que pertenece.
     pub fn get_replicas_from_table_name(&self, table_name: &str) -> Result<u32> {
         let keyspace = self.get_keyspace(table_name)?;
         match keyspace.simple_replicas() {
@@ -871,7 +862,7 @@ impl Node {
         }
     }
 
-    /// TODO
+    /// Obtiene la cantidad de filas de un result.
     pub fn get_quantity_of_rows(
         &self,
         results_from_another_nodes: &[Byte],
@@ -887,7 +878,7 @@ impl Node {
         ])
     }
 
-    /// TODO
+    /// Obtiene la cantidad de columnas de un result, que se encuentra en su metadata.
     pub fn get_columns_metadata_length(&self, results_from_another_nodes: &[Byte]) -> usize {
         let mut total_length_from_metadata: usize = 21;
         if results_from_another_nodes.len() < total_length_from_metadata {
@@ -941,7 +932,8 @@ impl Node {
         Ok(new_ordered_res.as_bytes().to_vec())
     }
 
-    /// TODO
+    /// Obtiene la cantidad de replicas de un keyspace, dado su nombre.
+    /// Devuelve error si no se usa una estrategia de replicación simple.
     pub fn get_quantity_of_replicas_from_keyspace(&self, keyspace: &Keyspace) -> Result<u32> {
         let replicas = match keyspace.simple_replicas() {
             Some(value) => value,

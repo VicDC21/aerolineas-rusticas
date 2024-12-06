@@ -52,6 +52,13 @@ doctest = true
 doc = true
 
 [[bin]]
+name = "nd"
+path = "./src/bin/nd.rs"
+test = true
+doctest = true
+doc = true
+
+[[bin]]
 name = "multi-flight-demo"
 path = "./src/bin/multi_flight_demo.rs"
 test = true
