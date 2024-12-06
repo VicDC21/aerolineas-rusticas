@@ -1554,7 +1554,8 @@ impl SessionHandler {
     ) -> Result<()> {
         // Poblamos un mapa con los estados que pide el receptor
         let mut nodes_for_receptor = NodesMap::new();
-        let neighbours_states = &self.read()?.neighbours_states;
+        let node_reader = self.read()?;
+        let neighbours_states = &node_reader.neighbours_states;
         for (node_id, receptor_heartbeat) in &receptor_gossip_info {
             let own_endpoint_state = &neighbours_states[node_id];
             if own_endpoint_state.get_heartbeat() > receptor_heartbeat {
@@ -1562,7 +1563,7 @@ impl SessionHandler {
                 nodes_for_receptor.insert(*node_id, own_endpoint_state.clone());
             }
         }
-
+        drop(node_reader);
         // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
         // Asumimos que es más nueva ya que fue previamente verificada
         self.write()?.update_neighbours(response_nodes)?;
