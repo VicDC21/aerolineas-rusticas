@@ -1,7 +1,7 @@
 //! Módulo para la información de acceso.
 
 /// La información de logueo.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LoginInfo {
     /// El usuario.
     pub user: String,

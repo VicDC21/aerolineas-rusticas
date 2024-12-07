@@ -63,7 +63,7 @@ impl ConnectionHolder {
                     },
                     _ => {
                         Err(Error::AuthenticationError(format!(
-                            "La autenticación con usuario '{}' y contraseña '{}' ha fallado.\nSe reciibó un resultado de tipo {:?}.",
+                            "La autenticación con usuario '{}' y contraseña '{}' ha fallado.\nSe recibió un resultado de tipo {:?}.",
                             &user, &password, protocol_result,
                         )))
                     }

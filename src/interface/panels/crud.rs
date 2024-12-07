@@ -5,7 +5,7 @@ use walkers::Position;
 use crate::{
     client::conn_holder::ConnectionHolder,
     data::{airports::airp::Airport, flights::states::FlightState, utils::distances::distance_eta},
-    interface::{data::login_info::LoginInfo, utils::send_client_query},
+    interface::utils::send_client_query,
     protocol::aliases::{
         results::Result,
         types::{Int, Long},
@@ -13,9 +13,10 @@ use crate::{
 };
 
 /// Inserta un nuevo vuelo.
+///
+/// Se asume que en la conexión, uno ya se encuentra logueado.
 pub fn insert_flight(
     con_info: &mut ConnectionHolder,
-    login_info: &LoginInfo,
     timestamp: Long,
     cur_airport: &Airport,
     ex_airport: &Airport,
@@ -41,23 +42,21 @@ pub fn insert_flight(
         flight_id as Int, cur_airport.ident, ex_airport.ident, timestamp, FlightState::Preparing
     );
 
-    send_client_query(con_info, login_info, inc_fl_query.as_str())?;
-    send_client_query(con_info, login_info, dep_fl_query.as_str())?;
+    send_client_query(con_info, inc_fl_query.as_str())?;
+    send_client_query(con_info, dep_fl_query.as_str())?;
 
     Ok(())
 }
 
 /// Manda una _query_ para borrar el vuelo por su ID.
-pub fn delete_flight_by_id(
-    con_info: &mut ConnectionHolder,
-    login_info: &LoginInfo,
-    flight_id: Int,
-) -> Result<()> {
+///
+/// Se asume que en la conexión, uno ya se encuentra logueado.
+pub fn delete_flight_by_id(con_info: &mut ConnectionHolder, flight_id: Int) -> Result<()> {
     let inc_delete = format!("DELETE FROM vuelos_entrantes WHERE id = {};", flight_id);
     let dep_delete = format!("DELETE FROM vuelos_salientes WHERE id = {};", flight_id);
 
-    send_client_query(con_info, login_info, inc_delete.as_str())?;
-    send_client_query(con_info, login_info, dep_delete.as_str())?;
+    send_client_query(con_info, inc_delete.as_str())?;
+    send_client_query(con_info, dep_delete.as_str())?;
 
     Ok(())
 }

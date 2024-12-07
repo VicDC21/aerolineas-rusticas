@@ -5,16 +5,11 @@ use crate::{
     protocol::{aliases::results::Result, errors::error::Error},
 };
 
-use super::data::login_info::LoginInfo;
-
 /// Manda una _query_ para insertar un tipo de vuelo.
-pub fn send_client_query(
-    con_info: &mut ConnectionHolder,
-    login_info: &LoginInfo,
-    query: &str,
-) -> Result<()> {
+///
+/// Se asume que en la conexión, uno ya se encuentra logueado.
+pub fn send_client_query(con_info: &mut ConnectionHolder, query: &str) -> Result<()> {
     let client_lock = con_info.get_cli();
-    con_info.login(&login_info.user, &login_info.pass)?;
 
     let mut client = match client_lock.lock() {
         Ok(cli) => cli,
