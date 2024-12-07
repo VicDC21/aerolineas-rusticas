@@ -146,7 +146,7 @@ impl FlightSimulator {
             return;
         }
 
-        let mut tls_stream = &mut match Self::create_connection(client, has_to_connect) {
+        let tls_stream = &mut match Self::create_connection(client, has_to_connect) {
             Ok(tls_stream) => tls_stream,
             Err(err) => {
                 eprintln!(
@@ -157,10 +157,7 @@ impl FlightSimulator {
             }
         };
         let mut rng = thread_rng();
-        let _ = match &mut tls_stream {
-            Some(_) => Self::prepare_flight(&flights, &mut flight, client, tls_stream),
-            None => Self::prepare_flight(&flights, &mut flight, client, &mut None),
-        };
+        let _ = Self::prepare_flight(&flights, &mut flight, client, tls_stream);
 
         let (total_distance, fuel_consumption_rate) =
             Self::initialize_flight_parameters(&flight, dest_coords);
@@ -188,43 +185,15 @@ impl FlightSimulator {
             fuel_consumption_rate,
         };
 
-        if tls_stream.is_some() {
-            Self::run_flight_simulation(
-                &flights,
-                &mut flight,
-                client,
-                &params,
-                &mut rng,
-                tls_stream,
-            );
-            let _ = Self::finish_flight(
-                &flights,
-                &mut flight,
-                dest_coords,
-                dest_elevation,
-                client,
-                params.simulation_start.elapsed().as_secs_f64(),
-                tls_stream,
-            );
-        } else {
-            Self::run_flight_simulation(
-                &flights,
-                &mut flight,
-                client,
-                &params,
-                &mut rng,
-                &mut None,
-            );
-            let _ = Self::finish_flight(
-                &flights,
-                &mut flight,
-                dest_coords,
-                dest_elevation,
-                client,
-                params.simulation_start.elapsed().as_secs_f64(),
-                &mut None,
-            );
-        }
+        Self::run_flight_simulation(&flights, &mut flight, client, &params, &mut rng, tls_stream);
+        let _ = Self::finish_flight(
+            &flights,
+            &mut flight,
+            &params,
+            client,
+            params.simulation_start.elapsed().as_secs_f64(),
+            tls_stream,
+        );
     }
 
     fn run_flight_simulation(
@@ -252,24 +221,16 @@ impl FlightSimulator {
                 }
             };
 
-            let _ = match tls_stream {
-                Some(_) => Self::send_flight_update(
+            if tls_stream.is_some() {
+                let _ = Self::send_flight_update(
                     flight,
                     timestamp,
                     client,
                     flight.fuel,
                     params.simulation_start.elapsed().as_secs_f64(),
                     tls_stream,
-                ),
-                None => Self::send_flight_update(
-                    flight,
-                    timestamp,
-                    client,
-                    flight.fuel,
-                    params.simulation_start.elapsed().as_secs_f64(),
-                    &mut None,
-                ),
-            };
+                );
+            }
 
             thread::sleep(Duration::from_secs(1));
         }
@@ -312,6 +273,7 @@ impl FlightSimulator {
 
         if let ProtocolResult::QueryError(err) = protocol_result {
             eprintln!("{}", err);
+            *tls_stream = Self::create_connection(client, true)?;
         }
 
         Ok(())
@@ -465,16 +427,15 @@ impl FlightSimulator {
     fn finish_flight(
         flights: &Arc<Mutex<Vec<LiveFlightData>>>,
         flight: &mut LiveFlightData,
-        dest_coords: (Double, Double),
-        dest_elevation: Double,
+        params: &FlightSimulationParams,
         client: &mut Client,
         elapsed: Double,
         tls_stream: &mut Option<TlsStream>,
     ) -> Result<(), Error> {
         flight.state = FlightState::Finished;
-        flight.pos = dest_coords;
+        flight.pos = params.dest_coords;
         flight.set_spd(0.0);
-        flight.altitude_ft = dest_elevation;
+        flight.altitude_ft = params.dest_elevation;
 
         Self::update_flight_in_list(flights, flight);
         let timestamp = Self::get_current_timestamp()?;
