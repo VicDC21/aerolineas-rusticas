@@ -281,8 +281,28 @@ impl FlightSimulator {
         tls_stream: Option<Arc<Mutex<TlsStream>>>,
     ) -> Result<(), Error> {
         let protocol_result = {
-            let tls_stream = tls_stream.unwrap();
-            let mut tls_stream = tls_stream.lock().unwrap();
+            let tls_stream: Arc<
+                Mutex<rustls::StreamOwned<rustls::ClientConnection, std::net::TcpStream>>,
+            > = match tls_stream {
+                Some(tls_stream) => tls_stream,
+                None => {
+                    return Err(Error::ServerError(
+                        "No se pudo establecer una conexión TLS".to_string(),
+                    ))
+                }
+            };
+            let mut tls_stream: std::sync::MutexGuard<
+                '_,
+                rustls::StreamOwned<rustls::ClientConnection, std::net::TcpStream>,
+            > = match tls_stream.lock() {
+                Ok(tls_stream) => tls_stream,
+                Err(_) => {
+                    tls_stream.clear_poison();
+                    return Err(Error::ServerError(
+                        "Error de lock envenenado del stream TLS".to_string(),
+                    ));
+                }
+            };
             client.send_query(query, &mut tls_stream)?
         };
 
