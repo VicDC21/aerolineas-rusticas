@@ -852,9 +852,9 @@ impl SessionHandler {
             }
             *replicas_asked += 1;
 
-            // Si hubo error al enviar el mensaje, se asume que el vecino está apagado,
-            // entonces se intenta con las replicas
-            if result.is_empty() {
+            // Si hubo error al enviar el mensaje y habia que esperar la respuesta, se asume que
+            // el vecino está apagado, entonces se intenta con las replicas
+            if result.is_empty() && wait_response {
                 let mut node_writer = self.write()?;
                 node_writer.acknowledge_offline_neighbour(node_id);
                 drop(node_writer);
@@ -908,7 +908,7 @@ impl SessionHandler {
                 };
                 *replicas_asked += 1;
 
-                if replica_response.is_empty() {
+                if replica_response.is_empty() && wait_response {
                     let mut node_writer = self.write()?;
                     node_writer.acknowledge_offline_neighbour(node_replica);
                 } else {
@@ -1467,7 +1467,7 @@ impl SessionHandler {
                     )
                     .unwrap_or_default()
                 };
-                if res.is_empty() {
+                if res.is_empty() && wait_response {
                     let mut node_writer = self.write()?;
                     node_writer.acknowledge_offline_neighbour(node_to_replicate);
                 }
@@ -1529,7 +1529,8 @@ impl SessionHandler {
             )
             .is_err()
             {
-                // No devolvemos error porque no se considera un error que un vecino no responda en esta instancia.
+                // No devolvemos error porque no se considera un error que un vecino
+                // no responda en esta instancia, sino que esta apagado.
                 self.write()?.acknowledge_offline_neighbour(neighbour_id);
             }
         }
