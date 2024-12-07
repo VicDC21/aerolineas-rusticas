@@ -60,6 +60,8 @@ use super::{
 /// El tiempo de espera _(en segundos)_ por una respuesta.
 pub const TIMEOUT_SECS: u64 = 1;
 
+/// Se encarga de procesar todo lo relacionado a una sesión de un cliente.
+///
 /// Guarda una referencia compartida a un nodo, con la posibilidad de decidir si se quiere
 /// lockear o no al nodo durante las operaciones que correspondan.
 pub struct SessionHandler {

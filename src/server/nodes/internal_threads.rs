@@ -207,7 +207,14 @@ fn listen_single_client(
 fn configure_tls() -> Result<Arc<ServerConfig>> {
     let private_key_file = "custom.key";
     let certs: Vec<CertificateDer<'_>> = handle_pem_file_iter()?;
-    let private_key = PrivateKeyDer::from_pem_file(private_key_file).unwrap();
+    let private_key = match PrivateKeyDer::from_pem_file(private_key_file) {
+        Ok(value) => value,
+        Err(_) => {
+            return Err(Error::ServerError(
+                "No se pudo leer la clave privada".to_string(),
+            ))
+        }
+    };
     let config = match ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, private_key)

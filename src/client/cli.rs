@@ -633,9 +633,23 @@ pub fn get_client_connection() -> Result<rustls::ClientConnection> {
     let config = ClientConfig::builder()
         .with_root_certificates(root_store)
         .with_no_client_auth();
-    let server_name = "mydomain.com".try_into().unwrap();
+    let server_name = match "mydomain.com".try_into() {
+        Ok(server_name) => server_name,
+        Err(_) => {
+            return Err(Error::Invalid(
+                "No se pudo convertir el nombre del servidor".to_string(),
+            ))
+        }
+    };
     let client_connection: rustls::ClientConnection =
-        rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
+        match rustls::ClientConnection::new(Arc::new(config), server_name) {
+            Ok(client_connection) => client_connection,
+            Err(_) => {
+                return Err(Error::Invalid(
+                    "No se pudo crear la conexion tls".to_string(),
+                ))
+            }
+        };
     Ok(client_connection)
 }
 
