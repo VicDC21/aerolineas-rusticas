@@ -1,6 +1,5 @@
 use {
     crate::{
-        client::cli::Client,
         data::tracking::live_flight_data::LiveFlightData,
         protocol::{
             aliases::{
@@ -29,9 +28,8 @@ pub struct FlightConfig {
 const MAX_THREADS: usize = 16;
 
 /// Ejecuta el simulador de vuelos.
-pub fn run_sim(mut client: Client, flights: &[FlightConfig]) -> Result<()> {
-    client.set_consistency_level("One")?;
-    match FlightSimulator::new(MAX_THREADS, client, true) {
+pub fn run_sim(flights: &[FlightConfig]) -> Result<()> {
+    match FlightSimulator::new(MAX_THREADS, true) {
         Ok(simulator) => {
             script_loop(&simulator, flights);
             app_loop(&simulator)?;
@@ -69,7 +67,7 @@ fn script_loop(simulator: &FlightSimulator, flights: &[FlightConfig]) {
                 Ok(_) => println!("Vuelo añadido exitosamente!"),
                 Err(e) => println!("Error al añadir vuelo: {}", e),
             }
-            thread::sleep(Duration::from_millis(500));
+            thread::sleep(Duration::from_secs(1));
         }
     }
 }

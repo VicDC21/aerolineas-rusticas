@@ -24,7 +24,7 @@ fn test_1_simple_flight_adding() {
     let graph_handle = init_graph_parsing();
 
     if let Ok(mut conn) = conn_res {
-        let sim_res = FlightSimulator::new(8, Client::default(), true);
+        let sim_res = FlightSimulator::new(8, true);
         assert!(sim_res.is_ok());
 
         if let Ok(sim) = sim_res {

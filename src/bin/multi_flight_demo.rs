@@ -1,7 +1,4 @@
-use aerolineas_rusticas::{
-    client::cli::Client,
-    simulator::cli::{run_sim, FlightConfig},
-};
+use aerolineas_rusticas::simulator::cli::{run_sim, FlightConfig};
 
 /// Vuelos de ejemplo.
 pub const FLIGHT_CONFIGS: [FlightConfig; 6] = [
@@ -44,8 +41,7 @@ pub const FLIGHT_CONFIGS: [FlightConfig; 6] = [
 ];
 
 fn main() {
-    let client = Client::default();
-    if let Err(err) = run_sim(client, &FLIGHT_CONFIGS) {
+    if let Err(err) = run_sim(&FLIGHT_CONFIGS) {
         println!("{}", err);
     }
 }
