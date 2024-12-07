@@ -745,6 +745,10 @@ impl Node {
         timestamp: i64,
         node_number: Byte,
     ) -> Result<Vec<Byte>> {
+        println!(
+            "Inserta internamente siendo el nodo {} a la tabla del nodo {}",
+            self.id, node_number
+        );
         let table = match self.get_table(&insert.table.get_name()) {
             Ok(table) => table,
             Err(err) => return Err(err),

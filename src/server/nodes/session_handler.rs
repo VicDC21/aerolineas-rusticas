@@ -165,6 +165,7 @@ impl SessionHandler {
                 self.write()?.beat();
             }
             SvAction::Gossip(neighbours) => {
+                // println!("Empieza gossip");
                 self.gossip(neighbours)?;
             }
             SvAction::Syn(emissor_id, gossip_info) => {
@@ -284,7 +285,7 @@ impl SessionHandler {
         if request.len() < 9 {
             return Vec::<Byte>::new();
         }
-        println!("La request es {:?}", request);
+        // println!("La request es {:?}", request);
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return make_error_response(err),
@@ -851,9 +852,9 @@ impl SessionHandler {
             }
             *replicas_asked += 1;
 
-            // Si hubo error al enviar el mensaje, se asume que el vecino está apagado,
-            // entonces se intenta con las replicas
-            if result.is_empty() {
+            // Si hubo error al enviar el mensaje y habia que esperar la respuesta, se asume que
+            // el vecino está apagado, entonces se intenta con las replicas
+            if result.is_empty() && wait_response {
                 let mut node_writer = self.write()?;
                 node_writer.acknowledge_offline_neighbour(node_id);
                 drop(node_writer);
@@ -907,7 +908,7 @@ impl SessionHandler {
                 };
                 *replicas_asked += 1;
 
-                if replica_response.is_empty() {
+                if replica_response.is_empty() && wait_response {
                     let mut node_writer = self.write()?;
                     node_writer.acknowledge_offline_neighbour(node_replica);
                 } else {
@@ -1147,6 +1148,7 @@ impl SessionHandler {
         request: &[Byte],
         consistency_level: &Consistency,
     ) -> Result<Vec<Byte>> {
+        println!("Empieza una ronda de insert");
         let timestamp = Utc::now().timestamp();
         let table_name: String = insert.table.get_name();
         // let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
@@ -1187,7 +1189,7 @@ impl SessionHandler {
                         )
                         .unwrap_or_default();
                     }
-                    if res.is_empty() {
+                    if res.is_empty() && wait_response {
                         self.write()?
                             .acknowledge_offline_neighbour(node_to_replicate);
                     }
@@ -1234,6 +1236,7 @@ impl SessionHandler {
                         Some(TIMEOUT_SECS),
                     )
                     .is_err()
+                    && wait_response
                 {
                     self.write()?
                         .acknowledge_offline_neighbour(node_to_replicate);
@@ -1464,7 +1467,7 @@ impl SessionHandler {
                     )
                     .unwrap_or_default()
                 };
-                if res.is_empty() {
+                if res.is_empty() && wait_response {
                     let mut node_writer = self.write()?;
                     node_writer.acknowledge_offline_neighbour(node_to_replicate);
                 }
@@ -1526,7 +1529,8 @@ impl SessionHandler {
             )
             .is_err()
             {
-                // No devolvemos error porque no se considera un error que un vecino no responda en esta instancia.
+                // No devolvemos error porque no se considera un error que un vecino
+                // no responda en esta instancia, sino que esta apagado.
                 self.write()?.acknowledge_offline_neighbour(neighbour_id);
             }
         }
