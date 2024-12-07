@@ -1,9 +1,6 @@
 use {
     crate::{
-        client::{
-            cli::{get_client_connection, Client, TlsStream},
-            protocol_result::ProtocolResult,
-        },
+        client::cli::{get_client_connection, Client, TlsStream},
         data::{
             airports::airp::{Airport, AirportsMap},
             flights::{states::FlightState, types::FlightType},
@@ -130,6 +127,18 @@ impl FlightSimulator {
         }
     }
 
+    fn set_client_and_connection(
+        has_to_connect: bool,
+    ) -> Result<(Client, Option<TlsStream>), Error> {
+        let mut client = Client::default();
+        client.set_consistency_level("One")?;
+        let tls_stream = match Self::create_connection(&mut client, has_to_connect) {
+            Ok(tls_stream) => tls_stream,
+            Err(err) => return Err(err),
+        };
+        Ok((client, tls_stream))
+    }
+
     fn simulate_flight(
         flights: Arc<Mutex<Vec<LiveFlightData>>>,
         mut flight: LiveFlightData,
@@ -137,27 +146,16 @@ impl FlightSimulator {
         dest_elevation: Double,
         has_to_connect: bool,
     ) {
-        let client = &mut Client::default();
-        if let Err(err) = client.set_consistency_level("One") {
-            eprintln!(
-                "Error estableciendo consistency level para vuelo {}: {}",
-                flight.flight_id, err
-            );
-            return;
-        }
-
-        let tls_stream = &mut match Self::create_connection(client, has_to_connect) {
-            Ok(tls_stream) => tls_stream,
+        let (mut client, mut tls_stream) = match Self::set_client_and_connection(has_to_connect) {
+            Ok((client, tls_stream)) => (client, tls_stream),
             Err(err) => {
-                eprintln!(
-                    "Error creando la conexión de cliente para vuelo {}: {}",
-                    flight.flight_id, err
-                );
+                eprintln!("Error en la conexión del cliente: {}", err);
                 return;
             }
         };
+
         let mut rng = thread_rng();
-        let _ = Self::prepare_flight(&flights, &mut flight, client, tls_stream);
+        let _ = Self::prepare_flight(&flights, &mut flight, &mut client, &mut tls_stream);
 
         let (total_distance, fuel_consumption_rate) =
             Self::initialize_flight_parameters(&flight, dest_coords);
@@ -185,14 +183,21 @@ impl FlightSimulator {
             fuel_consumption_rate,
         };
 
-        Self::run_flight_simulation(&flights, &mut flight, client, &params, &mut rng, tls_stream);
+        let _ = Self::run_flight_simulation(
+            &flights,
+            &mut flight,
+            &mut client,
+            &params,
+            &mut rng,
+            &mut tls_stream,
+        );
         let _ = Self::finish_flight(
             &flights,
             &mut flight,
             &params,
-            client,
+            &mut client,
             params.simulation_start.elapsed().as_secs_f64(),
-            tls_stream,
+            &mut tls_stream,
         );
     }
 
@@ -203,7 +208,7 @@ impl FlightSimulator {
         params: &FlightSimulationParams,
         rng: &mut rand::rngs::ThreadRng,
         tls_stream: &mut Option<TlsStream>,
-    ) {
+    ) -> Result<(), Error> {
         while params.simulation_start.elapsed().as_secs_f64()
             < params.simulation_limit.as_secs_f64()
         {
@@ -216,8 +221,7 @@ impl FlightSimulator {
             let timestamp = match Self::get_current_timestamp() {
                 Ok(ts) => ts,
                 Err(err) => {
-                    eprintln!("Error obteniendo timestamp actual: {}", err);
-                    return;
+                    return Err(err);
                 }
             };
 
@@ -234,6 +238,7 @@ impl FlightSimulator {
 
             thread::sleep(Duration::from_secs(1));
         }
+        Ok(())
     }
 
     fn send_flight_update(
@@ -263,19 +268,30 @@ impl FlightSimulator {
         client: &mut Client,
         tls_stream: &mut Option<TlsStream>,
     ) -> Result<(), Error> {
-        let protocol_result = {
-            if let Some(tls_stream) = tls_stream {
-                client.send_query(query, tls_stream)?
-            } else {
-                return Err(Error::ServerError("TLS stream no disponible".to_string()));
+        if let Some(tls_stream) = tls_stream {
+            match client.send_query(query, tls_stream) {
+                Ok(_) => (),
+                Err(_) => {
+                    let (new_client, new_tls_stream) = match Self::set_client_and_connection(true) {
+                        Ok((new_client, new_tls_stream)) => (new_client, new_tls_stream),
+                        Err(reconnect_err) => {
+                            eprintln!("Error en la reconexión del cliente: {}", reconnect_err);
+                            return Err(reconnect_err);
+                        }
+                    };
+                    *client = new_client;
+                    *tls_stream = match new_tls_stream {
+                        Some(tls_stream) => tls_stream,
+                        None => {
+                            return Err(Error::ServerError(
+                                "No se pudo crear el stream TLS".to_string(),
+                            ))
+                        }
+                    };
+                    client.send_query(query, tls_stream)?;
+                }
             }
-        };
-
-        if let ProtocolResult::QueryError(err) = protocol_result {
-            eprintln!("{}", err);
-            *tls_stream = Self::create_connection(client, true)?;
         }
-
         Ok(())
     }
 
