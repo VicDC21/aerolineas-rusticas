@@ -95,6 +95,7 @@ impl SessionHandler {
                     "Lock envenenado detectado desde el nodo con ID {} para escritura: {}",
                     self.id, &poisoned
                 );
+                self.lock.clear_poison();
 
                 let unpoisoned_guard = poisoned.into_inner();
                 Ok(unpoisoned_guard)
@@ -118,6 +119,7 @@ impl SessionHandler {
                     self.id, &poisoned
                 );
 
+                self.lock.clear_poison();
                 let unpoisoned_guard = poisoned.into_inner();
                 Ok(unpoisoned_guard)
             }
