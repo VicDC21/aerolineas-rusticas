@@ -172,9 +172,7 @@ impl FlightsLoader {
                         }
 
                         if let Some(login_info) = login_info_opt {
-                            if let Err(login_err) =
-                                con_info.login(&login_info.user, &login_info.pass)
-                            {
+                            if let Err(login_err) = con_info.login(&login_info) {
                                 println!(
                                     "Error al loguearse en el hilo cargador:\n\n{}",
                                     login_err
@@ -238,9 +236,7 @@ impl FlightsLoader {
                         }
 
                         if let Some(login_info) = login_info_opt {
-                            if let Err(login_err) =
-                                con_info.login(&login_info.user, &login_info.pass)
-                            {
+                            if let Err(login_err) = con_info.login(&login_info) {
                                 println!(
                                     "Error al loguearse en el hilo cargador:\n\n{}",
                                     login_err

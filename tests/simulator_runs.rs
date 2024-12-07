@@ -10,6 +10,7 @@ use aerolineas_rusticas::{
         flights::{states::FlightState, types::FlightType},
         tracking::live_flight_data::LiveFlightData,
     },
+    interface::data::login_info::LoginInfo,
     simulator::flight_simulator::FlightSimulator,
 };
 use common::{clean_nodes, init_graph_parsing};
@@ -44,7 +45,7 @@ fn test_1_simple_flight_adding() {
             sleep(Duration::from_secs(5));
 
             let client_lock = conn.get_cli();
-            let login_res = conn.login("juan", "1234");
+            let login_res = conn.login(&LoginInfo::new_str("juan", "1234"));
             assert!(login_res.is_ok());
 
             if let Ok(mut client) = client_lock.lock() {

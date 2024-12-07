@@ -9,6 +9,7 @@ use {
             flights::{states::FlightState, types::FlightType},
             tracking::live_flight_data::LiveFlightData,
         },
+        interface::data::login_info::LoginInfo,
         protocol::{
             aliases::types::{Double, Int, Long},
             errors::error::Error,
@@ -123,7 +124,7 @@ impl FlightSimulator {
                         ))
                     }
                 };
-            client.send_query("User: juan Password: 1234", &mut tls_stream)?;
+            client.login(LoginInfo::new_str("juan", "1234"), &mut tls_stream)?;
             Ok(Some(tls_stream))
         } else {
             Ok(None)

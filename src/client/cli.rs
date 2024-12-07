@@ -11,6 +11,7 @@ use std::{
 
 use crate::{
     client::cql_frame::frame::Frame,
+    interface::data::login_info::LoginInfo,
     parser::{main_parser::make_parse, statements::statement::Statement},
     protocol::{
         aliases::{results::Result, types::Byte},
@@ -43,6 +44,11 @@ use super::{col_data::ColData, protocol_result::ProtocolResult};
 /// Un stream TLS.
 pub type TlsStream = LsStream<ClientConnection, TcpStream>;
 
+/// La cantidad máxima de intentos de reconexión.
+const MAX_RETRIES: u32 = 2;
+/// La cantidad (en bytes) del _header_ de un mensaje.
+const HEADER_SIZE: usize = 9;
+
 /// Estructura principal de un cliente.
 #[derive(Clone)]
 pub struct Client {
@@ -54,6 +60,9 @@ pub struct Client {
 
     /// El _Consistency Level_ de las queries.
     consistency_level: Consistency,
+
+    /// Información de logueo, a usar en caso de necesitar reconectarse.
+    login_info: LoginInfo,
 }
 
 impl Client {
@@ -65,6 +74,7 @@ impl Client {
             addr_loader,
             requests_stream,
             consistency_level: Consistency::Quorum,
+            login_info: LoginInfo::default(),
         }
     }
 
@@ -162,6 +172,38 @@ impl Client {
         Ok(TlsStream::new(client_connection, tcp_stream))
     }
 
+    /// Intenta loguearse con un usuario específico.
+    pub fn login(&mut self, login_info: LoginInfo, tls_stream: &mut TlsStream) -> Result<()> {
+        if self.login_info != login_info {
+            self.login_info = login_info;
+        }
+
+        let protocol_result = self.send_query(
+            format!(
+                "User: {} Password: {}",
+                &self.login_info.user, &self.login_info.pass
+            )
+            .as_str(),
+            tls_stream,
+        )?;
+
+        match protocol_result {
+            ProtocolResult::AuthSuccess => Ok(()),
+            ProtocolResult::QueryError(auth_err) => {
+                Err(Error::AuthenticationError(format!(
+                    "La autenticación con usuario '{}' y contraseña '{}' ha fallado:\n\n{}",
+                    &self.login_info.user, &self.login_info.pass, auth_err,
+                )))
+            },
+            _ => {
+                Err(Error::AuthenticationError(format!(
+                    "La autenticación con usuario '{}' y contraseña '{}' ha fallado.\nSe recibió un resultado de tipo {:?}.",
+                    &self.login_info.user, &self.login_info.pass, protocol_result,
+                )))
+            }
+        }
+    }
+
     /// Conecta con alguno de los _sockets_ guardados usando `stdin` como _stream_ de entrada.
     ///
     /// <div class="warning">
@@ -243,7 +285,6 @@ impl Client {
                         return Err(Error::ServerError("UDT statements no soportados".into()));
                     }
                 };
-                const MAX_RETRIES: u32 = 2;
                 let mut last_error = None;
                 for _retry in 0..=MAX_RETRIES {
                     match tls_stream.write_all(&frame) {
@@ -275,7 +316,6 @@ impl Client {
     fn read_complete_response(&mut self, tls_stream: &mut TlsStream) -> Result<ProtocolResult> {
         let mut response = Vec::new();
         let mut buffer = vec![0; 8192];
-        const HEADER_SIZE: usize = 9;
 
         // Establecer un deadline absoluto
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
@@ -335,7 +375,7 @@ impl Client {
     }
 
     fn get_body_length(&self, response: &[u8]) -> Result<usize> {
-        if response.len() < 9 {
+        if response.len() < HEADER_SIZE {
             return Err(Error::ServerError("Respuesta incompleta".into()));
         }
 
@@ -344,7 +384,7 @@ impl Client {
     }
 
     fn handle_response(&mut self, request: &[Byte]) -> Result<ProtocolResult> {
-        if request.len() < 9 {
+        if request.len() < HEADER_SIZE {
             return Err(Error::ProtocolError(
                 "No se cumple el protocolo del header".to_string(),
             ));
@@ -374,7 +414,7 @@ impl Client {
     }
 
     fn handle_request_error(&self, _lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
-        match Error::try_from(request[9..].to_vec()) {
+        match Error::try_from(request[HEADER_SIZE..].to_vec()) {
             Ok(error) => Ok(ProtocolResult::QueryError(error)),
             Err(err) => Err(err),
         }
@@ -397,7 +437,7 @@ impl Client {
     }
 
     fn handle_result(&self, lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
-        match ResultKind::try_from(request[9..13].to_vec())? {
+        match ResultKind::try_from(request[HEADER_SIZE..HEADER_SIZE + 4].to_vec())? {
             ResultKind::Void => Ok(ProtocolResult::Void),
             ResultKind::Rows => self.deserialize_rows(lenght, &request[13..]),
             ResultKind::SetKeyspace => self.set_keyspace(lenght, &request[13..]),

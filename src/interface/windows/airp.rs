@@ -111,7 +111,7 @@ pub fn login_window(ui: &Ui, conn: &mut ConnectionHolder, login_info: &mut Login
                 hor_ui.text_edit_singleline(&mut login_info.pass);
             });
             if win_ui.button(RichText::new("LOGIN").heading()).clicked() {
-                let _ = conn.login(&login_info.user, &login_info.pass);
+                let _ = conn.login(login_info);
             }
         });
 }

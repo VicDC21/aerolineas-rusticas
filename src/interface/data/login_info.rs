@@ -16,6 +16,11 @@ impl LoginInfo {
         Self { user, pass }
     }
 
+    /// Crea una nueva instancia a partir de [str]s.
+    pub fn new_str(user: &str, pass: &str) -> Self {
+        Self::new(user.to_string(), pass.to_string())
+    }
+
     /// Chequea si la info está vacía.
     pub fn is_empty(&self) -> bool {
         self.user.is_empty() && self.pass.is_empty()

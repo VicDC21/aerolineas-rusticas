@@ -11,6 +11,7 @@ use std::{
 use aerolineas_rusticas::{
     client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
     data::flights::{flight::Flight, states::FlightState, types::FlightType},
+    interface::data::login_info::LoginInfo,
 };
 use common::{clean_nodes, create_echo_nodes, create_parsing_nodes};
 
@@ -67,7 +68,7 @@ fn test_2_simple_insert_and_select() {
 
     if let Ok(mut conn) = conn_res {
         let client_lock = conn.get_cli();
-        let login_res = conn.login("juan", "1234");
+        let login_res = conn.login(&LoginInfo::new_str("juan", "1234"));
         sleep(Duration::from_secs(1));
 
         assert!(login_res.is_ok());
