@@ -165,6 +165,7 @@ impl SessionHandler {
                 self.write()?.beat();
             }
             SvAction::Gossip(neighbours) => {
+                // println!("Empieza gossip");
                 self.gossip(neighbours)?;
             }
             SvAction::Syn(emissor_id, gossip_info) => {
@@ -284,7 +285,7 @@ impl SessionHandler {
         if request.len() < 9 {
             return Vec::<Byte>::new();
         }
-        println!("La request es {:?}", request);
+        // println!("La request es {:?}", request);
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return make_error_response(err),
@@ -1147,6 +1148,7 @@ impl SessionHandler {
         request: &[Byte],
         consistency_level: &Consistency,
     ) -> Result<Vec<Byte>> {
+        println!("Empieza una ronda de insert");
         let timestamp = Utc::now().timestamp();
         let table_name: String = insert.table.get_name();
         // let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
@@ -1187,7 +1189,7 @@ impl SessionHandler {
                         )
                         .unwrap_or_default();
                     }
-                    if res.is_empty() {
+                    if res.is_empty() && wait_response {
                         self.write()?
                             .acknowledge_offline_neighbour(node_to_replicate);
                     }
@@ -1234,6 +1236,7 @@ impl SessionHandler {
                         Some(TIMEOUT_SECS),
                     )
                     .is_err()
+                    && wait_response
                 {
                     self.write()?
                         .acknowledge_offline_neighbour(node_to_replicate);

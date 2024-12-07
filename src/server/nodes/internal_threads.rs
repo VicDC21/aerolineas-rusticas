@@ -139,7 +139,6 @@ fn listen_priv_port(socket: SocketAddr, session_handler: SessionHandler) -> Resu
                 if is_exit(&bytes_vec[..]) {
                     break;
                 }
-                //println!("Entra por puerto privado");
                 session_handler.process_stream(&mut tcp_stream, bytes_vec, true)?;
             }
         }
