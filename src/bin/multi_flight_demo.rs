@@ -1,42 +1,54 @@
 use aerolineas_rusticas::simulator::cli::{run_sim, FlightConfig};
 
 /// Vuelos de ejemplo.
-pub const FLIGHT_CONFIGS: [FlightConfig; 6] = [
+pub const FLIGHT_CONFIGS: [FlightConfig; 8] = [
     FlightConfig {
         flight_id: 123456,
-        origin: "SAEZ",
-        destination: "LEMD",
+        origin: "SABE",
+        destination: "EGAA",
         spd: 850.0,
     },
     FlightConfig {
         flight_id: 234567,
-        origin: "SAEZ",
-        destination: "KJFK",
+        origin: "SABE",
+        destination: "FACT",
         spd: 900.0,
     },
     FlightConfig {
         flight_id: 345678,
-        origin: "SAEZ",
-        destination: "RJAA",
+        origin: "UNKL",
+        destination: "SABE",
         spd: 950.0,
     },
     FlightConfig {
         flight_id: 456789,
-        origin: "LFPG",
-        destination: "SAEZ",
+        origin: "UNKL",
+        destination: "EGAA",
         spd: 800.0,
     },
     FlightConfig {
         flight_id: 567890,
-        origin: "HKJK",
-        destination: "SAEZ",
+        origin: "UNKL",
+        destination: "FACT",
         spd: 825.0,
     },
     FlightConfig {
         flight_id: 678901,
-        origin: "YMML",
-        destination: "SAEZ",
+        origin: "SABE",
+        destination: "UNKL",
         spd: 875.0,
+    },
+    FlightConfig {
+        flight_id: 789012,
+        origin: "SABE",
+        destination: "LEMD",
+        spd: 900.0,
+    },
+    FlightConfig {
+        flight_id: 890123,
+        origin: "SABE",
+        destination: "RJAA",
+        spd: 900.0,
     },
 ];
 
