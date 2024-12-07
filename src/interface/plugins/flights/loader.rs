@@ -217,13 +217,18 @@ impl FlightsLoader {
                         if stop_by_airport && (timestamp == stop_value) {
                             break;
                         }
-                        let live_data = Self::load_live_data(
+                        let live_data = match Self::load_live_data(
                             &mut con_info,
                             login_info,
                             &flight_type,
                             selected_airport.as_ref(),
-                        )
-                        .unwrap_or_default();
+                        ) {
+                            Ok(data) => data,
+                            Err(err) => {
+                                println!("Error cargando datos de vuelos en vivo:\n{}", err);
+                                LiveDataMap::new()
+                            }
+                        };
 
                         if let Err(err) = to_parent.send(live_data) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);
@@ -401,7 +406,6 @@ impl FlightsLoader {
         let protocol_result = client.send_query(query.as_str(), &mut con_info.tls_stream)?;
         let live_data = LiveFlightData::try_from_protocol_result(protocol_result, flight_type)?;
         for data in live_data {
-            println!("{:?}", &data);
             if let Entry::Vacant(entry) = flights_by_id.entry(data.flight_id) {
                 entry.insert(Vec::<LiveFlightData>::new());
             } else if let Some(entries) = flights_by_id.get_mut(&data.flight_id) {
@@ -409,6 +413,7 @@ impl FlightsLoader {
             }
         }
 
+        println!("[DEBUG] cargando {}...", flights_by_id.len());
         Ok(flights_by_id)
     }
 
@@ -544,14 +549,12 @@ impl Plugin for &mut FlightsLoader {
         }
 
         if let Ok(new_tr_incoming) = self.incoming_tr_child.1.try_recv() {
-            println!("INCOMING: {:?}", new_tr_incoming);
             if !new_tr_incoming.is_empty() {
                 self.incoming_tracking = Some(new_tr_incoming);
             }
         }
 
         if let Ok(new_tr_departing) = self.departing_tr_child.1.try_recv() {
-            println!("DEPARTING: {:?}", new_tr_departing);
             if !new_tr_departing.is_empty() {
                 self.departing_tracking = Some(new_tr_departing);
             }

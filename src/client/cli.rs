@@ -271,59 +271,6 @@ impl Client {
         self.requests_stream.remove(&stream_id);
         result
     }
-    // // Si una query falla al enviarse aca se intenta reenviarla de nuevo por el tls stream
-    // fn retry_send_query(&mut self, tls_stream: &mut LsStream<ClientConnection, TcpStream>, frame: Vec<u8>) -> Result<ProtocolResult> {
-    //     const MAX_RETRIES: u32 = 2;
-    //     let mut last_error = None;
-    //     for _retry in 0..=MAX_RETRIES {
-    //         match tls_stream.write_all(&frame) {
-    //             Ok(_) => match tls_stream.flush() {
-    //                 Ok(_) => match self.read_complete_response(tls_stream) {
-    //                     Ok(response) => return Ok(response),
-    //                     Err(e) => last_error = Some(e),
-    //                 },
-    //                 Err(e) => {
-    //                     last_error =
-    //                         Some(Error::ServerError(format!("Error al flush: {}", e)))
-    //                 }
-    //             },
-    //             Err(e) => {
-    //                 last_error =
-    //                     Some(Error::ServerError(format!("Error al escribir: {}", e)))
-    //             }
-    //         }
-    //     }
-    //     Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
-    // }
-    // fn reconnect(&mut self, tcp_stream: &mut TcpStream) -> Result<()> {
-    //     // Cerrar explícitamente la conexión anterior
-    //     let _ = tcp_stream.shutdown(std::net::Shutdown::Both);
-    //     std::thread::sleep(Duration::from_millis(100));
-
-    //     match self.connect() {
-    //         Ok(new_stream) => {
-    //             *tcp_stream = new_stream;
-    //             tcp_stream.set_nonblocking(true).map_err(|e| {
-    //                 Error::ServerError(format!("Error al configurar non-blocking: {}", e))
-    //             })?;
-
-    //             tcp_stream
-    //                 .set_read_timeout(Some(Duration::from_secs(5)))
-    //                 .map_err(|e| {
-    //                     Error::ServerError(format!("Error al configurar read timeout: {}", e))
-    //                 })?;
-
-    //             tcp_stream
-    //                 .set_write_timeout(Some(Duration::from_secs(5)))
-    //                 .map_err(|e| {
-    //                     Error::ServerError(format!("Error al configurar write timeout: {}", e))
-    //                 })?;
-
-    //             Ok(())
-    //         }
-    //         Err(e) => Err(e),
-    //     }
-    // }
 
     fn read_complete_response(&mut self, tls_stream: &mut TlsStream) -> Result<ProtocolResult> {
         let mut response = Vec::new();
@@ -500,10 +447,7 @@ impl Client {
             }
             rows.push(columns);
         }
-        println!("Las rows son:");
-        for row in &rows {
-            println!("{:?}", row);
-        }
+
         Ok(ProtocolResult::Rows(rows))
     }
 
