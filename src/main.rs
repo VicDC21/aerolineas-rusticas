@@ -64,8 +64,7 @@ fn main() {
             println!("Se quizo ejecutar 'gui', pero la feature relevante no está activada. Prueba con:\n\ncargo run --features \"gui\" gui\n")
         }
         "sim" => {
-            let client = Client::default();
-            print_err(run_sim(client, &[]));
+            print_err(run_sim(&[]));
         }
         _ => {
             println!("{}", how_to_use);

@@ -24,12 +24,12 @@ fn test_1_simple_flight_adding() {
     let graph_handle = init_graph_parsing();
 
     if let Ok(mut conn) = conn_res {
-        let sim_res = FlightSimulator::new(8, Client::default(), true);
+        let sim_res = FlightSimulator::new(8, true);
         assert!(sim_res.is_ok());
 
         if let Ok(sim) = sim_res {
             assert!(sim
-                .add_flight(123456, "SABE".to_string(), "EGAA".to_string())
+                .add_flight(123456, "SABE".to_string(), "EGAA".to_string(), 800.0)
                 .is_ok());
 
             sleep(Duration::from_secs(5));
