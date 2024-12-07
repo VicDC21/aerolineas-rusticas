@@ -62,8 +62,11 @@ pub struct FlightsLoader {
     /// La información de logueo para conectarse.
     login_info: LoginInfo,
 
-    /// Si se debe reloguear en la conexión.
-    relogin: bool,
+    /// Si se debe reloguear en la conexión para los vuelos.
+    relogin_fl: bool,
+
+    /// Si se debe reloguear en la conexión para los datos de vuelos.
+    relogin_tr: bool,
 
     /// El aeropuerto acualmente seleccionado.
     selected_airport: Arc<Option<Airport>>,
@@ -121,7 +124,8 @@ impl FlightsLoader {
 
         Self {
             login_info,
-            relogin: false,
+            relogin_fl: false,
+            relogin_tr: false,
             selected_airport,
             incoming_flights,
             departing_flights,
@@ -315,7 +319,8 @@ impl FlightsLoader {
     pub fn sync_login_info(&mut self, new_info: &LoginInfo) -> &mut Self {
         if new_info != &self.login_info {
             self.login_info = new_info.clone();
-            self.relogin = true;
+            self.relogin_fl = true;
+            self.relogin_tr = true;
         }
         self
     }
@@ -509,13 +514,6 @@ impl Default for FlightsLoader {
 
 impl Plugin for &mut FlightsLoader {
     fn run(&mut self, _response: &Response, _painter: Painter, _projector: &Projector) {
-        let relogin = match &self.relogin {
-            true => {
-                self.relogin = false;
-                true
-            }
-            false => false,
-        };
         let clone_dummy = self.login_info.clone(); // para no prestar mucho self
         let cloned_login_info = |relog| {
             if relog {
@@ -527,12 +525,19 @@ impl Plugin for &mut FlightsLoader {
 
         if self.elapsed_at_least_fl(&Duration::from_secs(FLIGHTS_INTERVAL_SECS)) {
             self.reset_instant_fl();
+            let relogin_fl = match &self.relogin_fl {
+                true => {
+                    self.relogin_fl = false;
+                    true
+                }
+                false => false,
+            };
 
             let ((_, inc_fl_sender), _) = &mut self.incoming_fl_child;
             if let Err(err) = inc_fl_sender.send((
                 Arc::clone(&self.selected_airport),
                 self.date.timestamp(),
-                cloned_login_info(relogin),
+                cloned_login_info(relogin_fl),
             )) {
                 println!(
                     "Error al enviar timestamp al cargador de vuelos entrantes:\n\n{}",
@@ -544,7 +549,7 @@ impl Plugin for &mut FlightsLoader {
             if let Err(err) = dep_fl_sender.send((
                 Arc::clone(&self.selected_airport),
                 self.date.timestamp(),
-                cloned_login_info(relogin),
+                cloned_login_info(relogin_fl),
             )) {
                 println!(
                     "Error al enviar timestamp al cargador de vuelos salientes:\n\n{}",
@@ -555,12 +560,19 @@ impl Plugin for &mut FlightsLoader {
 
         if self.elapsed_at_least_tr(&Duration::from_secs(TRACKING_INTERVAL_SECS)) {
             self.reset_instant_tr();
+            let relogin_tr = match &self.relogin_tr {
+                true => {
+                    self.relogin_tr = false;
+                    true
+                }
+                false => false,
+            };
 
             let ((_, inc_tr_sender), _) = &mut self.incoming_tr_child;
             if let Err(err) = inc_tr_sender.send((
                 Arc::clone(&self.selected_airport),
                 self.date.timestamp(),
-                cloned_login_info(relogin),
+                cloned_login_info(relogin_tr),
             )) {
                 println!(
                     "Error al enviar timestamp al cargador de datos de vuelos entrantes:\n\n{}",
@@ -572,7 +584,7 @@ impl Plugin for &mut FlightsLoader {
             if let Err(err) = dep_tr_sender.send((
                 Arc::clone(&self.selected_airport),
                 self.date.timestamp(),
-                cloned_login_info(relogin),
+                cloned_login_info(relogin_tr),
             )) {
                 println!(
                     "Error al enviar timestamp al cargador de datos de vuelos salientes:\n\n{}",
