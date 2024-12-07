@@ -22,9 +22,9 @@ use crate::protocol::{
     traits::Byteable,
 };
 use crate::server::{
-    actions::opcode::SvAction,
     modes::ConnectionMode,
     nodes::{
+        actions::opcode::SvAction,
         node::{Node, NodeId},
         port_type::PortType,
         utils::{load_init_queries, send_to_node},

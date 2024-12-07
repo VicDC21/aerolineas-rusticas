@@ -24,12 +24,9 @@ use crate::{
         traits::Byteable,
         utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
     },
-    server::{
-        actions::opcode::SvAction,
-        nodes::{
-            addr::loader::AddrLoader, port_type::PortType,
-            table_metadata::column_data_type::ColumnDataType,
-        },
+    server::nodes::{
+        actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
+        table_metadata::column_data_type::ColumnDataType,
     },
     tokenizer::tokenizer::tokenize_query,
 };

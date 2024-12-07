@@ -23,13 +23,14 @@ use crate::protocol::{
     messages::responses::result_kinds::ResultKind,
     traits::Byteable,
 };
-use crate::server::{actions::opcode::SvAction, modes::ConnectionMode, utils::load_json};
+use crate::server::{modes::ConnectionMode, utils::load_json};
 
 use serde::{Deserialize, Serialize};
 
 use std::{collections::HashMap, net::TcpStream, path::Path, thread::JoinHandle};
 
 use super::{
+    actions::opcode::SvAction,
     addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
     internal_threads::{beater, create_client_and_private_conexion, gossiper},
@@ -243,14 +244,16 @@ impl Node {
             if id == node_id {
                 continue;
             }
-            if let Err(err) = send_to_node(
+            if send_to_node(
                 node_id,
                 SvAction::SendEndpointState(id).as_bytes(),
                 PortType::Priv,
-            ) {
+            )
+            .is_err()
+            {
                 println!(
-                    "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
-                    err
+                    "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                    id, node_id,
                 );
             }
         }
@@ -416,14 +419,16 @@ impl Node {
 
     /// Envia su endpoint state al nodo del ID correspondiente.
     pub fn send_endpoint_state(&self, id: NodeId) {
-        if let Err(err) = send_to_node(
+        if send_to_node(
             id,
             SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
             PortType::Priv,
-        ) {
+        )
+        .is_err()
+        {
             println!(
-                "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
-                err
+                "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                id, self.id,
             );
         }
     }
@@ -771,8 +776,8 @@ impl Node {
         Ok(Self::create_result_void())
     }
 
-    /// Revisa si hay un nuevo valor de partición que no tenga. Si lo hay, lo agrega y lo devuelve junto al resto.
-    /// Caso contrario, devuelve None.
+    /// Revisa si no tiene el partition value recibido, para el nombre de tabla dado.
+    /// Si no lo tiene, lo agrega y lo devuelve junto al resto. Caso contrario, devuelve None.
     pub fn check_if_has_new_partition_value(
         &self,
         partition_value: String,
@@ -790,9 +795,10 @@ impl Node {
             };
         if !partition_values.contains(&partition_value) {
             partition_values.push(partition_value.clone());
-            return Ok(Some(partition_values));
-        };
-        Ok(None)
+            Ok(Some(partition_values))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Procesa una declaración UPDATE.
@@ -981,4 +987,10 @@ impl Node {
     //             }
     //         };
     //     }
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.endpoint_state.eq(&other.endpoint_state)
+    }
 }

@@ -1,5 +1,6 @@
-//! Paquete para estructuras de nodos.
+//! Paquete para todo lo relacionado a los nodos de un clúster.
 
+pub mod actions;
 pub mod addr;
 pub mod disk_operations;
 pub mod graph;
