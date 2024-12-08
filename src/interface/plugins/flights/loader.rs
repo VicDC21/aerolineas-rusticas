@@ -19,9 +19,9 @@ use crate::{
     data::{
         airports::airp::Airport,
         flights::{flight::Flight, types::FlightType},
+        login_info::LoginInfo,
         tracking::live_flight_data::LiveFlightData,
     },
-    interface::data::login_info::LoginInfo,
     protocol::{
         aliases::{
             results::Result,

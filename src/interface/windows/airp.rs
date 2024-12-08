@@ -4,7 +4,7 @@ use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
 use eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window};
 use egui_extras::DatePickerButton;
 
-use crate::{client::conn_holder::ConnectionHolder, interface::data::login_info::LoginInfo};
+use crate::{client::conn_holder::ConnectionHolder, data::login_info::LoginInfo};
 
 /// Seleccionar la fecha actual.
 pub fn date_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {

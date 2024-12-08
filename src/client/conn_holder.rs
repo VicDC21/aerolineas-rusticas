@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::{
     client::cli::{get_client_connection, Client, TlsStream},
-    interface::data::login_info::LoginInfo,
+    data::login_info::LoginInfo,
     protocol::{aliases::results::Result, errors::error::Error},
 };
 /// Estructura que guarda información de la conexión a un nodo.

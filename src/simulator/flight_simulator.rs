@@ -7,9 +7,9 @@ use {
         data::{
             airports::airp::{Airport, AirportsMap},
             flights::{states::FlightState, types::FlightType},
+            login_info::LoginInfo,
             tracking::live_flight_data::LiveFlightData,
         },
-        interface::data::login_info::LoginInfo,
         protocol::{
             aliases::types::{Double, Int, Long},
             errors::error::Error,
