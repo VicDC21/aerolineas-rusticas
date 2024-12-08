@@ -25,9 +25,12 @@ use crate::{
         traits::Byteable,
         utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
     },
-    server::nodes::{
-        actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
-        table_metadata::column_data_type::ColumnDataType,
+    server::{
+        nodes::{
+            actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
+            table_metadata::column_data_type::ColumnDataType,
+        },
+        utils::move_contents,
     },
     tokenizer::tokenizer::tokenize_query,
 };
@@ -343,6 +346,11 @@ impl Client {
                     let mut new_tls =
                         self.create_tls_connection(get_client_connection()?, self.connect()?)?;
                     self.login(self.login_info.to_owned(), &mut new_tls)?;
+                    if let Some(tls) = tls_opt.as_mut() {
+                        move_contents(tls, &mut new_tls)?;
+                    } else {
+                        move_contents(tls_stream, &mut new_tls)?;
+                    }
                     tls_opt = Some(new_tls);
                 }
                 Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
