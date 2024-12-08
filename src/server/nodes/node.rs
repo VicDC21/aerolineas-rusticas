@@ -674,38 +674,15 @@ impl Node {
         dml_statement: DmlStatement,
         internal_metadata: (Option<i64>, Option<Byte>),
     ) -> Result<Vec<Byte>> {
-        let node_number = match internal_metadata.1 {
-            Some(value) => value,
-            None => {
-                return Err(Error::ServerError(
-                    "No se paso la informacion del nodo en la metadata interna".to_string(),
-                ))
-            }
-        };
+        let node_number = get_node_replica_number_from_internal_metadata(internal_metadata)?;
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select, node_number),
             DmlStatement::InsertStatement(insert) => {
-                let timestamp = match internal_metadata.0 {
-                    Some(value) => value,
-                    None => {
-                        return Err(Error::ServerError(
-                            "No se paso la informacion del timestamp en la metadata interna"
-                                .to_string(),
-                        ))
-                    }
-                };
+                let timestamp = get_timestamp_from_internal_metadata(internal_metadata)?;
                 self.process_insert(&insert, timestamp, node_number)
             }
             DmlStatement::UpdateStatement(update) => {
-                let timestamp = match internal_metadata.0 {
-                    Some(value) => value,
-                    None => {
-                        return Err(Error::ServerError(
-                            "No se paso la informacion del timestamp en la metadata interna"
-                                .to_string(),
-                        ))
-                    }
-                };
+                let timestamp = get_timestamp_from_internal_metadata(internal_metadata)?;
                 self.process_update(&update, timestamp, node_number)
             }
             DmlStatement::DeleteStatement(delete) => self.process_delete(&delete, node_number),
@@ -987,6 +964,31 @@ impl Node {
     //             }
     //         };
     //     }
+}
+
+fn get_node_replica_number_from_internal_metadata(internal_metadata: (Option<i64>, Option<u8>)) -> Result<u8> {
+    let node_number = match internal_metadata.1 {
+        Some(value) => value,
+        None => {
+            return Err(Error::ServerError(
+                "No se paso la informacion del nodo en la metadata interna".to_string(),
+            ))
+        }
+    };
+    Ok(node_number)
+}
+
+fn get_timestamp_from_internal_metadata(internal_metadata: (Option<i64>, Option<u8>)) -> Result<i64> {
+    let timestamp = match internal_metadata.0 {
+        Some(value) => value,
+        None => {
+            return Err(Error::ServerError(
+                "No se paso la informacion del timestamp en la metadata interna"
+                    .to_string(),
+            ))
+        }
+    };
+    Ok(timestamp)
 }
 
 impl PartialEq for Node {
