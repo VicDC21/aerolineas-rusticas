@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     client::cql_frame::frame::Frame,
-    interface::data::login_info::LoginInfo,
+    data::login_info::LoginInfo,
     parser::{main_parser::make_parse, statements::statement::Statement},
     protocol::{
         aliases::{results::Result, types::Byte},
@@ -286,7 +286,7 @@ impl Client {
                     }
                 };
                 let mut last_error = None;
-                for _retry in 0..=MAX_RETRIES {
+                for retry in 0..=MAX_RETRIES {
                     match tls_stream.write_all(&frame) {
                         Ok(_) => match tls_stream.flush() {
                             Ok(_) => match self.read_complete_response(tls_stream) {
@@ -303,6 +303,19 @@ impl Client {
                                 Some(Error::ServerError(format!("Error al escribir: {}", e)))
                         }
                     }
+                    if let Some(last_err) = &last_error {
+                        println!(
+                            "Ocurrió un error.{}\n\n{}",
+                            if retry < MAX_RETRIES {
+                                format!(" Quedan {} intentos:", MAX_RETRIES - retry)
+                            } else {
+                                " No quedan intentos:".to_string()
+                            },
+                            last_err,
+                        );
+                    }
+                    // A este punto sabemos que el TLS Stream algo tiene, hay que cambiarlo
+                    self.create_tls_connection(get_client_connection()?, self.connect()?)?;
                 }
                 Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
             }
