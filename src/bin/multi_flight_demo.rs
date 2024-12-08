@@ -1,7 +1,7 @@
 use aerolineas_rusticas::simulator::cli::{run_sim, FlightConfig};
 
 /// Vuelos de ejemplo.
-pub const FLIGHT_CONFIGS: [FlightConfig; 20] = [
+pub const FLIGHT_CONFIGS: [FlightConfig; 38] = [
     FlightConfig {
         flight_id: 123456,
         origin: "SABE",
@@ -121,6 +121,115 @@ pub const FLIGHT_CONFIGS: [FlightConfig; 20] = [
         origin: "KLAX",
         destination: "SABE",
         spd: 970.0,
+    },
+    // Aca empiezan los vuelos de KMSP
+    FlightConfig {
+        flight_id: 100001,
+        origin: "KMSP",
+        destination: "SABE",
+        spd: 870.0,
+    },
+    FlightConfig {
+        flight_id: 100002,
+        origin: "KMSP",
+        destination: "EGLL",
+        spd: 880.0,
+    },
+    FlightConfig {
+        flight_id: 100003,
+        origin: "KMSP",
+        destination: "RJAA",
+        spd: 860.0,
+    },
+    FlightConfig {
+        flight_id: 100004,
+        origin: "KMSP",
+        destination: "KLAX",
+        spd: 840.0,
+    },
+    FlightConfig {
+        flight_id: 100005,
+        origin: "KMSP",
+        destination: "LEMD",
+        spd: 850.0,
+    },
+    FlightConfig {
+        flight_id: 100007,
+        origin: "KMSP",
+        destination: "SBBR",
+        spd: 910.0,
+    },
+    FlightConfig {
+        flight_id: 100008,
+        origin: "KMSP",
+        destination: "SBCF",
+        spd: 895.0,
+    },
+    FlightConfig {
+        flight_id: 100009,
+        origin: "KMSP",
+        destination: "SBEG",
+        spd: 930.0,
+    },
+    FlightConfig {
+        flight_id: 100010,
+        origin: "KMSP",
+        destination: "UNKL",
+        spd: 870.0,
+    },
+    FlightConfig {
+        flight_id: 100011,
+        origin: "SABE",
+        destination: "KMSP",
+        spd: 860.0,
+    },
+    FlightConfig {
+        flight_id: 100012,
+        origin: "EGAA",
+        destination: "KMSP",
+        spd: 850.0,
+    },
+    FlightConfig {
+        flight_id: 100013,
+        origin: "FACT",
+        destination: "KMSP",
+        spd: 880.0,
+    },
+    FlightConfig {
+        flight_id: 100014,
+        origin: "SBBR",
+        destination: "KMSP",
+        spd: 895.0,
+    },
+    FlightConfig {
+        flight_id: 100015,
+        origin: "SBCF",
+        destination: "KMSP",
+        spd: 910.0,
+    },
+    FlightConfig {
+        flight_id: 100016,
+        origin: "SBEG",
+        destination: "KMSP",
+        spd: 920.0,
+    },
+    FlightConfig {
+        flight_id: 100017,
+        origin: "EGLL",
+        destination: "KMSP",
+        spd: 870.0,
+    },
+    FlightConfig {
+        flight_id: 100018,
+        origin: "KLAX",
+        destination: "KMSP",
+        spd: 860.0,
+    },
+    FlightConfig {
+        flight_id: 100019,
+        origin: "LEMD",
+        destination: "KMSP",
+        spd: 840.0,
     },
 ];
 

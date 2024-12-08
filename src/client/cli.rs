@@ -25,11 +25,10 @@ use crate::{
         traits::Byteable,
         utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
     },
-    server::
-        nodes::{
-            actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
-            table_metadata::column_data_type::ColumnDataType,
-        },
+    server::nodes::{
+        actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
+        table_metadata::column_data_type::ColumnDataType,
+    },
     tokenizer::tokenizer::tokenize_query,
 };
 use rustls::{
@@ -254,7 +253,7 @@ impl Client {
                 for retry in 0..=MAX_RETRIES {
                     match self.write_to_server(tls_opt, &frame, tls_stream) {
                         Ok(value) => return Ok(value),
-                        Err(e) => last_error = Some(e)
+                        Err(e) => last_error = Some(e),
                     };
                     show_connection_error(&last_error, retry);
                     // A este punto sabemos que el TLS Stream algo tiene, hay que cambiarlo
@@ -271,7 +270,12 @@ impl Client {
         result
     }
 
-    fn prepare_request_to_send(&mut self, statement: Statement, stream_id: i16, query: &str) -> Result<Vec<u8>> {
+    fn prepare_request_to_send(
+        &mut self,
+        statement: Statement,
+        stream_id: i16,
+        query: &str,
+    ) -> Result<Vec<u8>> {
         let frame = match statement {
             Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
                 Frame::new(stream_id, query, self.consistency_level).as_bytes()
@@ -287,8 +291,13 @@ impl Client {
         };
         Ok(frame)
     }
-    
-    fn write_to_server(&mut self, mut tls_opt: Option<TlsStream>, frame: &[u8], tls_stream: &mut TlsStream) -> Result<(ProtocolResult, Option<TlsStream>)> {
+
+    fn write_to_server(
+        &mut self,
+        mut tls_opt: Option<TlsStream>,
+        frame: &[u8],
+        tls_stream: &mut TlsStream,
+    ) -> Result<(ProtocolResult, Option<TlsStream>)> {
         if let Some(cur_tls) = tls_opt.as_mut() {
             match cur_tls.write_all(frame) {
                 Ok(_) => match cur_tls.flush() {
@@ -296,13 +305,9 @@ impl Client {
                         Ok(response) => Ok((response, tls_opt)),
                         Err(e) => Err(e),
                     },
-                    Err(e) => {
-                        Err(Error::ServerError(format!("Error al flush: {}", e)))
-                    }
+                    Err(e) => Err(Error::ServerError(format!("Error al flush: {}", e))),
                 },
-                Err(e) => {
-                    Err(Error::ServerError(format!("Error al escribir: {}", e)))
-                }
+                Err(e) => Err(Error::ServerError(format!("Error al escribir: {}", e))),
             }
         } else {
             match tls_stream.write_all(frame) {
@@ -311,17 +316,13 @@ impl Client {
                         Ok(response) => Ok((response, None)),
                         Err(e) => Err(e),
                     },
-                    Err(e) => {
-                        Err(Error::ServerError(format!("Error al flush: {}", e)))
-                    }
+                    Err(e) => Err(Error::ServerError(format!("Error al flush: {}", e))),
                 },
-                Err(e) => {
-                    Err(Error::ServerError(format!("Error al escribir: {}", e)))
-                }
+                Err(e) => Err(Error::ServerError(format!("Error al escribir: {}", e))),
             }
         }
     }
-    
+
     fn read_complete_response(&mut self, tls_stream: &mut TlsStream) -> Result<ProtocolResult> {
         let mut response = Vec::new();
         let mut buffer = vec![0; 8192];
