@@ -313,6 +313,7 @@ impl DiskHandler {
         let mut primary_key_is_equal = true;
         let mut index_to_update = 0;
         for (i, row) in rows.iter().enumerate() {
+            primary_key_is_equal = true;
             for key_index in &primary_keys_indexs {
                 if row[*key_index] != new_row[*key_index] {
                     primary_key_is_equal = false;
