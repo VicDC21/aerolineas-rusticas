@@ -218,17 +218,9 @@ impl FlightSimulator {
 
             flight.fuel = (flight.fuel - params.fuel_consumption_rate).max(0.0);
             Self::update_flight_in_list(flights, flight);
-            let timestamp = match Self::get_current_timestamp() {
-                Ok(ts) => ts,
-                Err(err) => {
-                    return Err(err);
-                }
-            };
-
             if tls_stream.is_some() {
                 let _ = Self::send_flight_update(
                     flight,
-                    timestamp,
                     client,
                     flight.fuel,
                     params.simulation_start.elapsed().as_secs_f64(),
@@ -243,12 +235,13 @@ impl FlightSimulator {
 
     fn send_flight_update(
         flight: &LiveFlightData,
-        timestamp: Long,
         client: &mut Client,
         fuel: Double,
         elapsed: Double,
         tls_stream: &mut Option<TlsStream>,
     ) -> Result<(), Error> {
+        let timestamp = Self::get_current_timestamp()?;
+
         let incoming_query = format!(
             "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible, duracion) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {}, {});",
             flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state, flight.get_spd(), flight.altitude_ft, fuel, elapsed);
@@ -314,8 +307,6 @@ impl FlightSimulator {
         let (origin_airport, destination_airport) =
             self.validate_airports(&origin, &destination)?;
 
-        let timestamp = Self::get_current_timestamp()?;
-
         match (
             origin_airport.elevation_ft,
             destination_airport.elevation_ft,
@@ -324,7 +315,7 @@ impl FlightSimulator {
                 let flight = LiveFlightData::new(
                     flight_id,
                     (origin_airport.ident, destination_airport.ident),
-                    (timestamp, 0.0),
+                    (Self::get_current_timestamp()?, 0.0),
                     (avg_spd, 100.0),
                     origin_airport.position,
                     origin_elevation as Double,
@@ -379,11 +370,8 @@ impl FlightSimulator {
         flight.state = FlightState::Preparing;
 
         Self::update_flight_in_list(flights, flight);
-
-        let timestamp = Self::get_current_timestamp()?;
         if tls_stream.is_some() {
-            let _ =
-                Self::send_flight_update(flight, timestamp, client, flight.fuel, 0.0, tls_stream);
+            let _ = Self::send_flight_update(flight, client, flight.fuel, 0.0, tls_stream);
         }
         Ok(())
     }
@@ -454,17 +442,9 @@ impl FlightSimulator {
         flight.altitude_ft = params.dest_elevation;
 
         Self::update_flight_in_list(flights, flight);
-        let timestamp = Self::get_current_timestamp()?;
 
         if tls_stream.is_some() {
-            let _ = Self::send_flight_update(
-                flight,
-                timestamp,
-                client,
-                flight.fuel,
-                elapsed,
-                tls_stream,
-            );
+            let _ = Self::send_flight_update(flight, client, flight.fuel, elapsed, tls_stream);
         }
         Ok(())
     }
