@@ -1,7 +1,7 @@
 use aerolineas_rusticas::simulator::cli::{run_sim, FlightConfig};
 
 /// Vuelos de ejemplo.
-pub const FLIGHT_CONFIGS: [FlightConfig; 8] = [
+pub const FLIGHT_CONFIGS: [FlightConfig; 20] = [
     FlightConfig {
         flight_id: 123456,
         origin: "SABE",
@@ -49,6 +49,78 @@ pub const FLIGHT_CONFIGS: [FlightConfig; 8] = [
         origin: "SABE",
         destination: "RJAA",
         spd: 900.0,
+    },
+    FlightConfig {
+        flight_id: 923456,
+        origin: "SABE",
+        destination: "KMSP",
+        spd: 860.0,
+    },
+    FlightConfig {
+        flight_id: 934567,
+        origin: "KMSP",
+        destination: "SABE",
+        spd: 890.0,
+    },
+    FlightConfig {
+        flight_id: 945678,
+        origin: "SABE",
+        destination: "SBBR",
+        spd: 920.0,
+    },
+    FlightConfig {
+        flight_id: 956789,
+        origin: "SBBR",
+        destination: "SABE",
+        spd: 930.0,
+    },
+    FlightConfig {
+        flight_id: 967890,
+        origin: "SABE",
+        destination: "SBCF",
+        spd: 910.0,
+    },
+    FlightConfig {
+        flight_id: 978901,
+        origin: "SBCF",
+        destination: "SABE",
+        spd: 940.0,
+    },
+    FlightConfig {
+        flight_id: 989012,
+        origin: "SABE",
+        destination: "SBEG",
+        spd: 915.0,
+    },
+    FlightConfig {
+        flight_id: 990123,
+        origin: "SBEG",
+        destination: "SABE",
+        spd: 935.0,
+    },
+    FlightConfig {
+        flight_id: 991234,
+        origin: "SABE",
+        destination: "EGLL",
+        spd: 950.0,
+    },
+    FlightConfig {
+        flight_id: 992345,
+        origin: "EGLL",
+        destination: "SABE",
+        spd: 945.0,
+    },
+    FlightConfig {
+        flight_id: 993456,
+        origin: "SABE",
+        destination: "KLAX",
+        spd: 960.0,
+    },
+    FlightConfig {
+        flight_id: 994567,
+        origin: "KLAX",
+        destination: "SABE",
+        spd: 970.0,
     },
 ];
 

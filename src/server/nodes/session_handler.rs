@@ -266,9 +266,7 @@ impl SessionHandler {
                 }
             }
             ConnectionMode::Parsing => {
-                println!("Llega aca antes de handle_request");
                 let res = self.handle_request(&bytes[..], false, is_logged);
-                println!("Llega aca despues de handle_request");
                 let _ = stream.write_all(&res[..]);
                 if let Err(err) = stream.flush() {
                     println!("Error haciendo flush desde el nodo:\n\n{}", err);
@@ -421,7 +419,6 @@ impl SessionHandler {
         let mut i = 0;
         let user_from_req = parse_bytes_to_string(req, &mut i)?;
         let password_from_req = parse_bytes_to_string(&req[i..], &mut i)?;
-        println!("Intenta usar el write");
         let mut node_writer = self.write()?;
         for user in users {
             if user.0 == user_from_req && user.1 == password_from_req {

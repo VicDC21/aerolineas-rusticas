@@ -25,13 +25,11 @@ use crate::{
         traits::Byteable,
         utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
     },
-    server::{
+    server::
         nodes::{
             actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
             table_metadata::column_data_type::ColumnDataType,
         },
-        utils::move_contents,
-    },
     tokenizer::tokenizer::tokenize_query,
 };
 use rustls::{
@@ -93,32 +91,6 @@ impl Client {
             .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
         Ok(tcp_stream)
     }
-
-    // fn load_tls_config(cert_path: &str, key_path: &str) -> Result<ServerConfig> {
-    //     let cert_file = &mut BufReader::new(File::open(cert_path)?);
-    //     let cert_chain: Vec<CertificateCompressionAlgorithm> = rustls_pemfile::certs(cert_file)?
-    //         .into_iter()
-    //         .map(Certificate)
-    //         .collect();
-
-    //     // Leer el archivo de clave privada
-    //     let key_file = &mut BufReader::new(File::open(key_path)?);
-    //     let mut keys: Vec<PrivateKeyDer> = rustls_pemfile::rsa_private_keys(key_file)?
-    //         .into_iter()
-    //         .map(PrivateKeyDer)
-    //         .collect();
-
-    //     if keys.is_empty() {
-    //         return Err(Error::Invalid("No se encontró ninguna clave privada válida".to_string()));
-    //     }
-
-    //     // Configurar TLS
-    //     let config = ServerConfig::builder()
-    //         .with_no_client_auth() // Cambiar si necesitas autenticación de cliente
-    //         .with_single_cert(cert_chain, keys.remove(0))?;
-
-    //     Ok(config)
-    // }
 
     /// Conecta con alguno de los _sockets_ dados.
     pub fn connect_to(sockets: &[SocketAddr]) -> Result<TcpStream> {
@@ -277,91 +249,79 @@ impl Client {
 
         let result = match make_parse(&mut tokenize_query(query)) {
             Ok(statement) => {
-                let frame = match statement {
-                    Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
-                        Frame::new(stream_id, query, self.consistency_level).as_bytes()
-                    }
-                    Statement::LoginUser(user) => {
-                        Client::prepare_auth_response_message(&user.user, &user.password)?
-                    }
-                    Statement::Startup => Client::prepare_startup_message()?,
-                    Statement::UdtStatement(_) => {
-                        self.requests_stream.remove(&stream_id);
-                        return Err(Error::ServerError("UDT statements no soportados".into()));
-                    }
-                };
+                let frame = self.prepare_request_to_send(statement, stream_id, query)?;
                 let mut last_error = None;
                 for retry in 0..=MAX_RETRIES {
-                    if let Some(cur_tls) = tls_opt.as_mut() {
-                        match cur_tls.write_all(&frame) {
-                            Ok(_) => match cur_tls.flush() {
-                                Ok(_) => match self.read_complete_response(cur_tls) {
-                                    Ok(response) => return Ok((response, tls_opt)),
-                                    Err(e) => last_error = Some(e),
-                                },
-                                Err(e) => {
-                                    last_error =
-                                        Some(Error::ServerError(format!("Error al flush: {}", e)))
-                                }
-                            },
-                            Err(e) => {
-                                last_error =
-                                    Some(Error::ServerError(format!("Error al escribir: {}", e)))
-                            }
-                        }
-                    } else {
-                        match tls_stream.write_all(&frame) {
-                            Ok(_) => match tls_stream.flush() {
-                                Ok(_) => match self.read_complete_response(tls_stream) {
-                                    Ok(response) => return Ok((response, None)),
-                                    Err(e) => last_error = Some(e),
-                                },
-                                Err(e) => {
-                                    last_error =
-                                        Some(Error::ServerError(format!("Error al flush: {}", e)))
-                                }
-                            },
-                            Err(e) => {
-                                last_error =
-                                    Some(Error::ServerError(format!("Error al escribir: {}", e)))
-                            }
-                        }
-                    }
-                    if let Some(last_err) = &last_error {
-                        println!(
-                            "Ocurrió un error.{}\n\n{}",
-                            if retry < MAX_RETRIES {
-                                format!(
-                                    " Quedan {} intento{}:",
-                                    MAX_RETRIES - retry,
-                                    if (MAX_RETRIES - retry) == 1 { "" } else { "s" }
-                                )
-                            } else {
-                                " No quedan intentos:".to_string()
-                            },
-                            last_err,
-                        );
-                    }
+                    match self.write_to_server(tls_opt, &frame, tls_stream) {
+                        Ok(value) => return Ok(value),
+                        Err(e) => last_error = Some(e)
+                    };
+                    show_connection_error(&last_error, retry);
                     // A este punto sabemos que el TLS Stream algo tiene, hay que cambiarlo
                     let mut new_tls =
                         self.create_tls_connection(get_client_connection()?, self.connect()?)?;
                     self.login(self.login_info.to_owned(), &mut new_tls)?;
-                    if let Some(tls) = tls_opt.as_mut() {
-                        move_contents(tls, &mut new_tls)?;
-                    } else {
-                        move_contents(tls_stream, &mut new_tls)?;
-                    }
                     tls_opt = Some(new_tls);
                 }
                 Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
             }
             Err(err) => Err(Error::ServerError(err.to_string())),
         };
-
         self.requests_stream.remove(&stream_id);
         result
     }
 
+    fn prepare_request_to_send(&mut self, statement: Statement, stream_id: i16, query: &str) -> Result<Vec<u8>> {
+        let frame = match statement {
+            Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
+                Frame::new(stream_id, query, self.consistency_level).as_bytes()
+            }
+            Statement::LoginUser(user) => {
+                Client::prepare_auth_response_message(&user.user, &user.password)?
+            }
+            Statement::Startup => Client::prepare_startup_message()?,
+            Statement::UdtStatement(_) => {
+                self.requests_stream.remove(&stream_id);
+                return Err(Error::ServerError("UDT statements no soportados".into()));
+            }
+        };
+        Ok(frame)
+    }
+    
+    fn write_to_server(&mut self, mut tls_opt: Option<TlsStream>, frame: &[u8], tls_stream: &mut TlsStream) -> Result<(ProtocolResult, Option<TlsStream>)> {
+        if let Some(cur_tls) = tls_opt.as_mut() {
+            match cur_tls.write_all(frame) {
+                Ok(_) => match cur_tls.flush() {
+                    Ok(_) => match self.read_complete_response(cur_tls) {
+                        Ok(response) => Ok((response, tls_opt)),
+                        Err(e) => Err(e),
+                    },
+                    Err(e) => {
+                        Err(Error::ServerError(format!("Error al flush: {}", e)))
+                    }
+                },
+                Err(e) => {
+                    Err(Error::ServerError(format!("Error al escribir: {}", e)))
+                }
+            }
+        } else {
+            match tls_stream.write_all(frame) {
+                Ok(_) => match tls_stream.flush() {
+                    Ok(_) => match self.read_complete_response(tls_stream) {
+                        Ok(response) => Ok((response, None)),
+                        Err(e) => Err(e),
+                    },
+                    Err(e) => {
+                        Err(Error::ServerError(format!("Error al flush: {}", e)))
+                    }
+                },
+                Err(e) => {
+                    Err(Error::ServerError(format!("Error al escribir: {}", e)))
+                }
+            }
+        }
+    }
+    
     fn read_complete_response(&mut self, tls_stream: &mut TlsStream) -> Result<ProtocolResult> {
         let mut response = Vec::new();
         let mut buffer = vec![0; 8192];
@@ -688,6 +648,24 @@ impl Client {
         response.splice(5..9, length.to_be_bytes());
 
         Ok(response)
+    }
+}
+
+fn show_connection_error(last_error: &Option<Error>, retry: u32) {
+    if let Some(last_err) = last_error {
+        println!(
+            "Ocurrió un error.{}\n\n{}",
+            if retry < MAX_RETRIES {
+                format!(
+                    " Quedan {} intento{}:",
+                    MAX_RETRIES - retry,
+                    if (MAX_RETRIES - retry) == 1 { "" } else { "s" }
+                )
+            } else {
+                " No quedan intentos:".to_string()
+            },
+            last_err,
+        );
     }
 }
 
