@@ -290,7 +290,7 @@ impl Client {
                 let mut last_error = None;
                 for retry in 0..=MAX_RETRIES {
                     if let Some(cur_tls) = tls_opt.as_mut() {
-                        match tls_stream.write_all(&frame) {
+                        match cur_tls.write_all(&frame) {
                             Ok(_) => match cur_tls.flush() {
                                 Ok(_) => match self.read_complete_response(cur_tls) {
                                     Ok(response) => return Ok((response, tls_opt)),
@@ -328,7 +328,11 @@ impl Client {
                         println!(
                             "Ocurrió un error.{}\n\n{}",
                             if retry < MAX_RETRIES {
-                                format!(" Quedan {} intentos:", MAX_RETRIES - retry)
+                                format!(
+                                    " Quedan {} intento{}:",
+                                    MAX_RETRIES - retry,
+                                    if (MAX_RETRIES - retry) == 1 { "" } else { "s" }
+                                )
                             } else {
                                 " No quedan intentos:".to_string()
                             },
