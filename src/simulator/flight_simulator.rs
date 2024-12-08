@@ -264,7 +264,7 @@ impl FlightSimulator {
         client: &mut Client,
         tls_stream: &mut Option<TlsStream>,
     ) -> Result<(), Error> {
-        let protocol_result = {
+        let (protocol_result, _) = {
             if let Some(tls_stream) = tls_stream {
                 client.send_query(query, tls_stream)?
             } else {

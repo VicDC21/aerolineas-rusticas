@@ -390,7 +390,11 @@ impl FlightsLoader {
             ),
         };
 
-        let protocol_result = client.send_query(query.as_str(), &mut con_info.tls_stream)?;
+        let (protocol_result, mut new_tls_opt) =
+            client.send_query(query.as_str(), &mut con_info.tls_stream)?;
+        if let Some(new_tls) = new_tls_opt.take() {
+            con_info.tls_stream = new_tls;
+        }
         let flights = Flight::try_from_protocol_result(protocol_result, flight_type)?;
 
         Ok(flights)
@@ -433,7 +437,12 @@ impl FlightsLoader {
         };
 
         let mut flights_by_id = LiveDataMap::new();
-        let protocol_result = client.send_query(query.as_str(), &mut con_info.tls_stream)?;
+        let (protocol_result, mut new_tls_opt) =
+            client.send_query(query.as_str(), &mut con_info.tls_stream)?;
+        if let Some(new_tls) = new_tls_opt.take() {
+            con_info.tls_stream = new_tls;
+        }
+
         let live_data = LiveFlightData::try_from_protocol_result(protocol_result, flight_type)?;
         for data in live_data {
             if let Entry::Vacant(entry) = flights_by_id.entry(data.flight_id) {
@@ -510,7 +519,7 @@ impl Default for FlightsLoader {
 
 impl Plugin for &mut FlightsLoader {
     fn run(&mut self, _response: &Response, _painter: Painter, _projector: &Projector) {
-        let clone_dummy = self.login_info.clone(); // para no prestar mucho self
+        let clone_dummy = self.login_info.to_owned(); // para no prestar mucho self
         let cloned_login_info = |relog| {
             if relog {
                 Some(clone_dummy.clone())

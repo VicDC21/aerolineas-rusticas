@@ -117,7 +117,7 @@ impl App for AerolineasApp {
                 &mut self.map_memory,
                 Position::from_lat_lon(ORIG_LAT, ORIG_LONG),
             );
-            let login_info = self.widget_details.login_info.clone();
+            let login_info = self.widget_details.login_info.to_owned();
 
             self.airlines_details
                 .set_airports(self.airports_loader.take_airports());

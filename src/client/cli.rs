@@ -3,7 +3,6 @@
 use std::{
     collections::HashSet,
     io::{stdin, BufRead, BufReader, Read, Write},
-    mem::replace,
     net::{SocketAddr, TcpStream},
     str::FromStr,
     sync::Arc,
@@ -174,12 +173,16 @@ impl Client {
     }
 
     /// Intenta loguearse con un usuario específico.
-    pub fn login(&mut self, login_info: LoginInfo, tls_stream: &mut TlsStream) -> Result<()> {
+    pub fn login(
+        &mut self,
+        login_info: LoginInfo,
+        tls_stream: &mut TlsStream,
+    ) -> Result<Option<TlsStream>> {
         if self.login_info != login_info {
             self.login_info = login_info;
         }
 
-        let protocol_result = self.send_query(
+        let (protocol_result, tls_opt) = self.send_query(
             format!(
                 "User: {} Password: {}",
                 &self.login_info.user, &self.login_info.pass
@@ -189,7 +192,7 @@ impl Client {
         )?;
 
         match protocol_result {
-            ProtocolResult::AuthSuccess => Ok(()),
+            ProtocolResult::AuthSuccess => Ok(tls_opt),
             ProtocolResult::QueryError(auth_err) => {
                 Err(Error::AuthenticationError(format!(
                     "La autenticación con usuario '{}' y contraseña '{}' ha fallado:\n\n{}",
@@ -239,7 +242,7 @@ impl Client {
                     }
                     match self.send_query(&input, &mut tls_stream) {
                         Ok(res) => {
-                            if let ProtocolResult::QueryError(err) = res {
+                            if let ProtocolResult::QueryError(err) = res.0 {
                                 println!("{}", err)
                             }
                         }
@@ -264,12 +267,13 @@ impl Client {
         &mut self,
         query: &str,
         tls_stream: &mut TlsStream,
-    ) -> Result<ProtocolResult> {
+    ) -> Result<(ProtocolResult, Option<TlsStream>)> {
         let mut stream_id: i16 = 0;
         while self.requests_stream.contains(&stream_id) {
             stream_id += 1;
         }
         self.requests_stream.insert(stream_id);
+        let mut tls_opt: Option<TlsStream> = None;
 
         let result = match make_parse(&mut tokenize_query(query)) {
             Ok(statement) => {
@@ -288,20 +292,39 @@ impl Client {
                 };
                 let mut last_error = None;
                 for retry in 0..=MAX_RETRIES {
-                    match tls_stream.write_all(&frame) {
-                        Ok(_) => match tls_stream.flush() {
-                            Ok(_) => match self.read_complete_response(tls_stream) {
-                                Ok(response) => return Ok(response),
-                                Err(e) => last_error = Some(e),
+                    if let Some(cur_tls) = tls_opt.as_mut() {
+                        match tls_stream.write_all(&frame) {
+                            Ok(_) => match cur_tls.flush() {
+                                Ok(_) => match self.read_complete_response(cur_tls) {
+                                    Ok(response) => return Ok((response, tls_opt)),
+                                    Err(e) => last_error = Some(e),
+                                },
+                                Err(e) => {
+                                    last_error =
+                                        Some(Error::ServerError(format!("Error al flush: {}", e)))
+                                }
                             },
                             Err(e) => {
                                 last_error =
-                                    Some(Error::ServerError(format!("Error al flush: {}", e)))
+                                    Some(Error::ServerError(format!("Error al escribir: {}", e)))
                             }
-                        },
-                        Err(e) => {
-                            last_error =
-                                Some(Error::ServerError(format!("Error al escribir: {}", e)))
+                        }
+                    } else {
+                        match tls_stream.write_all(&frame) {
+                            Ok(_) => match tls_stream.flush() {
+                                Ok(_) => match self.read_complete_response(tls_stream) {
+                                    Ok(response) => return Ok((response, None)),
+                                    Err(e) => last_error = Some(e),
+                                },
+                                Err(e) => {
+                                    last_error =
+                                        Some(Error::ServerError(format!("Error al flush: {}", e)))
+                                }
+                            },
+                            Err(e) => {
+                                last_error =
+                                    Some(Error::ServerError(format!("Error al escribir: {}", e)))
+                            }
                         }
                     }
                     if let Some(last_err) = &last_error {
@@ -316,9 +339,10 @@ impl Client {
                         );
                     }
                     // A este punto sabemos que el TLS Stream algo tiene, hay que cambiarlo
-                    let new_tls =
+                    let mut new_tls =
                         self.create_tls_connection(get_client_connection()?, self.connect()?)?;
-                    replace(tls_stream, new_tls);
+                    self.login(self.login_info.to_owned(), &mut new_tls)?;
+                    tls_opt.insert(new_tls);
                 }
                 Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
             }

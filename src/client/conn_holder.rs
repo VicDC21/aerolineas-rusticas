@@ -45,7 +45,13 @@ impl ConnectionHolder {
                     poison_err
                 )))
             }
-            Ok(mut client) => client.login(login_info.clone(), &mut self.tls_stream),
+            Ok(mut client) => {
+                let mut new_tls_opt = client.login(login_info.to_owned(), &mut self.tls_stream)?;
+                if let Some(new_tls) = new_tls_opt.take() {
+                    self.tls_stream = new_tls;
+                }
+                Ok(())
+            }
         }
     }
 }
