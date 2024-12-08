@@ -271,7 +271,7 @@ impl DiskHandler {
         default_keyspace: &str,
         timestamp: i64,
         node_number: Byte,
-    ) -> Result<Vec<String>> {
+    ) -> Result<()> {
         let path = TablePath::new(
             storage_addr,
             statement.table.get_keyspace(),
@@ -281,16 +281,47 @@ impl DiskHandler {
         );
         let table_ops = TableOperations::new(path)?;
         table_ops.validate_columns(&statement.get_columns_names())?;
-        let mut rows = table_ops.read_rows(false)?;
+        let rows = table_ops.read_rows(false)?;
         let values = statement.get_values();
-        let new_row = DiskHandler::generate_row_values(statement, &table_ops, &values, timestamp);
+        let new_row = Self::generate_row_values(statement, &table_ops, &values, timestamp);
 
-        if !rows.contains(&new_row) {
-            rows.push(new_row.clone());
-            DiskHandler::order_and_save_rows(&table_ops, &mut rows, table)?;
-            return Ok(new_row);
+        Self::insert_new_row(rows, new_row, table, &table_ops)
+    }
+
+    fn insert_new_row(mut rows: Vec<Vec<String>>, new_row: Vec<String>, table: &Table, table_ops: &TableOperations) -> Result<()> {
+        let mut primary_keys_indexs: Vec<usize> = Vec::new();
+        let table_cols = &table.columns;
+        if let Some(i) = table_cols.iter().position(|c| c.get_name() == *table.partition_key[0]) {
+            primary_keys_indexs.push(i);
         }
-        Ok(Vec::new())
+        if let Some(clustering_key_and_order) = &table.clustering_key_and_order {
+            for (key, _) in clustering_key_and_order {
+                if let Some(i) = table_cols.iter().position(|c| c.get_name() == *key) {
+                    primary_keys_indexs.push(i);
+                }
+            }
+        }
+
+        let mut primary_key_is_equal = true;
+        let mut index_to_update = 0;
+        for (i, row) in rows.iter().enumerate() {
+            for key_index in &primary_keys_indexs {
+                if row[*key_index] != new_row[*key_index] {
+                    primary_key_is_equal = false;
+                }
+            }
+            if primary_key_is_equal {
+                index_to_update = i;
+                break;
+            }
+        }
+        if primary_key_is_equal && !rows.is_empty() {
+            rows[index_to_update] = new_row;
+            table_ops.write_rows(&rows)
+        } else {
+            rows.push(new_row);
+            Self::order_and_save_rows(table_ops, &mut rows, table)
+        }
     }
 
     /// Devuelve las filas de la tabla como un string

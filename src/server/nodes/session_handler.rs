@@ -38,13 +38,11 @@ use crate::protocol::{
     traits::Byteable,
     utils::{parse_bytes_to_string, parse_bytes_to_string_map},
 };
-use crate::server::{
-    actions::opcode::{GossipInfo, SvAction},
-    modes::ConnectionMode,
-};
+use crate::server::modes::ConnectionMode;
 use crate::tokenizer::tokenizer::tokenize_query;
 
 use super::{
+    actions::opcode::{GossipInfo, SvAction},
     disk_operations::disk_handler::DiskHandler,
     graph::N_NODES,
     node::{Node, NodeId, NodesMap},
@@ -125,6 +123,10 @@ impl SessionHandler {
             }
         }
     }
+
+    // ##########################################################################################
+    // ################################ PROCESAMIENTO DEL STREAM ################################
+    // ##########################################################################################
 
     /// Procesa una _request_ en forma de [Byte]s.
     /// También devuelve un [bool] indicando si se debe parar el hilo.
@@ -277,6 +279,10 @@ impl SessionHandler {
         Ok(vec![])
     }
 
+    // ###########################################################################################
+    // ################################ PROCESAMIENTO DE REQUESTS ################################
+    // ###########################################################################################
+
     /// Maneja una request.
     fn handle_request(
         &self,
@@ -365,7 +371,7 @@ impl SessionHandler {
                                 .append(&mut request[(lenght.len as usize) + 9..].to_vec());
                         }
                         let internal_metadata =
-                            self.read_metadata_from_internal_request(internal_metadata);
+                            read_metadata_from_internal_request(internal_metadata);
                         self.handle_internal_statement(statement, internal_metadata)
                     } else {
                         self.handle_statement(
@@ -385,6 +391,67 @@ impl SessionHandler {
             "No se pudieron transformar los bytes al body de la query".to_string(),
         ))
     }
+
+    fn handle_prepare(&self) -> Result<Vec<Byte>> {
+        // El body es <query><flags>[<keyspace>]
+        Ok(vec![0])
+    }
+
+    fn handle_execute(&self) -> Result<Vec<Byte>> {
+        // El body es <id><result_metadata_id><query_parameters>
+        Ok(vec![0])
+    }
+
+    fn handle_register(&self) -> Result<Vec<Byte>> {
+        Ok(vec![0])
+    }
+
+    fn handle_batch(&self) -> Result<Vec<Byte>> {
+        Ok(vec![0])
+    }
+
+    fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
+        println!("Entra a auth_response");
+        let req: &[u8] = &request[9..(lenght.len as usize) + 9];
+        let node_reader = self.read()?;
+        let users = DiskHandler::read_admitted_users(&node_reader.storage_addr)?;
+        drop(node_reader);
+
+        let mut response: Vec<Byte> = Vec::new();
+        let mut i = 0;
+        let user_from_req = parse_bytes_to_string(req, &mut i)?;
+        let password_from_req = parse_bytes_to_string(&req[i..], &mut i)?;
+        println!("Intenta usar el write");
+        let mut node_writer = self.write()?;
+        for user in users {
+            if user.0 == user_from_req && user.1 == password_from_req {
+                response.append(&mut Version::ResponseV5.as_bytes());
+                response.append(&mut Flag::Default.as_bytes());
+                response.append(&mut Stream::new(0).as_bytes());
+                response.append(&mut Opcode::AuthSuccess.as_bytes());
+                response.append(&mut Length::new(0).as_bytes());
+                // REVISAR AL TESTEAR
+                if !node_writer
+                    .users_default_keyspace_name
+                    .contains_key(&user.0)
+                {
+                    node_writer
+                        .users_default_keyspace_name
+                        .insert(user.0.to_string(), "".to_string());
+                }
+                return Ok(response);
+            }
+        }
+
+        response = make_error_response(Error::AuthenticationError(
+            "Las credenciales pasadas no son validas".to_string(),
+        ));
+        Ok(response)
+    }
+
+    // ###########################################################################################
+    // ############################### PROCESAMIENTO DE STATEMENTS ###############################
+    // ###########################################################################################
 
     fn handle_statement(
         &self,
@@ -408,6 +475,10 @@ impl SessionHandler {
             )),
         }
     }
+
+    // ###########################################################################################
+    // ##################################### DDL STATEMENTS ######################################
+    // ###########################################################################################
 
     fn handle_ddl_statement(
         &self,
@@ -611,6 +682,10 @@ impl SessionHandler {
         Ok(response)
     }
 
+    // ##########################################################################################
+    // ##################################### DML STATEMENTS #####################################
+    // ##########################################################################################
+
     fn handle_dml_statement(
         &self,
         dml_statement: DmlStatement,
@@ -634,114 +709,9 @@ impl SessionHandler {
         }
     }
 
-    /// Maneja una declaración interna.
-    fn handle_internal_statement(
-        &self,
-        statement: Statement,
-        internal_metadata: (Option<i64>, Option<Byte>),
-    ) -> Result<Vec<Byte>> {
-        let mut node_writer = self.write()?;
-        match statement {
-            Statement::DdlStatement(ddl_statement) => {
-                node_writer.handle_internal_ddl_statement(ddl_statement, internal_metadata)
-            }
-            Statement::DmlStatement(dml_statement) => {
-                node_writer.handle_internal_dml_statement(dml_statement, internal_metadata)
-            }
-            Statement::UdtStatement(_udt_statement) => todo!(),
-            Statement::Startup => Err(Error::Invalid(
-                "No se deberia haber mandado el startup por este canal".to_string(),
-            )),
-            Statement::LoginUser(_) => Err(Error::Invalid(
-                "No se deberia haber mandado el login por este canal".to_string(),
-            )),
-        }
-    }
-
-    /// Revisa si hay metadata extra necesaria para la query pedida
-    fn read_metadata_from_internal_request(
-        &self,
-        internal_metadata: Vec<Byte>,
-    ) -> (Option<i64>, Option<Byte>) {
-        if internal_metadata.len() == 9 {
-            let bytes: [u8; 8] = match internal_metadata[0..8].try_into() {
-                Ok(value) => value,
-                Err(_err) => [5, 5, 5, 5, 5, 5, 5, 5], // nunca pasa
-            };
-            let timestamp = i64::from_be_bytes(bytes);
-            let node_id = internal_metadata[8];
-            return (Some(timestamp), Some(node_id));
-        } else if internal_metadata.len() == 8 {
-            let bytes: [u8; 8] = match internal_metadata[0..8].try_into() {
-                Ok(value) => value,
-                Err(_err) => [5, 5, 5, 5, 5, 5, 5, 5], // nunca pasa
-            };
-            let timestamp = i64::from_be_bytes(bytes);
-            return (Some(timestamp), None);
-        } else if internal_metadata.len() == 1 {
-            let node_id = internal_metadata[0];
-            return (None, Some(node_id));
-        }
-        (None, None)
-    }
-
-    fn handle_prepare(&self) -> Result<Vec<Byte>> {
-        // El body es <query><flags>[<keyspace>]
-        Ok(vec![0])
-    }
-
-    fn handle_execute(&self) -> Result<Vec<Byte>> {
-        // El body es <id><result_metadata_id><query_parameters>
-        Ok(vec![0])
-    }
-
-    fn handle_register(&self) -> Result<Vec<Byte>> {
-        Ok(vec![0])
-    }
-
-    fn handle_batch(&self) -> Result<Vec<Byte>> {
-        Ok(vec![0])
-    }
-
-    fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
-        println!("Entra a auth_response");
-        let req: &[u8] = &request[9..(lenght.len as usize) + 9];
-        let node_reader = self.read()?;
-        let users = DiskHandler::read_admitted_users(&node_reader.storage_addr)?;
-        drop(node_reader);
-
-        let mut response: Vec<Byte> = Vec::new();
-        let mut i = 0;
-        let user_from_req = parse_bytes_to_string(req, &mut i)?;
-        let password_from_req = parse_bytes_to_string(&req[i..], &mut i)?;
-        println!("Intenta usar el write");
-        let mut node_writer = self.write()?;
-        for user in users {
-            if user.0 == user_from_req && user.1 == password_from_req {
-                response.append(&mut Version::ResponseV5.as_bytes());
-                response.append(&mut Flag::Default.as_bytes());
-                response.append(&mut Stream::new(0).as_bytes());
-                response.append(&mut Opcode::AuthSuccess.as_bytes());
-                response.append(&mut Length::new(0).as_bytes());
-                // REVISAR AL TESTEAR
-                if !node_writer
-                    .users_default_keyspace_name
-                    .contains_key(&user.0)
-                {
-                    node_writer
-                        .users_default_keyspace_name
-                        .insert(user.0.to_string(), "".to_string());
-                }
-                return Ok(response);
-            }
-        }
-
-        response = make_error_response(Error::AuthenticationError(
-            "Las credenciales pasadas no son validas".to_string(),
-        ));
-        Ok(response)
-    }
-
+    // ###########################################################################################
+    // ######################################### SELECT ##########################################
+    // ###########################################################################################
     fn select_with_other_nodes(
         &self,
         select: Select,
@@ -777,7 +747,7 @@ impl SessionHandler {
                     replication_factor_quantity,
                 )?;
                 consistency_counter += 1;
-                match self.consult_replica_nodes(
+                match self.consult_replica_nodes_consistency(
                     (node_id, replicas_asked),
                     (request, &table_name),
                     &mut consistency_counter,
@@ -927,10 +897,69 @@ impl SessionHandler {
         Ok(result)
     }
 
+    fn decide_how_to_request_the_digest_read_request(
+        &self,
+        node_to_consult: u8,
+        request: &[u8],
+        node_id: u8,
+    ) -> Result<Vec<u8>> {
+        let opcode_with_hashed_value = if node_to_consult == self.id {
+            let internal_request =
+                add_metadata_to_internal_request_of_any_kind(request.to_vec(), None, Some(node_id));
+            let res = self.handle_request(&internal_request, true, true);
+            let mut res_with_opcode;
+            if verify_succesful_response(&res) {
+                res_with_opcode = Opcode::Result.as_bytes();
+                res_with_opcode.extend_from_slice(&hash_value(&res).to_be_bytes());
+            } else {
+                res_with_opcode = Opcode::RequestError.as_bytes();
+                res_with_opcode.extend_from_slice(&res);
+            }
+            res_with_opcode
+        } else {
+            let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                SvAction::DigestReadRequest(request.to_vec()).as_bytes(),
+                None,
+                Some(node_id),
+            );
+            send_to_node_and_wait_response_with_timeout(
+                node_to_consult,
+                request_with_metadata,
+                PortType::Priv,
+                true,
+                Some(TIMEOUT_SECS),
+            )?
+        };
+        Ok(opcode_with_hashed_value)
+    }
+
+    fn get_digest_read_request_value(&self, opcode_with_hashed_value: &[Byte]) -> Result<u64> {
+        if opcode_with_hashed_value.len() != 9 {
+            // OpCode + i64
+            return Err(Error::ServerError(
+                "Se esperaba un vec de largo 9".to_string(),
+            ));
+        }
+        let array = match opcode_with_hashed_value[1..9].try_into().ok() {
+            Some(value) => value,
+            None => {
+                return Err(Error::ServerError(
+                    "No se pudo transformar el vector a i64".to_string(),
+                ))
+            }
+        };
+        let res_hashed_value = u64::from_be_bytes(array);
+        Ok(res_hashed_value)
+    }
+
+    // ###########################################################################################
+    // ####################################### READ-REPAIR #######################################
+    // ###########################################################################################
+
     /// Revisa si se cumple el _Consistency Level_ y además si es necesario ejecutar _read-repair_, si es el caso, lo ejecuta.
     ///
     /// Devuelve un booleano indicando si _read-repair_ fue ejecutado o no.
-    fn consult_replica_nodes(
+    fn consult_replica_nodes_consistency(
         &self,
         id_and_replicas_asked: (NodeId, usize),
         request_and_table_name: (&[Byte], &str),
@@ -985,61 +1014,6 @@ impl SessionHandler {
             return self.start_read_repair(node_id, request, consistency_number, table_name);
         };
         Ok(false)
-    }
-
-    fn decide_how_to_request_the_digest_read_request(
-        &self,
-        node_to_consult: u8,
-        request: &[u8],
-        node_id: u8,
-    ) -> Result<Vec<u8>> {
-        let opcode_with_hashed_value = if node_to_consult == self.id {
-            let internal_request =
-                add_metadata_to_internal_request_of_any_kind(request.to_vec(), None, Some(node_id));
-            let res = self.handle_request(&internal_request, true, true);
-            let mut res_with_opcode;
-            if verify_succesful_response(&res) {
-                res_with_opcode = Opcode::Result.as_bytes();
-                res_with_opcode.extend_from_slice(&hash_value(&res).to_be_bytes());
-            } else {
-                res_with_opcode = Opcode::RequestError.as_bytes();
-                res_with_opcode.extend_from_slice(&res);
-            }
-            res_with_opcode
-        } else {
-            let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                SvAction::DigestReadRequest(request.to_vec()).as_bytes(),
-                None,
-                Some(node_id),
-            );
-            send_to_node_and_wait_response_with_timeout(
-                node_to_consult,
-                request_with_metadata,
-                PortType::Priv,
-                true,
-                Some(TIMEOUT_SECS),
-            )?
-        };
-        Ok(opcode_with_hashed_value)
-    }
-
-    fn get_digest_read_request_value(&self, opcode_with_hashed_value: &[Byte]) -> Result<u64> {
-        if opcode_with_hashed_value.len() != 9 {
-            // OpCode + i64
-            return Err(Error::ServerError(
-                "Se esperaba un vec de largo 9".to_string(),
-            ));
-        }
-        let array = match opcode_with_hashed_value[1..9].try_into().ok() {
-            Some(value) => value,
-            None => {
-                return Err(Error::ServerError(
-                    "No se pudo transformar el vector a i64".to_string(),
-                ))
-            }
-        };
-        let res_hashed_value = u64::from_be_bytes(array);
-        Ok(res_hashed_value)
     }
 
     fn check_consistency_of_the_responses(
@@ -1144,6 +1118,10 @@ impl SessionHandler {
         Ok(())
     }
 
+    // ###########################################################################################
+    // ######################################### INSERT ##########################################
+    // ###########################################################################################
+
     fn insert_with_other_nodes(
         &self,
         insert: Insert,
@@ -1175,74 +1153,23 @@ impl SessionHandler {
                     let mut node_writer = self.write()?;
                     node_writer.process_insert(&insert, timestamp, node_id)?
                 } else {
-                    let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                        Some(timestamp),
-                        Some(node_id),
-                    );
-                    let mut res: Vec<Byte> = Vec::new();
-                    if self.neighbour_is_responsive(node_to_replicate)? {
-                        res = send_to_node_and_wait_response_with_timeout(
-                            node_to_replicate,
-                            request_with_metadata,
-                            PortType::Priv,
-                            wait_response,
-                            Some(TIMEOUT_SECS),
-                        )
-                        .unwrap_or_default();
-                    }
-                    if res.is_empty() && wait_response {
-                        self.write()?
-                            .acknowledge_offline_neighbour(node_to_replicate);
-                    }
-                    res
+                    self.forward_insert_to_replica(
+                        node_id,
+                        node_to_replicate,
+                        request,
+                        timestamp,
+                        wait_response,
+                    )?
                 }
             } else if node_to_replicate == self.id {
-                let node_reader = self.read()?;
-                let table = node_reader.get_table(&table_name)?;
-                let partition_value =
-                    get_partition_key_value_from_insert_statement(&insert, table)?;
-                let partition_values = node_reader.check_if_has_new_partition_value(
-                    partition_value,
-                    &table.get_name().to_string(),
-                )?;
-                drop(node_reader);
-
-                match partition_values {
-                    Some(new_partition_values) => {
-                        let mut node_writer = self.write()?;
-                        node_writer
-                            .tables_and_partitions_keys_values
-                            .insert(insert.table.get_name().to_string(), new_partition_values)
-                    }
-                    None => None,
-                };
+                self.add_partition_value_if_new(&table_name, &insert)?;
             } else {
-                let node_reader = self.read()?;
-                let partition_value =
-                    get_partition_value_from_insert(&insert, node_reader.get_table(&table_name)?)?;
-                drop(node_reader);
-
-                let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                    SvAction::AddPartitionValueToMetadata(table_name.clone(), partition_value)
-                        .as_bytes(),
-                    None,
-                    None,
-                );
-                if self.neighbour_is_responsive(node_to_replicate)?
-                    && send_to_node_and_wait_response_with_timeout(
-                        node_to_replicate,
-                        request_with_metadata,
-                        PortType::Priv,
-                        wait_response,
-                        Some(TIMEOUT_SECS),
-                    )
-                    .is_err()
-                    && wait_response
-                {
-                    self.write()?
-                        .acknowledge_offline_neighbour(node_to_replicate);
-                }
+                self.forward_insert_request_to_other_nodes_table(
+                    node_to_replicate,
+                    &table_name,
+                    &insert,
+                    wait_response,
+                )?;
             };
             node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
 
@@ -1262,6 +1189,96 @@ impl SessionHandler {
             Ok(response)
         }
     }
+
+    fn forward_insert_to_replica(
+        &self,
+        node_id: NodeId,
+        node_to_replicate: NodeId,
+        request: &[Byte],
+        timestamp: i64,
+        wait_response: bool,
+    ) -> Result<Vec<Byte>> {
+        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+            SvAction::InternalQuery(request.to_vec()).as_bytes(),
+            Some(timestamp),
+            Some(node_id),
+        );
+        let mut res: Vec<Byte> = Vec::new();
+        if self.neighbour_is_responsive(node_to_replicate)? {
+            res = send_to_node_and_wait_response_with_timeout(
+                node_to_replicate,
+                request_with_metadata,
+                PortType::Priv,
+                wait_response,
+                Some(TIMEOUT_SECS),
+            )
+            .unwrap_or_default();
+        }
+        if res.is_empty() && wait_response {
+            self.write()?
+                .acknowledge_offline_neighbour(node_to_replicate);
+        }
+        Ok(res)
+    }
+
+    fn add_partition_value_if_new(&self, table_name: &str, insert: &Insert) -> Result<()> {
+        let node_reader = self.read()?;
+        let table = node_reader.get_table(table_name)?;
+        let partition_value = get_partition_key_value_from_insert_statement(insert, table)?;
+        let partition_values = node_reader
+            .check_if_has_new_partition_value(partition_value, &table.get_name().to_string())?;
+        drop(node_reader);
+
+        match partition_values {
+            Some(new_partition_values) => {
+                let mut node_writer = self.write()?;
+                node_writer
+                    .tables_and_partitions_keys_values
+                    .insert(insert.table.get_name().to_string(), new_partition_values)
+            }
+            None => None,
+        };
+        Ok(())
+    }
+
+    fn forward_insert_request_to_other_nodes_table(
+        &self,
+        node_to_replicate: NodeId,
+        table_name: &str,
+        insert: &Insert,
+        wait_response: bool,
+    ) -> Result<()> {
+        let node_reader = self.read()?;
+        let partition_value =
+            get_partition_value_from_insert(insert, node_reader.get_table(table_name)?)?;
+        drop(node_reader);
+
+        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+            SvAction::AddPartitionValueToMetadata(table_name.to_string(), partition_value)
+                .as_bytes(),
+            None,
+            None,
+        );
+        if self.neighbour_is_responsive(node_to_replicate)?
+            && send_to_node_and_wait_response_with_timeout(
+                node_to_replicate,
+                request_with_metadata,
+                PortType::Priv,
+                wait_response,
+                Some(TIMEOUT_SECS),
+            )
+            .is_err()
+            && wait_response
+        {
+            self.write()?
+                .acknowledge_offline_neighbour(node_to_replicate);
+        }
+        Ok(())
+    }
+
+    // ###########################################################################################
+    // ######################################### UPDATE ##########################################
+    // ###########################################################################################
 
     fn update_with_other_nodes(
         &self,
@@ -1289,33 +1306,14 @@ impl SessionHandler {
                     let mut node_writer = self.write()?;
                     node_writer.process_update(&update, timestamp, self.id)?
                 } else {
-                    let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                        SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                        Some(timestamp),
-                        Some(node_id),
-                    );
-                    let mut res: Vec<Byte> = Vec::new();
-                    if self.neighbour_is_responsive(node_id)? {
-                        res = send_to_node_and_wait_response_with_timeout(
-                            node_id,
-                            request_with_metadata,
-                            PortType::Priv,
-                            true,
-                            Some(TIMEOUT_SECS),
-                        )
-                        .unwrap_or_default();
-                    }
-                    if res.is_empty() {
-                        self.write()?.acknowledge_offline_neighbour(node_id);
-                    }
-                    res
+                    self.forward_update(node_id, request, timestamp)?
                 };
                 if verify_succesful_response(&current_response) {
                     consistency_counter += 1;
                 }
 
-                let node_reader = self.read()?;
                 consulted_nodes.push(partition_key_value.clone());
+                let node_reader = self.read()?;
                 let replication_factor = node_reader.get_replicas_from_table_name(&table_name)?;
                 drop(node_reader);
 
@@ -1338,6 +1336,34 @@ impl SessionHandler {
         }
 
         Ok(Node::create_result_void())
+    }
+
+    fn forward_update(
+        &self,
+        node_id: NodeId,
+        request: &[Byte],
+        timestamp: i64,
+    ) -> Result<Vec<Byte>> {
+        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+            SvAction::InternalQuery(request.to_vec()).as_bytes(),
+            Some(timestamp),
+            Some(node_id),
+        );
+        let mut res: Vec<Byte> = Vec::new();
+        if self.neighbour_is_responsive(node_id)? {
+            res = send_to_node_and_wait_response_with_timeout(
+                node_id,
+                request_with_metadata,
+                PortType::Priv,
+                true,
+                Some(TIMEOUT_SECS),
+            )
+            .unwrap_or_default();
+        }
+        if res.is_empty() {
+            self.write()?.acknowledge_offline_neighbour(node_id);
+        }
+        Ok(res)
     }
 
     fn replicate_update_in_other_nodes(
@@ -1398,6 +1424,10 @@ impl SessionHandler {
         Ok(())
     }
 
+    // ###########################################################################################
+    // ######################################### DELETE ##########################################
+    // ###########################################################################################
+
     fn delete_with_other_nodes(
         &self,
         delete: Delete,
@@ -1453,27 +1483,7 @@ impl SessionHandler {
                 let mut node_writer = self.write()?;
                 node_writer.process_delete(delete, node_id)?
             } else {
-                let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
-                    SvAction::InternalQuery(request.to_vec()).as_bytes(),
-                    None,
-                    Some(node_id),
-                );
-                let mut res: Vec<Byte> = Vec::new();
-                if self.neighbour_is_responsive(node_to_replicate)? {
-                    res = send_to_node_and_wait_response_with_timeout(
-                        node_to_replicate,
-                        request_with_metadata,
-                        PortType::Priv,
-                        wait_response,
-                        Some(TIMEOUT_SECS),
-                    )
-                    .unwrap_or_default()
-                };
-                if res.is_empty() && wait_response {
-                    let mut node_writer = self.write()?;
-                    node_writer.acknowledge_offline_neighbour(node_to_replicate);
-                }
-                res
+                self.forward_delete(node_id, node_to_replicate, request, wait_response)?
             };
             if consistency_counter >= consistency_number {
                 wait_response = false;
@@ -1490,6 +1500,68 @@ impl SessionHandler {
         };
         Ok(())
     }
+
+    fn forward_delete(
+        &self,
+        node_id: NodeId,
+        node_to_replicate: NodeId,
+        request: &[Byte],
+        wait_response: bool,
+    ) -> Result<Vec<Byte>> {
+        let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
+            SvAction::InternalQuery(request.to_vec()).as_bytes(),
+            None,
+            Some(node_id),
+        );
+        let mut res: Vec<Byte> = Vec::new();
+        if self.neighbour_is_responsive(node_to_replicate)? {
+            res = send_to_node_and_wait_response_with_timeout(
+                node_to_replicate,
+                request_with_metadata,
+                PortType::Priv,
+                wait_response,
+                Some(TIMEOUT_SECS),
+            )
+            .unwrap_or_default()
+        };
+        if res.is_empty() && wait_response {
+            let mut node_writer = self.write()?;
+            node_writer.acknowledge_offline_neighbour(node_to_replicate);
+        }
+        Ok(res)
+    }
+
+    // ###########################################################################################
+    // ################################### STATEMENTS INTERNOS ###################################
+    // ###########################################################################################
+
+    /// Maneja una declaración interna.
+    fn handle_internal_statement(
+        &self,
+        statement: Statement,
+        internal_metadata: (Option<i64>, Option<Byte>),
+    ) -> Result<Vec<Byte>> {
+        let mut node_writer = self.write()?;
+        match statement {
+            Statement::DdlStatement(ddl_statement) => {
+                node_writer.handle_internal_ddl_statement(ddl_statement, internal_metadata)
+            }
+            Statement::DmlStatement(dml_statement) => {
+                node_writer.handle_internal_dml_statement(dml_statement, internal_metadata)
+            }
+            Statement::UdtStatement(_udt_statement) => todo!(),
+            Statement::Startup => Err(Error::Invalid(
+                "No se deberia haber mandado el startup por este canal".to_string(),
+            )),
+            Statement::LoginUser(_) => Err(Error::Invalid(
+                "No se deberia haber mandado el login por este canal".to_string(),
+            )),
+        }
+    }
+
+    // ###########################################################################################
+    // ##################################### ROUND DE GOSSIP #####################################
+    // ###########################################################################################
 
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&self) -> Result<()> {
@@ -1645,6 +1717,10 @@ impl SessionHandler {
         self.write()?.update_neighbours(nodes_map)
     }
 
+    // ###########################################################################################
+    // ######################################### ACTIONS #########################################
+    // ###########################################################################################
+
     fn exec_direct_read_request(&self, mut bytes: Vec<Byte>) -> Result<String> {
         let node_number = match bytes.pop() {
             Some(node_number) => node_number,
@@ -1712,6 +1788,10 @@ impl SessionHandler {
         )
     }
 
+    // ###########################################################################################
+    // ####################################### AUXILIARES ########################################
+    // ###########################################################################################
+
     /// Consulta si un nodo vecino está listo para recibir _queries_.
     fn neighbour_is_responsive(&self, node_id: NodeId) -> Result<bool> {
         let mut is_ready = false;
@@ -1767,6 +1847,10 @@ impl Clone for SessionHandler {
         }
     }
 }
+
+// ##############################################################################################
+// ################################## AUXILIARES INDEPENDIENTES #################################
+// ##############################################################################################
 
 fn make_error_response(err: Error) -> Vec<Byte> {
     let mut response: Vec<Byte> = Vec::new();
@@ -1831,6 +1915,32 @@ fn verify_succesful_response(response: &[Byte]) -> bool {
     }
 }
 
+/// Revisa si hay metadata extra necesaria para la query pedida
+fn read_metadata_from_internal_request(
+    internal_metadata: Vec<Byte>,
+) -> (Option<i64>, Option<Byte>) {
+    if internal_metadata.len() == 9 {
+        let bytes: [u8; 8] = match internal_metadata[0..8].try_into() {
+            Ok(value) => value,
+            Err(_err) => [5, 5, 5, 5, 5, 5, 5, 5], // nunca pasa
+        };
+        let timestamp = i64::from_be_bytes(bytes);
+        let node_id = internal_metadata[8];
+        return (Some(timestamp), Some(node_id));
+    } else if internal_metadata.len() == 8 {
+        let bytes: [u8; 8] = match internal_metadata[0..8].try_into() {
+            Ok(value) => value,
+            Err(_err) => [5, 5, 5, 5, 5, 5, 5, 5], // nunca pasa
+        };
+        let timestamp = i64::from_be_bytes(bytes);
+        return (Some(timestamp), None);
+    } else if internal_metadata.len() == 1 {
+        let node_id = internal_metadata[0];
+        return (None, Some(node_id));
+    }
+    (None, None)
+}
+
 /// Agrega metadata, como el timestamp o el node_id si es necesario, sino no agrega estos campos.
 fn add_metadata_to_internal_request_of_any_kind(
     mut sv_action_with_request: Vec<Byte>,
@@ -1869,12 +1979,6 @@ fn check_if_read_repair_is_neccesary(
         if first_hashed_value != hashed_value_of_response {
             *exec_read_repair = true;
         }
-    }
-}
-
-impl PartialEq for Node {
-    fn eq(&self, other: &Self) -> bool {
-        self.endpoint_state.eq(&other.endpoint_state)
     }
 }
 

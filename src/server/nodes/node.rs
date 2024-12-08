@@ -23,13 +23,14 @@ use crate::protocol::{
     messages::responses::result_kinds::ResultKind,
     traits::Byteable,
 };
-use crate::server::{actions::opcode::SvAction, modes::ConnectionMode, utils::load_json};
+use crate::server::{modes::ConnectionMode, utils::load_json};
 
 use serde::{Deserialize, Serialize};
 
 use std::{collections::HashMap, net::TcpStream, path::Path, thread::JoinHandle};
 
 use super::{
+    actions::opcode::SvAction,
     addr::loader::AddrLoader,
     disk_operations::disk_handler::DiskHandler,
     internal_threads::{beater, create_client_and_private_conexion, gossiper},
@@ -243,14 +244,16 @@ impl Node {
             if id == node_id {
                 continue;
             }
-            if let Err(err) = send_to_node(
+            if send_to_node(
                 node_id,
                 SvAction::SendEndpointState(id).as_bytes(),
                 PortType::Priv,
-            ) {
+            )
+            .is_err()
+            {
                 println!(
-                    "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
-                    err
+                    "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                    id, node_id,
                 );
             }
         }
@@ -416,14 +419,16 @@ impl Node {
 
     /// Envia su endpoint state al nodo del ID correspondiente.
     pub fn send_endpoint_state(&self, id: NodeId) {
-        if let Err(err) = send_to_node(
+        if send_to_node(
             id,
             SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
             PortType::Priv,
-        ) {
+        )
+        .is_err()
+        {
             println!(
-                "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
-                err
+                "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                id, self.id,
             );
         }
     }
@@ -669,38 +674,15 @@ impl Node {
         dml_statement: DmlStatement,
         internal_metadata: (Option<i64>, Option<Byte>),
     ) -> Result<Vec<Byte>> {
-        let node_number = match internal_metadata.1 {
-            Some(value) => value,
-            None => {
-                return Err(Error::ServerError(
-                    "No se paso la informacion del nodo en la metadata interna".to_string(),
-                ))
-            }
-        };
+        let node_number = get_node_replica_number_from_internal_metadata(internal_metadata)?;
         match dml_statement {
             DmlStatement::SelectStatement(select) => self.process_select(&select, node_number),
             DmlStatement::InsertStatement(insert) => {
-                let timestamp = match internal_metadata.0 {
-                    Some(value) => value,
-                    None => {
-                        return Err(Error::ServerError(
-                            "No se paso la informacion del timestamp en la metadata interna"
-                                .to_string(),
-                        ))
-                    }
-                };
+                let timestamp = get_timestamp_from_internal_metadata(internal_metadata)?;
                 self.process_insert(&insert, timestamp, node_number)
             }
             DmlStatement::UpdateStatement(update) => {
-                let timestamp = match internal_metadata.0 {
-                    Some(value) => value,
-                    None => {
-                        return Err(Error::ServerError(
-                            "No se paso la informacion del timestamp en la metadata interna"
-                                .to_string(),
-                        ))
-                    }
-                };
+                let timestamp = get_timestamp_from_internal_metadata(internal_metadata)?;
                 self.process_update(&update, timestamp, node_number)
             }
             DmlStatement::DeleteStatement(delete) => self.process_delete(&delete, node_number),
@@ -771,8 +753,8 @@ impl Node {
         Ok(Self::create_result_void())
     }
 
-    /// Revisa si hay un nuevo valor de partición que no tenga. Si lo hay, lo agrega y lo devuelve junto al resto.
-    /// Caso contrario, devuelve None.
+    /// Revisa si no tiene el partition value recibido, para el nombre de tabla dado.
+    /// Si no lo tiene, lo agrega y lo devuelve junto al resto. Caso contrario, devuelve None.
     pub fn check_if_has_new_partition_value(
         &self,
         partition_value: String,
@@ -790,9 +772,10 @@ impl Node {
             };
         if !partition_values.contains(&partition_value) {
             partition_values.push(partition_value.clone());
-            return Ok(Some(partition_values));
-        };
-        Ok(None)
+            Ok(Some(partition_values))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Procesa una declaración UPDATE.
@@ -981,4 +964,35 @@ impl Node {
     //             }
     //         };
     //     }
+}
+
+fn get_node_replica_number_from_internal_metadata(internal_metadata: (Option<i64>, Option<u8>)) -> Result<u8> {
+    let node_number = match internal_metadata.1 {
+        Some(value) => value,
+        None => {
+            return Err(Error::ServerError(
+                "No se paso la informacion del nodo en la metadata interna".to_string(),
+            ))
+        }
+    };
+    Ok(node_number)
+}
+
+fn get_timestamp_from_internal_metadata(internal_metadata: (Option<i64>, Option<u8>)) -> Result<i64> {
+    let timestamp = match internal_metadata.0 {
+        Some(value) => value,
+        None => {
+            return Err(Error::ServerError(
+                "No se paso la informacion del timestamp en la metadata interna"
+                    .to_string(),
+            ))
+        }
+    };
+    Ok(timestamp)
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.endpoint_state.eq(&other.endpoint_state)
+    }
 }
