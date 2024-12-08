@@ -45,3 +45,13 @@ pub fn move_contents<R: Read, W: Write>(src: &mut R, dest: &mut W) -> Result<()>
         },
     }
 }
+
+/// Muestra los bytes en un formato imprimible.
+pub fn printable_bytes<'a>(bytes: impl IntoIterator<Item = &'a Byte>) -> String {
+    let pretty_bytes = bytes
+        .into_iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<String>>();
+
+    format!("[ {} ]", pretty_bytes.join(" "))
+}
