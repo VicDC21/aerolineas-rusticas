@@ -1,5 +1,7 @@
 //! Módulo para operaciones CRUD en los paneles.
 
+use std::time::Instant;
+
 use walkers::Position;
 
 use crate::{
@@ -21,7 +23,10 @@ pub fn insert_flight(
     cur_airport: &Airport,
     ex_airport: &Airport,
 ) -> Result<()> {
-    let flight_id = cur_airport.id + ex_airport.id + timestamp as usize;
+    let flight_id = cur_airport.id
+        + ex_airport.id
+        + timestamp as usize
+        + Instant::now().elapsed().as_secs() as usize;
 
     let (cur_lat, cur_lon) = cur_airport.position;
     let (ex_lat, ex_lon) = ex_airport.position;
