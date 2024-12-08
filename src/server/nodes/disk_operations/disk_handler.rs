@@ -288,10 +288,18 @@ impl DiskHandler {
         Self::insert_new_row(rows, new_row, table, &table_ops)
     }
 
-    fn insert_new_row(mut rows: Vec<Vec<String>>, new_row: Vec<String>, table: &Table, table_ops: &TableOperations) -> Result<()> {
+    fn insert_new_row(
+        mut rows: Vec<Vec<String>>,
+        new_row: Vec<String>,
+        table: &Table,
+        table_ops: &TableOperations,
+    ) -> Result<()> {
         let mut primary_keys_indexs: Vec<usize> = Vec::new();
         let table_cols = &table.columns;
-        if let Some(i) = table_cols.iter().position(|c| c.get_name() == *table.partition_key[0]) {
+        if let Some(i) = table_cols
+            .iter()
+            .position(|c| c.get_name() == *table.partition_key[0])
+        {
             primary_keys_indexs.push(i);
         }
         if let Some(clustering_key_and_order) = &table.clustering_key_and_order {

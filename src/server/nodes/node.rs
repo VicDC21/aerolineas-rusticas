@@ -966,7 +966,9 @@ impl Node {
     //     }
 }
 
-fn get_node_replica_number_from_internal_metadata(internal_metadata: (Option<i64>, Option<u8>)) -> Result<u8> {
+fn get_node_replica_number_from_internal_metadata(
+    internal_metadata: (Option<i64>, Option<u8>),
+) -> Result<u8> {
     let node_number = match internal_metadata.1 {
         Some(value) => value,
         None => {
@@ -978,13 +980,14 @@ fn get_node_replica_number_from_internal_metadata(internal_metadata: (Option<i64
     Ok(node_number)
 }
 
-fn get_timestamp_from_internal_metadata(internal_metadata: (Option<i64>, Option<u8>)) -> Result<i64> {
+fn get_timestamp_from_internal_metadata(
+    internal_metadata: (Option<i64>, Option<u8>),
+) -> Result<i64> {
     let timestamp = match internal_metadata.0 {
         Some(value) => value,
         None => {
             return Err(Error::ServerError(
-                "No se paso la informacion del timestamp en la metadata interna"
-                    .to_string(),
+                "No se paso la informacion del timestamp en la metadata interna".to_string(),
             ))
         }
     };
