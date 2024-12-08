@@ -3,6 +3,7 @@
 use std::{
     collections::HashSet,
     io::{stdin, BufRead, BufReader, Read, Write},
+    mem::replace,
     net::{SocketAddr, TcpStream},
     str::FromStr,
     sync::Arc,
@@ -315,7 +316,9 @@ impl Client {
                         );
                     }
                     // A este punto sabemos que el TLS Stream algo tiene, hay que cambiarlo
-                    self.create_tls_connection(get_client_connection()?, self.connect()?)?;
+                    let new_tls =
+                        self.create_tls_connection(get_client_connection()?, self.connect()?)?;
+                    replace(tls_stream, new_tls);
                 }
                 Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
             }
