@@ -39,6 +39,10 @@ type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
 
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
+/// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _heartbeat_.
+const HEARTBEAT_SLEEP_MILLIS: u64 = 1000;
+/// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _gossip_.
+const GOSSIP_SLEEP_MILLIS: u64 = 450;
 
 /// El número de hilos para el [ThreadPool].
 
@@ -300,7 +304,7 @@ fn increase_heartbeat_and_store_metadata(
     id: NodeId,
 ) -> std::result::Result<(), Error> {
     loop {
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_millis(HEARTBEAT_SLEEP_MILLIS));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
                 break;
@@ -342,7 +346,7 @@ fn exec_gossip(
     weights: Vec<usize>,
 ) -> Result<()> {
     loop {
-        sleep(Duration::from_millis(1500));
+        sleep(Duration::from_millis(GOSSIP_SLEEP_MILLIS));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
                 break;

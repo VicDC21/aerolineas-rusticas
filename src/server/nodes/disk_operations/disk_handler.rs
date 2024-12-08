@@ -288,10 +288,18 @@ impl DiskHandler {
         Self::insert_new_row(rows, new_row, table, &table_ops)
     }
 
-    fn insert_new_row(mut rows: Vec<Vec<String>>, new_row: Vec<String>, table: &Table, table_ops: &TableOperations) -> Result<()> {
+    fn insert_new_row(
+        mut rows: Vec<Vec<String>>,
+        new_row: Vec<String>,
+        table: &Table,
+        table_ops: &TableOperations,
+    ) -> Result<()> {
         let mut primary_keys_indexs: Vec<usize> = Vec::new();
         let table_cols = &table.columns;
-        if let Some(i) = table_cols.iter().position(|c| c.get_name() == *table.partition_key[0]) {
+        if let Some(i) = table_cols
+            .iter()
+            .position(|c| c.get_name() == *table.partition_key[0])
+        {
             primary_keys_indexs.push(i);
         }
         if let Some(clustering_key_and_order) = &table.clustering_key_and_order {
@@ -691,9 +699,10 @@ impl DiskHandler {
                     } else if term1.get_value() == "class"
                         && term2.get_value() == "NetworkTopologyStrategy"
                     {
-                        // TODO: Aca estaria el caso de NetworkTopologyStrategy
-                        // UPDATE: No es necesario implementar NetworkTopologyStrategy
-                        todo!()
+                        // No es necesario implementar NetworkTopologyStrategy
+                        return Err(Error::Invalid(
+                            "La replicación NetworkTopologyStrategy no está soportada.".to_string(),
+                        ));
                     }
                 }
                 _ => break,
