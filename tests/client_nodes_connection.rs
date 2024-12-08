@@ -10,7 +10,10 @@ use std::{
 
 use aerolineas_rusticas::{
     client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
-    data::flights::{flight::Flight, states::FlightState, types::FlightType},
+    data::{
+        flights::{flight::Flight, states::FlightState, types::FlightType},
+        login_info::LoginInfo,
+    },
 };
 use common::{clean_nodes, create_echo_nodes, create_parsing_nodes};
 
@@ -67,7 +70,7 @@ fn test_2_simple_insert_and_select() {
 
     if let Ok(mut conn) = conn_res {
         let client_lock = conn.get_cli();
-        let login_res = conn.login("juan", "1234");
+        let login_res = conn.login(&LoginInfo::new_str("juan", "1234"));
         sleep(Duration::from_secs(1));
 
         assert!(login_res.is_ok());
@@ -93,7 +96,7 @@ fn test_2_simple_insert_and_select() {
             sleep(Duration::from_secs(1));
             assert!(insert_res.is_ok());
 
-            if let Ok(protocol_res) = insert_res {
+            if let Ok((protocol_res, _)) = insert_res {
                 // el resultado de un insert es VOID
                 assert!(matches!(protocol_res, ProtocolResult::Void));
             }
@@ -102,7 +105,7 @@ fn test_2_simple_insert_and_select() {
             sleep(Duration::from_secs(1));
             assert!(select_res.is_ok());
 
-            if let Ok(protocol_res) = select_res {
+            if let Ok((protocol_res, _)) = select_res {
                 assert!(matches!(&protocol_res, ProtocolResult::Rows(_)));
                 let flights_res =
                     Flight::try_from_protocol_result(protocol_res.clone(), &FlightType::Incoming);

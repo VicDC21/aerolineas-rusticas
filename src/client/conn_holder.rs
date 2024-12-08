@@ -3,10 +3,8 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    client::{
-        cli::{get_client_connection, Client, TlsStream},
-        protocol_result::ProtocolResult,
-    },
+    client::cli::{get_client_connection, Client, TlsStream},
+    data::login_info::LoginInfo,
     protocol::{aliases::results::Result, errors::error::Error},
 };
 /// Estructura que guarda información de la conexión a un nodo.
@@ -38,7 +36,7 @@ impl ConnectionHolder {
     }
 
     /// Se loguea con el usuario y contraseña dados.
-    pub fn login(&mut self, user: &str, password: &str) -> Result<()> {
+    pub fn login(&mut self, login_info: &LoginInfo) -> Result<()> {
         match self.client.lock() {
             Err(poison_err) => {
                 self.client.clear_poison();
@@ -48,26 +46,11 @@ impl ConnectionHolder {
                 )))
             }
             Ok(mut client) => {
-                let protocol_result = client.send_query(
-                    format!("User: {} Password: {}", &user, &password,).as_str(),
-                    &mut self.tls_stream,
-                )?;
-
-                match protocol_result {
-                    ProtocolResult::AuthSuccess => Ok(()),
-                    ProtocolResult::QueryError(auth_err) => {
-                        Err(Error::AuthenticationError(format!(
-                            "La autenticación con usuario '{}' y contraseña '{}' ha fallado:\n\n{}",
-                            &user, &password, auth_err,
-                        )))
-                    },
-                    _ => {
-                        Err(Error::AuthenticationError(format!(
-                            "La autenticación con usuario '{}' y contraseña '{}' ha fallado.\nSe reciibó un resultado de tipo {:?}.",
-                            &user, &password, protocol_result,
-                        )))
-                    }
+                let mut new_tls_opt = client.login(login_info.to_owned(), &mut self.tls_stream)?;
+                if let Some(new_tls) = new_tls_opt.take() {
+                    self.tls_stream = new_tls;
                 }
+                Ok(())
             }
         }
     }

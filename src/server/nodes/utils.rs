@@ -30,17 +30,6 @@ pub fn hash_value<T: Hash>(value: T) -> u64 {
 }
 
 /// Devuelve el ID del siguiente nodo del cluster.
-pub fn _next_node_in_the_cluster(
-    first_node_to_replicate: Byte,
-    node_iterator: Byte,
-    min: Byte,
-    max: Byte,
-) -> Byte {
-    let nodes_range = max - min;
-    min + ((first_node_to_replicate - min + node_iterator) % nodes_range)
-}
-
-/// Devuelve el ID del siguiente nodo del cluster.
 ///
 /// Se asume que el vector de IDs de los nodos está ordenado de menor a mayor.
 pub fn next_node_in_the_cluster(current_id: Byte, nodes_ids: &[Byte]) -> Byte {
@@ -97,7 +86,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
             )));
         }
     };
-    // println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
+    println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
 
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(

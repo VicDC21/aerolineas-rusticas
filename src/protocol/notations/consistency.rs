@@ -52,8 +52,8 @@ impl Consistency {
     /// Convierte el _Consistency Level_ a la cantidad de nodos a esperar su confirmación.
     ///
     /// `n` es la cantidad de réplicas.
-    pub fn as_usize(&self, n: usize) -> usize {
-        match self {
+    pub fn as_usize(&self, n: usize) -> Result<usize> {
+        let res = match self {
             Self::Any => 1,
             Self::One => 1,
             Self::Two => 2,
@@ -62,10 +62,19 @@ impl Consistency {
             Self::All => n,
             Self::LocalQuorum => (n / 2) + 1,
             Self::EachQuorum => (n / 2) + 1,
-            Self::Serial => todo!(),
-            Self::LocalSerial => todo!(),
+            Self::Serial => {
+                return Err(Error::Invalid(
+                    "Consistency Level Serial no es soportado.".to_string(),
+                ))
+            }
+            Self::LocalSerial => {
+                return Err(Error::Invalid(
+                    "Consistency Level LocalSerial no es soportado.".to_string(),
+                ))
+            }
             Self::LocalOne => 1,
-        }
+        };
+        Ok(res)
     }
 }
 

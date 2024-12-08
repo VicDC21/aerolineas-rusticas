@@ -13,40 +13,38 @@ use std::{
         mpsc::{channel, Sender},
         Arc, Mutex,
     },
-    thread::{sleep, Builder},
+    thread::{self, sleep, Builder},
     time::Duration,
 };
 
-use crate::{
-    client::cli::handle_pem_file_iter,
-    server::{
-        actions::opcode::SvAction,
-        nodes::{
-            addr::loader::AddrLoader,
-            node::{Node, NodeHandle, NodeId},
-            port_type::PortType,
-            utils::send_to_node,
-        },
-    },
+use crate::client::cli::handle_pem_file_iter;
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    headers::opcode::Opcode,
+    traits::Byteable,
 };
-use crate::{
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        headers::opcode::Opcode,
-        traits::Byteable,
-    },
-    server::pool::threadpool::ThreadPool,
+use crate::server::nodes::{
+    actions::opcode::SvAction,
+    addr::loader::AddrLoader,
+    node::{Node, NodeHandle, NodeId},
+    port_type::PortType,
+    utils::send_to_node,
 };
+
+use super::session_handler::SessionHandler;
 
 /// Un stream TLS.
 type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
 
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
+/// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _heartbeat_.
+const HEARTBEAT_SLEEP_MILLIS: u64 = 1000;
+/// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _gossip_.
+const GOSSIP_SLEEP_MILLIS: u64 = 450;
 
 /// El número de hilos para el [ThreadPool].
-const N_THREADS: usize = 20;
 
 /// Crea los _handlers_ que escuchan por conexiones entrantes.
 ///
@@ -62,9 +60,9 @@ pub fn create_client_and_private_conexion(
     priv_socket: SocketAddr,
     node_listeners: &mut Vec<Option<NodeHandle>>,
 ) -> Result<()> {
-    let sendable_node = Arc::new(Mutex::new(node));
-    let cli_node = Arc::clone(&sendable_node);
-    let priv_node = Arc::clone(&sendable_node);
+    let sendable_node = SessionHandler::new(id, node);
+    let cli_node = sendable_node.clone();
+    let priv_node = sendable_node.clone();
 
     let cli_builder = Builder::new().name(format!("{}_cli", id));
     let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));
@@ -92,39 +90,31 @@ pub fn create_client_and_private_conexion(
 }
 
 /// Escucha por los eventos que recibe del cliente.
-pub fn cli_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-    listen(socket, PortType::Cli, node)
+pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
+    listen_cli_port(socket, session_handler)
 }
 
 /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-pub fn priv_listen(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
-    listen(socket, PortType::Priv, node)
+pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
+    listen_priv_port(socket, session_handler)
 }
 
-/// El escuchador de verdad.
-///
-/// Las otras funciones son wrappers para no repetir código.
-fn listen(socket: SocketAddr, port_type: PortType, node: Arc<Mutex<Node>>) -> Result<()> {
-    match port_type {
-        PortType::Cli => listen_cli_port(socket, node),
-        PortType::Priv => listen_priv_port(socket, node),
-    }
-}
-
-fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
+fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
-    let pool = ThreadPool::build(N_THREADS)?;
     let exit = false;
     for tcp_stream_res in listener.incoming() {
         match tcp_stream_res {
             Err(_) => return tcp_stream_error(&PortType::Cli, &socket, &addr_loader),
             Ok(tcp_stream) => {
                 let config = Arc::clone(&server_config);
-                let node = Arc::clone(&node);
+                let session_handler = session_handler.clone();
                 let arc_exit = Arc::new(Mutex::new(exit));
-                pool.execute(move || listen_single_client(config, tcp_stream, arc_exit, node))?;
+                println!("Se conectan a este nodo");
+                thread::spawn(move || {
+                    listen_single_client(config, tcp_stream, arc_exit, session_handler)
+                });
             }
         };
         if exit {
@@ -134,7 +124,7 @@ fn listen_cli_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
     Ok(())
 }
 
-fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
+fn listen_priv_port(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
     for tcp_stream_res in listener.incoming() {
@@ -149,15 +139,7 @@ fn listen_priv_port(socket: SocketAddr, node: Arc<Mutex<Node>>) -> Result<()> {
                 if is_exit(&bytes_vec[..]) {
                     break;
                 }
-                match node.lock() {
-                    Ok(mut locked_in) => {
-                        locked_in.process_stream(&mut tcp_stream, bytes_vec, true)?;
-                    }
-                    Err(poison_err) => {
-                        println!("Error de lock envenenado:\n\n{}", poison_err);
-                        node.clear_poison();
-                    }
-                }
+                session_handler.process_stream(&mut tcp_stream, bytes_vec, true)?;
             }
         }
     }
@@ -168,7 +150,7 @@ fn listen_single_client(
     config: Arc<ServerConfig>,
     tcp_stream: TcpStream,
     arc_exit: Arc<Mutex<bool>>,
-    node: Arc<Mutex<Node>>,
+    session_handler: SessionHandler,
 ) -> Result<()> {
     let mut server_conn = match ServerConnection::new(config) {
         Ok(conn) => conn,
@@ -182,6 +164,7 @@ fn listen_single_client(
     let mut tls_stream: TlsStream = Stream::new(&mut server_conn, &mut buffered_stream);
     let tls = &mut tls_stream;
     let mut is_logged = false;
+
     loop {
         let mut buffer: Vec<u8> = vec![0; 2048];
         let size = match tls.read(&mut buffer) {
@@ -193,32 +176,44 @@ fn listen_single_client(
             match arc_exit.lock() {
                 Ok(mut locked_in) => *locked_in = true,
                 Err(poison_err) => {
-                    println!("Error de lock envenenado:\n\n{}", poison_err);
-                    node.clear_poison();
+                    println!("Error de lock envenenado:\n\n{}", &poison_err);
+                    arc_exit.clear_poison();
                 }
             }
             break;
         }
-        match node.lock() {
-            Ok(mut locked_in) => {
-                let res = locked_in.process_stream(tls, buffer.to_vec(), is_logged)?;
-                if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
-                    is_logged = true;
-                }
-            }
-            Err(poison_err) => {
-                println!("Error de lock envenenado:\n\n{}", poison_err);
-                node.clear_poison();
-            }
+        let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
+        if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
+            is_logged = true;
         }
     }
     Ok(())
 }
 
+// fn get_node_mutex(node: &mut Arc<Mutex<Node>>) -> Result<MutexGuard<'static, Node>>{
+//     match node.lock() {
+//         Ok(mut locked_in) => {
+//             Ok(locked_in)
+//         }
+//         Err(poison_err) => {
+//             println!("Error de lock envenenado:\n\n{}", poison_err);
+//             node.clear_poison();
+//             Err(Error::ServerError(format!("Error de lock envenenado:\n\n{}", poison_err)))
+//         }
+//     }
+// }
+
 fn configure_tls() -> Result<Arc<ServerConfig>> {
     let private_key_file = "custom.key";
     let certs: Vec<CertificateDer<'_>> = handle_pem_file_iter()?;
-    let private_key = PrivateKeyDer::from_pem_file(private_key_file).unwrap();
+    let private_key = match PrivateKeyDer::from_pem_file(private_key_file) {
+        Ok(value) => value,
+        Err(_) => {
+            return Err(Error::ServerError(
+                "No se pudo leer la clave privada".to_string(),
+            ))
+        }
+    };
     let config = match ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(certs, private_key)
@@ -309,7 +304,7 @@ fn increase_heartbeat_and_store_metadata(
     id: NodeId,
 ) -> std::result::Result<(), Error> {
     loop {
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_millis(HEARTBEAT_SLEEP_MILLIS));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
                 break;
@@ -351,7 +346,7 @@ fn exec_gossip(
     weights: Vec<usize>,
 ) -> Result<()> {
     loop {
-        sleep(Duration::from_millis(200));
+        sleep(Duration::from_millis(GOSSIP_SLEEP_MILLIS));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
                 break;

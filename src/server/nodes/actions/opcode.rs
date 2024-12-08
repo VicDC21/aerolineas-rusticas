@@ -1,4 +1,4 @@
-//! Módulo para una acción especial del servidor.
+//! Módulo para una acción especial de los nodos.
 
 use std::{
     collections::{HashMap, HashSet},

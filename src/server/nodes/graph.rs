@@ -8,10 +8,7 @@ use std::{
     collections::HashSet,
     net::SocketAddr,
     path::Path,
-    sync::{
-        mpsc::{channel, Sender},
-        Arc, Mutex,
-    },
+    sync::mpsc::{channel, Sender},
     thread::{sleep, Builder, JoinHandle},
     time::Duration,
 };
@@ -25,9 +22,9 @@ use crate::protocol::{
     traits::Byteable,
 };
 use crate::server::{
-    actions::opcode::SvAction,
     modes::ConnectionMode,
     nodes::{
+        actions::opcode::SvAction,
         node::{Node, NodeId},
         port_type::PortType,
         utils::{load_init_queries, send_to_node},
@@ -39,17 +36,15 @@ use crate::tokenizer::tokenizer::tokenize_query;
 use super::{
     disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH},
     internal_threads::{cli_listen, priv_listen},
+    node::N_NODES,
+    session_handler::SessionHandler,
 };
 
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
 
-/// Cantidad de nodos fija en cualquier momento.
-pub const N_NODES: Byte = 5;
 /// El ID con el que comenzar a contar los nodos.
 pub const START_ID: NodeId = 10;
-/// El último ID de los nodos, basado en la cantidad de nodos del clúster.
-pub const LAST_ID: NodeId = START_ID + N_NODES;
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// La cantidad de nodos que comenzarán su intercambio de _gossip_ con otros [n](crate::server::nodes::graph::HANDSHAKE_NEIGHBOURS) nodos.
@@ -112,7 +107,7 @@ impl NodesGraph {
     /// Inicializa el grafo y levanta todos los handlers necesarios.
     pub fn init(&mut self) -> Result<()> {
         let nodes = self.bootup_nodes(N_NODES)?;
-        // REVISAR
+
         let (_beater, _beat_stopper) = self.beater()?;
         let (_gossiper, _gossip_stopper) = self.gossiper()?;
 
@@ -315,6 +310,9 @@ impl NodesGraph {
     /// Ordena a todos los nodos existentes que envien su endpoint state al nodo con el ID correspondiente.
     fn send_states_to_node(&self, id: NodeId) {
         for node_id in self.get_ids() {
+            if id == node_id {
+                continue;
+            }
             if let Err(err) = send_to_node(
                 node_id,
                 SvAction::SendEndpointState(id).as_bytes(),
@@ -373,9 +371,9 @@ fn create_client_and_private_conexion(
     priv_socket: SocketAddr,
     node: Node,
 ) -> Result<()> {
-    let sendable_node = Arc::new(Mutex::new(node));
-    let cli_node = Arc::clone(&sendable_node);
-    let priv_node = Arc::clone(&sendable_node);
+    let sendable_node = SessionHandler::new(current_id, node);
+    let cli_node = sendable_node.clone();
+    let priv_node = sendable_node.clone();
 
     let cli_builder = Builder::new().name(format!("{}_cli", current_id));
     let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));
@@ -407,7 +405,7 @@ fn increase_heartbeat_and_store_nodes(
     ids: Vec<Byte>,
 ) -> std::result::Result<(), Error> {
     loop {
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_millis(1000));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
                 break;
@@ -436,7 +434,7 @@ fn exec_gossip(
     weights: Vec<usize>,
 ) -> std::result::Result<(), Error> {
     loop {
-        sleep(Duration::from_millis(200));
+        sleep(Duration::from_millis(450));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
                 break;

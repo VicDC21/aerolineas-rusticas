@@ -10,7 +10,7 @@ use crate::{
         tracking::live_flight_data::LiveFlightData,
         traits::PrettyShow,
     },
-    interface::{data::login_info::LoginInfo, utils::send_client_query},
+    interface::utils::send_client_query,
 };
 
 /// Editor para modificar detalles de un vuelo en curso y sus datos en vivo.
@@ -52,12 +52,11 @@ impl FlightEditorWindow {
     /// Muestra la ventana del editor.
     pub fn show(
         &mut self,
-        conn_login: (&mut ConnectionHolder, &LoginInfo),
+        con_info: &mut ConnectionHolder,
         ui: &Ui,
         local_date: DateTime<Local>,
         live_data: Option<LiveFlightData>,
     ) -> bool {
-        let (con_info, login_info) = conn_login;
         let ctx = ui.ctx();
         let mut keep_open = true;
 
@@ -100,7 +99,6 @@ impl FlightEditorWindow {
                         {
                             if let Err(err) = send_client_query(
                                 con_info,
-                                login_info,
                                 format!(
                                     "UPDATE {} SET orig = '{}' WHERE id = {};",
                                     table, self.orig, flight.id,
@@ -125,7 +123,6 @@ impl FlightEditorWindow {
                         {
                             if let Err(err) = send_client_query(
                                 con_info,
-                                login_info,
                                 format!(
                                     "UPDATE {} SET dest = '{}' WHERE id = {};",
                                     table, self.dest, flight.id,
@@ -164,7 +161,6 @@ impl FlightEditorWindow {
                             };
                             if let Err(err) = send_client_query(
                                 con_info,
-                                login_info,
                                 format!(
                                     "UPDATE {} SET {} = {} WHERE id = {};",
                                     table,
@@ -220,7 +216,6 @@ impl FlightEditorWindow {
                         if self.state != flight.state {
                             if let Err(err) = send_client_query(
                                 con_info,
-                                login_info,
                                 format!(
                                     "UPDATE {} SET estado = '{}' WHERE id = {};",
                                     table, self.state, flight.id,

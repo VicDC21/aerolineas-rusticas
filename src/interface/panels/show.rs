@@ -18,7 +18,7 @@ use crate::{
         traits::PrettyShow,
     },
     interface::{
-        data::{login_info::LoginInfo, widget_details::WidgetDetails},
+        data::widget_details::WidgetDetails,
         panels::crud::{delete_flight_by_id, insert_flight},
         windows::flight_editor::FlightEditorWindow,
     },
@@ -30,14 +30,13 @@ pub type DeleteQueue = HashSet<Int>;
 
 /// Muestra por un panel lateral los detalles del aeropuerto actualmente seleccionado.
 pub fn cur_airport_info(
-    conn_login: (&mut ConnectionHolder, &LoginInfo),
+    con_info: &mut ConnectionHolder,
     ui: &Ui,
     cur_airport: &Option<Airport>,
     incoming_fl: (Arc<Vec<Flight>>, &bool),
     departing_fl: (Arc<Vec<Flight>>, &bool),
     widget_details: &mut WidgetDetails,
 ) -> (bool, bool) {
-    let (con_info, login_info) = conn_login;
     let (incoming_flights, show_incoming) = incoming_fl;
     let (departing_flights, show_departing) = departing_fl;
     let mut must_show_incoming = *show_incoming;
@@ -106,7 +105,7 @@ pub fn cur_airport_info(
 
     if !delete_queue.is_empty() {
         for flight_id in delete_queue {
-            let _ = delete_flight_by_id(con_info, login_info, flight_id);
+            let _ = delete_flight_by_id(con_info, flight_id);
         }
     }
 
@@ -115,13 +114,12 @@ pub fn cur_airport_info(
 
 /// Muestra por un panel lateral los detalles del aeropuerto extra.
 pub fn extra_airport_info(
-    conn_login: (&mut ConnectionHolder, &LoginInfo),
+    con_info: &mut ConnectionHolder,
     ui: &Ui,
     selected_airport: &Option<Airport>,
     extra_airport: &Option<Airport>,
     timestamp: Long,
 ) {
-    let (con_info, login_info) = conn_login;
     let panel_frame = Frame {
         fill: Color32::from_rgba_unmultiplied(60, 60, 60, 200),
         inner_margin: Margin::ZERO,
@@ -140,7 +138,7 @@ pub fn extra_airport_info(
             if let Some(cur_airport) = selected_airport {
                 let button = Button::new(RichText::new("Añadir Vuelo").heading());
                 if ui.add_enabled(selected_airport.is_some() && extra_airport.is_some(), button).clicked() {
-                    if let Err(err) = insert_flight(con_info, login_info, timestamp, cur_airport, ex_airport) {
+                    if let Err(err) = insert_flight(con_info, timestamp, cur_airport, ex_airport) {
                         println!("Ocurrió un error tratando de agregar un vuelo desde '{}' hasta '{}'\n\n{}",
                                  &cur_airport.name, &ex_airport.name, err);
                     }

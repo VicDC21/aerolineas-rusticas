@@ -1,10 +1,16 @@
 //! Módulo para funciones auxiliares del servidor.
 
-use std::fs::{self, File};
+use std::{
+    fs::{self, File},
+    io::{Read, Write},
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{aliases::results::Result, errors::error::Error};
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+};
 
 /// Toma un elemento serializable y lo convierte a JSON, escribiendo el contenido en un archivo en la ruta recibida.
 pub fn store_json<T: Serialize>(serializable: &T, path: &str) -> Result<()> {
@@ -20,4 +26,22 @@ pub fn load_json<T: for<'de> Deserialize<'de>>(path: &str) -> Result<T> {
         .map_err(|e| Error::ServerError(format!("Error leyendo datos JSON: {}", e)))?;
     serde_json::from_str(&content)
         .map_err(|e| Error::ServerError(format!("Error deserializando datos JSON: {}", e)))
+}
+
+/// Copia el contenido de un stream a otro.
+pub fn move_contents<R: Read, W: Write>(src: &mut R, dest: &mut W) -> Result<()> {
+    let mut buf = Vec::<Byte>::new();
+    match src.read_to_end(&mut buf) {
+        Err(io_err) => Err(Error::ServerError(format!(
+            "Error al leer datos:\n\n{}",
+            io_err
+        ))),
+        Ok(_) => match dest.write_all(&buf[..]) {
+            Err(io_err) => Err(Error::ServerError(format!(
+                "Error al escribir datos:\n\n{}",
+                io_err
+            ))),
+            Ok(_) => Ok(()),
+        },
+    }
 }

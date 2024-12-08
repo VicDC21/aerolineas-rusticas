@@ -117,7 +117,7 @@ impl App for AerolineasApp {
                 &mut self.map_memory,
                 Position::from_lat_lon(ORIG_LAT, ORIG_LONG),
             );
-            let login_info = self.widget_details.login_info.clone();
+            let login_info = self.widget_details.login_info.to_owned();
 
             self.airlines_details
                 .set_airports(self.airports_loader.take_airports());
@@ -176,7 +176,7 @@ impl App for AerolineasApp {
                 self.datetime = valid_time;
             }
             let (show_incoming, show_departing) = cur_airport_info(
-                (&mut self.con_info, &login_info),
+                &mut self.con_info,
                 ui,
                 self.airlines_details.get_ref_selected_airport(),
                 (
@@ -195,7 +195,7 @@ impl App for AerolineasApp {
                 .set_show_departing_flights(show_departing);
 
             extra_airport_info(
-                (&mut self.con_info, &login_info),
+                &mut self.con_info,
                 ui,
                 self.airlines_details.get_ref_selected_airport(),
                 self.airlines_details.get_ref_extra_airport(),
@@ -220,12 +220,7 @@ impl App for AerolineasApp {
                         None => None,
                     };
                 }
-                if !editor.show(
-                    (&mut self.con_info, &login_info),
-                    ui,
-                    self.datetime,
-                    live_data,
-                ) {
+                if !editor.show(&mut self.con_info, ui, self.datetime, live_data) {
                     self.widget_details.flight_editor = None;
                 }
             }

@@ -8,6 +8,7 @@ use aerolineas_rusticas::{
     client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
     data::{
         flights::{states::FlightState, types::FlightType},
+        login_info::LoginInfo,
         tracking::live_flight_data::LiveFlightData,
     },
     simulator::flight_simulator::FlightSimulator,
@@ -24,12 +25,12 @@ fn test_1_simple_flight_adding() {
     let graph_handle = init_graph_parsing();
 
     if let Ok(mut conn) = conn_res {
-        let sim_res = FlightSimulator::new(8, Client::default(), true);
+        let sim_res = FlightSimulator::new(8, true);
         assert!(sim_res.is_ok());
 
         if let Ok(sim) = sim_res {
             assert!(sim
-                .add_flight(123456, "SABE".to_string(), "EGAA".to_string())
+                .add_flight(123456, "SABE".to_string(), "EGAA".to_string(), 800.0)
                 .is_ok());
 
             sleep(Duration::from_secs(5));
@@ -44,7 +45,7 @@ fn test_1_simple_flight_adding() {
             sleep(Duration::from_secs(5));
 
             let client_lock = conn.get_cli();
-            let login_res = conn.login("juan", "1234");
+            let login_res = conn.login(&LoginInfo::new_str("juan", "1234"));
             assert!(login_res.is_ok());
 
             if let Ok(mut client) = client_lock.lock() {
@@ -55,7 +56,7 @@ fn test_1_simple_flight_adding() {
                 }
                 assert!(select_res.is_ok());
 
-                if let Ok(protocol_res) = select_res {
+                if let Ok((protocol_res, _)) = select_res {
                     assert!(matches!(&protocol_res, ProtocolResult::Rows(_)));
                     let live_data_res = LiveFlightData::try_from_protocol_result(
                         protocol_res.clone(),

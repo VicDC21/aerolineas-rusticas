@@ -63,7 +63,11 @@ impl CreateTable {
             let vec_column = column.get_column_name();
             let data_type: ColumnDataType = match column.get_data_type() {
                 CQLType::NativeType(native_type) => self.get_cql_type(native_type)?,
-                _ => todo!(),
+                _ => {
+                    return Err(Error::Invalid(
+                        "Solo es soportado el tipo de dato nativo.".to_string(),
+                    ))
+                }
             };
             vec.push(ColumnConfig::new(vec_column, data_type));
         }
