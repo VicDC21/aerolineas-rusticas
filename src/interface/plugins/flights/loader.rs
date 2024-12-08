@@ -447,12 +447,12 @@ impl FlightsLoader {
         for data in live_data {
             if let Entry::Vacant(entry) = flights_by_id.entry(data.flight_id) {
                 entry.insert(Vec::<LiveFlightData>::new());
-            } else if let Some(entries) = flights_by_id.get_mut(&data.flight_id) {
+            }
+            if let Some(entries) = flights_by_id.get_mut(&data.flight_id) {
                 entries.push(data);
             }
         }
 
-        println!("[DEBUG] cargando {}...", flights_by_id.len());
         Ok(flights_by_id)
     }
 
