@@ -44,8 +44,7 @@ use crate::tokenizer::tokenizer::tokenize_query;
 use super::{
     actions::opcode::{GossipInfo, SvAction},
     disk_operations::disk_handler::DiskHandler,
-    graph::N_NODES,
-    node::{Node, NodeId, NodesMap},
+    node::{Node, NodeId, NodesMap, N_NODES},
     port_type::PortType,
     states::{appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState},
     table_metadata::table::Table,
@@ -436,6 +435,7 @@ impl SessionHandler {
                         .users_default_keyspace_name
                         .insert(user.0.to_string(), "".to_string());
                 }
+                println!("Inicio de sesión con éxito.");
                 return Ok(response);
             }
         }
@@ -463,7 +463,9 @@ impl SessionHandler {
             Statement::DmlStatement(dml_statement) => {
                 self.handle_dml_statement(dml_statement, request, consistency_level)
             }
-            Statement::UdtStatement(_udt_statement) => todo!(),
+            Statement::UdtStatement(_udt_statement) => Err(Error::Invalid(
+                "UDT Statement no está soportado.".to_string(),
+            )),
             Statement::Startup => Err(Error::Invalid(
                 "No se deberia haber mandado el startup por este canal".to_string(),
             )),
@@ -498,15 +500,15 @@ impl SessionHandler {
             DdlStatement::CreateTableStatement(create_table) => {
                 self.process_create_table_statement(create_table, request)
             }
-            DdlStatement::AlterTableStatement(_alter_table) => {
-                todo!()
-            }
-            DdlStatement::DropTableStatement(_drop_table) => {
-                todo!()
-            }
-            DdlStatement::TruncateStatement(_truncate) => {
-                todo!()
-            }
+            DdlStatement::AlterTableStatement(_alter_table) => Err(Error::Invalid(
+                "Alter Table Statement no está soportado.".to_string(),
+            )),
+            DdlStatement::DropTableStatement(_drop_table) => Err(Error::Invalid(
+                "Drop Table Statement no está soportado.".to_string(),
+            )),
+            DdlStatement::TruncateStatement(_truncate) => Err(Error::Invalid(
+                "Truncate Statement no está soportado.".to_string(),
+            )),
         }
     }
 
@@ -702,7 +704,9 @@ impl SessionHandler {
             DmlStatement::DeleteStatement(delete) => {
                 self.delete_with_other_nodes(delete, request, consistency_level)
             }
-            DmlStatement::BatchStatement(_batch) => todo!(),
+            DmlStatement::BatchStatement(_batch) => Err(Error::Invalid(
+                "Batch Statement no está soportado.".to_string(),
+            )),
         }
     }
 
@@ -720,7 +724,8 @@ impl SessionHandler {
         let mut consulted_nodes: Vec<Byte> = Vec::new();
         let node_reader = self.read()?;
         let replication_factor_quantity = node_reader.get_replicas_from_table_name(&table_name)?;
-        let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
+        let consistency_number =
+            consistency_level.as_usize(replication_factor_quantity as usize)?;
         let partitions_keys_to_nodes = node_reader.get_partition_keys_values(&table_name)?.clone(); // Tuve que agregar un clone para que no me tire error de referencia mutable e inmutable al mismo tiempo
         drop(node_reader);
 
@@ -1137,7 +1142,8 @@ impl SessionHandler {
         )?;
         let node_id = node_reader.select_node(&partition_key_value);
         let replication_factor_quantity = node_reader.get_replicas_from_table_name(&table_name)?;
-        let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
+        let consistency_number =
+            consistency_level.as_usize(replication_factor_quantity as usize)?;
         let mut consistency_counter = 0;
         let mut wait_response = true;
         let nodes_ids = Node::get_nodes_ids();
@@ -1289,7 +1295,8 @@ impl SessionHandler {
         let partitions_keys_to_nodes = node_reader.get_partition_keys_values(&table_name)?.clone();
         let mut consulted_nodes: Vec<String> = Vec::new();
         let replication_factor_quantity = node_reader.get_replicas_from_table_name(&table_name)?;
-        let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
+        let consistency_number =
+            consistency_level.as_usize(replication_factor_quantity as usize)?;
         drop(node_reader);
 
         for partition_key_value in partitions_keys_to_nodes {
@@ -1436,7 +1443,8 @@ impl SessionHandler {
         let node_reader = self.write()?;
         let partitions_keys_to_nodes = node_reader.get_partition_keys_values(&table_name)?.clone();
         let replication_factor_quantity = node_reader.get_replicas_from_table_name(&table_name)?;
-        let consistency_number = consistency_level.as_usize(replication_factor_quantity as usize);
+        let consistency_number =
+            consistency_level.as_usize(replication_factor_quantity as usize)?;
         drop(node_reader);
 
         for partition_key_value in partitions_keys_to_nodes {
@@ -1546,7 +1554,9 @@ impl SessionHandler {
             Statement::DmlStatement(dml_statement) => {
                 node_writer.handle_internal_dml_statement(dml_statement, internal_metadata)
             }
-            Statement::UdtStatement(_udt_statement) => todo!(),
+            Statement::UdtStatement(_udt_statement) => Err(Error::Invalid(
+                "UDT Statement no está soportado.".to_string(),
+            )),
             Statement::Startup => Err(Error::Invalid(
                 "No se deberia haber mandado el startup por este canal".to_string(),
             )),

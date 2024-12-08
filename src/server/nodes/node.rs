@@ -550,9 +550,15 @@ impl Node {
                     "No se paso metadata necesaria".to_string(),
                 )),
             },
-            DdlStatement::AlterTableStatement(_alter_table) => todo!(),
-            DdlStatement::DropTableStatement(_drop_table) => todo!(),
-            DdlStatement::TruncateStatement(_truncate) => todo!(),
+            DdlStatement::AlterTableStatement(_alter_table) => Err(Error::Invalid(
+                "Alter Table Statement no está soportado.".to_string(),
+            )),
+            DdlStatement::DropTableStatement(_drop_table) => Err(Error::Invalid(
+                "Drop Table Statement no está soportado.".to_string(),
+            )),
+            DdlStatement::TruncateStatement(_truncate) => Err(Error::Invalid(
+                "Truncate Statement no está soportado.".to_string(),
+            )),
         }
     }
 
@@ -686,7 +692,9 @@ impl Node {
                 self.process_update(&update, timestamp, node_number)
             }
             DmlStatement::DeleteStatement(delete) => self.process_delete(&delete, node_number),
-            DmlStatement::BatchStatement(_batch) => todo!(),
+            DmlStatement::BatchStatement(_batch) => Err(Error::Invalid(
+                "Batch Statement no está soportado.".to_string(),
+            )),
         }
     }
 

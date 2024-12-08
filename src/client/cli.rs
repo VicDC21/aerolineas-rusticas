@@ -430,8 +430,8 @@ impl Client {
     }
 
     fn handle_ready(&self) -> Result<ProtocolResult> {
-        Err(Error::ConfigError(
-            "Esta funcionalidad aun no es valida".to_string(),
+        Err(Error::Invalid(
+            "La funcionalidad Ready no está soportada.".to_string(),
         ))
     }
 
@@ -440,8 +440,8 @@ impl Client {
     }
 
     fn handle_supported(&self) -> Result<ProtocolResult> {
-        Err(Error::ConfigError(
-            "Esta funcionalidad aun no es valida".to_string(),
+        Err(Error::Invalid(
+            "La funcionalidad Supported no está soportada.".to_string(),
         ))
     }
 
@@ -450,20 +450,24 @@ impl Client {
             ResultKind::Void => Ok(ProtocolResult::Void),
             ResultKind::Rows => self.deserialize_rows(lenght, &request[13..]),
             ResultKind::SetKeyspace => self.set_keyspace(lenght, &request[13..]),
-            ResultKind::Prepared => todo!(),
-            ResultKind::SchemaChange => todo!(),
+            ResultKind::Prepared => Err(Error::Invalid(
+                "No se soporta la respuesta de tipo Prepared.".to_string(),
+            )),
+            ResultKind::SchemaChange => Err(Error::Invalid(
+                "No se soporta la respuesta de tipo SchemaChange.".to_string(),
+            )),
         }
     }
 
     fn handle_event(&self) -> Result<ProtocolResult> {
-        Err(Error::ConfigError(
-            "Esta funcionalidad aun no es valida".to_string(),
+        Err(Error::Invalid(
+            "La funcionalidad Event no está soportada.".to_string(),
         ))
     }
 
     fn handle_auth_challenge(&self) -> Result<ProtocolResult> {
-        Err(Error::ConfigError(
-            "Esta funcionalidad aun no es valida".to_string(),
+        Err(Error::Invalid(
+            "La funcionalidad AuthChallenge no está soportada.".to_string(),
         ))
     }
 

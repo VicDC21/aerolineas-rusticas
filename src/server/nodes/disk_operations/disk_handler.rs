@@ -699,9 +699,10 @@ impl DiskHandler {
                     } else if term1.get_value() == "class"
                         && term2.get_value() == "NetworkTopologyStrategy"
                     {
-                        // TODO: Aca estaria el caso de NetworkTopologyStrategy
-                        // UPDATE: No es necesario implementar NetworkTopologyStrategy
-                        todo!()
+                        // No es necesario implementar NetworkTopologyStrategy
+                        return Err(Error::Invalid(
+                            "La replicación NetworkTopologyStrategy no está soportada.".to_string(),
+                        ));
                     }
                 }
                 _ => break,
