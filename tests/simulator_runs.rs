@@ -8,9 +8,9 @@ use aerolineas_rusticas::{
     client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
     data::{
         flights::{states::FlightState, types::FlightType},
+        login_info::LoginInfo,
         tracking::live_flight_data::LiveFlightData,
     },
-    interface::data::login_info::LoginInfo,
     simulator::flight_simulator::FlightSimulator,
 };
 use common::{clean_nodes, init_graph_parsing};
@@ -56,7 +56,7 @@ fn test_1_simple_flight_adding() {
                 }
                 assert!(select_res.is_ok());
 
-                if let Ok(protocol_res) = select_res {
+                if let Ok((protocol_res, _)) = select_res {
                     assert!(matches!(&protocol_res, ProtocolResult::Rows(_)));
                     let live_data_res = LiveFlightData::try_from_protocol_result(
                         protocol_res.clone(),

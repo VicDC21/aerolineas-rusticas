@@ -342,7 +342,7 @@ impl Client {
                     let mut new_tls =
                         self.create_tls_connection(get_client_connection()?, self.connect()?)?;
                     self.login(self.login_info.to_owned(), &mut new_tls)?;
-                    tls_opt.insert(new_tls);
+                    tls_opt = Some(new_tls);
                 }
                 Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
             }
