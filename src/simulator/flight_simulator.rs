@@ -387,7 +387,7 @@ impl FlightSimulator {
             dest_coords.0,
             dest_coords.1,
         );
-        (total_distance, flight.fuel * 10.0 / total_distance)
+        (total_distance, flight.fuel * (FLIGHT_LIMIT_SECS as Double) / total_distance)
     }
 
     fn update_flight_position(

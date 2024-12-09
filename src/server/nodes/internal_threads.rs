@@ -10,7 +10,7 @@ use std::{
     io::{BufRead, BufReader, Read},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
-        mpsc::{channel, Sender},
+        mpsc::{self, channel, Sender},
         Arc, Mutex,
     },
     thread::{self, sleep, Builder},
@@ -103,24 +103,60 @@ fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Resul
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
-    let exit = false;
+
+    let (shutdown_tx, shutdown_rx): (Sender<()>, mpsc::Receiver<()>) = mpsc::channel();
+    let shutdown_rx = Arc::new(Mutex::new(shutdown_rx));
+
+    let mut thread_handles = Vec::new();
+
     for tcp_stream_res in listener.incoming() {
+        if let Ok(shutdown_rx) = shutdown_rx.try_lock() {
+            if shutdown_rx.try_recv().is_ok() {
+                break;
+            }
+        }
+
         match tcp_stream_res {
             Err(_) => return tcp_stream_error(&PortType::Cli, &socket, &addr_loader),
             Ok(tcp_stream) => {
                 let config = Arc::clone(&server_config);
                 let session_handler = session_handler.clone();
-                let arc_exit = Arc::new(Mutex::new(exit));
-                println!("Se conectan a este nodo");
-                thread::spawn(move || {
-                    listen_single_client(config, tcp_stream, arc_exit, session_handler)
+                let thread_shutdown_rx = Arc::clone(&shutdown_rx);
+                let handle = thread::spawn(move || loop {
+                    if let Ok(rx) = thread_shutdown_rx.lock() {
+                        if rx.try_recv().is_ok() {
+                            break;
+                        }
+                    }
+
+                    let tcp_stream = match tcp_stream.try_clone() {
+                        Ok(stream) => stream,
+                        Err(_) => break,
+                    };
+
+                    let result = listen_single_client(
+                        config.clone(),
+                        tcp_stream,
+                        Arc::new(Mutex::new(false)),
+                        session_handler.clone(),
+                    );
+
+                    if result.is_err() {
+                        break;
+                    }
                 });
+                thread_handles.push(handle);
             }
         };
-        if exit {
-            break;
+    }
+
+    drop(shutdown_tx);
+    for handle in thread_handles {
+        if let Err(err) = handle.join() {
+            eprintln!("Error en el join de los threads: {:?}", err);
         }
     }
+
     Ok(())
 }
 
