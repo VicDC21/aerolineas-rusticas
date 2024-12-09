@@ -18,8 +18,8 @@ pub struct ConnectionHolder {
 
 impl ConnectionHolder {
     /// Crea una nueva instancia a partir de un cliente.
-    pub fn with_cli(mut client: Client) -> Result<Self> {
-        client.set_consistency_level("Quorum")?;
+    pub fn with_cli(mut client: Client, consistency_lvl: &str) -> Result<Self> {
+        client.set_consistency_level(consistency_lvl)?;
         let cli_con = get_client_connection()?;
         let tcp_stream = client.connect()?;
         let tls_stream = client.create_tls_connection(cli_con, tcp_stream)?;
