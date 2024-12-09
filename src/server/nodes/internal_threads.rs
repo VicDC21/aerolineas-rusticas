@@ -44,6 +44,8 @@ const HEARTBEAT_SLEEP_MILLIS: u64 = 1000;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _gossip_.
 const GOSSIP_SLEEP_MILLIS: u64 = 450;
 
+/// El número de hilos para el [ThreadPool].
+///
 /// Crea los _handlers_ que escuchan por conexiones entrantes.
 ///
 /// <div class="warning">

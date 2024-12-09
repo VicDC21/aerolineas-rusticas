@@ -250,12 +250,11 @@ impl Client {
             Ok(statement) => {
                 let frame = self.prepare_request_to_send(statement, stream_id, query)?;
                 let mut last_error = None;
-                for retry in 0..=MAX_RETRIES {
+                for _ in 0..=MAX_RETRIES {
                     match self.write_to_server(tls_opt, &frame, tls_stream) {
                         Ok(value) => return Ok(value),
                         Err(e) => last_error = Some(e),
                     };
-                    show_connection_error(&last_error, retry);
                     // A este punto sabemos que el TLS Stream algo tiene, hay que cambiarlo
                     let mut new_tls =
                         self.create_tls_connection(get_client_connection()?, self.connect()?)?;
@@ -694,24 +693,6 @@ impl Client {
         response.splice(5..9, length.to_be_bytes());
 
         Ok(response)
-    }
-}
-
-fn show_connection_error(last_error: &Option<Error>, retry: u32) {
-    if let Some(last_err) = last_error {
-        println!(
-            "Ocurrió un error.{}\n\n{}",
-            if retry < MAX_RETRIES {
-                format!(
-                    " Quedan {} intento{}:",
-                    MAX_RETRIES - retry,
-                    if (MAX_RETRIES - retry) == 1 { "" } else { "s" }
-                )
-            } else {
-                " No quedan intentos:".to_string()
-            },
-            last_err,
-        );
     }
 }
 
