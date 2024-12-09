@@ -8,11 +8,14 @@ use std::{
     path::PathBuf,
 };
 
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-};
 use crate::server::nodes::{addr::loader::AddrLoader, node::NodeId, port_type::PortType};
+use crate::{
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+    },
+    server::utils::printable_bytes,
+};
 
 /// La ruta de _queries_ iniciales.
 const INIT_QUERIES_PATH: &str = "scripts/init";
@@ -86,7 +89,11 @@ pub fn send_to_node_and_wait_response_with_timeout(
             )));
         }
     };
-    println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
+    println!(
+        "Le escribe al nodo: {} la data: {}",
+        id,
+        printable_bytes(&bytes)
+    );
 
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
@@ -114,11 +121,12 @@ pub fn send_to_node_and_wait_response_with_timeout(
             }
             Err(err) => println!("Error recibiendo response del nodo {}:\n\n{}", id, err),
             Ok(i) => {
-                print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
-                for byte in &buf[..] {
-                    print!("{:#X} ", byte);
-                }
-                println!("]");
+                println!(
+                    "Se recibió del nodo [{}] {} bytes: {}",
+                    id,
+                    i,
+                    printable_bytes(&buf)
+                );
             }
         }
     }

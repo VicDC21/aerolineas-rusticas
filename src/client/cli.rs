@@ -6,7 +6,7 @@ use std::{
     net::{SocketAddr, TcpStream},
     str::FromStr,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -322,15 +322,56 @@ impl Client {
         }
     }
 
+    /// Lee N _bytes_ del stream.
+    pub fn read_n_bytes(
+        &mut self,
+        n_bytes: usize,
+        tls_stream: &mut TlsStream,
+        check_empty: bool,
+    ) -> Result<Vec<Byte>> {
+        let mut bytes = Vec::new();
+        let mut buffer = vec![0; 8192];
+
+        // Establecer un deadline absoluto
+        let deadline = Instant::now() + Duration::from_secs(5);
+        // Primero leer el header completo
+        while bytes.len() < n_bytes {
+            if Instant::now() > deadline {
+                return Err(Error::ServerError("Timeout al leer header".into()));
+            }
+
+            match tls_stream.read(&mut buffer) {
+                Ok(0) => {
+                    if check_empty && bytes.is_empty() {
+                        return Err(Error::ServerError(
+                            "Conexión cerrada por el servidor".into(),
+                        ));
+                    }
+                    break;
+                }
+                Ok(n) => {
+                    bytes.extend_from_slice(&buffer[..n]);
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+                Err(e) => return Err(Error::ServerError(format!("Error de lectura: {}", e))),
+            }
+        }
+
+        Ok(bytes)
+    }
+
     fn read_complete_response(&mut self, tls_stream: &mut TlsStream) -> Result<ProtocolResult> {
         let mut response = Vec::new();
         let mut buffer = vec![0; 8192];
 
         // Establecer un deadline absoluto
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(5);
         // Primero leer el header completo
         while response.len() < HEADER_SIZE {
-            if std::time::Instant::now() > deadline {
+            if Instant::now() > deadline {
                 return Err(Error::ServerError("Timeout al leer header".into()));
             }
             // println!("Response: {:?}", response);
