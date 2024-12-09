@@ -244,11 +244,11 @@ impl FlightSimulator {
         let timestamp = Self::get_current_timestamp()?;
 
         let incoming_query = format!(
-            "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible, duracion) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {}, {});",
+            "INSERT INTO vuelos_entrantes_en_vivo (id, orig, dest, llegada, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible, duracion) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {:.2}, {:.2});",
             flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state, flight.get_spd(), flight.altitude_ft, fuel, elapsed);
 
         let departing_query = format!(
-            "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible, duracion) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {}, {});",
+            "INSERT INTO vuelos_salientes_en_vivo (id, orig, dest, salida, pos_lat, pos_lon, estado, velocidad, altitud, nivel_combustible, duracion) VALUES ({}, '{}', '{}', {}, {}, {}, '{}', {}, {}, {:.2}, {:.2});",
             flight.flight_id, flight.orig, flight.dest, timestamp, flight.lat(), flight.lon(), flight.state, flight.get_spd(), flight.altitude_ft, fuel, elapsed);
 
         Self::send_insert_query(&incoming_query, client, tls_stream)?;
@@ -387,7 +387,7 @@ impl FlightSimulator {
             dest_coords.0,
             dest_coords.1,
         );
-        (total_distance, flight.fuel * (FLIGHT_LIMIT_SECS as Double) / total_distance)
+        (total_distance, (1.0 / FLIGHT_LIMIT_SECS as Double))
     }
 
     fn update_flight_position(
