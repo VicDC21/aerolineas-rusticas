@@ -158,7 +158,7 @@ impl FlightsLoader {
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
             let airport_stop = Airport::dummy();
-            let mut con_info = ConnectionHolder::with_cli(Client::default())?;
+            let mut con_info = ConnectionHolder::with_cli(Client::default(), "QUORUM")?;
 
             loop {
                 match date_receiver.recv() {
@@ -222,7 +222,7 @@ impl FlightsLoader {
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
             let airport_stop = Airport::dummy();
-            let mut con_info = ConnectionHolder::with_cli(Client::default())?;
+            let mut con_info = ConnectionHolder::with_cli(Client::default(), "ONE")?;
 
             loop {
                 match date_receiver.recv() {
@@ -435,14 +435,13 @@ impl FlightsLoader {
                 airport.ident
             ),
         };
+
         let mut flights_by_id = LiveDataMap::new();
         let (protocol_result, mut new_tls_opt) =
             client.send_query(query.as_str(), &mut con_info.tls_stream)?;
         if let Some(new_tls) = new_tls_opt.take() {
             con_info.tls_stream = new_tls;
         }
-        println!("La query a mandar es {}", query);
-        println!("Se obtienen los vuelos en vivo {:?}", protocol_result);
 
         let live_data = LiveFlightData::try_from_protocol_result(protocol_result, flight_type)?;
         for data in live_data {

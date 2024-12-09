@@ -8,7 +8,6 @@ use std::{
 
 use chrono::Utc;
 
-use crate::client::cql_frame::query_body::QueryBody;
 use crate::parser::{
     data_types::keyspace_name::KeyspaceName,
     main_parser::make_parse,
@@ -40,6 +39,7 @@ use crate::protocol::{
 };
 use crate::server::modes::ConnectionMode;
 use crate::tokenizer::tokenizer::tokenize_query;
+use crate::{client::cql_frame::query_body::QueryBody, server::utils::printable_bytes};
 
 use super::{
     actions::opcode::{GossipInfo, SvAction},
@@ -245,11 +245,7 @@ impl SessionHandler {
         drop(node_reader);
         match mode {
             ConnectionMode::Echo => {
-                let printable_bytes = bytes
-                    .iter()
-                    .map(|b| format!("{:#X}", b))
-                    .collect::<Vec<String>>();
-                println!("[{} - ECHO] {}", self.id, printable_bytes.join(" "));
+                println!("[{} - ECHO] {}", self.id, printable_bytes(&bytes));
                 if let Err(err) = stream.write_all(&bytes) {
                     println!("Error al escribir en el TCPStream:\n\n{}", err);
                 }

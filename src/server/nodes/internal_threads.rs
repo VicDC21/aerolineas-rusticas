@@ -45,7 +45,7 @@ const HEARTBEAT_SLEEP_MILLIS: u64 = 1000;
 const GOSSIP_SLEEP_MILLIS: u64 = 350;
 
 /// El número de hilos para el [ThreadPool].
-
+///
 /// Crea los _handlers_ que escuchan por conexiones entrantes.
 ///
 /// <div class="warning">
@@ -171,6 +171,7 @@ fn listen_single_client(
             Ok(value) => value,
             Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string())),
         };
+
         buffer.truncate(size);
         if is_exit(&buffer[..]) {
             match arc_exit.lock() {

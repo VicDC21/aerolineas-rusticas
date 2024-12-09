@@ -11,6 +11,7 @@ use crate::{
         traits::PrettyShow,
     },
     interface::utils::send_client_query,
+    protocol::aliases::results::Result,
 };
 
 /// Editor para modificar detalles de un vuelo en curso y sus datos en vivo.
@@ -49,6 +50,17 @@ impl FlightEditorWindow {
         }
     }
 
+    /// Manda queries tanto a los vuelos entrantes como los salientes.
+    fn inc_dep_queries(
+        con_info: &mut ConnectionHolder,
+        inc_query: &str,
+        dep_query: &str,
+    ) -> Result<()> {
+        send_client_query(con_info, inc_query)?;
+        send_client_query(con_info, dep_query)?;
+        Ok(())
+    }
+
     /// Muestra la ventana del editor.
     pub fn show(
         &mut self,
@@ -62,10 +74,6 @@ impl FlightEditorWindow {
 
         if let Some(flight) = &self.held_flight {
             let text_color = Color32::from_rgb(200, 200, 200);
-            let table = match flight.flight_type {
-                FlightType::Incoming => "vuelos_entrantes",
-                FlightType::Departing => "vuelos_salientes",
-            };
 
             Window::new(format!("Flight {}", flight.id))
                 .collapsible(false)
@@ -97,11 +105,16 @@ impl FlightEditorWindow {
                         if hor_ui.text_edit_singleline(&mut self.orig).lost_focus()
                             && hor_ui.input(|i| i.key_pressed(Key::Enter))
                         {
-                            if let Err(err) = send_client_query(
+                            if let Err(err) = Self::inc_dep_queries(
                                 con_info,
                                 format!(
-                                    "UPDATE {} SET orig = '{}' WHERE id = {};",
-                                    table, self.orig, flight.id,
+                                    "UPDATE vuelos_entrantes SET orig = '{}' WHERE id = {};",
+                                    self.orig, flight.id,
+                                )
+                                .as_str(),
+                                format!(
+                                    "UPDATE vuelos_salientes SET orig = '{}' WHERE id = {};",
+                                    self.orig, flight.id,
                                 )
                                 .as_str(),
                             ) {
@@ -121,11 +134,16 @@ impl FlightEditorWindow {
                         if hor_ui.text_edit_singleline(&mut self.dest).lost_focus()
                             && hor_ui.input(|i| i.key_pressed(Key::Enter))
                         {
-                            if let Err(err) = send_client_query(
+                            if let Err(err) = Self::inc_dep_queries(
                                 con_info,
                                 format!(
-                                    "UPDATE {} SET dest = '{}' WHERE id = {};",
-                                    table, self.dest, flight.id,
+                                    "UPDATE vuelos_entrantes SET dest = '{}' WHERE id = {};",
+                                    self.dest, flight.id,
+                                )
+                                .as_str(),
+                                format!(
+                                    "UPDATE vuelos_salientes SET dest = '{}' WHERE id = {};",
+                                    self.dest, flight.id,
                                 )
                                 .as_str(),
                             ) {
@@ -159,11 +177,17 @@ impl FlightEditorWindow {
                                 FlightType::Incoming => "llegada",
                                 FlightType::Departing => "salida",
                             };
-                            if let Err(err) = send_client_query(
+                            if let Err(err) = Self::inc_dep_queries(
                                 con_info,
                                 format!(
-                                    "UPDATE {} SET {} = {} WHERE id = {};",
-                                    table,
+                                    "UPDATE vuelos_entrantes SET {} = {} WHERE id = {};",
+                                    timestamp_col,
+                                    local_date.timestamp(),
+                                    flight.id,
+                                )
+                                .as_str(),
+                                format!(
+                                    "UPDATE vuelos_salientes SET {} = {} WHERE id = {};",
                                     timestamp_col,
                                     local_date.timestamp(),
                                     flight.id,
@@ -214,11 +238,16 @@ impl FlightEditorWindow {
                                 );
                             });
                         if self.state != flight.state {
-                            if let Err(err) = send_client_query(
+                            if let Err(err) = Self::inc_dep_queries(
                                 con_info,
                                 format!(
-                                    "UPDATE {} SET estado = '{}' WHERE id = {};",
-                                    table, self.state, flight.id,
+                                    "UPDATE vuelos_entrantes SET estado = '{}' WHERE id = {};",
+                                    self.state, flight.id,
+                                )
+                                .as_str(),
+                                format!(
+                                    "UPDATE vuelos_salientes SET estado = '{}' WHERE id = {};",
+                                    self.state, flight.id,
                                 )
                                 .as_str(),
                             ) {

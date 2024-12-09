@@ -75,7 +75,7 @@ impl AerolineasApp {
         let mut mem = MapMemory::default();
         let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
 
-        let con_info = ConnectionHolder::with_cli(Client::default()).unwrap();
+        let con_info = ConnectionHolder::with_cli(Client::default(), "QUORUM").unwrap();
 
         Self {
             con_info,
