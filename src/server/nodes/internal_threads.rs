@@ -42,7 +42,7 @@ const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _heartbeat_.
 const HEARTBEAT_SLEEP_MILLIS: u64 = 1000;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _gossip_.
-const GOSSIP_SLEEP_MILLIS: u64 = 450;
+const GOSSIP_SLEEP_MILLIS: u64 = 350;
 
 /// El número de hilos para el [ThreadPool].
 

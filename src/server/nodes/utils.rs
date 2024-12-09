@@ -86,7 +86,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
             )));
         }
     };
-    println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
+    // println!("Le escribe al nodo: {} la data: {:?}", id, bytes);
 
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
@@ -113,12 +113,12 @@ pub fn send_to_node_and_wait_response_with_timeout(
                 println!("Timeout alcanzado al esperar respuesta del nodo {}", id);
             }
             Err(err) => println!("Error recibiendo response del nodo {}:\n\n{}", id, err),
-            Ok(i) => {
-                print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
-                for byte in &buf[..] {
-                    print!("{:#X} ", byte);
-                }
-                println!("]");
+            Ok(_i) => {
+                // print!("Se recibió del nodo [{}] {} bytes: [ ", id, i);
+                // for byte in &buf[..] {
+                //     print!("{:#X} ", byte);
+                // }
+                // println!("]");
             }
         }
     }

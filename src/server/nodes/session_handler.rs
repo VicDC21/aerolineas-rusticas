@@ -408,7 +408,6 @@ impl SessionHandler {
     }
 
     fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
-        println!("Entra a auth_response");
         let req: &[u8] = &request[9..(lenght.len as usize) + 9];
         let node_reader = self.read()?;
         let users = DiskHandler::read_admitted_users(&node_reader.storage_addr)?;
@@ -982,8 +981,10 @@ impl SessionHandler {
         let first_hashed_value = hash_value(response_from_first_responsive_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
         let nodes_ids = Node::get_nodes_ids();
+        println!("La consistency empieza siendo {}", consistency_counter);
         let mut node_to_consult = next_node_in_the_cluster(responsive_replica, &nodes_ids);
         for _ in (replicas_asked as u32)..replication_factor_quantity {
+            println!("La consistency actual es {} y el nodo a consultar por consistency es {} por la tabla {}", consistency_counter, node_to_consult, table_name);
             let opcode_with_hashed_value = self
                 .decide_how_to_request_the_digest_read_request(node_to_consult, request, node_id)
                 .unwrap_or_default();
@@ -1004,6 +1005,7 @@ impl SessionHandler {
             }
             node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
         }
+        println!("La consistency termina siendo {}, y se esperaba {}", consistency_counter, consistency_number);
         check_if_read_repair_is_neccesary(
             consistency_counter,
             consistency_number,
@@ -1012,8 +1014,10 @@ impl SessionHandler {
             first_hashed_value,
         );
         if exec_read_repair && self.neighbour_is_responsive(node_id)? {
-            println!("Se ejecuta el read-repair");
-            return self.start_read_repair(node_id, request, consistency_number, table_name);
+            println!("Si se ejecuta el read-repair");
+            return self.start_read_repair(node_id, request, table_name, replication_factor_quantity);
+        }else {
+            println!("No se ejecuta el read-repair");
         };
         Ok(false)
     }
@@ -1039,21 +1043,20 @@ impl SessionHandler {
         &self,
         node_id: u8,
         request: &[Byte],
-        consistency_number: usize,
         table_name: &str,
+        replication_factor_quantity: u32
     ) -> Result<bool> {
         let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![];
         let mut req_with_node_replica = request[9..].to_vec();
         req_with_node_replica.push(node_id);
         let nodes_ids = Node::get_nodes_ids();
         let mut node_to_consult = node_id;
-        // LOCK?
-        // si ejecutamos read-repair deberiamos lockear todo el read-repair aun mientras esperamos la respuesta?
-
-        for _ in 0..consistency_number {
+        for _ in 0..replication_factor_quantity {
             let res = if node_to_consult == self.id {
+                println!("Ejecuta read-repair sobre si mismo, a la tabla {} siendo el nodo {}", table_name, node_to_consult);
                 self.exec_direct_read_request(req_with_node_replica.clone())?
             } else {
+                println!("Ejecuta read-repair al nodo {}, a la tabla {}", node_to_consult, table_name);
                 let extern_response = send_to_node_and_wait_response_with_timeout(
                     node_to_consult,
                     SvAction::DirectReadRequest(req_with_node_replica.clone()).as_bytes(),
@@ -1070,8 +1073,8 @@ impl SessionHandler {
             node_id,
             &nodes_ids,
             table_name,
-            consistency_number,
             ids_and_rows,
+            replication_factor_quantity
         )?;
 
         Ok(true)
@@ -1082,16 +1085,16 @@ impl SessionHandler {
         node_id: NodeId,
         nodes_ids: &[NodeId],
         table_name: &str,
-        consistency_number: usize,
         ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)>,
+        replication_factor_quantity: u32
     ) -> Result<()> {
         let rows_as_string = get_most_recent_rows_as_string(ids_and_rows);
         let mut node_to_repair = node_id;
-        for _ in 0..consistency_number {
+        for _ in 0..replication_factor_quantity {
             if node_to_repair == self.id {
+                println!("Ejecuta read-repair sobre si mismo, a la tabla {} siendo el nodo {}", table_name, node_to_repair);
                 let node_writer = self.write()?;
                 let table = node_writer.get_table(table_name)?;
-                // LOCKEAR NODO
                 DiskHandler::repair_rows(
                     &node_writer.storage_addr,
                     table_name,
@@ -1107,6 +1110,7 @@ impl SessionHandler {
                     rows_as_string.as_bytes().to_vec(),
                 )
                 .as_bytes();
+                println!("Ejecuta read-repair al nodo {}, a la tabla {}", node_to_repair, table_name);
                 send_to_node_and_wait_response_with_timeout(
                     node_to_repair,
                     sv_action,
