@@ -158,7 +158,7 @@ impl FlightsLoader {
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
             let airport_stop = Airport::dummy();
-            let mut con_info = ConnectionHolder::with_cli(Client::default())?;
+            let mut con_info = ConnectionHolder::with_cli(Client::default(), "QUORUM")?;
 
             loop {
                 match date_receiver.recv() {
@@ -222,7 +222,7 @@ impl FlightsLoader {
         let date_handle = spawn(move || {
             let stop_value: Long = 0;
             let airport_stop = Airport::dummy();
-            let mut con_info = ConnectionHolder::with_cli(Client::default())?;
+            let mut con_info = ConnectionHolder::with_cli(Client::default(), "ONE")?;
 
             loop {
                 match date_receiver.recv() {

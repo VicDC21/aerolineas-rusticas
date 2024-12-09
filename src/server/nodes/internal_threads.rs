@@ -171,6 +171,7 @@ fn listen_single_client(
             Ok(value) => value,
             Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string())),
         };
+
         buffer.truncate(size);
         if is_exit(&buffer[..]) {
             match arc_exit.lock() {
