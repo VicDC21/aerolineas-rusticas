@@ -350,9 +350,6 @@ impl DiskHandler {
         let table_ops = TableOperations::new(path)?;
         let query_cols = vec!["*".to_string()];
         let mut rows = table_ops.read_rows(false)?;
-        if let Some(the_where) = &statement.options.the_where {
-            rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
-        }
 
         if let Some(order) = &statement.options.order_by {
             order.order(&mut rows, &table_ops.columns);

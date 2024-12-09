@@ -374,7 +374,6 @@ impl Client {
             if Instant::now() > deadline {
                 return Err(Error::ServerError("Timeout al leer header".into()));
             }
-            // println!("Response: {:?}", response);
             match tls_stream.read(&mut buffer) {
                 Ok(0) => {
                     if response.is_empty() {

@@ -42,7 +42,7 @@ const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _heartbeat_.
 const HEARTBEAT_SLEEP_MILLIS: u64 = 1000;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _gossip_.
-const GOSSIP_SLEEP_MILLIS: u64 = 450;
+const GOSSIP_SLEEP_MILLIS: u64 = 350;
 
 /// El número de hilos para el [ThreadPool].
 ///
@@ -190,19 +190,6 @@ fn listen_single_client(
     }
     Ok(())
 }
-
-// fn get_node_mutex(node: &mut Arc<Mutex<Node>>) -> Result<MutexGuard<'static, Node>>{
-//     match node.lock() {
-//         Ok(mut locked_in) => {
-//             Ok(locked_in)
-//         }
-//         Err(poison_err) => {
-//             println!("Error de lock envenenado:\n\n{}", poison_err);
-//             node.clear_poison();
-//             Err(Error::ServerError(format!("Error de lock envenenado:\n\n{}", poison_err)))
-//         }
-//     }
-// }
 
 fn configure_tls() -> Result<Arc<ServerConfig>> {
     let private_key_file = "custom.key";

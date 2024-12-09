@@ -105,12 +105,6 @@ impl SessionHandler {
         match self.lock.read() {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
-                /*let err = Err(Error::ServerError(format!(
-                    "Lock envenenado desde nodo con ID {} para lectura: {}",
-                    self.id, &poisoned
-                )));
-                let _unused: std::sync::RwLockWriteGuard<'_, Node> = poisoned.into_inner();
-                err*/
                 println!(
                     "Lock envenenado detectado desde el nodo con ID {} para lectura: {}",
                     self.id, &poisoned
@@ -141,7 +135,6 @@ impl SessionHandler {
         if bytes.is_empty() {
             return Ok(vec![]);
         }
-        //println!("Esta en process_tcp");
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
                 if let Err(err) = self.handle_sv_action(action, stream) {
@@ -286,7 +279,6 @@ impl SessionHandler {
         if request.len() < 9 {
             return Vec::<Byte>::new();
         }
-        // println!("La request es {:?}", request);
         let header = match Headers::try_from(&request[..9]) {
             Ok(header) => header,
             Err(err) => return make_error_response(err),
@@ -404,7 +396,6 @@ impl SessionHandler {
     }
 
     fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
-        println!("Entra a auth_response");
         let req: &[u8] = &request[9..(lenght.len as usize) + 9];
         let node_reader = self.read()?;
         let users = DiskHandler::read_admitted_users(&node_reader.storage_addr)?;
@@ -431,7 +422,6 @@ impl SessionHandler {
                         .users_default_keyspace_name
                         .insert(user.0.to_string(), "".to_string());
                 }
-                println!("Inicio de sesión con éxito.");
                 return Ok(response);
             }
         }
@@ -979,6 +969,7 @@ impl SessionHandler {
         let mut responses: Vec<Vec<Byte>> = Vec::new();
         let nodes_ids = Node::get_nodes_ids();
         let mut node_to_consult = next_node_in_the_cluster(responsive_replica, &nodes_ids);
+        let mut inconsistent_digest_request = false;
         for _ in (replicas_asked as u32)..replication_factor_quantity {
             let opcode_with_hashed_value = self
                 .decide_how_to_request_the_digest_read_request(node_to_consult, request, node_id)
@@ -994,6 +985,7 @@ impl SessionHandler {
                 res_hashed_value,
                 consistency_counter,
                 &mut responses,
+                &mut inconsistent_digest_request,
             )?;
             if *consistency_counter >= consistency_number {
                 break;
@@ -1006,11 +998,16 @@ impl SessionHandler {
             &mut exec_read_repair,
             responses,
             first_hashed_value,
+            inconsistent_digest_request,
         );
         if exec_read_repair && self.neighbour_is_responsive(node_id)? {
-            println!("Se ejecuta el read-repair");
-            return self.start_read_repair(node_id, request, consistency_number, table_name);
-        };
+            return self.start_read_repair(
+                node_id,
+                request,
+                table_name,
+                replication_factor_quantity,
+            );
+        }
         Ok(false)
     }
 
@@ -1021,12 +1018,15 @@ impl SessionHandler {
         res_hashed_value: u64,
         consistency_counter: &mut usize,
         responses: &mut Vec<Vec<u8>>,
+        inconsistent_digest_request: &mut bool,
     ) -> Result<()> {
         if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result
             && first_hashed_value == res_hashed_value
         {
             *consistency_counter += 1;
             responses.push(opcode_with_hashed_value[1..].to_vec());
+        } else {
+            *inconsistent_digest_request = true
         };
         Ok(())
     }
@@ -1035,18 +1035,15 @@ impl SessionHandler {
         &self,
         node_id: u8,
         request: &[Byte],
-        consistency_number: usize,
         table_name: &str,
+        replication_factor_quantity: u32,
     ) -> Result<bool> {
-        let mut ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)> = vec![];
+        let mut rows_of_nodes: Vec<Vec<Vec<String>>> = vec![];
         let mut req_with_node_replica = request[9..].to_vec();
         req_with_node_replica.push(node_id);
         let nodes_ids = Node::get_nodes_ids();
         let mut node_to_consult = node_id;
-        // LOCK?
-        // si ejecutamos read-repair deberiamos lockear todo el read-repair aun mientras esperamos la respuesta?
-
-        for _ in 0..consistency_number {
+        for _ in 0..replication_factor_quantity {
             let res = if node_to_consult == self.id {
                 self.exec_direct_read_request(req_with_node_replica.clone())?
             } else {
@@ -1059,15 +1056,15 @@ impl SessionHandler {
                 )?;
                 create_utf8_string_from_bytes(extern_response)?
             };
-            add_rows_with_his_node(res, &mut ids_and_rows, node_to_consult);
+            add_rows(res, &mut rows_of_nodes);
             node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
         }
         self.execute_read_repair(
             node_id,
             &nodes_ids,
             table_name,
-            consistency_number,
-            ids_and_rows,
+            rows_of_nodes,
+            replication_factor_quantity,
         )?;
 
         Ok(true)
@@ -1075,31 +1072,30 @@ impl SessionHandler {
 
     fn execute_read_repair(
         &self,
-        node_id: NodeId,
+        replica_to_repair: NodeId,
         nodes_ids: &[NodeId],
         table_name: &str,
-        consistency_number: usize,
-        ids_and_rows: Vec<(NodeId, Vec<Vec<String>>)>,
+        rows_of_nodes: Vec<Vec<Vec<String>>>,
+        replication_factor_quantity: u32,
     ) -> Result<()> {
-        let rows_as_string = get_most_recent_rows_as_string(ids_and_rows);
-        let mut node_to_repair = node_id;
-        for _ in 0..consistency_number {
+        let rows_as_string = self.get_most_recent_rows_as_string(rows_of_nodes, table_name)?;
+        let mut node_to_repair = replica_to_repair;
+        for _ in 0..replication_factor_quantity {
             if node_to_repair == self.id {
                 let node_writer = self.write()?;
                 let table = node_writer.get_table(table_name)?;
-                // LOCKEAR NODO
                 DiskHandler::repair_rows(
                     &node_writer.storage_addr,
                     table_name,
                     table.get_keyspace(),
                     &node_writer.default_keyspace_name,
-                    node_to_repair,
+                    replica_to_repair,
                     &rows_as_string,
                 )?;
             } else {
                 let sv_action = SvAction::RepairRows(
                     table_name.to_string(),
-                    node_id,
+                    replica_to_repair,
                     rows_as_string.as_bytes().to_vec(),
                 )
                 .as_bytes();
@@ -1126,7 +1122,6 @@ impl SessionHandler {
         request: &[Byte],
         consistency_level: &Consistency,
     ) -> Result<Vec<Byte>> {
-        println!("Empieza una ronda de insert");
         let timestamp = Utc::now().timestamp();
         let table_name: String = insert.table.get_name();
         // let partitions_keys_to_nodes = self.get_partition_keys_values(&table_name)?.clone();
@@ -1569,7 +1564,6 @@ impl SessionHandler {
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
-        //println!("Intenta escribir");
         if node_reader.neighbours_states.len() == N_NODES as usize
             && *node_reader.endpoint_state.get_appstate_status() != AppStatus::Normal
         {
@@ -1840,6 +1834,82 @@ impl SessionHandler {
         results_from_another_nodes[5..9].copy_from_slice(&final_length.to_be_bytes());
         Ok(())
     }
+
+    fn get_most_recent_rows_as_string(
+        &self,
+        rows_of_nodes: Vec<Vec<Vec<String>>>,
+        table_name: &str,
+    ) -> Result<String> {
+        let node_reader = self.read()?;
+        let table = node_reader.get_table(table_name)?;
+        let primary_key_columns = table.get_position_of_primary_key()?;
+        drop(node_reader);
+        let mut merged_map: HashMap<Vec<String>, Vec<String>> = HashMap::new();
+        for rows in rows_of_nodes {
+            for row in rows {
+                // Asegúrate de que la fila tenga suficientes columnas
+                if primary_key_columns.iter().any(|&idx| idx >= row.len()) || row.is_empty() {
+                    continue;
+                }
+                // Crear la clave dinámica
+                let key: Vec<String> = primary_key_columns
+                    .iter()
+                    .map(|&idx| row[idx].clone())
+                    .collect();
+                let timestamp = &row[row.len() - 1]; // Última columna como timestamp
+
+                // Revisar si ya existe una entrada en el mapa
+                match merged_map.get(&key) {
+                    Some(existing_row) => {
+                        let existing_timestamp = &existing_row[existing_row.len() - 1];
+                        // Actualizar si el timestamp actual es más reciente
+                        if timestamp > existing_timestamp {
+                            merged_map.insert(key, row.clone());
+                        }
+                    }
+                    None => {
+                        // Insertar nueva entrada
+                        merged_map.insert(key, row.clone());
+                    }
+                }
+            }
+        }
+
+        // Convertir el mapa a un Vec<Vec<String>>
+        let newer_rows: Vec<Vec<String>> = merged_map.into_values().collect();
+        let rows_as_string = newer_rows
+            .iter()
+            .map(|row| row.join(","))
+            .collect::<Vec<String>>()
+            .join("\n");
+        Ok(rows_as_string)
+
+        // let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
+        // let mut newer_rows: Vec<Vec<String>> = Vec::new();
+
+        // for (i,rows) in ids_and_rows.iter().enumerate() {
+        //     for (j, row) in rows.iter().enumerate() {
+        //         if most_recent_timestamps.len() <= j {
+        //             most_recent_timestamps.push((i, row[row.len() - 1].clone()));
+        //         } else {
+        //             let actual_timestamp = row[row.len() - 1].clone();
+        //             if actual_timestamp > most_recent_timestamps[j].1 {
+        //                 most_recent_timestamps[j] = (i, actual_timestamp);
+        //             }
+        //         }
+        //     }
+        // }
+        // for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate() {
+        //     let new_row = &ids_and_rows[actual_timestamp.0][i];
+        //     newer_rows.push(new_row.clone());
+        // }
+        // let rows_as_string = newer_rows
+        //     .iter()
+        //     .map(|row| row.join(","))
+        //     .collect::<Vec<String>>()
+        //     .join("\n");
+        // rows_as_string
+    }
 }
 
 impl Clone for SessionHandler {
@@ -1967,11 +2037,11 @@ fn check_if_read_repair_is_neccesary(
     exec_read_repair: &mut bool,
     responses: Vec<Vec<u8>>,
     first_hashed_value: u64,
+    inconsistent_digest_request: bool,
 ) {
-    if *consistency_counter < consistency_number {
+    if *consistency_counter < consistency_number || inconsistent_digest_request {
         *exec_read_repair = true
-    }
-
+    };
     for hashed_value_vec in responses {
         if hashed_value_vec.len() < 8 {
             *exec_read_repair = true;
@@ -1996,44 +2066,12 @@ fn create_utf8_string_from_bytes(extern_response: Vec<u8>) -> Result<String> {
     })
 }
 
-fn add_rows_with_his_node(
-    res: String,
-    ids_and_rows: &mut Vec<(u8, Vec<Vec<String>>)>,
-    node_to_consult: u8,
-) {
+fn add_rows(res: String, rows_of_nodes: &mut Vec<Vec<Vec<String>>>) {
     let rows: Vec<Vec<String>> = res
         .split("\n")
         .map(|row| row.split(",").map(|col| col.to_string()).collect())
         .collect();
-    ids_and_rows.push((node_to_consult, rows));
-}
-
-fn get_most_recent_rows_as_string(ids_and_rows: Vec<(u8, Vec<Vec<String>>)>) -> String {
-    let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
-    let mut newer_rows: Vec<Vec<String>> = Vec::new();
-
-    for (i, (_node, rows)) in ids_and_rows.iter().enumerate() {
-        for (j, row) in rows.iter().enumerate() {
-            if most_recent_timestamps.len() <= j {
-                most_recent_timestamps.push((i, row[row.len() - 1].clone()));
-            } else {
-                let actual_timestamp = row[row.len() - 1].clone();
-                if actual_timestamp > most_recent_timestamps[j].1 {
-                    most_recent_timestamps[j] = (i, actual_timestamp);
-                }
-            }
-        }
-    }
-    for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate() {
-        let new_row = &ids_and_rows[actual_timestamp.0].1[i];
-        newer_rows.push(new_row.clone());
-    }
-    let rows_as_string = newer_rows
-        .iter()
-        .map(|row| row.join(","))
-        .collect::<Vec<String>>()
-        .join("\n");
-    rows_as_string
+    rows_of_nodes.push(rows);
 }
 
 fn get_partition_key_value_from_insert_statement(insert: &Insert, table: &Table) -> Result<String> {
