@@ -65,7 +65,6 @@ impl Table {
 
     /// Obtiene la posicion de la partition key en relacion a las demas columnas. Aclaracion, asumo que solo hay un partition key, no un vector.
     pub fn get_position_of_partition_key(&self) -> Result<usize> {
-        // let partition_key = ;
         for (index, column) in self.columns.iter().enumerate() {
             if column.get_name() == self.partition_key[0] {
                 return Ok(index);
@@ -75,6 +74,26 @@ impl Table {
             "Las columnas no tienen el partition key".to_string(),
         ))
     }
+
+    /// Obtiene la posicion de todos los valores de la primary key en relacion a las demas columnas.
+    /// Empieza por el partition key y sigue segun como se haya declarado la tabla
+    pub fn get_position_of_primary_key(&self) -> Result<Vec<usize>> {
+        let mut primary_key_values: Vec<String> = Vec::new();
+        // let mut positions: Vec<usize> = Vec::new();
+        let mut columns: Vec<String> = Vec::new();
+        for column_config in &self.columns{
+            columns.push(column_config.get_name());
+        }
+        primary_key_values.push(self.partition_key[0].clone());
+        if let Some(clustering_columns) = &self.clustering_key_and_order{
+            for clus_column in clustering_columns{
+                primary_key_values.push(clus_column.0.clone());
+            }
+        }
+        let res: Vec<usize> = primary_key_values.iter().map(|primary_key_value| {columns.iter().position(|s| s == primary_key_value).unwrap_or(0)}).collect();
+        Ok(res)
+    }
+
 
     /// Obtiene los tipos de datos de las columnas de la tabla.
     pub fn get_columns_data_type(&self) -> Vec<ColumnDataType> {

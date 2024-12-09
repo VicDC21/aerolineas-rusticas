@@ -190,19 +190,6 @@ fn listen_single_client(
     Ok(())
 }
 
-// fn get_node_mutex(node: &mut Arc<Mutex<Node>>) -> Result<MutexGuard<'static, Node>>{
-//     match node.lock() {
-//         Ok(mut locked_in) => {
-//             Ok(locked_in)
-//         }
-//         Err(poison_err) => {
-//             println!("Error de lock envenenado:\n\n{}", poison_err);
-//             node.clear_poison();
-//             Err(Error::ServerError(format!("Error de lock envenenado:\n\n{}", poison_err)))
-//         }
-//     }
-// }
-
 fn configure_tls() -> Result<Arc<ServerConfig>> {
     let private_key_file = "custom.key";
     let certs: Vec<CertificateDer<'_>> = handle_pem_file_iter()?;
