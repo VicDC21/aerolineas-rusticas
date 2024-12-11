@@ -18,7 +18,7 @@ use {
     std::{
         collections::HashMap,
         process::exit,
-        sync::{Arc, Mutex},
+        sync::{Arc, RwLock},
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     },
@@ -39,7 +39,7 @@ struct FlightSimulationParams {
 /// Simulador de vuelos.
 pub struct FlightSimulator {
     airports: Arc<AirportsMap>,
-    flights: Arc<Mutex<HashMap<Int, LiveFlightData>>>,
+    flights: Arc<RwLock<HashMap<Int, LiveFlightData>>>,
     thread_pool: ThreadPool,
     has_to_connect: bool,
 }
@@ -50,7 +50,7 @@ impl FlightSimulator {
         let airports = Airport::get_all()?;
 
         Ok(FlightSimulator {
-            flights: Arc::new(Mutex::new(HashMap::new())),
+            flights: Arc::new(RwLock::new(HashMap::new())),
             thread_pool: ThreadPool::build(max_threads)?,
             airports: Arc::new(airports),
             has_to_connect,
@@ -59,7 +59,7 @@ impl FlightSimulator {
 
     /// Obtiene los datos específicos de un vuelo según el id solicitado.
     pub fn get_flight_data(&self, flight_id: Int) -> Option<LiveFlightData> {
-        match self.flights.lock() {
+        match self.flights.read() {
             Ok(flights) => flights.get(&flight_id).cloned(),
             Err(_) => None,
         }
@@ -67,7 +67,7 @@ impl FlightSimulator {
 
     /// Obtiene datos principales de todos los vuelos cargados al simulador.
     pub fn get_all_flights(&self) -> Vec<LiveFlightData> {
-        match self.flights.lock() {
+        match self.flights.read() {
             Ok(flights) => flights.values().cloned().collect(),
             Err(_) => Vec::new(),
         }
@@ -100,7 +100,7 @@ impl FlightSimulator {
 
         let (flight, _, _) = self.initialize_flight(flight_id, &origin, &destination, avg_spd)?;
 
-        if let Ok(mut flight_map) = self.flights.lock() {
+        if let Ok(mut flight_map) = self.flights.write() {
             flight_map.insert(flight_id, flight);
         }
 
@@ -159,7 +159,7 @@ impl FlightSimulator {
     }
 
     fn simulate_flight(
-        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
+        flights: &Arc<RwLock<HashMap<Int, LiveFlightData>>>,
         mut flight: LiveFlightData,
         dest_coords: (Double, Double),
         dest_elevation: Double,
@@ -221,7 +221,7 @@ impl FlightSimulator {
     }
 
     fn run_flight_simulation(
-        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
+        flights: &Arc<RwLock<HashMap<Int, LiveFlightData>>>,
         flight: &mut LiveFlightData,
         client: &mut Client,
         params: &FlightSimulationParams,
@@ -374,7 +374,7 @@ impl FlightSimulator {
     }
 
     fn prepare_flight(
-        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
+        flights: &Arc<RwLock<HashMap<Int, LiveFlightData>>>,
         flight: &mut LiveFlightData,
         client: &mut Client,
         tls_stream: &mut Option<TlsStream>,
@@ -430,10 +430,10 @@ impl FlightSimulator {
     }
 
     fn update_flight_in_list(
-        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
+        flights: &Arc<RwLock<HashMap<Int, LiveFlightData>>>,
         flight: &mut LiveFlightData,
     ) {
-        if let Ok(mut flight_map) = flights.lock() {
+        if let Ok(mut flight_map) = flights.write() {
             if let Some(existing_flight) = flight_map.get_mut(&flight.flight_id) {
                 existing_flight.set_spd(*flight.get_spd());
                 existing_flight.fuel = flight.fuel;
@@ -449,7 +449,7 @@ impl FlightSimulator {
     }
 
     fn finish_flight(
-        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
+        flights: &Arc<RwLock<HashMap<Int, LiveFlightData>>>,
         flight: &mut LiveFlightData,
         params: &FlightSimulationParams,
         client: &mut Client,
