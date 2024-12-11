@@ -16,6 +16,7 @@ use {
     },
     rand::thread_rng,
     std::{
+        collections::HashMap,
         process::exit,
         sync::{Arc, Mutex},
         thread,
@@ -39,7 +40,7 @@ struct FlightSimulationParams {
 pub struct FlightSimulator {
     /// Aeropuertos disponibles.
     pub airports: Arc<AirportsMap>,
-    flights: Arc<Mutex<Vec<LiveFlightData>>>,
+    flights: Arc<Mutex<HashMap<Int, LiveFlightData>>>,
     thread_pool: ThreadPool,
     has_to_connect: bool,
 }
@@ -50,7 +51,7 @@ impl FlightSimulator {
         let airports = Airport::get_all()?;
 
         Ok(FlightSimulator {
-            flights: Arc::new(Mutex::new(Vec::new())),
+            flights: Arc::new(Mutex::new(HashMap::new())),
             thread_pool: ThreadPool::build(max_threads)?,
             airports: Arc::new(airports),
             has_to_connect,
@@ -60,7 +61,7 @@ impl FlightSimulator {
     /// Obtiene los datos específicos de un vuelo según el id solicitado.
     pub fn get_flight_data(&self, flight_id: Int) -> Option<LiveFlightData> {
         match self.flights.lock() {
-            Ok(flights) => flights.iter().find(|f| f.flight_id == flight_id).cloned(),
+            Ok(flights) => flights.get(&flight_id).cloned(),
             Err(_) => None,
         }
     }
@@ -68,7 +69,7 @@ impl FlightSimulator {
     /// Obtiene datos principales de todos los vuelos cargados al simulador.
     pub fn get_all_flights(&self) -> Vec<LiveFlightData> {
         match self.flights.lock() {
-            Ok(flights) => flights.clone(),
+            Ok(flights) => flights.values().cloned().collect(),
             Err(_) => Vec::new(),
         }
     }
@@ -91,8 +92,8 @@ impl FlightSimulator {
         let (flight, dest_coords, dest_elevation) =
             self.initialize_flight(flight_id, origin, destination, avg_spd)?;
 
-        if let Ok(mut flight_list) = self.flights.lock() {
-            flight_list.push(flight.clone());
+        if let Ok(mut flight_map) = self.flights.lock() {
+            flight_map.insert(flight_id, flight.clone());
         }
 
         let has_to_connect = self.has_to_connect;
@@ -141,7 +142,7 @@ impl FlightSimulator {
     }
 
     fn simulate_flight(
-        flights: Arc<Mutex<Vec<LiveFlightData>>>,
+        flights: Arc<Mutex<HashMap<Int, LiveFlightData>>>,
         mut flight: LiveFlightData,
         dest_coords: (Double, Double),
         dest_elevation: Double,
@@ -203,7 +204,7 @@ impl FlightSimulator {
     }
 
     fn run_flight_simulation(
-        flights: &Arc<Mutex<Vec<LiveFlightData>>>,
+        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
         flight: &mut LiveFlightData,
         client: &mut Client,
         params: &FlightSimulationParams,
@@ -311,11 +312,13 @@ impl FlightSimulator {
         match (
             origin_airport.elevation_ft,
             destination_airport.elevation_ft,
+            origin_airport.iata_code.as_ref(),
+            destination_airport.iata_code.as_ref(),
         ) {
-            (Some(origin_elevation), Some(dest_elevation)) => {
+            (Some(origin_elevation), Some(dest_elevation), Some(origin_iata), Some(dest_iata)) => {
                 let flight = LiveFlightData::new(
                     flight_id,
-                    (origin_airport.ident, destination_airport.ident),
+                    (origin_iata.to_string(), dest_iata.to_string()),
                     (Self::get_current_timestamp()?, 0.0),
                     (avg_spd, 100.0),
                     origin_airport.position,
@@ -329,8 +332,8 @@ impl FlightSimulator {
                     dest_elevation as Double,
                 ))
             }
-            (_, _) => Err(Error::ServerError(
-                "No se pudo obtener la elevación de los aeropuertos".to_string(),
+            (_, _, _, _) => Err(Error::ServerError(
+                "No se pudieron inicializar los datos del vuelo".to_string(),
             )),
         }
     }
@@ -339,31 +342,23 @@ impl FlightSimulator {
         &self,
         origin: &str,
         destination: &str,
-    ) -> Result<(Airport, Airport), Error> {
-        let origin_airport = self
-            .airports
-            .get(origin)
-            .ok_or_else(|| {
-                Error::ServerError(format!("Aeropuerto de origen '{}' no encontrado", origin))
-            })?
-            .clone();
+    ) -> Result<(&Airport, &Airport), Error> {
+        let origin_airport = self.airports.get(origin).ok_or_else(|| {
+            Error::ServerError(format!("Aeropuerto de origen '{}' no encontrado", origin))
+        })?;
 
-        let destination_airport = self
-            .airports
-            .get(destination)
-            .ok_or_else(|| {
-                Error::ServerError(format!(
-                    "Aeropuerto de destino '{}' no encontrado",
-                    destination
-                ))
-            })?
-            .clone();
+        let destination_airport = self.airports.get(destination).ok_or_else(|| {
+            Error::ServerError(format!(
+                "Aeropuerto de destino '{}' no encontrado",
+                destination
+            ))
+        })?;
 
         Ok((origin_airport, destination_airport))
     }
 
     fn prepare_flight(
-        flights: &Arc<Mutex<Vec<LiveFlightData>>>,
+        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
         flight: &mut LiveFlightData,
         client: &mut Client,
         tls_stream: &mut Option<TlsStream>,
@@ -418,19 +413,19 @@ impl FlightSimulator {
         );
     }
 
-    fn update_flight_in_list(flights: &Arc<Mutex<Vec<LiveFlightData>>>, flight: &LiveFlightData) {
-        if let Ok(mut flight_list) = flights.lock() {
-            if let Some(existing_flight) = flight_list
-                .iter_mut()
-                .find(|f| f.flight_id == flight.flight_id)
-            {
+    fn update_flight_in_list(
+        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
+        flight: &LiveFlightData,
+    ) {
+        if let Ok(mut flight_map) = flights.lock() {
+            if let Some(existing_flight) = flight_map.get_mut(&flight.flight_id) {
                 *existing_flight = flight.clone();
             }
         }
     }
 
     fn finish_flight(
-        flights: &Arc<Mutex<Vec<LiveFlightData>>>,
+        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
         flight: &mut LiveFlightData,
         params: &FlightSimulationParams,
         client: &mut Client,
@@ -471,7 +466,7 @@ mod tests {
     fn test_flight_simulator() -> Result<(), Error> {
         let simulator = FlightSimulator::default();
 
-        simulator.add_flight(123456, "SAEZ".to_string(), "LEMD".to_string(), 900.0)?;
+        simulator.add_flight(123456, "EZE".to_string(), "MAD".to_string(), 900.0)?;
         assert!(simulator.get_flight_data(123456).is_some());
 
         if let Some(data) = simulator.get_flight_data(123456) {
@@ -503,9 +498,10 @@ mod tests {
         let simulator = FlightSimulator::default();
 
         let flight_configs = vec![
-            (234567, "SBGR", "KJFK", 900.0),
-            (345678, "KLAX", "RJAA", 950.0),
-            (456789, "LFPG", "SVMI", 850.0),
+            (234567, "EZE", "MAD", 900.0),
+            (345678, "MAD", "EZE", 800.0),
+            (456789, "EZE", "CDG", 1000.0),
+            (567890, "CDG", "EZE", 950.0),
         ];
 
         for &(flight_id, origin, destination, avg_spd) in &flight_configs {

@@ -328,7 +328,7 @@ impl Airport {
         for line in reader.lines().map_while(IOResult::ok) {
             let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
             airports.insert(
-                tokens[1].to_string(),
+                tokens[13].to_string(),
                 Self::from_tokens(tokens, &countries_cache)?,
             );
         }
