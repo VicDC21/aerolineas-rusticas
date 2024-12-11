@@ -32,7 +32,7 @@ fn test_simple_flight_adding() {
 
         if let Ok(sim) = sim_res {
             assert!(sim
-                .add_flight(123456, "SABE".to_string(), "EGAA".to_string(), 800.0)
+                .add_flight(123456, "AEP".to_string(), "BFS".to_string(), 800.0)
                 .is_ok());
 
             sleep(Duration::from_secs(5));
