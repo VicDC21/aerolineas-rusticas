@@ -209,10 +209,5 @@ fn handle_view_all_flights(simulator: &FlightSimulator) {
 
 fn handle_view_airports(simulator: &FlightSimulator) {
     println!("Aeropuertos disponibles:");
-    for (code, airport) in simulator.airports.iter() {
-        println!(
-            "{}: {} ({}, {})",
-            code, airport.name, airport.municipality, airport.country.name
-        );
-    }
+    simulator.get_airports();
 }

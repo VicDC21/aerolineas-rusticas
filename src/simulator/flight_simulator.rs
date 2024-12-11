@@ -38,8 +38,7 @@ struct FlightSimulationParams {
 
 /// Simulador de vuelos.
 pub struct FlightSimulator {
-    /// Aeropuertos disponibles.
-    pub airports: Arc<AirportsMap>,
+    airports: Arc<AirportsMap>,
     flights: Arc<Mutex<HashMap<Int, LiveFlightData>>>,
     thread_pool: ThreadPool,
     has_to_connect: bool,
@@ -71,6 +70,16 @@ impl FlightSimulator {
         match self.flights.lock() {
             Ok(flights) => flights.values().cloned().collect(),
             Err(_) => Vec::new(),
+        }
+    }
+
+    /// Obtiene los aeropuertos disponibles en el simulador.
+    pub fn get_airports(&self) {
+        for (code, airport) in self.airports.iter() {
+            println!(
+                "{}: {} ({}, {})",
+                code, airport.name, airport.municipality, airport.country.name
+            );
         }
     }
 
