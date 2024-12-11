@@ -6,10 +6,6 @@ pub mod ddl_statement;
 /// Las sentencias DML se utilizan para manipular datos en la base de datos,
 pub mod dml_statement;
 
-/// Módulo para sentencias de roles y permisos.
-/// Las sentencias de roles y permisos se utilizan para definir y modificar roles y permisos en la base de datos,
-pub mod role_or_permission_statement;
-
 /// Módulo global para sentencias y declaraciones.
 /// Las sentencias y declaraciones se utilizan para definir y manipular la estructura y los datos de la base de datos.
 pub mod statement;

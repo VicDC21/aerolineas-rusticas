@@ -98,19 +98,27 @@ impl FlightSimulator {
             )));
         }
 
-        let (flight, dest_coords, dest_elevation) =
-            self.initialize_flight(flight_id, origin, destination, avg_spd)?;
+        let (flight, _, _) = self.initialize_flight(flight_id, &origin, &destination, avg_spd)?;
 
         if let Ok(mut flight_map) = self.flights.lock() {
-            flight_map.insert(flight_id, flight.clone());
+            flight_map.insert(flight_id, flight);
         }
 
+        let (flight, dest_coords, dest_elevation) =
+            self.initialize_flight(flight_id, &origin, &destination, avg_spd)?;
+
         let has_to_connect = self.has_to_connect;
-        let flights = Arc::clone(&self.flights);
+        let flight_map_ref = Arc::downgrade(&self.flights);
         self.thread_pool.execute(move || {
-            thread::spawn(move || {
-                Self::simulate_flight(flights, flight, dest_coords, dest_elevation, has_to_connect);
-            });
+            if let Some(flights) = flight_map_ref.upgrade() {
+                Self::simulate_flight(
+                    &flights,
+                    flight,
+                    dest_coords,
+                    dest_elevation,
+                    has_to_connect,
+                );
+            }
             Ok(())
         })
     }
@@ -151,7 +159,7 @@ impl FlightSimulator {
     }
 
     fn simulate_flight(
-        flights: Arc<Mutex<HashMap<Int, LiveFlightData>>>,
+        flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
         mut flight: LiveFlightData,
         dest_coords: (Double, Double),
         dest_elevation: Double,
@@ -166,7 +174,7 @@ impl FlightSimulator {
         };
 
         let mut rng = thread_rng();
-        let _ = Self::prepare_flight(&flights, &mut flight, &mut client, &mut tls_stream);
+        let _ = Self::prepare_flight(flights, &mut flight, &mut client, &mut tls_stream);
 
         let (total_distance, fuel_consumption_rate) =
             Self::initialize_flight_parameters(&flight, dest_coords);
@@ -174,7 +182,7 @@ impl FlightSimulator {
         thread::sleep(Duration::from_secs(2));
 
         flight.state = FlightState::InCourse;
-        Self::update_flight_in_list(&flights, &flight);
+        Self::update_flight_in_list(flights, &mut flight);
 
         let simulation_start = Instant::now();
         let simulation_limit = if tls_stream.is_some() {
@@ -195,7 +203,7 @@ impl FlightSimulator {
         };
 
         let _ = Self::run_flight_simulation(
-            &flights,
+            flights,
             &mut flight,
             &mut client,
             &params,
@@ -203,7 +211,7 @@ impl FlightSimulator {
             &mut tls_stream,
         );
         let _ = Self::finish_flight(
-            &flights,
+            flights,
             &mut flight,
             &params,
             &mut client,
@@ -311,12 +319,11 @@ impl FlightSimulator {
     fn initialize_flight(
         &self,
         flight_id: Int,
-        origin: String,
-        destination: String,
+        origin: &str,
+        destination: &str,
         avg_spd: Double,
     ) -> Result<(LiveFlightData, (Double, Double), Double), Error> {
-        let (origin_airport, destination_airport) =
-            self.validate_airports(&origin, &destination)?;
+        let (origin_airport, destination_airport) = self.validate_airports(origin, destination)?;
 
         match (
             origin_airport.elevation_ft,
@@ -424,11 +431,19 @@ impl FlightSimulator {
 
     fn update_flight_in_list(
         flights: &Arc<Mutex<HashMap<Int, LiveFlightData>>>,
-        flight: &LiveFlightData,
+        flight: &mut LiveFlightData,
     ) {
         if let Ok(mut flight_map) = flights.lock() {
             if let Some(existing_flight) = flight_map.get_mut(&flight.flight_id) {
-                *existing_flight = flight.clone();
+                existing_flight.set_spd(*flight.get_spd());
+                existing_flight.fuel = flight.fuel;
+                existing_flight.pos = flight.pos;
+                existing_flight.altitude_ft = flight.altitude_ft;
+                existing_flight.state = match flight.state {
+                    FlightState::Finished => FlightState::Finished,
+                    _ => FlightState::InCourse,
+                };
+                existing_flight.elapsed = flight.elapsed;
             }
         }
     }

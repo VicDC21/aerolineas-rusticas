@@ -30,5 +30,4 @@ pub enum Statement {
 
     /// Representa el logueo de usuarios (es una implementacion por fuera de cassandra creada por nosotros)
     LoginUser(LoginUserStatement),
-    // RoleOrPermissionStatement(RoleOrPermissionStatement),
 }
