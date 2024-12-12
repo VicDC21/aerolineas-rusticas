@@ -10,17 +10,19 @@ use {
         },
         simulator::flight_simulator::FlightSimulator,
     },
+    serde::Deserialize,
     std::{thread, time::Duration},
 };
 
 /// Configuración de un vuelo.
+#[derive(Debug, Deserialize)]
 pub struct FlightConfig {
     /// ID del vuelo.
     pub flight_id: Int,
     /// Código del aeropuerto de origen.
-    pub origin: &'static str,
+    pub origin: String,
     /// Código del aeropuerto de destino.
-    pub destination: &'static str,
+    pub destination: String,
     /// Velocidad inicial del vuelo.
     pub spd: Double,
 }
@@ -64,8 +66,8 @@ fn script_loop(simulator: &FlightSimulator, flights: &[FlightConfig]) {
                 flight.destination.to_string(),
                 flight.spd,
             ) {
-                Ok(_) => println!("Vuelo añadido exitosamente!"),
-                Err(e) => println!("Error al añadir vuelo: {}", e),
+                Ok(_) => println!("Vuelo {}, añadido exitosamente!", flight.flight_id),
+                Err(e) => println!("Error al añadir vuelo {}: {}", flight.flight_id, e),
             }
             thread::sleep(Duration::from_secs(1));
         }
