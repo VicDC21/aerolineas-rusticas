@@ -80,8 +80,7 @@ impl FlightCalculations {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use rand::thread_rng;
+    use {super::*, rand::thread_rng};
 
     /// Función auxiliar para comparar números de punto flotante con tolerancia
     fn assert_approx_eq(a: f64, b: f64) {

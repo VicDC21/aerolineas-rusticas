@@ -1,11 +1,12 @@
 //! Módulo para un "valor" como lo es en la notaciones del protocolo de Cassandra.
 
-use std::convert::TryFrom;
-
-use crate::protocol::{
-    aliases::types::{Byte, Int},
-    errors::error::Error,
-    traits::Byteable,
+use {
+    crate::protocol::{
+        aliases::types::{Byte, Int},
+        errors::error::Error,
+        traits::Byteable,
+    },
+    std::convert::TryFrom,
 };
 
 /// Un valor cambia de significado según el [Int] utilizado para inicializarlo.

@@ -83,7 +83,7 @@ impl TryFrom<&str> for AirportType {
 
 #[cfg(test)]
 mod tests {
-    use crate::{data::airports::types::AirportType, protocol::errors::error::Error};
+    use super::*;
 
     #[test]
     fn test_1_nombres_correctos() {

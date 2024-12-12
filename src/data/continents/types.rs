@@ -83,7 +83,7 @@ impl TryFrom<&str> for ContinentType {
 
 #[cfg(test)]
 mod tests {
-    use crate::{data::continents::types::ContinentType, protocol::errors::error::Error};
+    use super::*;
 
     #[test]
     fn test_1_nombres_correctos() {

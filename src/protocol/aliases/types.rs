@@ -1,7 +1,6 @@
 //! Módulo para aliases de tipos de datos explicados en el protocolo de Cassandra.
 
-use std::collections::HashMap;
-use std::net::IpAddr;
+use std::{collections::HashMap, net::IpAddr};
 
 // Definiciones de notaciones
 

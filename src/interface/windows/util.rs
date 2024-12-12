@@ -1,7 +1,9 @@
 //! Módulo para ventanas de widgets utilitarios.
 
-use eframe::egui::{Align2, RichText, Ui, Window};
-use walkers::MapMemory;
+use {
+    eframe::egui::{Align2, RichText, Ui, Window},
+    walkers::MapMemory,
+};
 
 /// Zoom simple.
 pub fn zoom(ui: &Ui, map_memory: &mut MapMemory) {

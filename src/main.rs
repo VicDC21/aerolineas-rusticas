@@ -1,10 +1,11 @@
-use std::env::args;
-
-use aerolineas_rusticas::{
-    client::cli::Client,
-    protocol::aliases::{results::Result, types::Byte},
-    server::nodes::{graph::NodesGraph, node::Node},
-    simulator::cli::run_sim,
+use {
+    aerolineas_rusticas::{
+        client::cli::Client,
+        protocol::aliases::{results::Result, types::Byte},
+        server::nodes::{graph::NodesGraph, node::Node},
+        simulator::cli::run_sim,
+    },
+    std::env::args,
 };
 
 #[cfg(feature = "gui")]

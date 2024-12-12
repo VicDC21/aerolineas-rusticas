@@ -2,18 +2,19 @@
 
 mod common;
 
-use std::{thread::sleep, time::Duration};
-
-use aerolineas_rusticas::{
-    client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
-    data::{
-        flights::{states::FlightState, types::FlightType},
-        login_info::LoginInfo,
-        tracking::live_flight_data::LiveFlightData,
+use {
+    aerolineas_rusticas::{
+        client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
+        data::{
+            flights::{states::FlightState, types::FlightType},
+            login_info::LoginInfo,
+            tracking::live_flight_data::LiveFlightData,
+        },
+        simulator::flight_simulator::FlightSimulator,
     },
-    simulator::flight_simulator::FlightSimulator,
+    common::{clean_nodes, create_parsing_nodes},
+    std::{thread::sleep, time::Duration},
 };
-use common::{clean_nodes, create_parsing_nodes};
 
 #[test]
 fn test_simple_flight_adding() {
