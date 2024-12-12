@@ -1,4 +1,4 @@
-use super::keyspace_flag::KeyspaceFlag;
+use crate::client::cql_frame::flags::keyspace_flag::KeyspaceFlag;
 
 /// Flags específicas para la creación/alteración de keyspaces
 #[derive(Clone, Copy)]

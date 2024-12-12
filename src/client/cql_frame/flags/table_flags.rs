@@ -1,4 +1,4 @@
-use super::table_flag::TableFlag;
+use crate::client::cql_frame::flags::table_flag::TableFlag;
 
 /// Flags específicas para la creación/alteración de tablas
 #[derive(Clone, Copy)]

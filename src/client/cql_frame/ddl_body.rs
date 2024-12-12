@@ -1,11 +1,12 @@
-use crate::protocol::{
-    aliases::types::Byte, notations::consistency::Consistency, traits::Byteable,
-    utils::encode_string_to_bytes,
-};
-
-use super::flags::{
-    keyspace_flag::KeyspaceFlag, keyspace_flags::KeyspaceFlags, table_flag::TableFlag,
-    table_flags::TableFlags,
+use crate::{
+    client::cql_frame::flags::{
+        keyspace_flag::KeyspaceFlag, keyspace_flags::KeyspaceFlags, table_flag::TableFlag,
+        table_flags::TableFlags,
+    },
+    protocol::{
+        aliases::types::Byte, notations::consistency::Consistency, traits::Byteable,
+        utils::encode_string_to_bytes,
+    },
 };
 
 /// Body específico para DDL statements

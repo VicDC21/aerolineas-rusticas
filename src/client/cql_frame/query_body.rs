@@ -1,12 +1,13 @@
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    notations::consistency::Consistency,
-    traits::Byteable,
-    utils::{encode_long_string_to_bytes, parse_bytes_to_long_string},
+use crate::{
+    client::cql_frame::flags::query_flags::QueryFlags,
+    protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        notations::consistency::Consistency,
+        traits::Byteable,
+        utils::{encode_long_string_to_bytes, parse_bytes_to_long_string},
+    },
 };
-
-use super::flags::query_flags::QueryFlags;
 
 /// Body para queries individuales
 pub struct QueryBody {

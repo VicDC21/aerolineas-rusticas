@@ -12,4 +12,5 @@ pub mod col_data;
 /// Módulo que contiene los resultados de las consultas.
 pub mod protocol_result;
 
+/// Módulo que contiene la información de conexión.
 pub mod conn_holder;
