@@ -1,14 +1,15 @@
 //! Módulo para enumerar niveles de consistencia.
 
-use std::{fmt, str::FromStr};
-
-use crate::protocol::{
-    aliases::{
-        results::Result,
-        types::{Byte, Short},
+use {
+    crate::protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, Short},
+        },
+        errors::error::Error,
+        traits::Byteable,
     },
-    errors::error::Error,
-    traits::Byteable,
+    std::{fmt, str::FromStr},
 };
 
 /// Nivela los modos de consistencia para los _read request_.
@@ -172,11 +173,7 @@ impl fmt::Display for Consistency {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use crate::protocol::{
-        errors::error::Error, notations::consistency::Consistency, traits::Byteable,
-    };
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

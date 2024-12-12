@@ -1,8 +1,9 @@
 //! Módulo para modos de conección al servidor.
 
-use std::convert::TryFrom;
-
-use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
+use {
+    crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+    std::convert::TryFrom,
+};
 
 /// Indica el modo de conexión al instanciar el servidor.
 #[derive(Clone, Debug)]

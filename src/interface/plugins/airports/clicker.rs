@@ -1,12 +1,14 @@
 //! Módulo para plugin que detecta clicks.
 
-use std::sync::Arc;
-
-use eframe::egui::{Painter, PointerButton, Response};
-use walkers::{Plugin, Position, Projector};
-
-use crate::data::{airports::airp::Airport, utils::distances::distance_euclidean_pos2};
-use crate::interface::plugins::utils::zoom_is_showable;
+use {
+    crate::{
+        data::{airports::airp::Airport, utils::distances::distance_euclidean_pos2},
+        interface::plugins::utils::zoom_is_showable,
+    },
+    eframe::egui::{Painter, PointerButton, Response},
+    std::sync::Arc,
+    walkers::{Plugin, Position, Projector},
+};
 
 // Distancia mínima para un potencial click.
 const MIN_CLICK_DIST: f64 = 13.0;

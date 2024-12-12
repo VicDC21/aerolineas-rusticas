@@ -1,15 +1,16 @@
 //! Módulo para cargar IPs de nodos.
 
-use std::{
-    collections::HashMap,
-    fs::OpenOptions,
-    io::{BufRead, BufReader, BufWriter, Result as IOResult, Write},
-    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
-};
-
-use crate::{
-    protocol::{aliases::results::Result, errors::error::Error},
-    server::nodes::{node::NodeId, port_type::PortType},
+use {
+    crate::{
+        protocol::{aliases::results::Result, errors::error::Error},
+        server::nodes::{node::NodeId, port_type::PortType},
+    },
+    std::{
+        collections::HashMap,
+        fs::OpenOptions,
+        io::{BufRead, BufReader, BufWriter, Result as IOResult, Write},
+        net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    },
 };
 
 /// El mapa de los IDs de nodos y sus IPs asociadas.

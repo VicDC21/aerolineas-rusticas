@@ -476,10 +476,12 @@ fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::data_types::cql_type::cql_type::CQLType;
     use crate::{
         parser::data_types::{
-            cql_type::native_types::NativeType::{Int, Text},
+            cql_type::{
+                cql_type::CQLType,
+                native_types::NativeType::{Int, Text},
+            },
             identifier::{
                 quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
             },

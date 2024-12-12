@@ -1,14 +1,18 @@
 //! Módulo para funciones auxiliares de plugins.
 
-use std::result::Result as StdResult;
-
-use eframe::egui::{ColorImage, Context};
-use image::{ImageError, ImageReader};
-use walkers::Position;
-use walkers::{extras::Image, Texture};
-
-use crate::data::airports::{airp::Airport, types::AirportType};
-use crate::protocol::{aliases::results::Result, errors::error::Error};
+use {
+    crate::{
+        data::airports::{airp::Airport, types::AirportType},
+        protocol::{aliases::results::Result, errors::error::Error},
+    },
+    eframe::egui::{ColorImage, Context},
+    image::{ImageError, ImageReader},
+    std::result::Result as StdResult,
+    walkers::{
+        Position,
+        {extras::Image, Texture},
+    },
+};
 
 /// Intenta cargar una [imagen](eframe::egui::ColorImage) de EGUI.
 pub fn load_egui_img(path: &str) -> StdResult<ColorImage, ImageError> {

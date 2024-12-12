@@ -2,9 +2,10 @@
 //!
 //! Esto NO es lo mismo que los [estados](crate::data::flights::states::FlightState) de vuelos.
 
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::data::traits::PrettyShow;
+use {
+    crate::data::traits::PrettyShow,
+    std::fmt::{Display, Formatter, Result as FmtResult},
+};
 
 /// Un tipo de aeropuerto cargable.
 ///

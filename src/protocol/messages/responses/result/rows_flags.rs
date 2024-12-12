@@ -1,8 +1,10 @@
 //! Flags para una _response_ RESULT de filas.
 
-use crate::protocol::aliases::types::{Byte, Int};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::{Byteable, Maskable};
+use crate::protocol::{
+    aliases::types::{Byte, Int},
+    errors::error::Error,
+    traits::{Byteable, Maskable},
+};
 
 /// Las flags a ser incluidas en el mensaje de una _response_ RESULT de tipo [ROWS](crate::protocol::messages::responses::result_kinds::ResultKind::Rows).
 /// ```rust
@@ -76,9 +78,7 @@ impl Maskable<Int> for RowsFlag {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{
-        errors::error::Error, messages::responses::result::rows_flags::RowsFlag, traits::Byteable,
-    };
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

@@ -1,8 +1,9 @@
 //! Módulo para el estado de un nodo.
 
-use std::convert::TryFrom;
-
-use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
+use {
+    crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+    std::convert::TryFrom,
+};
 
 /// El estado actual de un nodo.
 #[derive(Debug, Clone, PartialEq)]

@@ -1,10 +1,11 @@
 //! Módulo para lso tipos de continentes.
-
-use std::convert::TryFrom;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::data::traits::PrettyShow;
-use crate::protocol::errors::error::Error;
+use {
+    crate::{data::traits::PrettyShow, protocol::errors::error::Error},
+    std::{
+        convert::TryFrom,
+        fmt::{Display, Formatter, Result as FmtResult},
+    },
+};
 
 /// El tipo de un continente.
 ///
@@ -82,8 +83,7 @@ impl TryFrom<&str> for ContinentType {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::continents::types::ContinentType;
-    use crate::protocol::errors::error::Error;
+    use crate::{data::continents::types::ContinentType, protocol::errors::error::Error};
 
     #[test]
     fn test_1_nombres_correctos() {

@@ -1,10 +1,9 @@
 //! Módulo para la versión del protocolo.
 
-use crate::protocol::errors::error::Error;
-use std::convert::TryFrom;
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::traits::Byteable;
+use {
+    crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+    std::convert::TryFrom,
+};
 
 /// La 'versión' indica tanto la versión del protocolo a usar,
 /// así como si se trata con un _request_ o un _response_.
@@ -60,9 +59,7 @@ impl TryFrom<Byte> for Version {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::headers::version::Version;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar_v5() {

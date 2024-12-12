@@ -18,5 +18,3 @@ pub mod term;
 pub mod udt_literal;
 /// Módulo que contiene los nombres sin comillas.
 pub mod unquoted_name;
-/// Módulo que contiene los tipos de datos definidos por el usuario.
-pub mod user_defined_type;

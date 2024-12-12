@@ -1,8 +1,9 @@
-use std::cmp::Ordering;
-
-use crate::parser::{
-    data_types::identifier::identifier::Identifier,
-    statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
+use {
+    crate::parser::{
+        data_types::identifier::identifier::Identifier,
+        statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
+    },
+    std::cmp::Ordering,
 };
 
 /// ordering_clause::= column_name [ ASC | DESC ] ( ',' column_name [ ASC | DESC ] )*

@@ -1,8 +1,10 @@
 //! Módulo para las flags de un opcode PREPARE.
 
-use crate::protocol::aliases::types::{Byte, Int};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::{Byteable, Maskable};
+use crate::protocol::{
+    aliases::types::{Byte, Int},
+    errors::error::Error,
+    traits::{Byteable, Maskable},
+};
 
 /// Flags para preparar una _query_ para posterior ejecución.
 pub enum PrepareFlag {
@@ -53,9 +55,7 @@ impl Maskable<Int> for PrepareFlag {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{
-        errors::error::Error, messages::requests::prepare_flags::PrepareFlag, traits::Byteable,
-    };
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

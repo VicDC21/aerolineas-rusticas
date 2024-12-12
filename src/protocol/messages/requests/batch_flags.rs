@@ -1,8 +1,10 @@
 //! Módulo para las flags de una instrucción BATCH.
 
-use crate::protocol::aliases::types::{Byte, Int};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::{Byteable, Maskable};
+use crate::protocol::{
+    aliases::types::{Byte, Int},
+    errors::error::Error,
+    traits::{Byteable, Maskable},
+};
 
 /// Flags para una instrucción de tipo BATCH.
 ///
@@ -91,7 +93,7 @@ impl Maskable<Int> for BatchFlag {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::{messages::requests::batch_flags::BatchFlag, traits::Byteable};
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

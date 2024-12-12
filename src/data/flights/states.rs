@@ -1,8 +1,8 @@
 //! Módulo para el estado de un vuelo.
-
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::{data::traits::PrettyShow, protocol::errors::error::Error};
+use {
+    crate::{data::traits::PrettyShow, protocol::errors::error::Error},
+    std::fmt::{Display, Formatter, Result as FmtResult},
+};
 
 /// Un mismo vuelo puede cancelarse, atrasarse, u otras cosas que es necesario detectar.
 

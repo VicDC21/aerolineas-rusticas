@@ -1,17 +1,19 @@
 //! Módulo para operaciones CRUD en los paneles.
 
-use std::time::Instant;
-
-use walkers::Position;
-
-use crate::{
-    client::conn_holder::ConnectionHolder,
-    data::{airports::airp::Airport, flights::states::FlightState, utils::distances::distance_eta},
-    interface::utils::send_client_query,
-    protocol::aliases::{
-        results::Result,
-        types::{Int, Long},
+use {
+    crate::{
+        client::conn_holder::ConnectionHolder,
+        data::{
+            airports::airp::Airport, flights::states::FlightState, utils::distances::distance_eta,
+        },
+        interface::utils::send_client_query,
+        protocol::aliases::{
+            results::Result,
+            types::{Int, Long},
+        },
     },
+    std::time::Instant,
+    walkers::Position,
 };
 
 /// Inserta un nuevo vuelo.

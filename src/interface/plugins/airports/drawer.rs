@@ -1,16 +1,17 @@
 //! Módulo que dibuja aeropuertos.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use eframe::egui::{Context, Painter, Pos2, Response, Rgba, Stroke};
-use walkers::{extras::Image, Plugin, Position, Projector, Texture};
-
-use crate::data::{
-    airports::{airp::Airport, types::AirportType},
-    utils::distances::distance_euclidean_pos2,
+use {
+    crate::{
+        data::{
+            airports::{airp::Airport, types::AirportType},
+            utils::distances::distance_euclidean_pos2,
+        },
+        interface::plugins::utils::{load_egui_img, zoom_is_showable},
+    },
+    eframe::egui::{Context, Painter, Pos2, Response, Rgba, Stroke},
+    std::{collections::HashMap, sync::Arc},
+    walkers::{extras::Image, Plugin, Position, Projector, Texture},
 };
-use crate::interface::plugins::utils::{load_egui_img, zoom_is_showable};
 
 /// Mapa de íconos de tipos de aeropuertos.
 pub type IconsMap = HashMap<AirportType, Option<Texture>>;

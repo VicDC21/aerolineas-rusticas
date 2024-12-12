@@ -1,12 +1,17 @@
 //! Módulo para el tipo de un cambio de _schema_.
 
-use std::convert::TryFrom;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::protocol::utils::{encode_string_to_bytes, parse_bytes_to_string};
+use {
+    crate::protocol::{
+        aliases::types::Byte,
+        errors::error::Error,
+        traits::Byteable,
+        utils::{encode_string_to_bytes, parse_bytes_to_string},
+    },
+    std::{
+        convert::TryFrom,
+        fmt::{Display, Formatter, Result as FmtResult},
+    },
+};
 
 /// Denota un tipo de cambio en el evento [SCHEMA_CHANGE](crate::protocol::messages::responses::events::event_types::EventType::SchemaChange).
 pub enum SchemaChangeType {
@@ -54,9 +59,7 @@ impl Display for SchemaChangeType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::messages::responses::events::schema_changes::types::SchemaChangeType;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_mostrar() {

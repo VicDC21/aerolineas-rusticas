@@ -2,9 +2,11 @@
 
 use std::convert::TryFrom;
 
-use crate::protocol::aliases::types::{Byte, Int};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use crate::protocol::{
+    aliases::types::{Byte, Int},
+    errors::error::Error,
+    traits::Byteable,
+};
 
 /// Un valor cambia de significado según el [Int] utilizado para inicializarlo.
 pub enum Value {
@@ -71,9 +73,7 @@ impl TryFrom<Vec<Byte>> for Value {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::notations::value::Value;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

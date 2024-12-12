@@ -1,8 +1,9 @@
 //! Módulo que detalla el tipo de dato de una columna.
 
-use serde::{Deserialize, Serialize};
-
-use crate::protocol::messages::responses::result::col_type::ColType;
+use {
+    crate::protocol::messages::responses::result::col_type::ColType,
+    serde::{Deserialize, Serialize},
+};
 
 /// Representa el tipo de dato de una columna.
 #[derive(Clone, Debug, Serialize, Deserialize)]

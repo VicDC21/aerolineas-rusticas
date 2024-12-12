@@ -1,17 +1,18 @@
 //! Módulo para el editor de detalles de un vuelo.
 
-use chrono::{DateTime, Local};
-use eframe::egui::{Align2, Color32, ComboBox, Frame, Key, RichText, Ui, Window};
-
-use crate::{
-    client::conn_holder::ConnectionHolder,
-    data::{
-        flights::{flight::Flight, states::FlightState, types::FlightType},
-        tracking::live_flight_data::LiveFlightData,
-        traits::PrettyShow,
+use {
+    crate::{
+        client::conn_holder::ConnectionHolder,
+        data::{
+            flights::{flight::Flight, states::FlightState, types::FlightType},
+            tracking::live_flight_data::LiveFlightData,
+            traits::PrettyShow,
+        },
+        interface::utils::send_client_query,
+        protocol::aliases::results::Result,
     },
-    interface::utils::send_client_query,
-    protocol::aliases::results::Result,
+    chrono::{DateTime, Local},
+    eframe::egui::{Align2, Color32, ComboBox, Frame, Key, RichText, Ui, Window},
 };
 
 /// Editor para modificar detalles de un vuelo en curso y sus datos en vivo.

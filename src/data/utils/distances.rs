@@ -1,12 +1,7 @@
 //! Módulo de distancias entre dos puntos.
 
 #[cfg(feature = "gui")]
-use std::time::Duration;
-
-#[cfg(feature = "gui")]
-use eframe::egui::Pos2;
-#[cfg(feature = "gui")]
-use walkers::Position;
+use {eframe::egui::Pos2, std::time::Duration, walkers::Position};
 
 use crate::protocol::aliases::types::Double;
 

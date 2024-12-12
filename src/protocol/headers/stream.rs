@@ -1,10 +1,9 @@
 //! Módulo para un header de stream.
 
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use {
+    crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+    std::fmt::{Display, Formatter, Result as FmtResult},
+};
 
 /// Cada frame tiene un stream id para hacer coincidir el IDs entre las requests y responses.
 #[derive(Eq, Clone, Hash, PartialEq)]
@@ -50,10 +49,7 @@ impl Display for Stream {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::aliases::types::Byte;
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::headers::stream::Stream;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

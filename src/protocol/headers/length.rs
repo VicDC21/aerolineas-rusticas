@@ -1,8 +1,6 @@
 //! Módulo para el header Length.
 
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
 
 /// Este header indica qué tan largo es el cuerpo del frame.
 ///
@@ -49,10 +47,7 @@ impl TryFrom<Vec<Byte>> for Length {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::aliases::types::Byte;
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::headers::length::Length;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

@@ -1,8 +1,10 @@
 //! Módulo para las flags de un mensaje.
 
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::{Byteable, Maskable};
+use crate::protocol::{
+    aliases::types::Byte,
+    errors::error::Error,
+    traits::{Byteable, Maskable},
+};
 
 /// Una flag afecta al frame del mensaje.
 ///
@@ -96,9 +98,7 @@ impl TryFrom<Byte> for Flag {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::aliases::types::Byte;
-    use crate::protocol::headers::flags::Flag;
-    use crate::protocol::traits::{Byteable, Maskable};
+    use super::*;
 
     #[test]
     fn test_1_serializar_bien() {

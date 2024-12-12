@@ -1,13 +1,14 @@
 //! Módulo para objetos de utilidad y funciones auxiliares del protocolo de Cassandra.
 
-use std::net::IpAddr;
-
-use crate::protocol::{
-    aliases::{
-        results::Result,
-        types::{Byte, Int, ReasonMap, Short},
+use {
+    crate::protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, Int, ReasonMap, Short},
+        },
+        errors::error::Error,
     },
-    errors::error::Error,
+    std::net::IpAddr,
 };
 
 /// Transforma un [String] a una colección de [Byte]s tal cual como está especificado

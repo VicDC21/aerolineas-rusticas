@@ -1,12 +1,15 @@
 //! Módulo para un _ThreadPool_.
 
-use std::sync::{
-    mpsc::{channel, Sender},
-    Arc, Mutex,
+use {
+    crate::{
+        protocol::{aliases::results::Result, errors::error::Error},
+        server::pool::{job::JobType, worker::Worker},
+    },
+    std::sync::{
+        mpsc::{channel, Sender},
+        Arc, Mutex,
+    },
 };
-
-use crate::protocol::{aliases::results::Result, errors::error::Error};
-use crate::server::pool::{job::JobType, worker::Worker};
 
 /// Un _ThreadPool_ intenta reutilizar los hilos disponibles para realizar
 /// tareas paralelas.

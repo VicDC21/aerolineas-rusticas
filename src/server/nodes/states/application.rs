@@ -1,9 +1,12 @@
 //! Módulo para el _Application State_ de un nodo.
 
-use std::convert::TryFrom;
-
-use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
-use crate::server::{modes::ConnectionMode, nodes::states::appstatus::AppStatus};
+use {
+    crate::{
+        protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+        server::{modes::ConnectionMode, nodes::states::appstatus::AppStatus},
+    },
+    std::convert::TryFrom,
+};
 
 /// El estado de aplicación contiene otros datos actuales sobre el estado del nodo.
 #[derive(Debug, Clone)]

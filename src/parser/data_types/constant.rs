@@ -1,8 +1,9 @@
-use std::cmp::Ordering;
-
-use crate::protocol::{
-    aliases::types::{Double, Int, Uuid},
-    errors::error::Error,
+use {
+    crate::protocol::{
+        aliases::types::{Double, Int, Uuid},
+        errors::error::Error,
+    },
+    std::cmp::Ordering,
 };
 
 // Revisar u32 despues de mergear para no hacer conflicto

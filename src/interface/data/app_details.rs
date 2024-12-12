@@ -1,10 +1,11 @@
 //! Módulo para estructura que guarda detalles de plugins de aeropuertos en la interfaz.
 
-use std::sync::Arc;
-
-use crate::{
-    data::{airports::airp::Airport, flights::flight::Flight},
-    interface::plugins::flights::loader::LiveDataMap,
+use {
+    crate::{
+        data::{airports::airp::Airport, flights::flight::Flight},
+        interface::plugins::flights::loader::LiveDataMap,
+    },
+    std::sync::Arc,
 };
 
 /// Holds details to many of the important data of the current instant in the GUI.

@@ -1,12 +1,15 @@
 //! Módulo para un tipo de Dato Definido por Usuario (UDT).
 
-use std::convert::TryFrom;
-
-use crate::protocol::aliases::types::{Byte, Short};
-use crate::protocol::errors::error::Error;
-use crate::protocol::messages::responses::result::col_type::ColType;
-use crate::protocol::traits::Byteable;
-use crate::protocol::utils::{encode_string_to_bytes, parse_bytes_to_string};
+use {
+    crate::protocol::{
+        aliases::types::{Byte, Short},
+        errors::error::Error,
+        messages::responses::result::col_type::ColType,
+        traits::Byteable,
+        utils::{encode_string_to_bytes, parse_bytes_to_string},
+    },
+    std::convert::TryFrom,
+};
 
 /// Alias para un vector de campos de UDT.
 pub type UdtTypeFields = Vec<(String, Box<ColType>)>;
@@ -95,10 +98,7 @@ impl TryFrom<&[Byte]> for UdtType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::messages::responses::result::col_type::ColType;
-    use crate::protocol::traits::Byteable;
-    use crate::protocol::user::udt_type::UdtType;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

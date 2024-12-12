@@ -1,10 +1,16 @@
 use crate::protocol::errors::error::Error;
 
-#[allow(dead_code)]
 /// '"' unquoted_name '"'
 pub struct QuotedName {
     /// Nombre con comillas.
     name: String,
+}
+
+impl QuotedName {
+    /// Devuelve el nombre con comillas.
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl QuotedName {

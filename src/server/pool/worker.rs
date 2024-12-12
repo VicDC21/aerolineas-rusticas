@@ -1,12 +1,15 @@
 //! Módulo para un _worker_ que procesa tareas.
 
-use std::{
-    sync::{mpsc::Receiver, Arc, Mutex},
-    thread::{Builder, JoinHandle},
+use {
+    crate::{
+        protocol::{aliases::results::Result, errors::error::Error},
+        server::pool::job::JobType,
+    },
+    std::{
+        sync::{mpsc::Receiver, Arc, Mutex},
+        thread::{Builder, JoinHandle},
+    },
 };
-
-use crate::protocol::{aliases::results::Result, errors::error::Error};
-use crate::server::pool::job::JobType;
 
 /// El tipo de hilo a usar en un _worker_.
 pub type WorkerHandle = JoinHandle<Result<()>>;

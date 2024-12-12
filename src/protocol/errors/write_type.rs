@@ -1,12 +1,17 @@
 //! Módulo para el tipo de escritura de errores.
 
-use std::convert::TryFrom;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::protocol::utils::{encode_string_to_bytes, parse_bytes_to_string};
+use {
+    crate::protocol::{
+        aliases::types::Byte,
+        errors::error::Error,
+        traits::Byteable,
+        utils::{encode_string_to_bytes, parse_bytes_to_string},
+    },
+    std::{
+        convert::TryFrom,
+        fmt::{Display, Formatter, Result as FmtResult},
+    },
+};
 
 /// Es un [String] que representa el tipo de escritura que se estaba intentando realizar.
 

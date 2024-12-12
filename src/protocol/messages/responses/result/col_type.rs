@@ -1,11 +1,15 @@
 //! Módulo para los tipos de columnas en una _response_ con filas.
 
-use crate::protocol::aliases::types::{Byte, Short};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::protocol::user::udt_type::UdtType;
-use crate::protocol::utils::parse_bytes_to_string;
-use crate::server::nodes::table_metadata::column_data_type::ColumnDataType;
+use crate::{
+    protocol::{
+        aliases::types::{Byte, Short},
+        errors::error::Error,
+        traits::Byteable,
+        user::udt_type::UdtType,
+        utils::parse_bytes_to_string,
+    },
+    server::nodes::table_metadata::column_data_type::ColumnDataType,
+};
 
 /// Tipo nativo de columna, a ser incluido en la _spec_ del cuerpo de la _response_.
 #[derive(Clone, Debug)]
@@ -337,10 +341,7 @@ impl From<ColumnDataType> for ColType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::aliases::types::Byte;
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::messages::responses::result::col_type::ColType;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

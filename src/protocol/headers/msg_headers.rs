@@ -1,13 +1,14 @@
 //! Módulo para estructura global de encabezados.
 
-use std::convert::TryFrom;
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::headers::{
-    flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+use {
+    crate::protocol::{
+        aliases::types::Byte,
+        errors::error::Error,
+        headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
+        traits::{Byteable, Maskable},
+    },
+    std::convert::TryFrom,
 };
-use crate::protocol::traits::{Byteable, Maskable};
 
 /// Estructura que engloba a todos los encabezados de cualquier mensaje en el protocolo.
 pub struct Headers {

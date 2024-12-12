@@ -1,12 +1,15 @@
 //! Módulo para las opciones de un cambio de _schema_.
 
-use std::convert::TryFrom;
-
-use crate::protocol::aliases::types::{Byte, Short};
-use crate::protocol::errors::error::Error;
-use crate::protocol::messages::responses::events::schema_changes::targets::SchemaChangeTarget;
-use crate::protocol::traits::Byteable;
-use crate::protocol::utils::{encode_string_to_bytes, parse_bytes_to_string};
+use {
+    crate::protocol::{
+        aliases::types::{Byte, Short},
+        errors::error::Error,
+        messages::responses::events::schema_changes::targets::SchemaChangeTarget,
+        traits::Byteable,
+        utils::{encode_string_to_bytes, parse_bytes_to_string},
+    },
+    std::convert::TryFrom,
+};
 
 /// Denota una opción en un evento [SCHEMA_CHANGE](crate::protocol::messages::responses::events::event_types::EventType::SchemaChange).
 pub enum SchemaChangeOption {
@@ -98,11 +101,7 @@ impl TryFrom<(&SchemaChangeTarget, &[Byte])> for SchemaChangeOption {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::aliases::types::Byte;
-    use crate::protocol::messages::responses::events::schema_changes::{
-        options::SchemaChangeOption, targets::SchemaChangeTarget,
-    };
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

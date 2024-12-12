@@ -1,29 +1,30 @@
 //! Módulo para el _Endpoint State_ de un nodo.
 
-use std::{
-    cmp::PartialEq,
-    net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-};
-
-use crate::server::{
-    modes::ConnectionMode,
-    nodes::{
-        node::NodeId,
-        port_type::PortType,
-        states::{
-            application::AppState, appstatus::AppStatus, heartbeat::HeartbeatState,
-            heartbeat::VerType,
+use {
+    crate::{
+        protocol::{
+            aliases::types::Byte,
+            errors::error::Error,
+            traits::Byteable,
+            utils::{encode_ipaddr_to_bytes, parse_bytes_to_ipaddr},
+        },
+        server::{
+            modes::ConnectionMode,
+            nodes::{
+                addr::loader::AddrLoader,
+                node::NodeId,
+                port_type::PortType,
+                states::{
+                    application::AppState, appstatus::AppStatus, heartbeat::HeartbeatState,
+                    heartbeat::VerType,
+                },
+            },
         },
     },
-};
-use crate::{
-    protocol::{
-        aliases::types::Byte,
-        errors::error::Error,
-        traits::Byteable,
-        utils::{encode_ipaddr_to_bytes, parse_bytes_to_ipaddr},
+    std::{
+        cmp::PartialEq,
+        net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     },
-    server::nodes::addr::loader::AddrLoader,
 };
 
 /// Las propiedades de un nodo.
