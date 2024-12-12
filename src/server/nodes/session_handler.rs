@@ -1,56 +1,63 @@
 //! Módulo para el manejo de una sesión del cliente, para decidir el bloqueo o no de un nodo.
 
-use std::{
-    collections::{HashMap, HashSet},
-    io::{Read, Write},
-    sync::{Arc, RwLock},
-};
-
-use chrono::Utc;
-
-use crate::parser::{
-    data_types::keyspace_name::KeyspaceName,
-    main_parser::make_parse,
-    statements::{
-        ddl_statement::{
-            alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
-            create_table::CreateTable, ddl_statement_parser::DdlStatement,
-            drop_keyspace::DropKeyspace,
-        },
-        dml_statement::{
-            dml_statement_parser::DmlStatement,
-            main_statements::{
-                delete::Delete, insert::Insert, select::select_operation::Select, update::Update,
+use {
+    crate::{
+        client::cql_frame::query_body::QueryBody,
+        parser::{
+            data_types::keyspace_name::KeyspaceName,
+            main_parser::make_parse,
+            statements::{
+                ddl_statement::{
+                    alter_keyspace::AlterKeyspace, create_keyspace::CreateKeyspace,
+                    create_table::CreateTable, ddl_statement_parser::DdlStatement,
+                    drop_keyspace::DropKeyspace,
+                },
+                dml_statement::{
+                    dml_statement_parser::DmlStatement,
+                    main_statements::{
+                        delete::Delete, insert::Insert, select::select_operation::Select,
+                        update::Update,
+                    },
+                },
+                statement::Statement,
             },
         },
-        statement::Statement,
+        protocol::{
+            aliases::{results::Result, types::Byte},
+            errors::error::Error,
+            headers::{
+                flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
+                version::Version,
+            },
+            notations::consistency::Consistency,
+            traits::Byteable,
+            utils::{parse_bytes_to_string, parse_bytes_to_string_map},
+        },
+        server::{
+            modes::ConnectionMode,
+            nodes::{
+                actions::opcode::{GossipInfo, SvAction},
+                disk_operations::disk_handler::DiskHandler,
+                node::{Node, NodeId, NodesMap, N_NODES},
+                port_type::PortType,
+                states::{
+                    appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState,
+                },
+                table_metadata::table::Table,
+                utils::{
+                    hash_value, next_node_in_the_cluster, send_to_node,
+                    send_to_node_and_wait_response_with_timeout,
+                },
+            },
+            utils::printable_bytes,
+        },
+        tokenizer::tokenizer::tokenize_query,
     },
-};
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    headers::{
-        flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
-        version::Version,
-    },
-    notations::consistency::Consistency,
-    traits::Byteable,
-    utils::{parse_bytes_to_string, parse_bytes_to_string_map},
-};
-use crate::server::modes::ConnectionMode;
-use crate::tokenizer::tokenizer::tokenize_query;
-use crate::{client::cql_frame::query_body::QueryBody, server::utils::printable_bytes};
-
-use super::{
-    actions::opcode::{GossipInfo, SvAction},
-    disk_operations::disk_handler::DiskHandler,
-    node::{Node, NodeId, NodesMap, N_NODES},
-    port_type::PortType,
-    states::{appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState},
-    table_metadata::table::Table,
-    utils::{
-        hash_value, next_node_in_the_cluster, send_to_node,
-        send_to_node_and_wait_response_with_timeout,
+    chrono::Utc,
+    std::{
+        collections::{HashMap, HashSet},
+        io::{Read, Write},
+        sync::{Arc, RwLock},
     },
 };
 
@@ -449,9 +456,6 @@ impl SessionHandler {
             Statement::DmlStatement(dml_statement) => {
                 self.handle_dml_statement(dml_statement, request, consistency_level)
             }
-            Statement::UdtStatement(_udt_statement) => Err(Error::Invalid(
-                "UDT Statement no está soportado.".to_string(),
-            )),
             Statement::Startup => Err(Error::Invalid(
                 "No se deberia haber mandado el startup por este canal".to_string(),
             )),
@@ -632,8 +636,7 @@ impl SessionHandler {
         let node_reader = self.read()?;
         let keyspace_name =
             node_reader.choose_available_keyspace_name(create_table.name.get_keyspace())?;
-        let keyspace: &super::keyspace_metadata::keyspace::Keyspace =
-            node_reader.get_keyspace_from_name(&keyspace_name)?;
+        let keyspace = node_reader.get_keyspace_from_name(&keyspace_name)?;
         let quantity_replicas: u32 =
             node_reader.get_quantity_of_replicas_from_keyspace(keyspace)?;
         drop(node_reader);
@@ -1566,9 +1569,6 @@ impl SessionHandler {
             Statement::DmlStatement(dml_statement) => {
                 node_writer.handle_internal_dml_statement(dml_statement, internal_metadata)
             }
-            Statement::UdtStatement(_udt_statement) => Err(Error::Invalid(
-                "UDT Statement no está soportado.".to_string(),
-            )),
             Statement::Startup => Err(Error::Invalid(
                 "No se deberia haber mandado el startup por este canal".to_string(),
             )),

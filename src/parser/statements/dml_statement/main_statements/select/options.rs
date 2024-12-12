@@ -1,7 +1,8 @@
-use crate::parser::statements::dml_statement::r#where::where_parser::Where;
-
-use super::{
-    group_by::GroupBy, limit::Limit, order_by::OrderBy, per_partition_limit::PerPartitionLimit,
+use crate::parser::statements::dml_statement::{
+    main_statements::select::{
+        group_by::GroupBy, limit::Limit, order_by::OrderBy, per_partition_limit::PerPartitionLimit,
+    },
+    r#where::where_parser::Where,
 };
 
 /// Opciones para la declaración SELECT.

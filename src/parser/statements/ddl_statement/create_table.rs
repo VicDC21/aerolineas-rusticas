@@ -1,12 +1,15 @@
-use super::column_definition::ColumnDefinition;
-use crate::parser::{
-    data_types::cql_type::{cql_type::CQLType, native_types::NativeType},
-    primary_key::PrimaryKey,
-    table_name::TableName,
-};
-use crate::protocol::errors::error::Error;
-use crate::server::nodes::{
-    table_metadata::column_config::ColumnConfig, table_metadata::column_data_type::ColumnDataType,
+use crate::{
+    parser::{
+        data_types::cql_type::{cql_type::CQLType, native_types::NativeType},
+        primary_key::PrimaryKey,
+        statements::ddl_statement::column_definition::ColumnDefinition,
+        table_name::TableName,
+    },
+    protocol::{aliases::results::Result, errors::error::Error},
+    server::nodes::{
+        table_metadata::column_config::ColumnConfig,
+        table_metadata::column_data_type::ColumnDataType,
+    },
 };
 
 /// Representa una declaración CREATE TABLE en CQL.
@@ -57,7 +60,7 @@ impl CreateTable {
     }
 
     /// Obtiene las columnas de la tabla.
-    pub fn get_columns(&self) -> Result<Vec<ColumnConfig>, Error> {
+    pub fn get_columns(&self) -> Result<Vec<ColumnConfig>> {
         let mut vec = Vec::new();
         for column in self.columns.iter() {
             let vec_column = column.get_column_name();
@@ -74,7 +77,7 @@ impl CreateTable {
         Ok(vec)
     }
 
-    fn get_cql_type(&self, native_type: &NativeType) -> Result<ColumnDataType, Error> {
+    fn get_cql_type(&self, native_type: &NativeType) -> Result<ColumnDataType> {
         match native_type {
             NativeType::Double => Ok(ColumnDataType::Double),
             NativeType::Int => Ok(ColumnDataType::Int),

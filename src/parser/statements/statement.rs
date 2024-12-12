@@ -1,9 +1,7 @@
-use crate::parser::statements::ddl_statement::ddl_statement_parser::DdlStatement;
-use crate::parser::statements::dml_statement::dml_statement_parser::DmlStatement;
-// use crate::parser::statements::role_or_permission_statement::role_or_permission_statement_parser::RoleOrPermissionStatement;
-use crate::parser::statements::udt_statement::udt_statement_parser::UdtStatement;
-
-use super::login_user_statement::LoginUserStatement;
+use crate::parser::statements::{
+    ddl_statement::ddl_statement_parser::DdlStatement,
+    dml_statement::dml_statement_parser::DmlStatement, login_user_statement::LoginUserStatement,
+};
 
 /// Representa una declaración CQL (Cassandra Query Language).
 /// Las declaraciones CQL se utilizan para definir y manipular la estructura y los datos de la base de datos.
@@ -19,11 +17,6 @@ pub enum Statement {
     /// Las declaraciones DML se utilizan para manipular datos en la base de datos,
     /// como insertar, actualizar o eliminar registros de una tabla.
     DmlStatement(DmlStatement),
-
-    /// Representa una declaración UDT (User Defined Type).
-    /// Las declaraciones UDT se utilizan para definir un nuevo tipo de datos personalizado.
-    /// Este tipo de datos personalizado se puede utilizar en la definición de columnas de una tabla.
-    UdtStatement(UdtStatement),
 
     /// Representa una declaración de dar inicio a la conexión.
     Startup,

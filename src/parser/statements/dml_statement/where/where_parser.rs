@@ -1,6 +1,7 @@
-use super::expression::Expression;
-
-use crate::protocol::aliases::results::Result;
+use crate::{
+    parser::statements::dml_statement::r#where::expression::Expression,
+    protocol::aliases::results::Result,
+};
 
 /// Representa una cláusula WHERE en una declaración CQL.
 /// La cláusula WHERE se utiliza para filtrar filas de una tabla.

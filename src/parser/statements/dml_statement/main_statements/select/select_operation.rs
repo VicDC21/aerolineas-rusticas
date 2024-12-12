@@ -1,5 +1,9 @@
-use super::{kind_of_columns::KindOfColumns, options::SelectOptions};
-use crate::parser::table_name::TableName;
+use crate::parser::{
+    statements::dml_statement::main_statements::select::{
+        kind_of_columns::KindOfColumns, options::SelectOptions,
+    },
+    table_name::TableName,
+};
 
 /// Representa una declaración SELECT en el lenguaje de consulta.
 #[derive(Debug)]

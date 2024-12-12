@@ -2,10 +2,9 @@ use crate::{
     parser::{
         data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words,
     },
-    protocol::errors::error::Error,
+    protocol::{aliases::results::Result, errors::error::Error},
 };
 
-#[allow(dead_code)]
 /// Literal de tipo tupla.
 ///
 /// tuple_literal::= '(' term( ',' term )* ')'
@@ -18,7 +17,7 @@ pub struct TupleLiteral {
 impl TupleLiteral {
     /// Verifica si la lista de tokens es una tupla de términos. Si lo es, lo retorna.
     /// Si no lo es, retorna None, o Error en caso de no cumplir con la sintaxis.
-    pub fn check_tuple_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
+    pub fn check_tuple_literal(lista: &mut Vec<String>) -> Result<Option<Self>> {
         let mut items: Vec<Term> = Vec::new();
         if check_words(lista, "(") {
             while check_words(lista, ",") || !check_words(lista, ")") {

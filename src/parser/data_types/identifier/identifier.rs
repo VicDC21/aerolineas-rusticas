@@ -1,7 +1,9 @@
-use crate::protocol::errors::error::Error;
-
-use super::quoted_identifier::QuotedIdentifier;
-use super::unquoted_identifier::UnquotedIdentifier;
+use crate::{
+    parser::data_types::identifier::{
+        quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
+    },
+    protocol::aliases::results::Result,
+};
 
 /// column_name::= identifier
 ///
@@ -35,7 +37,7 @@ impl Identifier {
 
     /// Verifica si la lista de tokens es un identificador. Si lo es, lo retorna.
     /// Si no lo es, retorna None.
-    pub fn check_identifier(lista: &mut Vec<String>) -> Result<Option<Identifier>, Error> {
+    pub fn check_identifier(lista: &mut Vec<String>) -> Result<Option<Identifier>> {
         if UnquotedIdentifier::check_unquoted_identifier(&lista[0]) {
             let string = lista.remove(0);
             return Ok(Some(Identifier::UnquotedIdentifier(

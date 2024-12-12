@@ -40,8 +40,9 @@ impl TryFrom<Byte> for BatchType {
 
 #[cfg(test)]
 mod tests {
-    use super::BatchType;
-    use crate::protocol::{errors::error::Error, traits::Byteable};
+    use crate::protocol::{
+        errors::error::Error, messages::requests::batch_types::BatchType, traits::Byteable,
+    };
 
     #[test]
     fn test_1_serializar() {

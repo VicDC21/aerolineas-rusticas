@@ -287,10 +287,6 @@ impl Client {
                 Client::prepare_auth_response_message(&user.user, &user.password)?
             }
             Statement::Startup => Client::prepare_startup_message()?,
-            Statement::UdtStatement(_) => {
-                self.requests_stream.remove(&stream_id);
-                return Err(Error::ServerError("UDT statements no soportados".into()));
-            }
         };
         Ok(frame)
     }

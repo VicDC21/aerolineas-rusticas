@@ -1,8 +1,9 @@
 //! Módulo que detalla un keyspace.
 
-use serde::{Deserialize, Serialize};
-
-use super::replication_strategy::ReplicationStrategy;
+use {
+    crate::server::nodes::keyspace_metadata::replication_strategy::ReplicationStrategy,
+    serde::{Deserialize, Serialize},
+};
 
 /// Representa un keyspace en CQL.
 #[derive(Serialize, Deserialize)]

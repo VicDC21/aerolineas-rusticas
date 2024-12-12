@@ -1,4 +1,4 @@
-use super::selector::Selector;
+use crate::parser::statements::dml_statement::main_statements::select::selector::Selector;
 
 #[derive(Default, Debug, PartialEq)]
 

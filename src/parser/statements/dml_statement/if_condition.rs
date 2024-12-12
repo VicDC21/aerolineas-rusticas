@@ -1,6 +1,7 @@
-use crate::parser::data_types::{identifier::identifier::Identifier, term::Term};
-
-use super::r#where::operator::Operator;
+use crate::parser::{
+    data_types::{identifier::identifier::Identifier, term::Term},
+    statements::dml_statement::r#where::operator::Operator,
+};
 
 /// Representa una condición IF en una declaración DML.
 #[derive(Debug, PartialEq)]

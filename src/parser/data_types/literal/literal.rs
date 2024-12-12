@@ -1,7 +1,6 @@
-use super::super::udt_literal::UdtLiteral;
-use super::collection_literal::CollectionLiteral;
-use super::tuple_literal::TupleLiteral;
-use super::vector_literal::VectorLiteral;
+use crate::parser::data_types::literal::{
+    collection_literal::CollectionLiteral, tuple_literal::TupleLiteral,
+};
 
 /// Literal de CQL.
 ///
@@ -9,10 +8,6 @@ use super::vector_literal::VectorLiteral;
 pub enum Literal {
     /// Literal de una colección.
     CollectionLiteral(CollectionLiteral),
-    /// Literal de un vector.
-    VectorLiteral(VectorLiteral),
-    /// Literal de tipo _UDT_.
-    UdtLiteral(UdtLiteral),
     /// Literal de una tupla.
     TupleLiteral(TupleLiteral),
 }

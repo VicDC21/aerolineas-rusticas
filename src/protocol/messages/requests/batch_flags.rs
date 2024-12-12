@@ -91,8 +91,7 @@ impl Maskable<Int> for BatchFlag {
 
 #[cfg(test)]
 mod tests {
-    use super::BatchFlag;
-    use crate::protocol::traits::Byteable;
+    use crate::protocol::{messages::requests::batch_flags::BatchFlag, traits::Byteable};
 
     #[test]
     fn test_1_serializar() {

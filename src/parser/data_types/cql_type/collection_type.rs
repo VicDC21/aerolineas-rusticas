@@ -1,6 +1,7 @@
-use crate::protocol::errors::error::Error;
-
-use super::cql_type::CQLType;
+use crate::{
+    parser::data_types::cql_type::cql_type::CQLType,
+    protocol::{aliases::results::Result, errors::error::Error},
+};
 
 /// Tipo de colección.
 #[derive(Debug, PartialEq)]
@@ -18,16 +19,14 @@ pub enum CollectionType {
 impl CollectionType {
     /// Verifica si la lista de tokens es un tipo de colección. Si lo es, lo retorna.
     /// Si no lo es, retorna None, o Error en caso de no poder parsearla.
-    pub fn parse_collection_type(
-        tokens: &mut Vec<String>,
-    ) -> Result<Option<CollectionType>, Error> {
+    pub fn parse_collection_type(tokens: &mut Vec<String>) -> Result<Option<CollectionType>> {
         CollectionType::parse_list_type(tokens)?;
         CollectionType::parse_map_type(tokens)?;
         CollectionType::parse_set_type(tokens)?;
         Ok(None)
     }
 
-    fn parse_list_type(tokens: &mut Vec<String>) -> Result<CollectionType, Error> {
+    fn parse_list_type(tokens: &mut Vec<String>) -> Result<CollectionType> {
         expect_token(tokens, "<")?;
         let inner_type = match CQLType::check_kind_of_type(tokens)? {
             Some(value) => value,
@@ -37,7 +36,7 @@ impl CollectionType {
         Ok(CollectionType::List(Box::new(inner_type)))
     }
 
-    fn parse_set_type(tokens: &mut Vec<String>) -> Result<CollectionType, Error> {
+    fn parse_set_type(tokens: &mut Vec<String>) -> Result<CollectionType> {
         expect_token(tokens, "<")?;
         let inner_type = match CQLType::check_kind_of_type(tokens)? {
             Some(value) => value,
@@ -47,7 +46,7 @@ impl CollectionType {
         Ok(CollectionType::Set(Box::new(inner_type)))
     }
 
-    fn parse_map_type(tokens: &mut Vec<String>) -> Result<CollectionType, Error> {
+    fn parse_map_type(tokens: &mut Vec<String>) -> Result<CollectionType> {
         expect_token(tokens, "<")?;
         let key_type = match CQLType::check_kind_of_type(tokens)? {
             Some(value) => value,
@@ -67,7 +66,7 @@ impl CollectionType {
 }
 
 /// Verifica si el token actual es el esperado. Si no es el esperado, retorna un error.
-pub fn expect_token(tokens: &mut Vec<String>, expected: &str) -> Result<(), Error> {
+pub fn expect_token(tokens: &mut Vec<String>, expected: &str) -> Result<()> {
     if tokens.is_empty() || tokens[0] != expected {
         Err(Error::SyntaxError(format!("Expected token: {}", expected)))
     } else {

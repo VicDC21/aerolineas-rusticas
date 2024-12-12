@@ -620,12 +620,12 @@ impl Display for Error {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
-
-    use super::Error;
-    use crate::protocol::{
-        aliases::types::ReasonMap, errors::write_type::WriteType,
-        notations::consistency::Consistency, traits::Byteable,
+    use {
+        crate::protocol::{
+            aliases::types::ReasonMap, errors::error::Error, errors::write_type::WriteType,
+            notations::consistency::Consistency, traits::Byteable,
+        },
+        std::net::{IpAddr, Ipv4Addr},
     };
 
     #[test]

@@ -1,13 +1,11 @@
 use crate::{
-    parser::statements::ddl_statement::ddl_statement_parser::check_words,
-    protocol::errors::error::Error,
+    parser::{
+        data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words,
+    },
+    protocol::{aliases::results::Result, errors::error::Error},
 };
 
-use super::super::term::Term;
-
-#[allow(dead_code)]
 /// Literal de tipo mapa.
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct MapLiteral {
     /// Valores del mapa, pares de términos.
@@ -17,7 +15,7 @@ pub struct MapLiteral {
 impl MapLiteral {
     /// Verifica si la lista de tokens es un mapa de términos. Si lo es, lo retorna.
     /// Si no lo es, retorna None, o Error en caso de no cumplir con la sintaxis.
-    pub fn check_map_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
+    pub fn check_map_literal(lista: &mut Vec<String>) -> Result<Option<Self>> {
         let mut values: Vec<(Term, Term)> = Vec::new();
         if check_words(lista, "{") {
             while check_words(lista, ",") || !check_words(lista, "}") {

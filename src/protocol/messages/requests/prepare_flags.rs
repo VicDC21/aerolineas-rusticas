@@ -53,8 +53,9 @@ impl Maskable<Int> for PrepareFlag {
 
 #[cfg(test)]
 mod tests {
-    use super::PrepareFlag;
-    use crate::protocol::{errors::error::Error, traits::Byteable};
+    use crate::protocol::{
+        errors::error::Error, messages::requests::prepare_flags::PrepareFlag, traits::Byteable,
+    };
 
     #[test]
     fn test_1_serializar() {

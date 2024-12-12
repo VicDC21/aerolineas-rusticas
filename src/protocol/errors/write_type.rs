@@ -81,8 +81,10 @@ impl TryFrom<&[Byte]> for WriteType {
 
 #[cfg(test)]
 mod tests {
-    use super::WriteType;
-    use crate::protocol::{errors::error::Error, traits::Byteable};
+    use crate::protocol::{
+        errors::{error::Error, write_type::WriteType},
+        traits::Byteable,
+    };
 
     #[test]
     fn test_1_serializar() {

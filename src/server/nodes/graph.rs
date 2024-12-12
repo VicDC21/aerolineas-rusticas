@@ -1,43 +1,43 @@
 //! Módulo para grafo de nodos.
 
-use rand::{
-    distributions::{Distribution, WeightedIndex},
-    thread_rng,
-};
-use std::{
-    collections::HashSet,
-    net::SocketAddr,
-    path::Path,
-    sync::mpsc::{channel, Sender},
-    thread::{sleep, Builder, JoinHandle},
-    time::Duration,
-};
-
-use crate::client::cql_frame::frame::Frame;
-use crate::parser::{main_parser::make_parse, statements::statement::Statement};
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    notations::consistency::Consistency,
-    traits::Byteable,
-};
-use crate::server::{
-    modes::ConnectionMode,
-    nodes::{
-        actions::opcode::SvAction,
-        node::{Node, NodeId},
-        port_type::PortType,
-        utils::{load_init_queries, send_to_node},
+use {
+    crate::{
+        client::cql_frame::frame::Frame,
+        parser::{main_parser::make_parse, statements::statement::Statement},
+        protocol::{
+            aliases::{results::Result, types::Byte},
+            errors::error::Error,
+            notations::consistency::Consistency,
+            traits::Byteable,
+        },
+        server::{
+            modes::ConnectionMode,
+            nodes::{
+                actions::opcode::SvAction,
+                disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH},
+                internal_threads::{cli_listen, priv_listen},
+                node::N_NODES,
+                node::{Node, NodeId},
+                port_type::PortType,
+                session_handler::SessionHandler,
+                utils::{load_init_queries, send_to_node},
+            },
+            utils::load_json,
+        },
+        tokenizer::tokenizer::tokenize_query,
     },
-    utils::load_json,
-};
-use crate::tokenizer::tokenizer::tokenize_query;
-
-use super::{
-    disk_operations::disk_handler::{DiskHandler, NODES_METADATA_PATH},
-    internal_threads::{cli_listen, priv_listen},
-    node::N_NODES,
-    session_handler::SessionHandler,
+    rand::{
+        distributions::{Distribution, WeightedIndex},
+        thread_rng,
+    },
+    std::{
+        collections::HashSet,
+        net::SocketAddr,
+        path::Path,
+        sync::mpsc::{channel, Sender},
+        thread::{sleep, Builder, JoinHandle},
+        time::Duration,
+    },
 };
 
 /// El handle donde vive una operación de nodo.
@@ -147,9 +147,6 @@ impl NodesGraph {
                         Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
                             Frame::new(stream_id, query, Consistency::One)
                         } // Valor arbitrario por ahora
-                        Statement::UdtStatement(_) => {
-                            return Err(Error::ServerError("UDT statements no soportados".into()))
-                        }
                         Statement::LoginUser(_) => {
                             return Err(Error::Invalid(
                                 "No se deberia haber mandado el login por este canal".to_string(),
