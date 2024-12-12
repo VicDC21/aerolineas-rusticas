@@ -137,9 +137,10 @@ impl NodesGraph {
         let queries = load_init_queries();
 
         for (i, query) in queries.iter().enumerate() {
-            let stream_id = format!("{}{}", node_id, i)
-                .parse::<i16>()
-                .unwrap_or(node_id as i16 + i as i16);
+            let stream_id = match format!("{}{}", node_id, i).parse::<i16>() {
+                Ok(stream_id) => stream_id,
+                Err(_) => node_id as i16 + i as i16,
+            };
             match make_parse(&mut tokenize_query(query)) {
                 Ok(statement) => {
                     let frame = match statement {

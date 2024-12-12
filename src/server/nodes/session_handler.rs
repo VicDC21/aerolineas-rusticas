@@ -690,9 +690,6 @@ impl SessionHandler {
             DmlStatement::DeleteStatement(delete) => {
                 self.delete_with_other_nodes(delete, request, consistency_level)
             }
-            DmlStatement::BatchStatement(_batch) => Err(Error::Invalid(
-                "Batch Statement no está soportado.".to_string(),
-            )),
         }
     }
 
@@ -801,14 +798,21 @@ impl SessionHandler {
             *responsive_replica = node_id;
             *replicas_asked = 0;
             if self.neighbour_is_responsive(node_id)? {
-                result = send_to_node_and_wait_response_with_timeout(
+                result = match send_to_node_and_wait_response_with_timeout(
                     node_id,
                     request_with_metadata,
                     PortType::Priv,
                     wait_response,
                     Some(TIMEOUT_SECS),
-                )
-                .unwrap_or_default()
+                ) {
+                    Ok(res) => res,
+                    Err(err) => {
+                        return Err(Error::ServerError(format!(
+                            "Error al enviar la query al nodo {}: {}",
+                            node_id, err
+                        )));
+                    }
+                }
             }
             *replicas_asked += 1;
 
@@ -971,9 +975,19 @@ impl SessionHandler {
         let mut node_to_consult = next_node_in_the_cluster(responsive_replica, &nodes_ids);
         let mut inconsistent_digest_request = false;
         for _ in (replicas_asked as u32)..replication_factor_quantity {
-            let opcode_with_hashed_value = self
-                .decide_how_to_request_the_digest_read_request(node_to_consult, request, node_id)
-                .unwrap_or_default();
+            let opcode_with_hashed_value = match self.decide_how_to_request_the_digest_read_request(
+                node_to_consult,
+                request,
+                node_id,
+            ) {
+                Ok(res) => res,
+                Err(err) => {
+                    return Err(Error::ServerError(format!(
+                        "Error al enviar la query al nodo {}: {}",
+                        node_to_consult, err
+                    )));
+                }
+            };
             if opcode_with_hashed_value.is_empty() {
                 node_to_consult = next_node_in_the_cluster(node_to_consult, &nodes_ids);
                 continue;
@@ -1199,14 +1213,18 @@ impl SessionHandler {
         );
         let mut res: Vec<Byte> = Vec::new();
         if self.neighbour_is_responsive(node_to_replicate)? {
-            res = send_to_node_and_wait_response_with_timeout(
+            res = match send_to_node_and_wait_response_with_timeout(
                 node_to_replicate,
                 request_with_metadata,
                 PortType::Priv,
                 wait_response,
                 Some(TIMEOUT_SECS),
-            )
-            .unwrap_or_default();
+            ) {
+                Ok(res) => res,
+                Err(err) => {
+                    return Err(err);
+                }
+            };
         }
         if res.is_empty() && wait_response {
             self.write()?
@@ -1346,14 +1364,18 @@ impl SessionHandler {
         );
         let mut res: Vec<Byte> = Vec::new();
         if self.neighbour_is_responsive(node_id)? {
-            res = send_to_node_and_wait_response_with_timeout(
+            res = match send_to_node_and_wait_response_with_timeout(
                 node_id,
                 request_with_metadata,
                 PortType::Priv,
                 true,
                 Some(TIMEOUT_SECS),
-            )
-            .unwrap_or_default();
+            ) {
+                Ok(res) => res,
+                Err(err) => {
+                    return Err(err);
+                }
+            };
         }
         if res.is_empty() {
             self.write()?.acknowledge_offline_neighbour(node_id);
@@ -1384,30 +1406,24 @@ impl SessionHandler {
                 );
                 let mut replica_response: Vec<Byte> = Vec::new();
                 if self.neighbour_is_responsive(node_to_replicate)? {
-                    replica_response = send_to_node_and_wait_response_with_timeout(
+                    replica_response = match send_to_node_and_wait_response_with_timeout(
                         node_to_replicate,
                         request_with_metadata,
                         PortType::Priv,
                         true,
                         Some(TIMEOUT_SECS),
-                    )
-                    .unwrap_or_default();
+                    ) {
+                        Ok(res) => res,
+                        Err(err) => {
+                            return Err(err);
+                        }
+                    };
                 }
+
                 if replica_response.is_empty() {
                     let mut node_writer = self.write()?;
                     node_writer.acknowledge_offline_neighbour(node_to_replicate);
                 }
-                /*match Opcode::try_from(replica_response[4])? {
-                    Opcode::RequestError => {
-                        return Err(Error::try_from(replica_response[9..].to_vec())?)
-                    }
-                    Opcode::Result => (),
-                    _ => {
-                        return Err(Error::ServerError(
-                            "Nodo de réplica manda opcode inesperado".to_string(),
-                        ))
-                    }
-                }*/
                 replica_response
             };
             node_to_replicate = next_node_in_the_cluster(node_to_replicate, &nodes_ids);
@@ -1511,15 +1527,20 @@ impl SessionHandler {
         );
         let mut res: Vec<Byte> = Vec::new();
         if self.neighbour_is_responsive(node_to_replicate)? {
-            res = send_to_node_and_wait_response_with_timeout(
+            res = match send_to_node_and_wait_response_with_timeout(
                 node_to_replicate,
                 request_with_metadata,
                 PortType::Priv,
                 wait_response,
                 Some(TIMEOUT_SECS),
-            )
-            .unwrap_or_default()
+            ) {
+                Ok(res) => res,
+                Err(err) => {
+                    return Err(err);
+                }
+            }
         };
+
         if res.is_empty() && wait_response {
             let mut node_writer = self.write()?;
             node_writer.acknowledge_offline_neighbour(node_to_replicate);

@@ -1,20 +1,23 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
-use std::{
-    fs::{read_dir, File},
-    hash::{DefaultHasher, Hash, Hasher},
-    io::{BufRead, BufReader, Read, Result as IOResult, Write},
-    net::TcpStream,
-    path::PathBuf,
-};
-
-use crate::server::nodes::{addr::loader::AddrLoader, node::NodeId, port_type::PortType};
-use crate::{
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
+use {
+    crate::{
+        protocol::{
+            aliases::{results::Result, types::Byte},
+            errors::error::Error,
+        },
+        server::{
+            nodes::{addr::loader::AddrLoader, node::NodeId, port_type::PortType},
+            utils::printable_bytes,
+        },
     },
-    server::utils::printable_bytes,
+    std::{
+        fs::{read_dir, File},
+        hash::{DefaultHasher, Hash, Hasher},
+        io::{BufRead, BufReader, Read, Result as IOResult, Write},
+        net::TcpStream,
+        path::PathBuf,
+    },
 };
 
 /// La ruta de _queries_ iniciales.
@@ -36,10 +39,10 @@ pub fn hash_value<T: Hash>(value: T) -> u64 {
 ///
 /// Se asume que el vector de IDs de los nodos está ordenado de menor a mayor.
 pub fn next_node_in_the_cluster(current_id: Byte, nodes_ids: &[Byte]) -> Byte {
-    let current_index = nodes_ids.binary_search(&current_id).unwrap_or({
-        // No debería ocurrir, ya que current_id pertenece a nodes_ids siempre
-        0
-    });
+    let current_index = match nodes_ids.binary_search(&current_id) {
+        Ok(index) => index,
+        Err(_) => return nodes_ids[0], // si no se encuentra, se asume que es el primer nodo
+    };
     if current_index + 1 == nodes_ids.len() {
         nodes_ids[0]
     } else {

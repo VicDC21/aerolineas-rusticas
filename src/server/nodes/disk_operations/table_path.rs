@@ -19,7 +19,10 @@ impl TablePath {
         default_keyspace: &str,
         node_number: u8,
     ) -> Self {
-        let keyspace = keyspace.unwrap_or_else(|| default_keyspace.to_string());
+        let keyspace = match keyspace {
+            Some(keyspace) => keyspace,
+            None => default_keyspace.to_string(),
+        };
         Self {
             storage_addr: storage_addr.to_string(),
             keyspace,

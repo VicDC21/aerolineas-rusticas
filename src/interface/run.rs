@@ -1,10 +1,16 @@
 //! Módulo para correr la interfaz.
 
-use eframe::egui::ViewportBuilder;
-use eframe::{run_native, NativeOptions};
-
-use crate::interface::app::AerolineasApp;
-use crate::protocol::{aliases::results::Result, errors::error::Error};
+use {
+    crate::{
+        interface::app::AerolineasApp,
+        protocol::{aliases::results::Result, errors::error::Error::ServerError},
+    },
+    eframe::{
+        egui::ViewportBuilder,
+        {run_native, NativeOptions},
+    },
+    std::io::{Error as IoError, ErrorKind},
+};
 
 /// Corre la aplicación.
 pub fn run_app() -> Result<()> {
@@ -14,13 +20,15 @@ pub fn run_app() -> Result<()> {
             viewport: ViewportBuilder::default().with_maximized(true),
             ..Default::default()
         },
-        Box::new(|cc| {
-            Ok(Box::<AerolineasApp>::new(AerolineasApp::new(
-                cc.egui_ctx.clone(),
-            )))
+        Box::new(|cc| match AerolineasApp::new(cc.egui_ctx.clone()) {
+            Ok(app) => Ok(Box::new(app)),
+            Err(err) => {
+                let error = IoError::new(ErrorKind::Other, err.to_string());
+                Err(Box::new(error))
+            }
         }),
     ) {
-        return Err(Error::ServerError(format!(
+        return Err(ServerError(format!(
             "Ha ocurrido un error al correr la aplicación:\n\n{}",
             err
         )));

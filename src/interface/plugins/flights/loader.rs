@@ -1,34 +1,34 @@
 //! Módulo para un cargador de vuelos.
 
-use std::{
-    collections::hash_map::{Entry, HashMap},
-    sync::{
-        mpsc::{channel, Receiver, Sender},
-        Arc,
-    },
-    thread::{spawn, JoinHandle},
-    time::{Duration, Instant},
-};
-
-use chrono::{DateTime, Local};
-use eframe::egui::{Painter, Response};
-use walkers::{Plugin, Projector};
-
-use crate::{
-    client::{cli::Client, conn_holder::ConnectionHolder},
-    data::{
-        airports::airp::Airport,
-        flights::{flight::Flight, types::FlightType},
-        login_info::LoginInfo,
-        tracking::live_flight_data::LiveFlightData,
-    },
-    protocol::{
-        aliases::{
-            results::Result,
-            types::{Int, Long},
+use {
+    crate::{
+        client::{cli::Client, conn_holder::ConnectionHolder},
+        data::{
+            airports::airp::Airport,
+            flights::{flight::Flight, types::FlightType},
+            login_info::LoginInfo,
+            tracking::live_flight_data::LiveFlightData,
         },
-        errors::error::Error,
+        protocol::{
+            aliases::{
+                results::Result,
+                types::{Int, Long},
+            },
+            errors::error::Error,
+        },
     },
+    chrono::{DateTime, Local},
+    eframe::egui::{Painter, Response},
+    std::{
+        collections::hash_map::{Entry, HashMap},
+        sync::{
+            mpsc::{channel, Receiver, Sender},
+            Arc,
+        },
+        thread::{spawn, JoinHandle},
+        time::{Duration, Instant},
+    },
+    walkers::{Plugin, Projector},
 };
 
 /// Los datos de vuelos ordenados por ID.
@@ -180,13 +180,18 @@ impl FlightsLoader {
                             }
                         }
 
-                        let flights = Self::load_flights(
+                        let flights = match Self::load_flights(
                             &mut con_info,
                             &flight_type,
                             selected_airport.as_ref(),
                             &timestamp,
-                        )
-                        .unwrap_or_default();
+                        ) {
+                            Ok(data) => data,
+                            Err(err) => {
+                                println!("Error cargando vuelos:\n{}", err);
+                                Vec::<Flight>::new()
+                            }
+                        };
 
                         if let Err(err) = to_parent.send(flights) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);

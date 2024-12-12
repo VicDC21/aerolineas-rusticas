@@ -55,7 +55,10 @@ impl OrderBy {
 
     fn cmp_values_with_parse(value_a: &str, value_b: &str) -> Ordering {
         match (value_a.parse::<f64>(), value_b.parse::<f64>()) {
-            (Ok(a), Ok(b)) => a.partial_cmp(&b).unwrap_or(Ordering::Equal),
+            (Ok(a), Ok(b)) => match a.partial_cmp(&b) {
+                Some(order) => order,
+                None => Ordering::Equal,
+            },
             _ => value_a.cmp(value_b),
         }
     }

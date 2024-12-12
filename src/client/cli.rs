@@ -1,42 +1,43 @@
 //! Módulo del cliente.
 
-use std::{
-    collections::HashSet,
-    io::{stdin, BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpStream},
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
-use crate::{
-    client::cql_frame::frame::Frame,
-    data::login_info::LoginInfo,
-    parser::{main_parser::make_parse, statements::statement::Statement},
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
-        messages::responses::{
-            result::{col_type::ColType, rows_flags::RowsFlag},
-            result_kinds::ResultKind,
+use {
+    crate::{
+        client::{col_data::ColData, cql_frame::frame::Frame, protocol_result::ProtocolResult},
+        data::login_info::LoginInfo,
+        parser::{main_parser::make_parse, statements::statement::Statement},
+        protocol::{
+            aliases::{results::Result, types::Byte},
+            errors::error::Error,
+            headers::{
+                flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+            },
+            messages::responses::{
+                result::{col_type::ColType, rows_flags::RowsFlag},
+                result_kinds::ResultKind,
+            },
+            notations::consistency::Consistency,
+            traits::Byteable,
+            utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
         },
-        notations::consistency::Consistency,
-        traits::Byteable,
-        utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
+        server::nodes::{
+            actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
+            table_metadata::column_data_type::ColumnDataType,
+        },
+        tokenizer::tokenizer::tokenize_query,
     },
-    server::nodes::{
-        actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
-        table_metadata::column_data_type::ColumnDataType,
+    rustls::{
+        pki_types::{pem::PemObject, CertificateDer},
+        ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream,
     },
-    tokenizer::tokenizer::tokenize_query,
+    std::{
+        collections::HashSet,
+        io::{stdin, BufRead, BufReader, Read, Write},
+        net::{SocketAddr, TcpStream},
+        str::FromStr,
+        sync::Arc,
+        time::{Duration, Instant},
+    },
 };
-use rustls::{
-    pki_types::{pem::PemObject, CertificateDer},
-    ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream,
-};
-
-use super::{col_data::ColData, protocol_result::ProtocolResult};
 
 /// Un stream TLS.
 pub type TlsStream = LsStream<ClientConnection, TcpStream>;
@@ -261,7 +262,10 @@ impl Client {
                     self.login(self.login_info.to_owned(), &mut new_tls)?;
                     tls_opt = Some(new_tls);
                 }
-                Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
+                match last_error {
+                    Some(e) => Err(e),
+                    None => Err(Error::ServerError("Error desconocido".into())),
+                }
             }
             Err(err) => Err(Error::ServerError(err.to_string())),
         };

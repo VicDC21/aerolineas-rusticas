@@ -1,14 +1,18 @@
 //! Módulo de cargador de aeropuertos.
 
-use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread::{spawn, JoinHandle};
-use std::time::{Duration, Instant};
-
-use eframe::egui::{Painter, Response, Vec2};
-use walkers::{Plugin, Position, Projector};
-
-use crate::data::airports::airp::{Airport, AirportsMap};
-use crate::protocol::aliases::results::Result;
+use {
+    crate::{
+        data::airports::airp::{Airport, AirportsMap},
+        protocol::aliases::results::Result,
+    },
+    eframe::egui::{Painter, Response, Vec2},
+    std::{
+        sync::mpsc::{channel, Receiver, Sender},
+        thread::{spawn, JoinHandle},
+        time::{Duration, Instant},
+    },
+    walkers::{Plugin, Position, Projector},
+};
 
 /// Un hilo destinado a procesos paralelos, tal que no bloquee el flujo sincrónico
 /// del hilo principal.
@@ -124,7 +128,10 @@ impl AirportsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_airports(&mut self) -> Vec<Airport> {
-        self.airports.take().unwrap_or_default()
+        match &self.airports.take() {
+            Some(airports) => airports.to_vec(),
+            None => Vec::new(),
+        }
     }
 
     /// Consigue la cantidad de aeropuertos cargados hasta ahora, comparados a los totales.

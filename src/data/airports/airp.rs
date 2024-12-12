@@ -1,25 +1,26 @@
 //! Módulo para manejar los datos de un aeropuerto.
 
-use std::{
-    collections::HashMap,
-    io::{BufRead, Result as IOResult},
-    sync::mpsc::Sender,
-};
-
-use crate::{
-    data::{
-        airports::types::AirportType,
-        continents::types::ContinentType,
-        countries::{CountriesMap, Country},
-        utils::{
-            distances::{distance_euclidean, inside_area},
-            paths::{get_tokens, reader_from},
-            strings::{breakdown, to_option},
+use {
+    crate::{
+        data::{
+            airports::types::AirportType,
+            continents::types::ContinentType,
+            countries::{CountriesMap, Country},
+            utils::{
+                distances::{distance_euclidean, inside_area},
+                paths::{get_tokens, reader_from},
+                strings::{breakdown, to_option},
+            },
+        },
+        protocol::{
+            aliases::{results::Result, types::Double},
+            errors::error::Error,
         },
     },
-    protocol::{
-        aliases::{results::Result, types::Double},
-        errors::error::Error,
+    std::{
+        collections::HashMap,
+        io::{BufRead, Result as IOResult},
+        sync::mpsc::Sender,
     },
 };
 
@@ -196,10 +197,11 @@ impl Airport {
         };
         let continent = ContinentType::try_from(tokens[7].as_str())?;
         let iso_country = tokens[8].to_string();
-        let country = countries_cache
-            .get(&iso_country)
-            .unwrap_or(&Country::try_from_code(&iso_country)?)
-            .clone();
+        let country = match countries_cache.get(&iso_country) {
+            Some(c) => c,
+            None => &Country::try_from_code(&iso_country)?,
+        };
+
         let iso_region = tokens[9].to_string();
         let municipality = tokens[10].to_string();
         let scheduled_service = match tokens[11].as_str() {
@@ -222,7 +224,7 @@ impl Airport {
             position,
             elevation_ft,
             continent,
-            country,
+            country: country.clone(),
             iso_region,
             municipality,
             scheduled_service,

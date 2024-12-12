@@ -208,6 +208,5 @@ fn handle_view_all_flights(simulator: &FlightSimulator) {
 }
 
 fn handle_view_airports(simulator: &FlightSimulator) {
-    println!("Aeropuertos disponibles:");
     simulator.get_airports();
 }

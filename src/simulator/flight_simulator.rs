@@ -75,6 +75,7 @@ impl FlightSimulator {
 
     /// Obtiene los aeropuertos disponibles en el simulador.
     pub fn get_airports(&self) {
+        println!("Aeropuertos disponibles:");
         for (code, airport) in self.airports.iter() {
             println!(
                 "{}: {} ({}, {})",

@@ -692,9 +692,6 @@ impl Node {
                 self.process_update(&update, timestamp, node_number)
             }
             DmlStatement::DeleteStatement(delete) => self.process_delete(&delete, node_number),
-            DmlStatement::BatchStatement(_batch) => Err(Error::Invalid(
-                "Batch Statement no está soportado.".to_string(),
-            )),
         }
     }
 

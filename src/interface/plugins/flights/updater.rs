@@ -1,17 +1,17 @@
 //! Módulo para plugin que va actualizando los vuelos en curso.
 
-use std::sync::Arc;
-
-use eframe::egui::{Color32, Context, Painter, Response, Shape, Stroke};
-use walkers::{extras::Image, Plugin, Position, Projector, Texture};
-
-use crate::{
-    data::{
-        airports::airp::{Airport, AirportsMap},
-        tracking::live_flight_data::LiveFlightData,
+use {
+    crate::{
+        data::{
+            airports::airp::{Airport, AirportsMap},
+            tracking::live_flight_data::LiveFlightData,
+        },
+        interface::plugins::{flights::loader::LiveDataMap, utils::load_egui_img},
+        protocol::aliases::{results::Result, types::Double},
     },
-    interface::plugins::{flights::loader::LiveDataMap, utils::load_egui_img},
-    protocol::aliases::types::Double,
+    eframe::egui::{Color32, Context, Painter, Response, Shape, Stroke},
+    std::sync::Arc,
+    walkers::{extras::Image, Plugin, Position, Projector, Texture},
 };
 
 /// La ruta de la imagen de un vuelo en curso.
@@ -44,20 +44,20 @@ impl FlightsUpdater {
         ctx: Context,
         incoming_tracking: Arc<LiveDataMap>,
         departing_tracking: Arc<LiveDataMap>,
-    ) -> Self {
+    ) -> Result<Self> {
         let text = Self::load_inc_course_img(&ctx);
-        Self {
+        Ok(Self {
             ctx,
-            all_airports: Airport::get_all().unwrap_or_default(),
+            all_airports: Airport::get_all()?,
             selected_airport: Arc::new(None),
             incoming_tracking,
             departing_tracking,
             in_course_img: text,
-        }
+        })
     }
 
     /// Crea una nueva instancia con el contexto actual.
-    pub fn with_ctx(ctx: Context) -> Self {
+    pub fn with_ctx(ctx: Context) -> Result<Self> {
         Self::new(
             ctx,
             Arc::new(LiveDataMap::new()),

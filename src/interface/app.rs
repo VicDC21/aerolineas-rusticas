@@ -1,29 +1,33 @@
 //! Módulo para la estructura de la aplicación en sí.
 
-use std::env::var;
-
-use chrono::{DateTime, Local};
-use eframe::egui::{CentralPanel, Context};
-use eframe::{App, Frame};
-use egui_extras::install_image_loaders;
-use walkers::sources::OpenStreetMap;
-use walkers::{HttpOptions, HttpTiles, Map, MapMemory, Position};
-
-use crate::client::cli::Client;
-use crate::client::conn_holder::ConnectionHolder;
-use crate::data::flights::types::FlightType;
-use crate::data::tracking::live_flight_data::LiveFlightData;
-use crate::interface::{
-    data::{app_details::AirlinesDetails, widget_details::WidgetDetails},
-    panels::show::{cur_airport_info, extra_airport_info},
-    plugins::{
-        airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
-        flights::{loader::FlightsLoader, updater::FlightsUpdater},
+use {
+    crate::{
+        client::{cli::Client, conn_holder::ConnectionHolder},
+        data::{flights::types::FlightType, tracking::live_flight_data::LiveFlightData},
+        interface::{
+            data::{app_details::AirlinesDetails, widget_details::WidgetDetails},
+            panels::show::{cur_airport_info, extra_airport_info},
+            plugins::{
+                airports::{
+                    clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader,
+                },
+                flights::{loader::FlightsLoader, updater::FlightsUpdater},
+            },
+            windows::{
+                airp::{airports_progress, clock_selector, date_selector, login_window},
+                util::{go_to_my_position, zoom},
+            },
+        },
+        protocol::aliases::results::Result,
     },
-    windows::{
-        airp::{airports_progress, clock_selector, date_selector, login_window},
-        util::{go_to_my_position, zoom},
+    chrono::{DateTime, Local},
+    eframe::{
+        egui::{CentralPanel, Context},
+        App, Frame,
     },
+    egui_extras::install_image_loaders,
+    std::env::var,
+    walkers::{sources::OpenStreetMap, HttpOptions, HttpTiles, Map, MapMemory, Position},
 };
 
 /// Latitud de la coordenada de origen de nuestro mapa.
@@ -69,15 +73,20 @@ pub struct AerolineasApp {
 
 impl AerolineasApp {
     /// Crea una nueva instancia de la aplicación.
-    pub fn new(egui_ctx: Context) -> Self {
+    pub fn new(egui_ctx: Context) -> Result<Self> {
         install_image_loaders(&egui_ctx);
 
         let mut mem = MapMemory::default();
         let _ = mem.set_zoom(8.0); // Queremos un zoom más lejos
 
-        let con_info = ConnectionHolder::with_cli(Client::default(), "QUORUM").unwrap();
+        let con_info = match ConnectionHolder::with_cli(Client::default(), "QUORUM") {
+            Ok(con) => con,
+            Err(e) => {
+                return Err(e);
+            }
+        };
 
-        Self {
+        Ok(Self {
             con_info,
             map_memory: mem,
             map_tiles: Self::open_street_tiles(&egui_ctx),
@@ -85,11 +94,11 @@ impl AerolineasApp {
             airports_drawer: AirportsDrawer::with_ctx(&egui_ctx),
             screen_clicker: ScreenClicker::default(),
             flights_loader: FlightsLoader::default(),
-            flights_updater: FlightsUpdater::with_ctx(egui_ctx.clone()),
+            flights_updater: FlightsUpdater::with_ctx(egui_ctx.clone())?,
             datetime: Local::now(),
             airlines_details: AirlinesDetails::default(),
             widget_details: WidgetDetails::default(),
-        }
+        })
     }
 
     fn open_street_tiles(ctx: &Context) -> HttpTiles {

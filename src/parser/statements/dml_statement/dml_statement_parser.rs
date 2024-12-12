@@ -9,26 +9,23 @@ use crate::{
             dml_statement::{
                 if_condition::{Condition, IfCondition},
                 main_statements::{
-                    batch::{Batch, BatchBuilder, BatchType},
                     delete::Delete,
                     insert::Insert,
                     select::{
                         group_by::GroupBy, kind_of_columns::KindOfColumns, limit::Limit,
-                        options::SelectOptions, order_by::OrderBy,
+                        options::SelectOptions, order_by::OrderBy, ordering::ProtocolOrdering,
                         per_partition_limit::PerPartitionLimit, select_operation::Select,
                         selector::Selector,
                     },
                     update::Update,
                 },
-                r#where::{expression::expression, r#where_parser::Where},
+                r#where::{expression::expression, operator::Operator, r#where_parser::Where},
             },
         },
         table_name::TableName,
     },
     protocol::errors::error::Error,
 };
-
-use super::{main_statements::select::ordering::ProtocolOrdering, r#where::operator::Operator};
 
 /// dml_statement::= select_statement
 /// | insert_statement
@@ -62,13 +59,6 @@ pub enum DmlStatement {
     ///     WHERE where_clause
     ///     [ IF ( EXISTS | condition ( AND condition)*) ]
     DeleteStatement(Delete),
-
-    /// batch_statement ::= BEGIN [ UNLOGGED | COUNTER ] BATCH
-    ///                     [ USING update_parameter( AND update_parameter)* ]
-    ///                     modification_statement ( ';' modification_statement )*
-    ///                     APPLY BATCH
-    /// modification_statement ::= insert_statement | update_statement | delete_statement
-    BatchStatement(Batch),
 }
 
 /// Crea el enum `DmlStatement` con el tipo de struct de acuerdo a la sintaxis dada, si la entrada proporcionada no satisface
@@ -82,8 +72,6 @@ pub fn dml_statement(list: &mut Vec<String>) -> Result<Option<DmlStatement>, Err
         return Ok(Some(DmlStatement::DeleteStatement(dml_statement)));
     } else if let Some(dml_statement) = update_statement(list)? {
         return Ok(Some(DmlStatement::UpdateStatement(dml_statement)));
-    } else if let Some(dml_statement) = batch_statement(list)? {
-        return Ok(Some(DmlStatement::BatchStatement(dml_statement)));
     }
     Ok(None)
 }
@@ -190,53 +178,6 @@ fn delete_statement(list: &mut Vec<String>) -> Result<Option<Delete>, Error> {
     let r#where = where_clause(list)?;
     let if_condition = check_if_condition(list)?;
     Ok(Some(Delete::new(cols, from, r#where, if_condition)))
-}
-
-fn batch_statement(list: &mut Vec<String>) -> Result<Option<Batch>, Error> {
-    let mut builder = BatchBuilder::default();
-    if check_words(list, "BEGIN") {
-        if check_words(list, "UNLOGGED") {
-            builder.set_batch_clause(BatchType::Unlogged);
-        } else if check_words(list, "COUNTER") {
-            builder.set_batch_clause(BatchType::Counter);
-        } else if !check_words(list, "BATCH") {
-            return Err(Error::SyntaxError("Falta BATCH en la consulta".to_string()));
-        }
-    } else {
-        return Ok(None);
-    }
-
-    let mut queries: Vec<DmlStatement> = Vec::new();
-    while list[0] != "APPLY" && list[1] != "BATCH" {
-        if list.is_empty() {
-            break;
-        }
-        if list[0] == "INSERT" {
-            if let Some(insert_stmt) = insert_statement(list)? {
-                queries.push(DmlStatement::InsertStatement(insert_stmt));
-            }
-        } else if list[0] == "UPDATE" {
-            if let Some(update_stmt) = update_statement(list)? {
-                queries.push(DmlStatement::UpdateStatement(update_stmt));
-            }
-        } else if list[0] == "DELETE" {
-            if let Some(delete_stmt) = delete_statement(list)? {
-                queries.push(DmlStatement::DeleteStatement(delete_stmt));
-            }
-        } else if list[0] == "SELECT" {
-            return Err(Error::SyntaxError(
-                "No se puede hacer una consulta SELECT usando BATCH".to_string(),
-            ));
-        }
-        list.remove(0);
-    }
-    if queries.is_empty() {
-        return Err(Error::SyntaxError(
-            "No se encontraron consultas en el batch".to_string(),
-        ));
-    }
-    builder.set_queries(queries);
-    Ok(Some(builder.build()))
 }
 
 fn select_clause(list: &mut Vec<String>) -> Result<Option<Vec<Selector>>, Error> {
@@ -535,12 +476,16 @@ mod tests {
         let result = select_statement(&mut tokens)?;
         let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
         assert_eq!(select.columns, KindOfColumns::All);
-        assert_eq!(
-            select.from,
-            TableName::check_kind_of_name(&mut vec!["users".to_string()])
-                .unwrap()
-                .unwrap()
-        );
+
+        let from = match TableName::check_kind_of_name(&mut vec!["users".to_string()]) {
+            Ok(Some(value)) => value,
+            _ => {
+                return Err(Error::SyntaxError(
+                    "El nombre de la tabla no es sintacticamente valido".to_string(),
+                ))
+            }
+        };
+        assert_eq!(select.from, from);
         assert!(select.options.the_where.is_none());
         Ok(())
     }
@@ -691,10 +636,15 @@ mod tests {
                             ))
                         );
                         assert_eq!(relation1.operator, Operator::Mayor);
-                        assert_eq!(
-                            relation1.term_to_compare,
-                            Term::is_term(&mut vec!["18".to_string()]).unwrap().unwrap()
-                        );
+                        let term = match Term::is_term(&mut vec!["18".to_string()]) {
+                            Ok(Some(value)) => value,
+                            _ => {
+                                return Err(Error::SyntaxError(
+                                    "No se pudo parsear el termino".to_string(),
+                                ))
+                            }
+                        };
+                        assert_eq!(relation1.term_to_compare, term);
                     } else {
                         return Err(Error::SyntaxError(
                             "Expected Relation expression for first part of AND".into(),
@@ -709,16 +659,19 @@ mod tests {
                             ))
                         );
                         assert_eq!(relation2.operator, Operator::Equal);
-                        assert_eq!(
-                            relation2.term_to_compare,
-                            Term::is_term(&mut vec![
-                                "\'".to_string(),
-                                "USA".to_string(),
-                                "\'".to_string()
-                            ])
-                            .unwrap()
-                            .unwrap()
-                        );
+                        let term = match Term::is_term(&mut vec![
+                            "\'".to_string(),
+                            "USA".to_string(),
+                            "\'".to_string(),
+                        ]) {
+                            Ok(Some(value)) => value,
+                            _ => {
+                                return Err(Error::SyntaxError(
+                                    "No se pudo parsear el termino".to_string(),
+                                ))
+                            }
+                        };
+                        assert_eq!(relation2.term_to_compare, term);
                     } else {
                         return Err(Error::SyntaxError(
                             "Expected Relation expression for second part of AND".into(),
@@ -756,16 +709,19 @@ mod tests {
                                 ))
                             );
                             assert_eq!(relation1.operator, Operator::Equal);
-                            assert_eq!(
-                                relation1.term_to_compare,
-                                Term::is_term(&mut vec![
-                                    "\'".to_string(),
-                                    "electronics".to_string(),
-                                    "\'".to_string()
-                                ])
-                                .unwrap()
-                                .unwrap()
-                            );
+                            let term = match Term::is_term(&mut vec![
+                                "\'".to_string(),
+                                "electronics".to_string(),
+                                "\'".to_string(),
+                            ]) {
+                                Ok(Some(value)) => value,
+                                _ => {
+                                    return Err(Error::SyntaxError(
+                                        "No se pudo parsear el termino".to_string(),
+                                    ))
+                                }
+                            };
+                            assert_eq!(relation1.term_to_compare, term);
                         } else {
                             return Err(Error::SyntaxError(
                                 "Expected Relation expression for first part".into(),
@@ -779,12 +735,15 @@ mod tests {
                                 ))
                             );
                             assert_eq!(relation2.operator, Operator::Minor);
-                            assert_eq!(
-                                relation2.term_to_compare,
-                                Term::is_term(&mut vec!["1000".to_string()])
-                                    .unwrap()
-                                    .unwrap()
-                            );
+                            let term = match Term::is_term(&mut vec!["1000".to_string()]) {
+                                Ok(Some(value)) => value,
+                                _ => {
+                                    return Err(Error::SyntaxError(
+                                        "No se pudo parsear el termino".to_string(),
+                                    ))
+                                }
+                            };
+                            assert_eq!(relation2.term_to_compare, term);
                         } else {
                             return Err(Error::SyntaxError(
                                 "Expected Relation expression for second part".into(),
@@ -801,10 +760,15 @@ mod tests {
                             ))
                         );
                         assert_eq!(relation3.operator, Operator::Mayor);
-                        assert_eq!(
-                            relation3.term_to_compare,
-                            Term::is_term(&mut vec!["0".to_string()]).unwrap().unwrap()
-                        );
+                        let term = match Term::is_term(&mut vec!["0".to_string()]) {
+                            Ok(Some(value)) => value,
+                            _ => {
+                                return Err(Error::SyntaxError(
+                                    "No se pudo parsear el termino".to_string(),
+                                ))
+                            }
+                        };
+                        assert_eq!(relation3.term_to_compare, term);
                     } else {
                         return Err(Error::SyntaxError(
                             "Expected Relation expression for third part".into(),
@@ -841,16 +805,19 @@ mod tests {
                         ))
                     );
                     assert_eq!(relation.operator, Operator::Contains);
-                    assert_eq!(
-                        relation.term_to_compare,
-                        Term::is_term(&mut vec![
-                            "\'".to_string(),
-                            "reading".to_string(),
-                            "\'".to_string()
-                        ])
-                        .unwrap()
-                        .unwrap()
-                    );
+                    let term = match Term::is_term(&mut vec![
+                        "\'".to_string(),
+                        "reading".to_string(),
+                        "\'".to_string(),
+                    ]) {
+                        Ok(Some(value)) => value,
+                        _ => {
+                            return Err(Error::SyntaxError(
+                                "No se pudo parsear el termino".to_string(),
+                            ))
+                        }
+                    };
+                    assert_eq!(relation.term_to_compare, term);
                 } else {
                     return Err(Error::SyntaxError("Expected Relation expression".into()));
                 }
@@ -868,7 +835,13 @@ mod tests {
 
         let result = select_statement(&mut tokens)?;
         let select = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
-        assert!(select.options.the_where.unwrap().expression.is_none());
+        let expr = match select.options.the_where {
+            Some(value) => value,
+            None => {
+                return Err(Error::SyntaxError("Expected Some Where".into()));
+            }
+        };
+        assert!(expr.expression.is_none());
         Ok(())
     }
 
@@ -1031,12 +1004,15 @@ mod tests {
         assert!(result.is_some());
 
         let delete = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
-        assert_eq!(
-            delete.from,
-            TableName::check_kind_of_name(&mut vec!["users".to_string()])
-                .unwrap()
-                .unwrap()
-        );
+        let from = match TableName::check_kind_of_name(&mut vec!["users".to_string()]) {
+            Ok(Some(value)) => value,
+            _ => {
+                return Err(Error::SyntaxError(
+                    "El nombre de la tabla no es sintacticamente valido".to_string(),
+                ))
+            }
+        };
+        assert_eq!(delete.from, from);
         assert!(delete.cols.is_empty());
         assert!(delete.the_where.is_some());
         Ok(())
@@ -1130,141 +1106,6 @@ mod tests {
         Ok(())
     }
 
-    // BATCH TESTS:
-    #[test]
-    fn test_01_basic_batch() -> Result<(), Error> {
-        let query = "BEGIN BATCH
-                     INSERT INTO users (id, name) VALUES (1, 'John');
-                     UPDATE users SET email = 'john@example.com' WHERE id = 1;
-                     APPLY BATCH";
-        let mut tokens = tokenize_query(query);
-
-        let result = batch_statement(&mut tokens)?;
-        assert!(result.is_some());
-
-        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
-        assert_eq!(batch.batch_type, BatchType::Logged);
-        assert_eq!(batch.queries.len(), 2);
-        assert!(matches!(batch.queries[0], DmlStatement::InsertStatement(_)));
-        assert!(matches!(batch.queries[1], DmlStatement::UpdateStatement(_)));
-        Ok(())
-    }
-
-    #[test]
-    fn test_02_unlogged_batch() -> Result<(), Error> {
-        let query = "BEGIN UNLOGGED BATCH
-                     INSERT INTO users (id, name) VALUES (2, 'Jane');
-                     DELETE FROM users WHERE id = 1;
-                     APPLY BATCH";
-        let mut tokens = tokenize_query(query);
-
-        let result = batch_statement(&mut tokens)?;
-        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
-
-        assert_eq!(batch.batch_type, BatchType::Unlogged);
-        assert_eq!(batch.queries.len(), 2);
-        assert!(matches!(batch.queries[0], DmlStatement::InsertStatement(_)));
-        assert!(matches!(batch.queries[1], DmlStatement::DeleteStatement(_)));
-        Ok(())
-    }
-
-    #[test]
-    fn test_03_counter_batch() -> Result<(), Error> {
-        let query = "BEGIN COUNTER BATCH
-                     UPDATE counters SET views = views + 1 WHERE id = 'page1';
-                     UPDATE counters SET views = views + 1 WHERE id = 'page2';
-                     APPLY BATCH";
-        let mut tokens = tokenize_query(query);
-
-        let result = batch_statement(&mut tokens)?;
-        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
-
-        assert_eq!(batch.batch_type, BatchType::Counter);
-        assert_eq!(batch.queries.len(), 2);
-        assert!(matches!(batch.queries[0], DmlStatement::UpdateStatement(_)));
-        assert!(matches!(batch.queries[1], DmlStatement::UpdateStatement(_)));
-        Ok(())
-    }
-
-    #[test]
-    fn test_04_batch_with_multiple_tables() -> Result<(), Error> {
-        let query = "BEGIN BATCH
-                     INSERT INTO users (id, name) VALUES (3, 'Alice');
-                     INSERT INTO logs (user_id, action) VALUES (3, 'created');
-                     APPLY BATCH";
-        let mut tokens = tokenize_query(query);
-
-        let result = batch_statement(&mut tokens)?;
-        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
-
-        assert_eq!(batch.queries.len(), 2);
-        if let DmlStatement::InsertStatement(insert1) = &batch.queries[0] {
-            assert_eq!(
-                insert1.table.name,
-                KeyspaceName::UnquotedName(UnquotedName::new("users".to_string())?)
-            );
-        } else {
-            return Err(Error::SyntaxError("Expected InsertStatement".into()));
-        }
-        if let DmlStatement::InsertStatement(insert2) = &batch.queries[1] {
-            assert_eq!(
-                insert2.table.name,
-                KeyspaceName::UnquotedName(UnquotedName::new("logs".to_string())?)
-            );
-        } else {
-            return Err(Error::SyntaxError("Expected InsertStatement".into()));
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn test_05_batch_with_if_conditions() -> Result<(), Error> {
-        let query = "BEGIN BATCH
-                     INSERT INTO users (id, name) VALUES (4, 'Bob') IF NOT EXISTS;
-                     UPDATE users SET email = 'bob@example.com' WHERE id = 4 IF name = 'Bob';
-                     APPLY BATCH";
-        let mut tokens = tokenize_query(query);
-
-        let result = batch_statement(&mut tokens)?;
-        let batch = result.ok_or(Error::SyntaxError("Expected Some, got None".into()))?;
-
-        assert_eq!(batch.queries.len(), 2);
-        if let DmlStatement::InsertStatement(insert) = &batch.queries[0] {
-            assert!(insert.if_not_exists);
-        } else {
-            return Err(Error::SyntaxError("Expected InsertStatement".into()));
-        }
-        if let DmlStatement::UpdateStatement(update) = &batch.queries[1] {
-            assert!(matches!(update.if_condition, IfCondition::Conditions(_)));
-        } else {
-            return Err(Error::SyntaxError("Expected UpdateStatement".into()));
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn test_06_empty_batch() -> Result<(), Error> {
-        let query = "BEGIN BATCH APPLY BATCH";
-        let mut tokens = tokenize_query(query);
-
-        let result = batch_statement(&mut tokens);
-        assert!(result.is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_07_invalid_batch() -> Result<(), Error> {
-        let query = "BEGIN BATCH
-                     INSERT INTO users (id, name) VALUES (5, 'Charlie');
-                     SELECT * FROM users;
-                     APPLY BATCH";
-        let mut tokens = tokenize_query(query);
-
-        let result = batch_statement(&mut tokens);
-        assert!(result.is_err());
-        Ok(())
-    }
-
     // EMPTY INPUT TEST:
     #[test]
     fn test_01_empty_input() -> Result<(), Error> {
@@ -1273,15 +1114,8 @@ mod tests {
         let update = update_statement(&mut tokens)?;
         let insert = insert_statement(&mut tokens)?;
         let delete = delete_statement(&mut tokens)?;
-        let batch = batch_statement(&mut tokens)?;
 
-        assert!(
-            select.is_none()
-                && update.is_none()
-                && insert.is_none()
-                && delete.is_none()
-                && batch.is_none()
-        );
+        assert!(select.is_none() && update.is_none() && insert.is_none() && delete.is_none());
         Ok(())
     }
 }
