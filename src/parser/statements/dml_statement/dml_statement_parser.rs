@@ -2,7 +2,8 @@ use crate::{
     parser::{
         assignment::Assignment,
         data_types::{
-            identifier::identifier::Identifier, literal::tuple_literal::TupleLiteral, term::Term,
+            identifier::identifier_mod::Identifier, literal::tuple_literal::TupleLiteral,
+            term::Term,
         },
         statements::{
             ddl_statement::ddl_statement_parser::check_words,
@@ -464,7 +465,7 @@ mod tests {
                 r#where::expression::Expression,
             },
         },
-        tokenizer::tokenizer::tokenize_query,
+        tokenizer::tokenizer_mod::tokenize_query,
     };
 
     // SELECT TESTS:

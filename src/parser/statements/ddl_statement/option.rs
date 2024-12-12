@@ -1,6 +1,6 @@
 use crate::{
     parser::data_types::{
-        identifier::identifier::Identifier, literal::map_literal::MapLiteral, term::Term,
+        identifier::identifier_mod::Identifier, literal::map_literal::MapLiteral, term::Term,
     },
     protocol::errors::error::Error,
 };

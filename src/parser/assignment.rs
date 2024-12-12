@@ -1,7 +1,7 @@
 use crate::{
     parser::{
         data_types::{
-            identifier::identifier::Identifier, literal::list_literal::ListLiteral, term::Term,
+            identifier::identifier_mod::Identifier, literal::list_literal::ListLiteral, term::Term,
         },
         statements::ddl_statement::ddl_statement_parser::check_words,
     },

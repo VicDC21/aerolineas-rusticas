@@ -1,5 +1,5 @@
 use crate::{
-    parser::data_types::{cql_type::cql_type::CQLType, identifier::identifier::Identifier},
+    parser::data_types::{cql_type::cql_type_mod::CQLType, identifier::identifier_mod::Identifier},
     parser::statements::ddl_statement::ddl_statement_parser::check_words,
     protocol::errors::error::Error,
 };

@@ -23,7 +23,7 @@ use {
             actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
             table_metadata::column_data_type::ColumnDataType,
         },
-        tokenizer::tokenizer::tokenize_query,
+        tokenizer::tokenizer_mod::tokenize_query,
     },
     rustls::{
         pki_types::{pem::PemObject, CertificateDer},

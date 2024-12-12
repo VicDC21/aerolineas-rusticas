@@ -1,6 +1,6 @@
 use crate::{
     parser::{
-        data_types::identifier::identifier::Identifier,
+        data_types::identifier::identifier_mod::Identifier,
         data_types::term::Term,
         statements::dml_statement::r#where::{and::And, operator::Operator, relation::Relation},
     },

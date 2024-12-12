@@ -24,7 +24,7 @@ use {
             },
             utils::load_json,
         },
-        tokenizer::tokenizer::tokenize_query,
+        tokenizer::tokenizer_mod::tokenize_query,
     },
     rand::{
         distributions::{Distribution, WeightedIndex},

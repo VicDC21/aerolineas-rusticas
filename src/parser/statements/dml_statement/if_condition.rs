@@ -1,5 +1,5 @@
 use crate::parser::{
-    data_types::{identifier::identifier::Identifier, term::Term},
+    data_types::{identifier::identifier_mod::Identifier, term::Term},
     statements::dml_statement::r#where::operator::Operator,
 };
 

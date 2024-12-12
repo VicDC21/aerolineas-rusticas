@@ -51,7 +51,7 @@ use {
             },
             utils::printable_bytes,
         },
-        tokenizer::tokenizer::tokenize_query,
+        tokenizer::tokenizer_mod::tokenize_query,
     },
     chrono::Utc,
     std::{

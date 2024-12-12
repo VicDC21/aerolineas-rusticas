@@ -1,6 +1,6 @@
 use crate::{
     parser::{
-        data_types::cql_type::{cql_type::CQLType, native_types::NativeType},
+        data_types::cql_type::{cql_type_mod::CQLType, native_types::NativeType},
         primary_key::PrimaryKey,
         statements::ddl_statement::column_definition::ColumnDefinition,
         table_name::TableName,

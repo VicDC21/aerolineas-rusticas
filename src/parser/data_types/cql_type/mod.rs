@@ -2,9 +2,8 @@
 
 /// Módulo que contiene los tipos de colección.
 pub mod collection_type;
-#[allow(clippy::module_inception)]
 /// Módulo que contiene los tipos de _CQL_.
-pub mod cql_type;
+pub mod cql_type_mod;
 /// Módulo que contiene los tipos de datos nativos.
 pub mod native_types;
 /// Módulo que contiene los tipos de tupla.

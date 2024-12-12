@@ -1,6 +1,6 @@
 use {
     crate::parser::{
-        data_types::identifier::identifier::Identifier,
+        data_types::identifier::identifier_mod::Identifier,
         statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
     },
     std::cmp::Ordering,

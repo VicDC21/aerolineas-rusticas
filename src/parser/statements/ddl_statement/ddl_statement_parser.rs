@@ -1,6 +1,6 @@
 use crate::{
     parser::{
-        data_types::{identifier::identifier::Identifier, keyspace_name::KeyspaceName},
+        data_types::{identifier::identifier_mod::Identifier, keyspace_name::KeyspaceName},
         primary_key::PrimaryKey,
         statements::ddl_statement::{
             alter_keyspace::AlterKeyspace,
@@ -479,7 +479,7 @@ mod tests {
     use crate::{
         parser::data_types::{
             cql_type::{
-                cql_type::CQLType,
+                cql_type_mod::CQLType,
                 native_types::NativeType::{Int, Text},
             },
             identifier::{
@@ -487,7 +487,7 @@ mod tests {
             },
             unquoted_name::UnquotedName,
         },
-        tokenizer::tokenizer::tokenize_query,
+        tokenizer::tokenizer_mod::tokenize_query,
     };
 
     // USE STATEMENT TESTS:
