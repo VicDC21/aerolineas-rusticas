@@ -97,14 +97,10 @@ fn app_loop(simulator: &FlightSimulator) -> Result<()> {
             "2" => handle_view_flight(simulator)?,
             "3" => handle_view_all_flights(simulator),
             "4" => handle_view_airports(simulator),
-            "5" => {
-                let active_flights = simulator.count_active_flights();
-                if active_flights == 0 {
-                    break Ok(());
-                }
-                println!("AVISO: Hay {} vuelo(s) aún en curso.", active_flights);
-                println!("El programa esperará a que todos los vuelos finalicen antes de cerrar.");
-            }
+            "5" => match handle_termination(simulator) {
+                Some(_) => {}
+                None => break Ok(()),
+            },
             _ => println!("Opción no válida"),
         }
     }
@@ -225,4 +221,14 @@ fn handle_view_all_flights(simulator: &FlightSimulator) {
 
 fn handle_view_airports(simulator: &FlightSimulator) {
     simulator.get_airports();
+}
+
+fn handle_termination(simulator: &FlightSimulator) -> Option<()> {
+    let active_flights = simulator.count_active_flights();
+    if active_flights == 0 {
+        return None;
+    }
+    println!("AVISO: Hay {} vuelo(s) aún en curso.", active_flights);
+    println!("El programa esperará a que todos los vuelos finalicen antes de cerrar.");
+    Some(())
 }

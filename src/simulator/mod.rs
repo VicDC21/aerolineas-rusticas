@@ -10,6 +10,8 @@ pub mod flight_simulator;
 pub mod initializer;
 /// Módulo de manejo de envío de datos.
 pub mod sender;
+/// Modulo de pruebas unitarias.
+pub mod sim_tests;
 /// Módulo de actualización de vuelos.
 pub mod updater;
 /// Módulo de utilidades.
