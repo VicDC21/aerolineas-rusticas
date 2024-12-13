@@ -37,7 +37,7 @@ pub struct FlightSimulator {
 impl FlightSimulator {
     /// Crea un nuevo simulador de vuelos con un número máximo de hilos y un cliente.
     ///
-    /// # Ejemplo:
+    /// # Ejemplo
     ///
     /// ```
     /// # use aerolineas_rusticas::simulator::flight_simulator::FlightSimulator;
@@ -57,7 +57,7 @@ impl FlightSimulator {
 
     /// Obtiene los datos específicos de un vuelo según el id solicitado.
     ///
-    /// # Ejemplo:
+    /// # Ejemplo
     ///
     /// ```
     /// # use aerolineas_rusticas::simulator::flight_simulator::FlightSimulator;
@@ -73,7 +73,7 @@ impl FlightSimulator {
 
     /// Obtiene datos principales de todos los vuelos cargados al simulador.
     ///
-    /// # Ejemplo:
+    /// # Ejemplo
     ///
     /// ```
     /// # use aerolineas_rusticas::simulator::flight_simulator::FlightSimulator;
@@ -89,7 +89,7 @@ impl FlightSimulator {
 
     /// Obtiene los aeropuertos disponibles en el simulador.
     ///
-    /// # Ejemplo:
+    /// # Ejemplo
     ///
     /// ```
     /// # use aerolineas_rusticas::simulator::flight_simulator::FlightSimulator;
