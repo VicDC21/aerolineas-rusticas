@@ -1,7 +1,11 @@
 //! Módulo para el estado de un nodo.
 
 use {
-    crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+    crate::protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        traits::Byteable,
+    },
     std::convert::TryFrom,
 };
 
@@ -38,7 +42,7 @@ impl Byteable for AppStatus {
 
 impl TryFrom<&[Byte]> for AppStatus {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         if bytes.is_empty() {
             return Err(Error::ServerError(
                 "El conjunto de bytes está vacío.".to_string(),

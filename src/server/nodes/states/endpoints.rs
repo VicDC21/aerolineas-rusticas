@@ -3,7 +3,7 @@
 use {
     crate::{
         protocol::{
-            aliases::types::Byte,
+            aliases::{results::Result, types::Byte},
             errors::error::Error,
             traits::Byteable,
             utils::{encode_ipaddr_to_bytes, parse_bytes_to_ipaddr},
@@ -144,7 +144,7 @@ impl Byteable for EndpointState {
 impl TryFrom<&[Byte]> for EndpointState {
     type Error = Error;
 
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         let mut i = 0;
 
         let ipaddr = parse_bytes_to_ipaddr(bytes, &mut i)?;

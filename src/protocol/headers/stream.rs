@@ -2,7 +2,10 @@
 
 use {
     crate::protocol::{
-        aliases::types::{Byte, Short},
+        aliases::{
+            results::Result,
+            types::{Byte, Short},
+        },
         errors::error::Error,
         traits::Byteable,
     },
@@ -31,7 +34,7 @@ impl Byteable for Stream {
 
 impl TryFrom<Vec<Byte>> for Stream {
     type Error = Error;
-    fn try_from(short: Vec<Byte>) -> Result<Self, Self::Error> {
+    fn try_from(short: Vec<Byte>) -> Result<Self> {
         let bytes_array: [Byte; 2] = match short.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_) => {

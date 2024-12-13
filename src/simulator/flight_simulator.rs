@@ -8,7 +8,10 @@ use {
             tracking::live_flight_data::LiveFlightData,
         },
         protocol::{
-            aliases::types::{Double, Int, Long, Ulong},
+            aliases::{
+                results::Result,
+                types::{Double, Int, Long, Ulong},
+            },
             errors::error::Error,
         },
         server::pool::threadpool::ThreadPool,
@@ -46,7 +49,7 @@ pub struct FlightSimulator {
 
 impl FlightSimulator {
     /// Crea un nuevo simulador de vuelos con un número máximo de hilos y un cliente.
-    pub fn new(max_threads: usize, has_to_connect: bool) -> Result<Self, Error> {
+    pub fn new(max_threads: usize, has_to_connect: bool) -> Result<Self> {
         let airports = Airport::get_all()?;
 
         Ok(FlightSimulator {
@@ -91,7 +94,7 @@ impl FlightSimulator {
         origin: String,
         destination: String,
         avg_spd: Double,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         if self.get_flight_data(flight_id).is_some() {
             return Err(Error::ServerError(format!(
                 "El vuelo con id {} ya existe",
@@ -124,10 +127,7 @@ impl FlightSimulator {
         })
     }
 
-    fn create_connection(
-        client: &mut Client,
-        has_to_connect: bool,
-    ) -> Result<Option<TlsStream>, Error> {
+    fn create_connection(client: &mut Client, has_to_connect: bool) -> Result<Option<TlsStream>> {
         if has_to_connect {
             let client_connection = get_client_connection()?;
             let tcp_stream = client.connect()?;
@@ -147,9 +147,7 @@ impl FlightSimulator {
         }
     }
 
-    fn set_client_and_connection(
-        has_to_connect: bool,
-    ) -> Result<(Client, Option<TlsStream>), Error> {
+    fn set_client_and_connection(has_to_connect: bool) -> Result<(Client, Option<TlsStream>)> {
         let mut client = Client::default();
         client.set_consistency_level("One")?;
         let tls_stream = match Self::create_connection(&mut client, has_to_connect) {
@@ -228,7 +226,7 @@ impl FlightSimulator {
         params: &FlightSimulationParams,
         rng: &mut rand::rngs::ThreadRng,
         tls_stream: &mut Option<TlsStream>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         while params.simulation_start.elapsed().as_secs_f64()
             < params.simulation_limit.as_secs_f64()
         {
@@ -259,7 +257,7 @@ impl FlightSimulator {
         fuel: Double,
         elapsed: Double,
         tls_stream: &mut Option<TlsStream>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let timestamp = Self::get_current_timestamp()?;
 
         let incoming_query = format!(
@@ -280,7 +278,7 @@ impl FlightSimulator {
         query: &str,
         client: &mut Client,
         tls_stream: &mut Option<TlsStream>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         if let Some(tls_stream) = tls_stream {
             match client.send_query(query, tls_stream) {
                 Ok(_) => (),
@@ -308,7 +306,7 @@ impl FlightSimulator {
         Ok(())
     }
 
-    fn get_current_timestamp() -> Result<Long, Error> {
+    fn get_current_timestamp() -> Result<Long> {
         match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(time) => Ok(time.as_secs() as Long),
             Err(_) => Err(Error::ServerError(
@@ -323,7 +321,7 @@ impl FlightSimulator {
         origin: &str,
         destination: &str,
         avg_spd: Double,
-    ) -> Result<(LiveFlightData, (Double, Double), Double), Error> {
+    ) -> Result<(LiveFlightData, (Double, Double), Double)> {
         let (origin_airport, destination_airport) = self.validate_airports(origin, destination)?;
 
         match (
@@ -355,11 +353,7 @@ impl FlightSimulator {
         }
     }
 
-    fn validate_airports(
-        &self,
-        origin: &str,
-        destination: &str,
-    ) -> Result<(&Airport, &Airport), Error> {
+    fn validate_airports(&self, origin: &str, destination: &str) -> Result<(&Airport, &Airport)> {
         let origin_airport = self.airports.get(origin).ok_or_else(|| {
             Error::ServerError(format!("Aeropuerto de origen '{}' no encontrado", origin))
         })?;
@@ -379,7 +373,7 @@ impl FlightSimulator {
         flight: &mut LiveFlightData,
         client: &mut Client,
         tls_stream: &mut Option<TlsStream>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         flight.state = FlightState::Preparing;
 
         Self::update_flight_in_list(flights, flight);
@@ -456,7 +450,7 @@ impl FlightSimulator {
         client: &mut Client,
         elapsed: Double,
         tls_stream: &mut Option<TlsStream>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         flight.state = FlightState::Finished;
         flight.pos = params.dest_coords;
         flight.set_spd(0.0);
@@ -488,7 +482,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_flight_simulator() -> Result<(), Error> {
+    fn test_flight_simulator() -> Result<()> {
         let simulator = FlightSimulator::default();
 
         simulator.add_flight(123456, "EZE".to_string(), "MAD".to_string(), 900.0)?;
@@ -519,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn test_concurrent_flights_simulation() -> Result<(), Error> {
+    fn test_concurrent_flights_simulation() -> Result<()> {
         let simulator = FlightSimulator::default();
 
         let flight_configs = vec![

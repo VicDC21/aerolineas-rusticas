@@ -2,7 +2,10 @@
 
 use {
     crate::protocol::{
-        aliases::types::{Byte, Int},
+        aliases::{
+            results::Result,
+            types::{Byte, Int},
+        },
         errors::error::Error,
         traits::Byteable,
     },
@@ -43,7 +46,7 @@ impl Byteable for Value {
 
 impl TryFrom<Vec<Byte>> for Value {
     type Error = Error;
-    fn try_from(bytes_vec: Vec<Byte>) -> Result<Self, Self::Error> {
+    fn try_from(bytes_vec: Vec<Byte>) -> Result<Self> {
         if bytes_vec.len() < 4 {
             return Err(Error::ProtocolError(
                 "Se esperan al menos 4 bytes para denominar la longitud del valor.".to_string(),

@@ -6,5 +6,4 @@ pub mod headers;
 pub mod messages;
 pub mod notations;
 pub mod traits;
-pub mod user;
 pub mod utils;

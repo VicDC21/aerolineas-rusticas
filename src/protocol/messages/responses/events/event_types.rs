@@ -2,7 +2,7 @@
 
 use {
     crate::protocol::{
-        aliases::types::Byte,
+        aliases::{results::Result, types::Byte},
         errors::error::Error,
         messages::responses::events::schema_changes::{
             options::SchemaChangeOption, targets::SchemaChangeTarget, types::SchemaChangeType,
@@ -74,7 +74,7 @@ impl Byteable for EventType {
 
 impl TryFrom<&[Byte]> for EventType {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         let mut i = 0;
         let event_type = parse_bytes_to_string(&bytes[i..], &mut i)?;
 

@@ -2,7 +2,10 @@
 
 use {
     crate::protocol::{
-        aliases::types::{Byte, UShort},
+        aliases::{
+            results::Result,
+            types::{Byte, UShort},
+        },
         errors::error::Error,
         messages::responses::events::schema_changes::targets::SchemaChangeTarget,
         traits::Byteable,
@@ -66,7 +69,7 @@ impl Byteable for SchemaChangeOption {
 
 impl TryFrom<(&SchemaChangeTarget, &[Byte])> for SchemaChangeOption {
     type Error = Error;
-    fn try_from(tupla: (&SchemaChangeTarget, &[Byte])) -> Result<Self, Self::Error> {
+    fn try_from(tupla: (&SchemaChangeTarget, &[Byte])) -> Result<Self> {
         let (target, bytes) = tupla;
         let mut i = 0;
         match target {

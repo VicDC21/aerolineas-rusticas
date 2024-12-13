@@ -32,7 +32,6 @@ use crate::{
 /// | insert_statement
 /// | update_statement
 /// | delete_statement
-/// | batch_statement
 #[derive(Debug)]
 pub enum DmlStatement {
     /// select_statement::= SELECT [ JSON | DISTINCT ] ( select_clause | '*' )

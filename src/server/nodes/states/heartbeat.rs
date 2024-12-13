@@ -2,7 +2,10 @@
 
 use {
     crate::protocol::{
-        aliases::types::{Byte, Long, Ulong},
+        aliases::{
+            results::Result,
+            types::{Byte, Long, Ulong},
+        },
         errors::error::Error,
         traits::Byteable,
     },
@@ -91,7 +94,7 @@ impl Byteable for HeartbeatState {
 
 impl TryFrom<&[Byte]> for HeartbeatState {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         let bytes_len = bytes.len();
         if bytes_len < 16 {
             return Err(Error::ServerError(format!(

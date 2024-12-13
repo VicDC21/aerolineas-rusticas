@@ -14,7 +14,5 @@ pub mod literal;
 pub mod quoted_name;
 /// Módulo que contiene los términos.
 pub mod term;
-/// Módulo que contiene literales de tipo _UDT_.
-pub mod udt_literal;
 /// Módulo que contiene los nombres sin comillas.
 pub mod unquoted_name;

@@ -2,7 +2,11 @@
 
 use {
     crate::{
-        protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+        protocol::{
+            aliases::{results::Result, types::Byte},
+            errors::error::Error,
+            traits::Byteable,
+        },
         server::{modes::ConnectionMode, nodes::states::appstatus::AppStatus},
     },
     std::convert::TryFrom,
@@ -59,7 +63,7 @@ impl Byteable for AppState {
 
 impl TryFrom<&[Byte]> for AppState {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         let mut i = 0;
 
         let status = AppStatus::try_from(&bytes[i..])?;

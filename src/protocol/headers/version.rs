@@ -1,7 +1,11 @@
 //! Módulo para la versión del protocolo.
 
 use {
-    crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+    crate::protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        traits::Byteable,
+    },
     std::convert::TryFrom,
 };
 
@@ -42,7 +46,7 @@ impl Byteable for Version {
 
 impl TryFrom<Byte> for Version {
     type Error = Error;
-    fn try_from(byte: Byte) -> Result<Self, Self::Error> {
+    fn try_from(byte: Byte) -> Result<Self> {
         match byte {
             0x03 => Ok(Version::RequestV3),
             0x83 => Ok(Version::ResponseV3),

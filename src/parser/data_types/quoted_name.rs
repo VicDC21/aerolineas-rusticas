@@ -1,4 +1,4 @@
-use crate::protocol::errors::error::Error;
+use crate::protocol::aliases::results::Result;
 
 /// '"' unquoted_name '"'
 pub struct QuotedName {
@@ -15,8 +15,7 @@ impl QuotedName {
 
 impl QuotedName {
     /// Crea un nuevo nombre con comillas.
-    pub fn new(word: String) -> Result<Self, Error> {
-        // TODO: Verificaciones
+    pub fn new(word: String) -> Result<Self> {
         Ok(QuotedName { name: word })
     }
 }

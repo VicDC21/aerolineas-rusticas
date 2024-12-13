@@ -4,7 +4,7 @@ use crate::parser::data_types::literal::{
 
 /// Literal de CQL.
 ///
-/// collection_literal | vector_literal | udt_literal | tuple_literal
+/// collection_literal | tuple_literal
 pub enum Literal {
     /// Literal de una colección.
     CollectionLiteral(CollectionLiteral),

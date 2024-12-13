@@ -1,7 +1,7 @@
 //! Módulo para las flags de un mensaje.
 
 use crate::protocol::{
-    aliases::types::Byte,
+    aliases::{results::Result, types::Byte},
     errors::error::Error,
     traits::{Byteable, Maskable},
 };
@@ -84,7 +84,7 @@ impl Maskable<Byte> for Flag {
 
 impl TryFrom<Byte> for Flag {
     type Error = Error;
-    fn try_from(byte: Byte) -> Result<Self, Self::Error> {
+    fn try_from(byte: Byte) -> Result<Self> {
         match byte {
             0x01 => Ok(Flag::Compression),
             0x02 => Ok(Flag::Tracing),

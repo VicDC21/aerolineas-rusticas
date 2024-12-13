@@ -1,7 +1,7 @@
 use crate::{
     parser::data_types::{cql_type::cql_type_mod::CQLType, identifier::identifier_mod::Identifier},
     parser::statements::ddl_statement::ddl_statement_parser::check_words,
-    protocol::errors::error::Error,
+    protocol::{aliases::results::Result, errors::error::Error},
 };
 
 /// column_definition::= column_name cql_type [ STATIC ] [ PRIMARY KEY]
@@ -51,7 +51,7 @@ impl ColumnDefinition {
     /// # Retornos
     ///
     /// * `Result<Self, Error>` - Devuelve una `ColumnDefinition` en caso de éxito o un `Error` en caso de fallo.
-    pub fn parse(lista: &mut Vec<String>) -> Result<Self, Error> {
+    pub fn parse(lista: &mut Vec<String>) -> Result<Self> {
         let column_name = match Identifier::check_identifier(lista)? {
             Some(value) => value,
             None => {

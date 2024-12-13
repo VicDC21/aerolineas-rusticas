@@ -2,7 +2,7 @@
 
 use {
     crate::protocol::{
-        aliases::types::Byte,
+        aliases::{results::Result, types::Byte},
         errors::error::Error,
         traits::Byteable,
         utils::{encode_string_to_bytes, parse_bytes_to_string},
@@ -65,7 +65,7 @@ impl Byteable for WriteType {
 
 impl TryFrom<&[Byte]> for WriteType {
     type Error = Error;
-    fn try_from(bytes_vec: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes_vec: &[Byte]) -> Result<Self> {
         let inner_str = parse_bytes_to_string(bytes_vec, &mut 0)?;
         match inner_str.as_str() {
             "SIMPLE" => Ok(Self::Simple),

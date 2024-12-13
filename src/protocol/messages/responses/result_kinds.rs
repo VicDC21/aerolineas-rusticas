@@ -1,7 +1,10 @@
 //! Módulo para los tipos de _responses_ de tipo RESULT.
 
 use crate::protocol::{
-    aliases::types::{Byte, Int},
+    aliases::{
+        results::Result,
+        types::{Byte, Int},
+    },
     errors::error::Error,
     traits::Byteable,
 };
@@ -38,7 +41,7 @@ impl Byteable for ResultKind {
 
 impl TryFrom<Vec<Byte>> for ResultKind {
     type Error = Error;
-    fn try_from(integer_in_bytes: Vec<Byte>) -> Result<Self, Self::Error> {
+    fn try_from(integer_in_bytes: Vec<Byte>) -> Result<Self> {
         let bytes_array: [Byte; 4] = match integer_in_bytes.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {

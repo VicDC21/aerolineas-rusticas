@@ -1,7 +1,10 @@
 //! Módulo para las flags de un _query_ en un _request_.
 
 use crate::protocol::{
-    aliases::types::{Byte, Int},
+    aliases::{
+        results::Result,
+        types::{Byte, Int},
+    },
     errors::error::Error,
     traits::{Byteable, Maskable},
 };
@@ -65,7 +68,7 @@ impl Byteable for QueryFlag {
 
 impl TryFrom<Vec<Byte>> for QueryFlag {
     type Error = Error;
-    fn try_from(int: Vec<Byte>) -> Result<Self, Self::Error> {
+    fn try_from(int: Vec<Byte>) -> Result<Self> {
         let bytes_array: [Byte; 4] = match int.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_e) => {

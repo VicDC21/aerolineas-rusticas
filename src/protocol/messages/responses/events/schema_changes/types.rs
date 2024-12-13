@@ -2,7 +2,7 @@
 
 use {
     crate::protocol::{
-        aliases::types::Byte,
+        aliases::{results::Result, types::Byte},
         errors::error::Error,
         traits::Byteable,
         utils::{encode_string_to_bytes, parse_bytes_to_string},
@@ -33,7 +33,7 @@ impl Byteable for SchemaChangeType {
 
 impl TryFrom<&[Byte]> for SchemaChangeType {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         let string = parse_bytes_to_string(bytes, &mut 0)?;
         match string.as_str() {
             "CREATED" => Ok(Self::Created),

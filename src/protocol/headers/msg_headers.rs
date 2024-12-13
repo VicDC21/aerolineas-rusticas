@@ -2,7 +2,7 @@
 
 use {
     crate::protocol::{
-        aliases::types::Byte,
+        aliases::{results::Result, types::Byte},
         errors::error::Error,
         headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         traits::{Byteable, Maskable},
@@ -68,7 +68,7 @@ impl Byteable for Headers {
 
 impl TryFrom<&[Byte]> for Headers {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         if bytes.len() < 9 {
             return Err(Error::Invalid(
                 "Se necesitan al menos 9 bytes para formar los encabezados.".to_string(),
