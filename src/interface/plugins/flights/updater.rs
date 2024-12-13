@@ -155,7 +155,12 @@ impl Plugin for &mut FlightsUpdater {
         if let Some(airport) = self.selected_airport.as_ref() {
             for dep_data in self.departing_tracking.values() {
                 if let Some(recent_entry) = LiveFlightData::most_recent(dep_data) {
-                    if recent_entry.orig != airport.ident {
+                    let iata_code = match &airport.iata_code {
+                        Some(code) => code.to_string(),
+                        None => continue,
+                    };
+
+                    if recent_entry.orig != iata_code {
                         continue;
                     }
 
@@ -174,7 +179,12 @@ impl Plugin for &mut FlightsUpdater {
 
             for inc_data in self.incoming_tracking.values() {
                 if let Some(recent_entry) = LiveFlightData::most_recent(inc_data) {
-                    if recent_entry.dest != airport.ident {
+                    let iata_code = match &airport.iata_code {
+                        Some(code) => code.to_string(),
+                        None => continue,
+                    };
+
+                    if recent_entry.dest != iata_code {
                         continue;
                     }
 

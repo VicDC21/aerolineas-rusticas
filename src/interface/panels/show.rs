@@ -164,8 +164,13 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
 
         ui.separator();
 
+        let iata_code = match &airport.iata_code {
+            Some(iata) => iata.to_string(),
+            None => "N/A".to_string(),
+        };
+
         ui.label(
-            RichText::new(format!("\t{:<20}{:>25}", "Ident:", &airport.ident))
+            RichText::new(format!("\t{:<20}{:>25}", "Ident:", iata_code))
                 .color(text_color)
                 .font(font.clone()),
         );

@@ -39,14 +39,19 @@ pub fn insert_flight(
         None,
     );
     let eta = (timestamp as u64 + flight_duration.as_secs()) as i64;
+    let (cur_iata_code, ex_iata_code) = match (&cur_airport.iata_code, &ex_airport.iata_code) {
+        (Some(cur_code), Some(ex_code)) => (cur_code.to_string(), ex_code.to_string()),
+        _ => ("N/A".to_string(), "N/A".to_string()),
+    };
+
     let inc_fl_query = format!(
         "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES ({}, '{}', '{}', {}, '{}');",
-        flight_id as Int, cur_airport.ident, ex_airport.ident, eta, FlightState::Preparing
+        flight_id as Int, cur_iata_code, ex_iata_code, eta, FlightState::Preparing
     );
 
     let dep_fl_query = format!(
         "INSERT INTO vuelos_salientes (id, orig, dest, salida, estado) VALUES ({}, '{}', '{}', {}, '{}');",
-        flight_id as Int, cur_airport.ident, ex_airport.ident, timestamp, FlightState::Preparing
+        flight_id as Int, cur_iata_code, ex_iata_code, timestamp, FlightState::Preparing
     );
 
     send_client_query(con_info, inc_fl_query.as_str())?;

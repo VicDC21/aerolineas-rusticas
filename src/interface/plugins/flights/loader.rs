@@ -283,7 +283,9 @@ impl FlightsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_fl_incoming(&mut self) -> Vec<Flight> {
-        self.incoming_flights.take().unwrap_or_default()
+        self.incoming_flights
+            .take()
+            .map_or(Vec::<Flight>::new(), |flights| flights)
     }
 
     /// **Consume** la lista de vuelos salientes actualmente en memoria para devolverla,
@@ -291,7 +293,9 @@ impl FlightsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_fl_departing(&mut self) -> Vec<Flight> {
-        self.departing_flights.take().unwrap_or_default()
+        self.departing_flights
+            .take()
+            .map_or(Vec::<Flight>::new(), |flights| flights)
     }
 
     /// **Consume** la lista de datos de vuelos entrantes actualmente en memoria
@@ -299,7 +303,9 @@ impl FlightsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_tr_incoming(&mut self) -> LiveDataMap {
-        self.incoming_tracking.take().unwrap_or_default()
+        self.incoming_tracking
+            .take()
+            .map_or(LiveDataMap::new(), |flights| flights)
     }
 
     /// **Consume** la lista de datos de vuelos salientes actualmente en memoria
@@ -307,7 +313,9 @@ impl FlightsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_tr_departing(&mut self) -> LiveDataMap {
-        self.departing_tracking.take().unwrap_or_default()
+        self.departing_tracking
+            .take()
+            .map_or(LiveDataMap::new(), |flights| flights)
     }
 
     /// Sincroniza la fecha seleccionada en la aplicación con la guardada aquí.
@@ -380,16 +388,22 @@ impl FlightsLoader {
             Some(airp) => airp,
             None => return Ok(Vec::<Flight>::new()),
         };
+
+        let iata_code = match &airport.iata_code {
+            Some(code) => code.to_string(),
+            None => return Ok(Vec::<Flight>::new()),
+        };
+
         let query = match flight_type {
             FlightType::Incoming => format!(
                 "SELECT * FROM vuelos_entrantes WHERE dest = '{}' AND llegada < {} AND llegada > {};",
-                airport.ident,
+                iata_code,
                 timestamp + (DAY_IN_SECONDS / 2),
                 timestamp - (DAY_IN_SECONDS / 2),
             ),
             FlightType::Departing => format!(
                 "SELECT * FROM vuelos_salientes WHERE orig = '{}' AND salida < {} AND salida > {};",
-                airport.ident,
+                iata_code,
                 timestamp + (DAY_IN_SECONDS / 2),
                 timestamp - (DAY_IN_SECONDS / 2),
             ),
@@ -430,14 +444,20 @@ impl FlightsLoader {
             Some(airp) => airp,
             None => return Ok(LiveDataMap::new()),
         };
+
+        let iata_code = match &airport.iata_code {
+            Some(code) => code.to_string(),
+            None => return Ok(LiveDataMap::new()),
+        };
+
         let query = match flight_type {
             FlightType::Incoming => format!(
                 "SELECT * FROM vuelos_entrantes_en_vivo WHERE dest = '{}';",
-                airport.ident
+                iata_code
             ),
             FlightType::Departing => format!(
                 "SELECT * FROM vuelos_salientes_en_vivo WHERE orig = '{}';",
-                airport.ident
+                iata_code
             ),
         };
 
