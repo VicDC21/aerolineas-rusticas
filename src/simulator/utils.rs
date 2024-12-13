@@ -1,6 +1,13 @@
 use {
-    crate::protocol::aliases::types::Double,
+    crate::protocol::{
+        aliases::{
+            results::Result,
+            types::{Double, Long},
+        },
+        errors::error::Error,
+    },
     rand::{rngs::ThreadRng, Rng},
+    std::time::{SystemTime, UNIX_EPOCH},
 };
 
 /// Funciones de utilidad para cálculos de vuelo
@@ -75,6 +82,16 @@ impl FlightCalculations {
             let variation = rng.gen_range(-MAX_VARIATION..MAX_VARIATION);
             CRUISE_ALTITUDE + variation
         }
+    }
+}
+
+/// Obtiene el timestamp actual en segundos
+pub fn get_current_timestamp() -> Result<Long> {
+    match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(time) => Ok(time.as_secs() as Long),
+        Err(_) => Err(Error::ServerError(
+            "No se pudo obtener el timestamp actual".to_string(),
+        )),
     }
 }
 

@@ -3,7 +3,7 @@ use {
         client::cli::Client,
         protocol::aliases::{results::Result, types::Byte},
         server::nodes::{graph::NodesGraph, node::Node},
-        simulator::cli::{run_sim, FlightConfig},
+        simulator::cli::{run_sim, FlightConfigs},
     },
     std::{env::args, fs::File, io::BufReader, path::Path},
 };
@@ -20,7 +20,8 @@ fn print_err(res: Result<()>) {
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
-    let how_to_use = "Uso:\n\ncargo run [cli | --features \"gui\" gui | sim | sv | nd [echo]]\n";
+    let how_to_use =
+        "Uso:\n\ncargo run [cli | --features \"gui\" gui | sim | sv | nd [echo] | demo]\n";
     if argv.len() < 2 {
         println!("{}", how_to_use);
         return;
@@ -78,18 +79,18 @@ fn main() {
                     return;
                 }
             };
-            let flight_configs: Vec<FlightConfig> =
-                match serde_json::from_reader(BufReader::new(file)) {
-                    Ok(configs) => configs,
-                    Err(err) => {
-                        println!(
-                            "Error al leer el archivo de configuración de vuelos: {}",
-                            err
-                        );
-                        return;
-                    }
-                };
-            if let Err(err) = run_sim(&flight_configs) {
+            let flight_configs: FlightConfigs = match serde_json::from_reader(BufReader::new(file))
+            {
+                Ok(configs) => configs,
+                Err(err) => {
+                    println!(
+                        "Error al leer el archivo de configuración de vuelos: {}",
+                        err
+                    );
+                    return;
+                }
+            };
+            if let Err(err) = run_sim(&flight_configs.flight_configs) {
                 println!("{}", err);
             }
         }

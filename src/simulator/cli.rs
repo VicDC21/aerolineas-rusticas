@@ -14,6 +14,13 @@ use {
     std::{thread, time::Duration},
 };
 
+#[derive(Deserialize)]
+/// Configuración de los vuelos
+pub struct FlightConfigs {
+    /// Configuraciones de los vuelos.
+    pub flight_configs: Vec<FlightConfig>,
+}
+
 /// Configuración de un vuelo.
 #[derive(Debug, Deserialize)]
 pub struct FlightConfig {
