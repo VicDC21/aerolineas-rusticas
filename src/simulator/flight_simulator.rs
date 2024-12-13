@@ -2,6 +2,7 @@ use {
     crate::{
         data::{
             airports::airp::{Airport, AirportsMap},
+            flights::states::FlightState,
             tracking::live_flight_data::LiveFlightData,
         },
         protocol::{
@@ -111,6 +112,17 @@ impl FlightSimulator {
             }
             Ok(())
         })
+    }
+
+    /// Obtiene la cantidad de vuelos activos en el simulador.
+    pub fn count_active_flights(&self) -> usize {
+        match self.flights.read() {
+            Ok(flights) => flights
+                .values()
+                .filter(|flight| flight.state != FlightState::Finished)
+                .count(),
+            Err(_) => 0,
+        }
     }
 }
 
