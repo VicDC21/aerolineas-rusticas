@@ -8,7 +8,7 @@ use {
             tracking::live_flight_data::LiveFlightData,
         },
         protocol::{
-            aliases::types::{Double, Int, Long},
+            aliases::types::{Double, Int, Long, Ulong},
             errors::error::Error,
         },
         server::pool::threadpool::ThreadPool,
@@ -25,7 +25,7 @@ use {
 };
 
 /// La duración de una simulación.
-const FLIGHT_LIMIT_SECS: u64 = 10;
+const FLIGHT_LIMIT_SECS: Ulong = 10;
 
 struct FlightSimulationParams {
     origin_coords: (Double, Double),
@@ -188,7 +188,7 @@ impl FlightSimulator {
         let simulation_start = Instant::now();
         let simulation_limit = if tls_stream.is_some() {
             Duration::from_secs(
-                ((total_distance * (FLIGHT_LIMIT_SECS as Double)) / flight.get_spd()) as u64,
+                ((total_distance * (FLIGHT_LIMIT_SECS as Double)) / flight.get_spd()) as Ulong,
             )
         } else {
             Duration::from_secs(FLIGHT_LIMIT_SECS)

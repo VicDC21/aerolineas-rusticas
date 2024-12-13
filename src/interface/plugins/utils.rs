@@ -3,7 +3,10 @@
 use {
     crate::{
         data::airports::{airp::Airport, types::AirportType},
-        protocol::{aliases::results::Result, errors::error::Error},
+        protocol::{
+            aliases::{results::Result, types::Float},
+            errors::error::Error,
+        },
     },
     eframe::egui::{ColorImage, Context},
     image::{ImageError, ImageReader},
@@ -44,7 +47,7 @@ pub fn load_airport_image(path: &str, airport: &Airport, context: &Context) -> R
 }
 
 /// Devuelve el nivel de zoom aceptable para mostrar el aeropuerto según el [tipo](AirportType).
-pub fn zoom_is_showable(airport_type: &AirportType, zoom: f32) -> bool {
+pub fn zoom_is_showable(airport_type: &AirportType, zoom: Float) -> bool {
     match airport_type {
         AirportType::LargeAirport => zoom >= 0.0,
         AirportType::MediumAirport => zoom >= 5.0,

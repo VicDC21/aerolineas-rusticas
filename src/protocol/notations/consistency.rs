@@ -4,7 +4,7 @@ use {
     crate::protocol::{
         aliases::{
             results::Result,
-            types::{Byte, Short},
+            types::{Byte, UShort},
         },
         errors::error::Error,
         traits::Byteable,
@@ -107,7 +107,7 @@ impl TryFrom<&[Byte]> for Consistency {
             ));
         }
 
-        let value = Short::from_be_bytes([short[0], short[1]]);
+        let value = UShort::from_be_bytes([short[0], short[1]]);
         match value {
             0x0000 => Ok(Consistency::Any),
             0x0001 => Ok(Consistency::One),

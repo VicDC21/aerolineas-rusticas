@@ -4,6 +4,7 @@ use {
     crate::{
         data::{airports::airp::Airport, utils::distances::distance_euclidean_pos2},
         interface::plugins::utils::zoom_is_showable,
+        protocol::aliases::types::{Double, Float},
     },
     eframe::egui::{Painter, PointerButton, Response},
     std::sync::Arc,
@@ -11,7 +12,7 @@ use {
 };
 
 // Distancia mínima para un potencial click.
-const MIN_CLICK_DIST: f64 = 13.0;
+const MIN_CLICK_DIST: Double = 13.0;
 
 /// Rastrea el mouse y decta clicks.
 pub struct ScreenClicker {
@@ -19,7 +20,7 @@ pub struct ScreenClicker {
     airports: Arc<Vec<Airport>>,
 
     // El nivel de zoom actual.
-    zoom: f32,
+    zoom: Float,
 
     // El último aeropuerto clickeado con el botón primario.
     current_airport: Option<Option<Airport>>,
@@ -32,7 +33,7 @@ impl ScreenClicker {
     /// Crea una nueva instancia con la referencia al aeropuerto actual.
     pub fn new(
         airports: Arc<Vec<Airport>>,
-        zoom: f32,
+        zoom: Float,
         current_airport: Option<Option<Airport>>,
         extra_airport: Option<Option<Airport>>,
     ) -> Self {
@@ -57,7 +58,7 @@ impl ScreenClicker {
     /// Actualiza el valor de zoom desde afuera.
     ///
     /// Devuelve esta misma instancia para encadenar funciones.
-    pub fn sync_zoom(&mut self, real_zoom: f32) -> &mut Self {
+    pub fn sync_zoom(&mut self, real_zoom: Float) -> &mut Self {
         self.zoom = real_zoom;
         self
     }

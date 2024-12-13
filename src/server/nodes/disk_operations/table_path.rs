@@ -1,5 +1,6 @@
 //! Módulo que detallas la ruta de una tabla
 
+use crate::protocol::aliases::types::Byte;
 /// Estructura común para manejar paths
 pub struct TablePath {
     /// Dirección del storage
@@ -17,7 +18,7 @@ impl TablePath {
         keyspace: Option<String>,
         table_name: &str,
         default_keyspace: &str,
-        node_number: u8,
+        node_number: Byte,
     ) -> Self {
         let keyspace = match keyspace {
             Some(keyspace) => keyspace,

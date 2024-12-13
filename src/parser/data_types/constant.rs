@@ -1,12 +1,12 @@
 use {
     crate::protocol::{
-        aliases::types::{Double, Int, Uuid},
+        aliases::types::{Double, Int, Uint, Uuid},
         errors::error::Error,
     },
     std::cmp::Ordering,
 };
 
-// Revisar u32 despues de mergear para no hacer conflicto
+// Revisar Uint despues de mergear para no hacer conflicto
 
 #[derive(Debug, Clone)]
 /// constant::= string | integer | double | boolean | uuid | blob | NULL
@@ -14,10 +14,10 @@ pub enum Constant {
     /// ''' (any character where ' can appear if doubled)+ '''.
     String(String),
 
-    /// re('-?[0-9]+'). Es un i32 normalito.
+    /// re('-?[0-9]+'). Es un Int normalito.
     Integer(Int),
 
-    /// re('-?[0-9]+(.[0-9]*)?([eE][+-]?[0-9+])?') | NAN | INFINITY. Es un [f64], con eso alcanza para representar las posibilidades.
+    /// re('-?[0-9]+(.[0-9]*)?([eE][+-]?[0-9+])?') | NAN | INFINITY. Es un [Double], con eso alcanza para representar las posibilidades.
     Double(Double),
 
     /// TRUE | FALSE
@@ -176,14 +176,14 @@ impl Constant {
     }
 
     fn check_hex(value: &str) -> bool {
-        Int::from_str_radix(value, value.len() as u32).is_ok()
+        Int::from_str_radix(value, value.len() as Uint).is_ok()
     }
 
     fn check_blob(value: &str) -> bool {
         if !value.starts_with("0x") {
             return false;
         };
-        Int::from_str_radix(&value[2..], (value.len() - 2) as u32).is_ok()
+        Int::from_str_radix(&value[2..], (value.len() - 2) as Uint).is_ok()
     }
 }
 

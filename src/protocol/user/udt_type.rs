@@ -2,7 +2,7 @@
 
 use {
     crate::protocol::{
-        aliases::types::{Byte, Short},
+        aliases::types::{Byte, UShort},
         errors::error::Error,
         messages::responses::result::col_type::ColType,
         traits::Byteable,
@@ -81,7 +81,7 @@ impl TryFrom<&[Byte]> for UdtType {
         let ks = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
         let udt_name = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
 
-        let n = Short::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]);
+        let n = UShort::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]);
         i += 2;
 
         let mut fields: UdtTypeFields = Vec::new();

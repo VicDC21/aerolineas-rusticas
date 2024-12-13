@@ -80,10 +80,10 @@ impl FlightCalculations {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, rand::thread_rng};
+    use {super::*, crate::protocol::aliases::types::Uint, rand::thread_rng};
 
     /// Función auxiliar para comparar números de punto flotante con tolerancia
-    fn assert_approx_eq(a: f64, b: f64) {
+    fn assert_approx_eq(a: Double, b: Double) {
         let epsilon = 1e-6;
         assert!(
             (a - b).abs() < epsilon,
@@ -156,23 +156,26 @@ mod tests {
     #[test]
     fn test_calculate_current_speed() {
         let avg_speed = 500.0; // km/h
-        let mut seed: u32 = 42;
+        let mut seed: Uint = 42;
 
         let mut speed_results = Vec::new();
 
         for _ in 0..100 {
             seed = seed.wrapping_mul(1103515245).wrapping_add(12345) & 0x7fffffff;
-            let random_factor = (seed as f64 / 0x7fffffff as f64) * 100.0 - 50.0;
+            let random_factor = (seed as Double / 0x7fffffff as Double) * 100.0 - 50.0;
 
             let speed = avg_speed + random_factor;
             speed_results.push(speed);
         }
 
-        let min_speed = speed_results.iter().cloned().fold(f64::INFINITY, f64::min);
+        let min_speed = speed_results
+            .iter()
+            .cloned()
+            .fold(Double::INFINITY, Double::min);
         let max_speed = speed_results
             .iter()
             .cloned()
-            .fold(f64::NEG_INFINITY, f64::max);
+            .fold(Double::NEG_INFINITY, Double::max);
 
         assert!(min_speed >= avg_speed - 50.0, "Velocidad demasiado baja");
         assert!(max_speed <= avg_speed + 50.0, "Velocidad demasiado alta");
@@ -198,8 +201,14 @@ mod tests {
             altitudes.push(altitude);
         }
 
-        let min_altitude = altitudes.iter().cloned().fold(f64::INFINITY, f64::min);
-        let max_altitude = altitudes.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let min_altitude = altitudes
+            .iter()
+            .cloned()
+            .fold(Double::INFINITY, Double::min);
+        let max_altitude = altitudes
+            .iter()
+            .cloned()
+            .fold(Double::NEG_INFINITY, Double::max);
 
         assert!(
             (max_altitude - min_altitude).abs() > 0.1,

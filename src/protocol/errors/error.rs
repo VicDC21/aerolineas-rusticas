@@ -2,7 +2,7 @@
 
 use {
     crate::protocol::{
-        aliases::types::{Byte, Int, ReasonMap, Short},
+        aliases::types::{Byte, Int, ReasonMap, UShort},
         errors::write_type::WriteType,
         notations::consistency::Consistency,
         traits::Byteable,
@@ -56,8 +56,8 @@ pub enum Error {
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han reconocido la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya confirmación es necesaria para cumplir `<cl>`.
     /// * `<writeType>` es un [WriteType] que representa el tipo de escritura que se estaba intentando realizar.
-    /// * `<contentions>` es un número ([Short]) que representa la cantidad de contenciones ocurridas durante la operación CAS. Este campo solo se presenta cuando el writeType es "CAS".
-    WriteTimeout(String, Consistency, Int, Int, WriteType, Option<Short>),
+    /// * `<contentions>` es un número ([UShort]) que representa la cantidad de contenciones ocurridas durante la operación CAS. Este campo solo se presenta cuando el writeType es "CAS".
+    WriteTimeout(String, Consistency, Int, Int, WriteType, Option<UShort>),
 
     /// Timeout exception durante un request de lectura.
     ///
@@ -74,7 +74,7 @@ pub enum Error {
     /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han respondido a la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya respuesta es necesaria para cumplir `<cl>`.
-    /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint,failurecode donde endpoint es un [IpAddr] y failurecode es un [Short].
+    /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint,failurecode donde endpoint es un [IpAddr] y failurecode es un [UShort].
     /// * `<data_present>` es un [bool] que indica si el nodo al que se le hizo el pedido de la data respondió o no.
     ReadFailure(String, Consistency, Int, Int, ReasonMap, bool),
 
@@ -92,7 +92,7 @@ pub enum Error {
     /// * `<cl>` es el nivel de [Consistency] de la query que lanzó esta excepción.
     /// * `<received>` es un número ([Int]) que representa la cantidad de nodos que han respondido a la request.
     /// * `<blockfor>` es un número ([Int]) que representa la cantidad de réplicas cuya confirmación es necesaria para cumplir `<cl>`.
-    /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint, failurecode donde endpoint es un [IpAddr] y failurecode es un [Short].
+    /// * `<reasonmap>` es un "mapa" de endpoints a códigos de razón de error. Esto mapea los endpoints de los nodos réplica que fallaron al ejecutar la request a un código representando la razón del error. La forma del mapa es empezando con un [Int] n seguido por n pares de endpoint, failurecode donde endpoint es un [IpAddr] y failurecode es un [UShort].
     /// * `<writeType>` es un [WriteType] que representa el tipo de escritura que se estaba intentando realizar.
     WriteFailure(String, Consistency, Int, Int, ReasonMap, WriteType),
 
@@ -396,7 +396,7 @@ impl TryFrom<Vec<Byte>> for Error {
                         if i + 1 >= bytes_vec.len() {
                             return Err(Self::SyntaxError("Se esperaban 2 bytes más para el campo <contentions> del error WriteTimeout".to_string()));
                         }
-                        let cont = Short::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]);
+                        let cont = UShort::from_be_bytes([bytes_vec[i], bytes_vec[i + 1]]);
                         Some(cont)
                     } else {
                         None
@@ -470,7 +470,7 @@ impl TryFrom<Vec<Byte>> for Error {
                 Ok(msg) => {
                     let keyspace = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
                     let function = parse_bytes_to_string(&bytes_vec[i..], &mut i)?;
-                    let arg_types_len = Short::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
+                    let arg_types_len = UShort::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
                     i += 2;
                     let mut arg_types: Vec<String> = vec![];
                     for _ in 0..arg_types_len {
@@ -560,7 +560,7 @@ impl TryFrom<Vec<Byte>> for Error {
             },
             [0x0, 0x0, 0x25, 0x0] => match parse_bytes_to_string(&bytes_vec[i..], &mut i) {
                 Ok(msg) => {
-                    let ids_len = Short::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
+                    let ids_len = UShort::from_le_bytes([bytes_vec[i + 1], bytes_vec[i]]);
                     i += 2;
                     let mut ids: Vec<Byte> = vec![];
                     for _ in 0..ids_len {

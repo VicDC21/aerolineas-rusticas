@@ -5,7 +5,10 @@ use {
         client::cql_frame::frame::Frame,
         parser::{main_parser::make_parse, statements::statement::Statement},
         protocol::{
-            aliases::{results::Result, types::Byte},
+            aliases::{
+                results::Result,
+                types::{Byte, Short},
+            },
             errors::error::Error,
             notations::consistency::Consistency,
             traits::Byteable,
@@ -137,9 +140,9 @@ impl NodesGraph {
         let queries = load_init_queries();
 
         for (i, query) in queries.iter().enumerate() {
-            let stream_id = match format!("{}{}", node_id, i).parse::<i16>() {
+            let stream_id = match format!("{}{}", node_id, i).parse::<Short>() {
                 Ok(stream_id) => stream_id,
-                Err(_) => node_id as i16 + i as i16,
+                Err(_) => node_id as Short + i as Short,
             };
             match make_parse(&mut tokenize_query(query)) {
                 Ok(statement) => {
@@ -362,10 +365,10 @@ impl NodesGraph {
 ///
 /// </div>
 fn create_client_and_private_conexion(
-    current_id: u8,
+    current_id: Byte,
     cli_socket: SocketAddr,
     node_listeners: &mut Vec<Option<NodeHandle>>,
-    i: u8,
+    i: Byte,
     priv_socket: SocketAddr,
     node: Node,
 ) -> Result<()> {

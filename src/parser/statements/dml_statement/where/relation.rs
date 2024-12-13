@@ -3,7 +3,13 @@ use crate::{
         data_types::constant::Constant, data_types::identifier::identifier_mod::Identifier,
         data_types::term::Term, statements::dml_statement::r#where::operator::Operator,
     },
-    protocol::{aliases::results::Result, errors::error::Error},
+    protocol::{
+        aliases::{
+            results::Result,
+            types::{Double, Int},
+        },
+        errors::error::Error,
+    },
 };
 
 /// Representa una relación en una cláusula WHERE con dos columnas y un operador.
@@ -54,11 +60,11 @@ impl Relation {
     }
 
     fn parse_csv_value_to_term(&self, value: &str) -> Result<Term> {
-        if let Ok(int_val) = value.parse::<i32>() {
+        if let Ok(int_val) = value.parse::<Int>() {
             return Ok(Term::Constant(Constant::Integer(int_val)));
         }
 
-        if let Ok(double_val) = value.parse::<f64>() {
+        if let Ok(double_val) = value.parse::<Double>() {
             return Ok(Term::Constant(Constant::Double(double_val)));
         }
 

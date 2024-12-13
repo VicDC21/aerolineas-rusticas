@@ -27,7 +27,7 @@ use {
         protocol::{
             aliases::{
                 results::Result,
-                types::{Byte, Int},
+                types::{Byte, Int, Long, Uint},
             },
             errors::error::Error,
             messages::responses::result::col_type::ColType,
@@ -276,7 +276,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        timestamp: i64,
+        timestamp: Long,
         node_number: Byte,
     ) -> Result<()> {
         let path = TablePath::new(
@@ -428,7 +428,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        timestamp: i64,
+        timestamp: Long,
         node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
@@ -527,7 +527,7 @@ impl DiskHandler {
         statement: &Insert,
         table_ops: &TableOperations,
         values: &[String],
-        timestamp: i64,
+        timestamp: Long,
     ) -> Vec<String> {
         let table_columns: Vec<&str> = table_ops.columns.iter().map(|s| s.as_str()).collect();
 
@@ -721,7 +721,7 @@ impl DiskHandler {
     ) -> Result<Option<ReplicationStrategy>> {
         let (term3, term4) = &values[1];
         if term3.get_value() == "replication_factor" {
-            let replicas = match term4.get_value().parse::<u32>() {
+            let replicas = match term4.get_value().parse::<Uint>() {
                 Ok(replicas) => replicas,
                 Err(_) => {
                     return Err(Error::Invalid(
@@ -846,7 +846,7 @@ impl DiskHandler {
         values: &[String],
         query_cols: &[String],
         table_cols: &[&str],
-        timestamp: i64,
+        timestamp: Long,
     ) -> String {
         let mut values_to_insert: Vec<&str> = vec![""; table_cols.len() - 1]; // - 1 porque hay que ignorar la columna del timestamp, se agrega luego
 
@@ -866,9 +866,9 @@ impl DiskHandler {
         query_cols: &[String],
         table_cols: &[String],
         table: &Table,
-    ) -> Vec<u8> {
-        let mut res: Vec<u8> = vec![0x0, 0x0, 0x0, 0x2];
-        let mut metadata: Vec<u8> = Vec::new();
+    ) -> Vec<Byte> {
+        let mut res: Vec<Byte> = vec![0x0, 0x0, 0x0, 0x2];
+        let mut metadata: Vec<Byte> = Vec::new();
         let flags: Int = 0;
         metadata.append(&mut flags.to_be_bytes().to_vec());
 
@@ -897,7 +897,7 @@ impl DiskHandler {
         let mut rows_content: Vec<Byte> = Vec::new();
         for row in result {
             for value in row {
-                let value_length = value.len() as i32;
+                let value_length = value.len() as Int;
                 rows_content.append(&mut value_length.to_be_bytes().to_vec());
                 rows_content.append(&mut value.as_bytes().to_vec());
             }

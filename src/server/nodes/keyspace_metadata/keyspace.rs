@@ -1,7 +1,10 @@
 //! Módulo que detalla un keyspace.
 
 use {
-    crate::server::nodes::keyspace_metadata::replication_strategy::ReplicationStrategy,
+    crate::{
+        protocol::aliases::types::Uint,
+        server::nodes::keyspace_metadata::replication_strategy::ReplicationStrategy,
+    },
     serde::{Deserialize, Serialize},
 };
 
@@ -27,7 +30,7 @@ impl Keyspace {
 
     /// Obtiene la cantidad de réplicas de la estrategia de replicación simple.
     /// Si no es estrategia simple, retorna None.
-    pub fn simple_replicas(&self) -> Option<u32> {
+    pub fn simple_replicas(&self) -> Option<Uint> {
         self.replication.simple_replicas()
     }
 

@@ -25,7 +25,7 @@ use crate::{
         },
         table_name::TableName,
     },
-    protocol::errors::error::Error,
+    protocol::{aliases::types::Int, errors::error::Error},
 };
 
 /// dml_statement::= select_statement
@@ -292,7 +292,7 @@ fn ordering_clause(list: &mut Vec<String>) -> Result<Option<OrderBy>, Error> {
 fn per_partition_limit_clause(list: &mut Vec<String>) -> Result<Option<PerPartitionLimit>, Error> {
     if check_words(list, "PER PARTITION LIMIT") {
         let int = list.remove(0);
-        let int = match int.parse::<i32>() {
+        let int = match int.parse::<Int>() {
             Ok(value) => PerPartitionLimit::new(value),
             Err(_e) => {
                 return Err(Error::SyntaxError(
@@ -308,7 +308,7 @@ fn per_partition_limit_clause(list: &mut Vec<String>) -> Result<Option<PerPartit
 fn limit_clause(list: &mut Vec<String>) -> Result<Option<Limit>, Error> {
     if check_words(list, "LIMIT") {
         let int = list.remove(0);
-        let int = match int.parse::<i32>() {
+        let int = match int.parse::<Int>() {
             Ok(value) => Limit::new(value),
             Err(_e) => {
                 return Err(Error::SyntaxError(

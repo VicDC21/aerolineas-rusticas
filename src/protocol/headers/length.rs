@@ -1,18 +1,22 @@
 //! Módulo para el header Length.
 
-use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
+use crate::protocol::{
+    aliases::types::{Byte, Uint},
+    errors::error::Error,
+    traits::Byteable,
+};
 
 /// Este header indica qué tan largo es el cuerpo del frame.
 ///
 /// _(Actualmente está limitado a 256 MB)_
 pub struct Length {
     /// Largo de un cuerpo del frame
-    pub len: u32,
+    pub len: Uint,
 }
 
 impl Length {
     /// Crea un nuevo header de Stream.
-    pub fn new(len: u32) -> Self {
+    pub fn new(len: Uint) -> Self {
         Self { len }
     }
 }
@@ -34,7 +38,7 @@ impl TryFrom<Vec<Byte>> for Length {
                 ))
             }
         };
-        let value = u32::from_be_bytes(bytes_array);
+        let value = Uint::from_be_bytes(bytes_array);
         let bytes_lenght_limit = 0x10000000; // limite del frame de 256 MB
         match value {
             n if n <= bytes_lenght_limit => Ok(Length::new(n)),
@@ -52,7 +56,7 @@ mod tests {
     #[test]
     fn test_1_serializar() {
         for i in 0..1000 {
-            let ind = i as u32;
+            let ind = i as Uint;
             let length_bytes = Length::new(ind).as_bytes();
 
             assert_eq!(length_bytes.len(), 4);

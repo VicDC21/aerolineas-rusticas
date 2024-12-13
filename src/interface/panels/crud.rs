@@ -9,7 +9,7 @@ use {
         interface::utils::send_client_query,
         protocol::aliases::{
             results::Result,
-            types::{Int, Long},
+            types::{Int, Long, Ulong},
         },
     },
     std::time::Instant,
@@ -38,7 +38,7 @@ pub fn insert_flight(
         None,
         None,
     );
-    let eta = (timestamp as u64 + flight_duration.as_secs()) as i64;
+    let eta = (timestamp as Ulong + flight_duration.as_secs()) as Long;
     let (cur_iata_code, ex_iata_code) = match (&cur_airport.iata_code, &ex_airport.iata_code) {
         (Some(cur_code), Some(ex_code)) => (cur_code.to_string(), ex_code.to_string()),
         _ => ("N/A".to_string(), "N/A".to_string()),

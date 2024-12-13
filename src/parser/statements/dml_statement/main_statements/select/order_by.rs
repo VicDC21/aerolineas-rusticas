@@ -1,7 +1,10 @@
 use {
-    crate::parser::{
-        data_types::identifier::identifier_mod::Identifier,
-        statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
+    crate::{
+        parser::{
+            data_types::identifier::identifier_mod::Identifier,
+            statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
+        },
+        protocol::aliases::types::Double,
     },
     std::cmp::Ordering,
 };
@@ -55,7 +58,7 @@ impl OrderBy {
     }
 
     fn cmp_values_with_parse(value_a: &str, value_b: &str) -> Ordering {
-        match (value_a.parse::<f64>(), value_b.parse::<f64>()) {
+        match (value_a.parse::<Double>(), value_b.parse::<Double>()) {
             (Ok(a), Ok(b)) => match a.partial_cmp(&b) {
                 Some(order) => order,
                 None => Ordering::Equal,

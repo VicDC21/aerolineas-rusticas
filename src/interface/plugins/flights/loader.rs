@@ -12,7 +12,7 @@ use {
         protocol::{
             aliases::{
                 results::Result,
-                types::{Int, Long},
+                types::{Int, Long, Ulong},
             },
             errors::error::Error,
         },
@@ -50,12 +50,12 @@ type FlightChild = (DateChild, Receiver<Vec<Flight>>);
 type FlightDataChild = (DateChild, Receiver<LiveDataMap>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
-const FLIGHTS_INTERVAL_SECS: u64 = 3;
+const FLIGHTS_INTERVAL_SECS: Ulong = 3;
 /// Intervalo (en segundos) antes de cargar los datos de vuelos de nuevo, como mínimo.
-const TRACKING_INTERVAL_SECS: u64 = 1;
+const TRACKING_INTERVAL_SECS: Ulong = 1;
 
 /// Un día en segundos.
-const DAY_IN_SECONDS: i64 = 86400;
+const DAY_IN_SECONDS: Long = 86400;
 
 /// Cargador de vuelos.
 pub struct FlightsLoader {

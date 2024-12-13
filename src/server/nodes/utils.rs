@@ -3,7 +3,10 @@
 use {
     crate::{
         protocol::{
-            aliases::{results::Result, types::Byte},
+            aliases::{
+                results::Result,
+                types::{Byte, Ulong},
+            },
             errors::error::Error,
         },
         server::{
@@ -29,7 +32,7 @@ const QUERY_EXT: &str = "cql";
 ///
 /// En esta función es determinístico, es decir, siempre devolverá el mismo valor para el mismo input.
 /// Esto es así porque cada vez vuelve a instanciar un `DefaultHasher` nuevo, manteniendo la misma semilla.
-pub fn hash_value<T: Hash>(value: T) -> u64 {
+pub fn hash_value<T: Hash>(value: T) -> Ulong {
     let mut hasher = DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
@@ -80,7 +83,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
     bytes: Vec<Byte>,
     port_type: PortType,
     wait_response: bool,
-    timeout: Option<u64>,
+    timeout: Option<Ulong>,
 ) -> Result<Vec<Byte>> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
@@ -138,14 +141,14 @@ pub fn send_to_node_and_wait_response_with_timeout(
 }
 
 /// Divide un rango en `n` partes iguales.
-pub fn divide_range(start: u64, end: u64, n: usize) -> Vec<(u64, u64)> {
+pub fn divide_range(start: Ulong, end: Ulong, n: usize) -> Vec<(Ulong, Ulong)> {
     let range_length = end - start;
-    let part_length = range_length / n as u64;
-    let remainder = range_length % n as u64;
+    let part_length = range_length / n as Ulong;
+    let remainder = range_length % n as Ulong;
 
     (0..n)
         .map(|i| {
-            let part_start = start + i as u64 * part_length + remainder.min(i as u64);
+            let part_start = start + i as Ulong * part_length + remainder.min(i as Ulong);
             let part_end = part_start + part_length + if i < remainder as usize { 1 } else { 0 };
             (part_start, part_end)
         })

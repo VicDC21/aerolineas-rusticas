@@ -3,7 +3,7 @@
 use {
     crate::{
         data::airports::airp::{Airport, AirportsMap},
-        protocol::aliases::results::Result,
+        protocol::aliases::{results::Result, types::Ulong},
     },
     eframe::egui::{Painter, Response, Vec2},
     std::{
@@ -25,7 +25,7 @@ pub type AreaChild = (Option<ChildHandle>, Sender<PosRect>);
 pub type PosRect = (Position, Position);
 
 /// Intervalo (en segundos) antes de cargar los aeropuertos de nuevo, como mínimo.
-const AIRPORTS_INTERVAL_SECS: u64 = 1;
+const AIRPORTS_INTERVAL_SECS: Ulong = 1;
 /// Cantidad máxima _(hardcodeada)_ de aeropuertos.
 const MAX_AIRPORTS: usize = 6435;
 

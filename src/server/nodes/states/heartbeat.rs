@@ -1,7 +1,11 @@
 //! Módulo para el _Heartbeat State_ de un nodo.
 
 use {
-    crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+    crate::protocol::{
+        aliases::types::{Byte, Long, Ulong},
+        errors::error::Error,
+        traits::Byteable,
+    },
     chrono::Utc,
     std::{
         cmp::{Ordering, PartialEq, PartialOrd},
@@ -10,10 +14,10 @@ use {
 };
 
 /// El alias para el número de generación.
-pub type GenType = i64;
+pub type GenType = Long;
 
 /// El alias para el número de versión.
-pub type VerType = u64;
+pub type VerType = Ulong;
 
 /// Estructura para el _Heartbeat State_ de un nodo.
 #[derive(Debug, Clone)]
@@ -27,7 +31,7 @@ pub struct HeartbeatState {
 
 impl HeartbeatState {
     /// Genera un nuevo estado instantáneo.
-    pub fn new(gen: i64, ver: u64) -> Self {
+    pub fn new(gen: Long, ver: Ulong) -> Self {
         Self { gen, ver }
     }
 
@@ -97,7 +101,7 @@ impl TryFrom<&[Byte]> for HeartbeatState {
         }
 
         let mut i = 0;
-        let gen = i64::from_be_bytes([
+        let gen = Long::from_be_bytes([
             bytes[i],
             bytes[i + 1],
             bytes[i + 2],
@@ -109,7 +113,7 @@ impl TryFrom<&[Byte]> for HeartbeatState {
         ]);
         i += 8;
 
-        let ver = u64::from_be_bytes([
+        let ver = Ulong::from_be_bytes([
             bytes[i],
             bytes[i + 1],
             bytes[i + 2],

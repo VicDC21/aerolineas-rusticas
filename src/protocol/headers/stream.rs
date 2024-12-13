@@ -1,7 +1,11 @@
 //! Módulo para un header de stream.
 
 use {
-    crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable},
+    crate::protocol::{
+        aliases::types::{Byte, Short},
+        errors::error::Error,
+        traits::Byteable,
+    },
     std::fmt::{Display, Formatter, Result as FmtResult},
 };
 
@@ -9,12 +13,12 @@ use {
 #[derive(Eq, Clone, Hash, PartialEq)]
 pub struct Stream {
     /// El ID del stream.
-    id: i16,
+    id: Short,
 }
 
 impl Stream {
     /// Crea un nuevo header de Stream.
-    pub fn new(id: i16) -> Self {
+    pub fn new(id: Short) -> Self {
         Self { id }
     }
 }
@@ -36,7 +40,7 @@ impl TryFrom<Vec<Byte>> for Stream {
                 ))
             }
         };
-        let value = i16::from_be_bytes(bytes_array);
+        let value = Short::from_be_bytes(bytes_array);
         Ok(Stream::new(value))
     }
 }
@@ -54,12 +58,12 @@ mod tests {
     #[test]
     fn test_1_serializar() {
         for i in 0..1000 {
-            let ind = i as i16; // por las dudas casteamos
+            let ind = i as Short; // por las dudas casteamos
 
             let stream = Stream::new(ind);
             let id_bytes = stream.as_bytes();
 
-            // El Short es un entero de 2 bytes
+            // El UShort es un entero de 2 bytes
             assert_eq!(id_bytes.len(), 2);
             assert_eq!(id_bytes, ind.to_be_bytes());
         }
@@ -68,7 +72,7 @@ mod tests {
     #[test]
     fn test_2_deserializar() {
         for i in 0..1000 {
-            let ind = i as i16;
+            let ind = i as Short;
 
             let stream_res = Stream::try_from(ind.to_be_bytes().to_vec());
             assert!(stream_res.is_ok());

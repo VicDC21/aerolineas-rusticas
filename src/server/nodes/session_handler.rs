@@ -23,7 +23,10 @@ use {
             },
         },
         protocol::{
-            aliases::{results::Result, types::Byte},
+            aliases::{
+                results::Result,
+                types::{Byte, Long, Uint, Ulong},
+            },
             errors::error::Error,
             headers::{
                 flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
@@ -62,7 +65,7 @@ use {
 };
 
 /// El tiempo de espera _(en segundos)_ por una respuesta.
-pub const TIMEOUT_SECS: u64 = 1;
+pub const TIMEOUT_SECS: Ulong = 1;
 
 /// Se encarga de procesar todo lo relacionado a una sesión de un cliente.
 ///
@@ -403,7 +406,7 @@ impl SessionHandler {
     }
 
     fn handle_auth_response(&self, request: &[Byte], lenght: &Length) -> Result<Vec<Byte>> {
-        let req: &[u8] = &request[9..(lenght.len as usize) + 9];
+        let req: &[Byte] = &request[9..(lenght.len as usize) + 9];
         let node_reader = self.read()?;
         let users = DiskHandler::read_admitted_users(&node_reader.storage_addr)?;
         drop(node_reader);
@@ -637,7 +640,7 @@ impl SessionHandler {
         let keyspace_name =
             node_reader.choose_available_keyspace_name(create_table.name.get_keyspace())?;
         let keyspace = node_reader.get_keyspace_from_name(&keyspace_name)?;
-        let quantity_replicas: u32 =
+        let quantity_replicas: Uint =
             node_reader.get_quantity_of_replicas_from_keyspace(keyspace)?;
         drop(node_reader);
 
@@ -785,7 +788,7 @@ impl SessionHandler {
         wait_response: bool,
         responsive_replica: &mut NodeId,
         replicas_asked: &mut usize,
-        replication_factor_quantity: u32,
+        replication_factor_quantity: Uint,
     ) -> Result<Vec<Byte>> {
         let (select, request) = select_and_request;
         let actual_result = if node_id == self.id {
@@ -797,7 +800,7 @@ impl SessionHandler {
                 None,
                 Some(node_id),
             );
-            let mut result: Vec<u8> = Vec::new();
+            let mut result: Vec<Byte> = Vec::new();
             *responsive_replica = node_id;
             *replicas_asked = 0;
             if self.neighbour_is_responsive(node_id)? {
@@ -847,10 +850,10 @@ impl SessionHandler {
         wait_response: bool,
         responsive_replica: &mut NodeId,
         replicas_asked: &mut usize,
-        replication_factor_quantity: u32,
+        replication_factor_quantity: Uint,
     ) -> Result<Vec<Byte>> {
         let (select, request) = select_and_request;
-        let mut result: Vec<u8> = Vec::new();
+        let mut result: Vec<Byte> = Vec::new();
         let nodes_ids = Node::get_nodes_ids();
         let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
 
@@ -894,10 +897,10 @@ impl SessionHandler {
 
     fn decide_how_to_request_the_digest_read_request(
         &self,
-        node_to_consult: u8,
-        request: &[u8],
-        node_id: u8,
-    ) -> Result<Vec<u8>> {
+        node_to_consult: Byte,
+        request: &[Byte],
+        node_id: Byte,
+    ) -> Result<Vec<Byte>> {
         let opcode_with_hashed_value = if node_to_consult == self.id {
             let internal_request =
                 add_metadata_to_internal_request_of_any_kind(request.to_vec(), None, Some(node_id));
@@ -928,9 +931,9 @@ impl SessionHandler {
         Ok(opcode_with_hashed_value)
     }
 
-    fn get_digest_read_request_value(&self, opcode_with_hashed_value: &[Byte]) -> Result<u64> {
+    fn get_digest_read_request_value(&self, opcode_with_hashed_value: &[Byte]) -> Result<Ulong> {
         if opcode_with_hashed_value.len() != 9 {
-            // OpCode + i64
+            // OpCode + Long
             return Err(Error::ServerError(
                 "Se esperaba un vec de largo 9".to_string(),
             ));
@@ -939,11 +942,11 @@ impl SessionHandler {
             Some(value) => value,
             None => {
                 return Err(Error::ServerError(
-                    "No se pudo transformar el vector a i64".to_string(),
+                    "No se pudo transformar el vector a Long".to_string(),
                 ))
             }
         };
-        let res_hashed_value = u64::from_be_bytes(array);
+        let res_hashed_value = Ulong::from_be_bytes(array);
         Ok(res_hashed_value)
     }
 
@@ -961,7 +964,7 @@ impl SessionHandler {
         consistency_counter: &mut usize,
         consistency_number: usize,
         first_responsive_id_and_response: (NodeId, &[Byte]),
-        replication_factor_quantity: u32,
+        replication_factor_quantity: Uint,
     ) -> Result<bool> {
         if consistency_number == 1 {
             return Ok(false);
@@ -977,7 +980,7 @@ impl SessionHandler {
         let nodes_ids = Node::get_nodes_ids();
         let mut node_to_consult = next_node_in_the_cluster(responsive_replica, &nodes_ids);
         let mut inconsistent_digest_request = false;
-        for _ in (replicas_asked as u32)..replication_factor_quantity {
+        for _ in (replicas_asked as Uint)..replication_factor_quantity {
             let opcode_with_hashed_value = match self.decide_how_to_request_the_digest_read_request(
                 node_to_consult,
                 request,
@@ -1030,11 +1033,11 @@ impl SessionHandler {
 
     fn check_consistency_of_the_responses(
         &self,
-        opcode_with_hashed_value: Vec<u8>,
-        first_hashed_value: u64,
-        res_hashed_value: u64,
+        opcode_with_hashed_value: Vec<Byte>,
+        first_hashed_value: Ulong,
+        res_hashed_value: Ulong,
         consistency_counter: &mut usize,
-        responses: &mut Vec<Vec<u8>>,
+        responses: &mut Vec<Vec<Byte>>,
         inconsistent_digest_request: &mut bool,
     ) -> Result<()> {
         if Opcode::try_from(opcode_with_hashed_value[0])? == Opcode::Result
@@ -1050,10 +1053,10 @@ impl SessionHandler {
 
     fn start_read_repair(
         &self,
-        node_id: u8,
+        node_id: Byte,
         request: &[Byte],
         table_name: &str,
-        replication_factor_quantity: u32,
+        replication_factor_quantity: Uint,
     ) -> Result<bool> {
         let mut rows_of_nodes: Vec<Vec<Vec<String>>> = vec![];
         let mut req_with_node_replica = request[9..].to_vec();
@@ -1093,7 +1096,7 @@ impl SessionHandler {
         nodes_ids: &[NodeId],
         table_name: &str,
         rows_of_nodes: Vec<Vec<Vec<String>>>,
-        replication_factor_quantity: u32,
+        replication_factor_quantity: Uint,
     ) -> Result<()> {
         let rows_as_string = self.get_most_recent_rows_as_string(rows_of_nodes, table_name)?;
         let mut node_to_repair = replica_to_repair;
@@ -1159,7 +1162,7 @@ impl SessionHandler {
         drop(node_reader);
 
         for i in 0..N_NODES {
-            if (i as u32) < replication_factor_quantity {
+            if (i as Uint) < replication_factor_quantity {
                 response = if node_to_replicate == self.id {
                     let mut node_writer = self.write()?;
                     node_writer.process_insert(&insert, timestamp, node_id)?
@@ -1206,7 +1209,7 @@ impl SessionHandler {
         node_id: NodeId,
         node_to_replicate: NodeId,
         request: &[Byte],
-        timestamp: i64,
+        timestamp: Long,
         wait_response: bool,
     ) -> Result<Vec<Byte>> {
         let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
@@ -1358,7 +1361,7 @@ impl SessionHandler {
         &self,
         node_id: NodeId,
         request: &[Byte],
-        timestamp: i64,
+        timestamp: Long,
     ) -> Result<Vec<Byte>> {
         let request_with_metadata = add_metadata_to_internal_request_of_any_kind(
             SvAction::InternalQuery(request.to_vec()).as_bytes(),
@@ -1388,11 +1391,11 @@ impl SessionHandler {
 
     fn replicate_update_in_other_nodes(
         &self,
-        replication_factor: u32,
+        replication_factor: Uint,
         node_id: Byte,
         request: &[Byte],
         update: &Update,
-        timestamp: i64,
+        timestamp: Long,
         consistency_counter: &mut usize,
     ) -> Result<()> {
         let nodes_ids = Node::get_nodes_ids();
@@ -1483,7 +1486,7 @@ impl SessionHandler {
     // Función auxiliar para replicar el delete en otros nodos
     fn replicate_delete_in_other_nodes(
         &self,
-        replication_factor: u32,
+        replication_factor: Uint,
         node_id: Byte,
         request: &[Byte],
         delete: &Delete,
@@ -1559,7 +1562,7 @@ impl SessionHandler {
     fn handle_internal_statement(
         &self,
         statement: Statement,
-        internal_metadata: (Option<i64>, Option<Byte>),
+        internal_metadata: (Option<Long>, Option<Byte>),
     ) -> Result<Vec<Byte>> {
         let mut node_writer = self.write()?;
         match statement {
@@ -1851,7 +1854,7 @@ impl SessionHandler {
         let mut new_res = result_from_actual_node[total_lenght_until_rows_content..].to_vec();
         results_from_another_nodes.append(&mut new_res);
 
-        let final_length = (results_from_another_nodes.len() as u32) - 9;
+        let final_length = (results_from_another_nodes.len() as Uint) - 9;
         results_from_another_nodes[5..9].copy_from_slice(&final_length.to_be_bytes());
         Ok(())
     }
@@ -1953,7 +1956,7 @@ fn make_error_response(err: Error) -> Vec<Byte> {
     response.append(&mut Flag::Default.as_bytes());
     response.append(&mut Stream::new(0).as_bytes());
     response.append(&mut Opcode::RequestError.as_bytes());
-    response.append(&mut Length::new(bytes_err.len() as u32).as_bytes());
+    response.append(&mut Length::new(bytes_err.len() as Uint).as_bytes());
     response.append(&mut bytes_err);
     response
 }
@@ -2012,21 +2015,21 @@ fn verify_succesful_response(response: &[Byte]) -> bool {
 /// Revisa si hay metadata extra necesaria para la query pedida
 fn read_metadata_from_internal_request(
     internal_metadata: Vec<Byte>,
-) -> (Option<i64>, Option<Byte>) {
+) -> (Option<Long>, Option<Byte>) {
     if internal_metadata.len() == 9 {
-        let bytes: [u8; 8] = match internal_metadata[0..8].try_into() {
+        let bytes: [Byte; 8] = match internal_metadata[0..8].try_into() {
             Ok(value) => value,
             Err(_err) => [5, 5, 5, 5, 5, 5, 5, 5], // nunca pasa
         };
-        let timestamp = i64::from_be_bytes(bytes);
+        let timestamp = Long::from_be_bytes(bytes);
         let node_id = internal_metadata[8];
         return (Some(timestamp), Some(node_id));
     } else if internal_metadata.len() == 8 {
-        let bytes: [u8; 8] = match internal_metadata[0..8].try_into() {
+        let bytes: [Byte; 8] = match internal_metadata[0..8].try_into() {
             Ok(value) => value,
             Err(_err) => [5, 5, 5, 5, 5, 5, 5, 5], // nunca pasa
         };
-        let timestamp = i64::from_be_bytes(bytes);
+        let timestamp = Long::from_be_bytes(bytes);
         return (Some(timestamp), None);
     } else if internal_metadata.len() == 1 {
         let node_id = internal_metadata[0];
@@ -2038,7 +2041,7 @@ fn read_metadata_from_internal_request(
 /// Agrega metadata, como el timestamp o el node_id si es necesario, sino no agrega estos campos.
 fn add_metadata_to_internal_request_of_any_kind(
     mut sv_action_with_request: Vec<Byte>,
-    timestamp: Option<i64>,
+    timestamp: Option<Long>,
     node_id: Option<Byte>,
 ) -> Vec<Byte> {
     let mut metadata: Vec<Byte> = Vec::new();
@@ -2056,8 +2059,8 @@ fn check_if_read_repair_is_neccesary(
     consistency_counter: &mut usize,
     consistency_number: usize,
     exec_read_repair: &mut bool,
-    responses: Vec<Vec<u8>>,
-    first_hashed_value: u64,
+    responses: Vec<Vec<Byte>>,
+    first_hashed_value: Ulong,
     inconsistent_digest_request: bool,
 ) {
     if *consistency_counter < consistency_number || inconsistent_digest_request {
@@ -2069,14 +2072,14 @@ fn check_if_read_repair_is_neccesary(
         }
         let mut array = [0u8; 8]; // 8 es el len del hashed_value
         array.copy_from_slice(&hashed_value_vec[0..8]);
-        let hashed_value_of_response = u64::from_be_bytes(array);
+        let hashed_value_of_response = Ulong::from_be_bytes(array);
         if first_hashed_value != hashed_value_of_response {
             *exec_read_repair = true;
         }
     }
 }
 
-fn create_utf8_string_from_bytes(extern_response: Vec<u8>) -> Result<String> {
+fn create_utf8_string_from_bytes(extern_response: Vec<Byte>) -> Result<String> {
     Ok(match String::from_utf8(extern_response) {
         Ok(value) => value,
         Err(_err) => {

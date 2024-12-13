@@ -4,7 +4,10 @@ use {
     crate::{
         client::cli::handle_pem_file_iter,
         protocol::{
-            aliases::{results::Result, types::Byte},
+            aliases::{
+                results::Result,
+                types::{Byte, Ulong},
+            },
             errors::error::Error,
             headers::opcode::Opcode,
             traits::Byteable,
@@ -42,9 +45,9 @@ type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _heartbeat_.
-const HEARTBEAT_SLEEP_MILLIS: u64 = 1000;
+const HEARTBEAT_SLEEP_MILLIS: Ulong = 1000;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _gossip_.
-const GOSSIP_SLEEP_MILLIS: u64 = 350;
+const GOSSIP_SLEEP_MILLIS: Ulong = 350;
 
 /// El número de hilos para el [ThreadPool].
 ///
@@ -57,7 +60,7 @@ const GOSSIP_SLEEP_MILLIS: u64 = 350;
 /// </div>
 pub fn create_client_and_private_conexion(
     node: Node,
-    id: u8,
+    id: Byte,
     cli_socket: SocketAddr,
     priv_socket: SocketAddr,
     node_listeners: &mut Vec<Option<NodeHandle>>,
@@ -204,7 +207,7 @@ fn listen_single_client(
     let mut is_logged = false;
 
     loop {
-        let mut buffer: Vec<u8> = vec![0; 2048];
+        let mut buffer: Vec<Byte> = vec![0; 2048];
         let size = match tls.read(&mut buffer) {
             Ok(value) => value,
             Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string())),

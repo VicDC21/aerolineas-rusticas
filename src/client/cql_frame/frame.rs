@@ -1,7 +1,10 @@
 use crate::{
     client::cql_frame::query_body::QueryBody,
     protocol::{
-        aliases::{results::Result, types::Byte},
+        aliases::{
+            results::Result,
+            types::{Byte, Short, Uint},
+        },
         errors::error::Error,
         headers::{
             flags::Flag, length::Length, msg_headers::Headers, opcode::Opcode, stream::Stream,
@@ -20,14 +23,14 @@ pub struct Frame {
 
 impl Frame {
     /// Crea un nuevo frame dada la query y el _Consistency Level_.
-    pub fn new(stream_id: i16, query: &str, consistency: Consistency) -> Self {
+    pub fn new(stream_id: Short, query: &str, consistency: Consistency) -> Self {
         let body = QueryBody::new(query.to_string(), consistency).as_bytes();
         let headers = Headers::new(
             Version::RequestV5,
             vec![Flag::Default],
             Stream::new(stream_id),
             Opcode::Query,
-            Length::new(body.len() as u32),
+            Length::new(body.len() as Uint),
         );
 
         Self { headers, body }

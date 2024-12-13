@@ -18,7 +18,7 @@ use {
                 util::{go_to_my_position, zoom},
             },
         },
-        protocol::aliases::results::Result,
+        protocol::aliases::{results::Result, types::Double},
     },
     chrono::{DateTime, Local},
     eframe::{
@@ -31,9 +31,9 @@ use {
 };
 
 /// Latitud de la coordenada de origen de nuestro mapa.
-pub const ORIG_LAT: f64 = -34.61760464833609;
+pub const ORIG_LAT: Double = -34.61760464833609;
 /// Longitud de la coordenada de origen de nuestro mapa.
-pub const ORIG_LONG: f64 = -58.36909719124974;
+pub const ORIG_LONG: Double = -58.36909719124974;
 
 /// La app de aerolíneas misma.
 pub struct AerolineasApp {

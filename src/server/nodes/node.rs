@@ -20,7 +20,10 @@ use {
             },
         },
         protocol::{
-            aliases::{results::Result, types::Byte},
+            aliases::{
+                results::Result,
+                types::{Byte, Int, Long, UShort, Uint, Ulong},
+            },
             errors::error::Error,
             headers::{
                 flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
@@ -68,7 +71,7 @@ pub type NodeHandle = JoinHandle<Result<()>>;
 /// DEBE coincidir con la cantidad de nodos en el archivo de IPs `node_ips.csv`.
 pub const N_NODES: Byte = 5;
 /// El límite posible para los rangos de los nodos.
-pub const NODES_RANGE_END: u64 = 18446744073709551615;
+pub const NODES_RANGE_END: Ulong = 18446744073709551615;
 
 /// Un nodo es una instancia de parser que se conecta con otros nodos para procesar _queries_.
 #[derive(Serialize, Deserialize)]
@@ -106,7 +109,7 @@ pub struct Node {
 
     /// Rangos asignados a cada nodo para determinar la partición de los datos.
     #[serde(skip)]
-    nodes_ranges: Vec<(u64, u64)>,
+    nodes_ranges: Vec<(Ulong, Ulong)>,
 
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
     pub tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
@@ -534,7 +537,7 @@ impl Node {
     pub fn handle_internal_ddl_statement(
         &mut self,
         ddl_statement: DdlStatement,
-        internal_metadata: (Option<i64>, Option<Byte>),
+        internal_metadata: (Option<Long>, Option<Byte>),
     ) -> Result<Vec<Byte>> {
         match ddl_statement {
             DdlStatement::UseStatement(keyspace_name) => {
@@ -662,7 +665,7 @@ impl Node {
     pub fn process_internal_create_table_statement(
         &mut self,
         create_table: &CreateTable,
-        node_number: u8,
+        node_number: Byte,
     ) -> Result<Vec<Byte>> {
         let default_keyspace_name = self.get_default_keyspace_name()?;
 
@@ -685,7 +688,7 @@ impl Node {
     pub fn handle_internal_dml_statement(
         &mut self,
         dml_statement: DmlStatement,
-        internal_metadata: (Option<i64>, Option<Byte>),
+        internal_metadata: (Option<Long>, Option<Byte>),
     ) -> Result<Vec<Byte>> {
         let node_number = get_node_replica_number_from_internal_metadata(internal_metadata)?;
         match dml_statement {
@@ -727,7 +730,7 @@ impl Node {
         response.append(&mut Flag::Default.as_bytes());
         response.append(&mut Stream::new(0).as_bytes());
         response.append(&mut Opcode::Result.as_bytes());
-        response.append(&mut Length::new(res.len() as u32).as_bytes());
+        response.append(&mut Length::new(res.len() as Uint).as_bytes());
         response.append(res);
         response
     }
@@ -736,7 +739,7 @@ impl Node {
     pub fn process_insert(
         &mut self,
         insert: &Insert,
-        timestamp: i64,
+        timestamp: Long,
         node_number: Byte,
     ) -> Result<Vec<Byte>> {
         println!(
@@ -794,7 +797,7 @@ impl Node {
     pub fn process_update(
         &mut self,
         update: &Update,
-        timestamp: i64,
+        timestamp: Long,
         node_number: Byte,
     ) -> Result<Vec<Byte>> {
         let table = match self.get_table(&update.table_name.get_name()) {
@@ -853,7 +856,7 @@ impl Node {
     }
 
     /// Dado el nombre de una tabla, obtiene la cantidad de replicación del keyspace al que pertenece.
-    pub fn get_replicas_from_table_name(&self, table_name: &str) -> Result<u32> {
+    pub fn get_replicas_from_table_name(&self, table_name: &str) -> Result<Uint> {
         let keyspace = self.get_keyspace(table_name)?;
         match keyspace.simple_replicas() {
             Some(replication_factor) => Ok(replication_factor),
@@ -866,10 +869,10 @@ impl Node {
         &self,
         results_from_another_nodes: &[Byte],
         rows_quantity_position: usize,
-    ) -> i32 {
+    ) -> Int {
         let new_quantity_rows =
             &results_from_another_nodes[rows_quantity_position..(rows_quantity_position + 4)];
-        i32::from_be_bytes([
+        Int::from_be_bytes([
             new_quantity_rows[0],
             new_quantity_rows[1],
             new_quantity_rows[2],
@@ -885,7 +888,7 @@ impl Node {
         }
         // el 13 al 17 son flags
         let column_quantity = &results_from_another_nodes[17..21];
-        let column_quantity = i32::from_be_bytes([
+        let column_quantity = Int::from_be_bytes([
             column_quantity[0],
             column_quantity[1],
             column_quantity[2],
@@ -894,7 +897,7 @@ impl Node {
         for _ in 0..column_quantity {
             let name_length = &results_from_another_nodes
                 [total_length_from_metadata..(total_length_from_metadata + 2)]; // Consigo el largo del [String]
-            let name_length = u16::from_be_bytes([name_length[0], name_length[1]]); // Lo casteo para sumarlo al total
+            let name_length = UShort::from_be_bytes([name_length[0], name_length[1]]); // Lo casteo para sumarlo al total
             total_length_from_metadata += (name_length as usize) + 2 + 2; // Esto es [String] + [Option]
         }
         total_length_from_metadata
@@ -933,7 +936,7 @@ impl Node {
 
     /// Obtiene la cantidad de replicas de un keyspace, dado su nombre.
     /// Devuelve error si no se usa una estrategia de replicación simple.
-    pub fn get_quantity_of_replicas_from_keyspace(&self, keyspace: &Keyspace) -> Result<u32> {
+    pub fn get_quantity_of_replicas_from_keyspace(&self, keyspace: &Keyspace) -> Result<Uint> {
         let replicas = match keyspace.simple_replicas() {
             Some(value) => value,
             None => {
@@ -960,27 +963,11 @@ impl Node {
             }
         }
     }
-
-    //     fn check_if_response_is_error(&self, res: &[Byte]) -> Result<Vec<Byte>>{
-    //         match Opcode::try_from(res[4])? {
-    //             Opcode::RequestError => return Err(Error::try_from(res[9..].to_vec())?),
-    //             Opcode::Result => self.handle_result_from_node(
-    //                 &mut results_from_another_nodes,
-    //                 res,
-    //                 &select,
-    //             )?,
-    //             _ => {
-    //                 return Err(Error::ServerError(
-    //                     "Nodo manda opcode inesperado".to_string(),
-    //                 ))
-    //             }
-    //         };
-    //     }
 }
 
 fn get_node_replica_number_from_internal_metadata(
-    internal_metadata: (Option<i64>, Option<u8>),
-) -> Result<u8> {
+    internal_metadata: (Option<Long>, Option<Byte>),
+) -> Result<Byte> {
     let node_number = match internal_metadata.1 {
         Some(value) => value,
         None => {
@@ -993,8 +980,8 @@ fn get_node_replica_number_from_internal_metadata(
 }
 
 fn get_timestamp_from_internal_metadata(
-    internal_metadata: (Option<i64>, Option<u8>),
-) -> Result<i64> {
+    internal_metadata: (Option<Long>, Option<Byte>),
+) -> Result<Long> {
     let timestamp = match internal_metadata.0 {
         Some(value) => value,
         None => {

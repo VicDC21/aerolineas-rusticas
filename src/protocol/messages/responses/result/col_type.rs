@@ -2,7 +2,7 @@
 
 use crate::{
     protocol::{
-        aliases::types::{Byte, Short},
+        aliases::types::{Byte, UShort},
         errors::error::Error,
         traits::Byteable,
         user::udt_type::UdtType,
@@ -20,7 +20,7 @@ pub enum ColType {
     /// Secuencia de bytes ([ [Byte] ]) en rango ASCII [0, 127].
     Ascii,
 
-    /// Un número de 8 bytes en complemento a dos ([i64]).
+    /// Un número de 8 bytes en complemento a dos ([Long]).
     Bigint,
 
     /// Una secuencia de bytes "crudos" ([ [Byte] ]).
@@ -82,7 +82,7 @@ pub enum ColType {
     /// Número de 16 bytes (asumimos [Uuid](crate::protocol::aliases::types::Uuid)) representando un UUID (Versión 1) tal y como está especificado en RFC 4122.
     Timeuuid,
 
-    /// Una secuencia de 4 o 16 bytes ([u32], [u128] o [IpAddr](std::net::IpAddr)) denotado una dirección IPv4 o IPv6 respectivamente..
+    /// Una secuencia de 4 o 16 bytes ([Uint], [Byte] o [IpAddr](std::net::IpAddr)) denotado una dirección IPv4 o IPv6 respectivamente..
     Inet,
 
     /// Un numero integer que representa los dias con la epoca centrada en 2^31.
@@ -97,7 +97,7 @@ pub enum ColType {
     /// Los valores validos van desde 0 a 86399999999999.
     Time,
 
-    /// Un numero de 2 bytes complemento a 2 ([Short]).
+    /// Un numero de 2 bytes complemento a 2 ([UShort]).
     Smallint,
 
     /// Un numero de 1 byte complemento a 2 ([i8]).
@@ -128,7 +128,7 @@ pub enum ColType {
     ///
     /// * `<ks>` es un [String] representado el _keyspace_ al que pertenece este UDT.
     /// * `<udt_name>` es un [String] representando el nombre del UDT.
-    /// * `<n>` es un número de 2 bytes ([Short]) que representa la cantidad de campos a continuación.
+    /// * `<n>` es un número de 2 bytes ([UShort]) que representa la cantidad de campos a continuación.
     /// * `<name_i>` es un [String] representando el nombre del i-ésimo campo del UDT.
     /// * `<value_i>` es una tipo de los especificados en este [Enum](crate::protocol::messages::responses::result::col_type::ColType), tal que el i-ésimo campo del UDT tiene valor de ese tipo.
     ///
@@ -137,7 +137,7 @@ pub enum ColType {
 
     /// El valor tiene la forma `<n><type_1>...<type_n>` donde:
     ///
-    /// * `<n>` es un número de 2 bytes ([Short]) representando el número de elementos.
+    /// * `<n>` es un número de 2 bytes ([UShort]) representando el número de elementos.
     /// * `<type_i>` es el [tipo](crate::protocol::messages::responses::result::col_type::ColType) del i-ésimo valor de la tupla.
     Tuple(Vec<Box<Self>>),
 }
@@ -149,7 +149,7 @@ impl Byteable for ColType {
             Self::Custom(nombre) => {
                 let nombre_bytes = nombre.as_bytes();
                 // litle endian para que los dos bytes menos significativos (los únicos que nos interesa
-                // para un [Short]) estén al principio
+                // para un [UShort]) estén al principio
                 let bytes_len = nombre_bytes.len().to_le_bytes();
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0,
@@ -238,7 +238,7 @@ impl TryFrom<&[Byte]> for ColType {
             }
         };
 
-        let value = Short::from_be_bytes(bytes_arr);
+        let value = UShort::from_be_bytes(bytes_arr);
 
         let ret = match value {
             0x0000 => ColType::Custom(parse_bytes_to_string(col_type_body, &mut 0)?),
@@ -316,7 +316,7 @@ impl ColType {
                 "Se esperaban al menos 2 bytes para la tupla".to_string(),
             ));
         }
-        let n = Short::from_be_bytes([col_type_body[0], col_type_body[1]]);
+        let n = UShort::from_be_bytes([col_type_body[0], col_type_body[1]]);
         let mut types: Vec<Box<Self>> = Vec::new();
         let mut cur_type_body = col_type_body;
         for _ in 0..n {
