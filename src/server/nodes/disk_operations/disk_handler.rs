@@ -108,21 +108,13 @@ impl DiskHandler {
     pub fn store_node_metadata(node: RwLockWriteGuard<Node>) -> Result<()> {
         let path_folder = Path::new(NODES_METADATA_PATH);
         if !path_folder.exists() {
-            create_dir(path_folder).map_err(|e| {
-                Error::ServerError(format!(
-                    "Error al crear el directorio de metadatos de un nodo: {}",
-                    e
-                ))
-            })?;
-        }
-
-        if path_folder.is_dir() {
-            store_json(&*node, &Self::get_node_metadata_path(node.get_id()))
-        } else {
-            Err(Error::ServerError(
+            let _ = create_dir(path_folder);
+        } else if !path_folder.is_dir() {
+            return Err(Error::ServerError(
                 "El directorio de metadatos de nodos no es un directorio".to_string(),
-            ))
+            ));
         }
+        store_json(&*node, &Self::get_node_metadata_path(node.get_id()))
     }
 
     /// Crea un nuevo keyspace en el caso que corresponda.

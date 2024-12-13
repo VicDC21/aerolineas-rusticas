@@ -3,9 +3,9 @@ use {
         client::cli::Client,
         protocol::aliases::{results::Result, types::Byte},
         server::nodes::{graph::NodesGraph, node::Node},
-        simulator::cli::run_sim,
+        simulator::cli::{run_sim, FlightConfig},
     },
-    std::env::args,
+    std::{env::args, fs::File, io::BufReader, path::Path},
 };
 
 #[cfg(feature = "gui")]
@@ -66,6 +66,32 @@ fn main() {
         }
         "sim" => {
             print_err(run_sim(&[]));
+        }
+        "demo" => {
+            let file = match File::open(Path::new("media/flights/flights_configs.json")) {
+                Ok(file) => file,
+                Err(err) => {
+                    println!(
+                        "Error al abrir el archivo de configuración de vuelos: {}",
+                        err
+                    );
+                    return;
+                }
+            };
+            let flight_configs: Vec<FlightConfig> =
+                match serde_json::from_reader(BufReader::new(file)) {
+                    Ok(configs) => configs,
+                    Err(err) => {
+                        println!(
+                            "Error al leer el archivo de configuración de vuelos: {}",
+                            err
+                        );
+                        return;
+                    }
+                };
+            if let Err(err) = run_sim(&flight_configs) {
+                println!("{}", err);
+            }
         }
         _ => {
             println!("{}", how_to_use);
