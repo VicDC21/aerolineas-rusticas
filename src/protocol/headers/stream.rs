@@ -4,7 +4,7 @@ use {
     crate::protocol::{
         aliases::{
             results::Result,
-            types::{Byte, Short},
+            types::{Byte, ShortInt},
         },
         errors::error::Error,
         traits::Byteable,
@@ -16,12 +16,12 @@ use {
 #[derive(Eq, Clone, Hash, PartialEq)]
 pub struct Stream {
     /// El ID del stream.
-    id: Short,
+    id: ShortInt,
 }
 
 impl Stream {
     /// Crea un nuevo header de Stream.
-    pub fn new(id: Short) -> Self {
+    pub fn new(id: ShortInt) -> Self {
         Self { id }
     }
 }
@@ -34,8 +34,8 @@ impl Byteable for Stream {
 
 impl TryFrom<Vec<Byte>> for Stream {
     type Error = Error;
-    fn try_from(short: Vec<Byte>) -> Result<Self> {
-        let bytes_array: [Byte; 2] = match short.try_into() {
+    fn try_from(short_int: Vec<Byte>) -> Result<Self> {
+        let bytes_array: [Byte; 2] = match short_int.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_) => {
                 return Err(Error::ConfigError(
@@ -43,7 +43,7 @@ impl TryFrom<Vec<Byte>> for Stream {
                 ))
             }
         };
-        let value = Short::from_be_bytes(bytes_array);
+        let value = ShortInt::from_be_bytes(bytes_array);
         Ok(Stream::new(value))
     }
 }
@@ -61,12 +61,12 @@ mod tests {
     #[test]
     fn test_1_serializar() {
         for i in 0..1000 {
-            let ind = i as Short; // por las dudas casteamos
+            let ind = i as ShortInt; // por las dudas casteamos
 
             let stream = Stream::new(ind);
             let id_bytes = stream.as_bytes();
 
-            // El UShort es un entero de 2 bytes
+            // El Short es un entero de 2 bytes
             assert_eq!(id_bytes.len(), 2);
             assert_eq!(id_bytes, ind.to_be_bytes());
         }
@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn test_2_deserializar() {
         for i in 0..1000 {
-            let ind = i as Short;
+            let ind = i as ShortInt;
 
             let stream_res = Stream::try_from(ind.to_be_bytes().to_vec());
             assert!(stream_res.is_ok());

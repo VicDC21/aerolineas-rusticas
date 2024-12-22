@@ -4,7 +4,7 @@ use {
     crate::protocol::{
         aliases::{
             results::Result,
-            types::{Byte, UShort},
+            types::{Byte, Short},
         },
         errors::error::Error,
         messages::responses::events::schema_changes::targets::SchemaChangeTarget,
@@ -85,7 +85,7 @@ impl TryFrom<(&SchemaChangeTarget, &[Byte])> for SchemaChangeOption {
             SchemaChangeTarget::Function | SchemaChangeTarget::Aggregate => {
                 let keyspace_name = parse_bytes_to_string(&bytes[i..], &mut i)?;
                 let func_name = parse_bytes_to_string(&bytes[i..], &mut i)?;
-                let list_len = UShort::from_be_bytes([bytes[i], bytes[i + 1]]);
+                let list_len = Short::from_be_bytes([bytes[i], bytes[i + 1]]);
                 i += 2;
                 let mut arg_types: Vec<String> = vec![];
                 for _ in 0..list_len {

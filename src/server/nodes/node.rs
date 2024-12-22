@@ -22,7 +22,7 @@ use {
         protocol::{
             aliases::{
                 results::Result,
-                types::{Byte, Int, Long, UShort, Uint, Ulong},
+                types::{Byte, Int, Long, Short, Uint, Ulong},
             },
             errors::error::Error,
             headers::{
@@ -897,7 +897,7 @@ impl Node {
         for _ in 0..column_quantity {
             let name_length = &results_from_another_nodes
                 [total_length_from_metadata..(total_length_from_metadata + 2)]; // Consigo el largo del [String]
-            let name_length = UShort::from_be_bytes([name_length[0], name_length[1]]); // Lo casteo para sumarlo al total
+            let name_length = Short::from_be_bytes([name_length[0], name_length[1]]); // Lo casteo para sumarlo al total
             total_length_from_metadata += (name_length as usize) + 2 + 2; // Esto es [String] + [Option]
         }
         total_length_from_metadata

@@ -3,7 +3,7 @@ use crate::{
     protocol::{
         aliases::{
             results::Result,
-            types::{Byte, Short, Uint},
+            types::{Byte, ShortInt, Uint},
         },
         errors::error::Error,
         headers::{
@@ -23,7 +23,7 @@ pub struct Frame {
 
 impl Frame {
     /// Crea un nuevo frame dada la query y el _Consistency Level_.
-    pub fn new(stream_id: Short, query: &str, consistency: Consistency) -> Self {
+    pub fn new(stream_id: ShortInt, query: &str, consistency: Consistency) -> Self {
         let body = QueryBody::new(query.to_string(), consistency).as_bytes();
         let headers = Headers::new(
             Version::RequestV5,

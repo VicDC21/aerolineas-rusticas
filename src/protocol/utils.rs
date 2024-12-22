@@ -4,7 +4,7 @@ use {
     crate::protocol::{
         aliases::{
             results::Result,
-            types::{Byte, Int, ReasonMap, UShort},
+            types::{Byte, Int, ReasonMap, Short},
         },
         errors::error::Error,
     },
@@ -15,7 +15,7 @@ use {
 /// en el protocolo de Cassandra.
 ///
 /// Más específicamente, el protocolo pide que primero vaya un entero de
-/// 2 bytes ([UShort](crate::protocol::aliases::types::UShort)), seguido del contenido mismo del
+/// 2 bytes ([Short](crate::protocol::aliases::types::Short)), seguido del contenido mismo del
 /// [String], en donde cada _byte_ representa un carácter UTF-8.
 ///
 /// ```rust
@@ -27,7 +27,7 @@ use {
 pub fn encode_string_to_bytes(string: &str) -> Vec<Byte> {
     let string_bytes = string.as_bytes();
     // litle endian para que los dos bytes menos significativos (los únicos que nos interesa
-    // para un UShort) estén al principio
+    // para un Short) estén al principio
     let bytes_len = string_bytes.len().to_le_bytes();
     let mut bytes_vec: Vec<Byte> = vec![
         bytes_len[1],
@@ -96,13 +96,13 @@ pub fn encode_ipaddr_to_bytes(ipaddr: &IpAddr) -> Vec<Byte> {
 /// acorde al protocolo de Cassandra.
 ///
 /// Comienza con un [Int](crate::protocol::aliases::types::Int), indicando la cantidades de pares
-/// clave-valor ([IpAddr]-[UShort]) que vienen a continuación, seguido de la serialización de
+/// clave-valor ([IpAddr]-[Short]) que vienen a continuación, seguido de la serialización de
 /// dichos pares en orden.
 ///
 /// ```rust
 /// # use std::collections::HashMap;
 /// # use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-/// # use aerolineas_rusticas::protocol::aliases::types::UShort;
+/// # use aerolineas_rusticas::protocol::aliases::types::Short;
 /// # use aerolineas_rusticas::protocol::utils::encode_reasonmap_to_bytes;
 /// let reasonmap = HashMap::from([
 ///     (IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0x1400),
@@ -244,15 +244,15 @@ pub fn encode_iter_to_bytes(iterator: impl Iterator<Item = Vec<Byte>>) -> Vec<By
 /// }
 /// ```
 pub fn parse_bytes_to_string(bytes_vec: &[Byte], i: &mut usize) -> Result<String> {
-    let short: usize = 2; // los bytes de un short
-    if bytes_vec.len() < short {
+    let short_int: usize = 2; // los bytes de un short_int
+    if bytes_vec.len() < short_int {
         return Err(Error::SyntaxError(
             "Se esperaban 2 bytes que indiquen el tamaño del string a formar".to_string(),
         ));
     }
-    let string_len = UShort::from_le_bytes([bytes_vec[1], bytes_vec[0]]) as usize;
-    *i += string_len + short;
-    match String::from_utf8(bytes_vec[short..(string_len + short)].to_vec()) {
+    let string_len = Short::from_le_bytes([bytes_vec[1], bytes_vec[0]]) as usize;
+    *i += string_len + short_int;
+    match String::from_utf8(bytes_vec[short_int..(string_len + short_int)].to_vec()) {
         Ok(string) => Ok(string),
         Err(_) => Err(Error::Invalid(
             "El cuerpo del string no se pudo parsear".to_string(),
@@ -319,14 +319,14 @@ pub fn parse_bytes_to_ipaddr(bytes: &[Byte], i: &mut usize) -> Result<IpAddr> {
             bytes[j + 3],
         )),
         16 => IpAddr::V6(std::net::Ipv6Addr::new(
-            UShort::from_be_bytes([bytes[j], bytes[j + 1]]),
-            UShort::from_be_bytes([bytes[j + 2], bytes[j + 3]]),
-            UShort::from_be_bytes([bytes[j + 4], bytes[j + 5]]),
-            UShort::from_be_bytes([bytes[j + 6], bytes[j + 7]]),
-            UShort::from_be_bytes([bytes[j + 8], bytes[j + 9]]),
-            UShort::from_be_bytes([bytes[j + 10], bytes[j + 11]]),
-            UShort::from_be_bytes([bytes[j + 12], bytes[j + 13]]),
-            UShort::from_be_bytes([bytes[j + 14], bytes[j + 15]]),
+            Short::from_be_bytes([bytes[j], bytes[j + 1]]),
+            Short::from_be_bytes([bytes[j + 2], bytes[j + 3]]),
+            Short::from_be_bytes([bytes[j + 4], bytes[j + 5]]),
+            Short::from_be_bytes([bytes[j + 6], bytes[j + 7]]),
+            Short::from_be_bytes([bytes[j + 8], bytes[j + 9]]),
+            Short::from_be_bytes([bytes[j + 10], bytes[j + 11]]),
+            Short::from_be_bytes([bytes[j + 12], bytes[j + 13]]),
+            Short::from_be_bytes([bytes[j + 14], bytes[j + 15]]),
         )),
         _ => {
             return Err(Error::Invalid(
@@ -379,7 +379,7 @@ pub fn parse_bytes_to_reasonmap(bytes: &[Byte], i: &mut usize) -> Result<ReasonM
     let mut reasonmap = ReasonMap::new();
     for _ in 0..hashmap_len {
         let ip = parse_bytes_to_ipaddr(&bytes[j..], &mut j)?;
-        let code = UShort::from_be_bytes([bytes[j], bytes[j + 1]]);
+        let code = Short::from_be_bytes([bytes[j], bytes[j + 1]]);
         j += 2;
         reasonmap.insert(ip, code);
     }
@@ -391,7 +391,7 @@ pub fn parse_bytes_to_reasonmap(bytes: &[Byte], i: &mut usize) -> Result<ReasonM
 /// en el protocolo de Cassandra.
 pub fn encode_string_map_to_bytes(string_map: Vec<(String, String)>) -> Vec<Byte> {
     let mut bytes: Vec<Byte> = Vec::new();
-    let length: UShort = string_map.len() as UShort;
+    let length: Short = string_map.len() as Short;
     bytes.append(&mut (length.to_be_bytes().to_vec()));
     for (key, value) in string_map {
         let mut key_v = encode_string_to_bytes(&key);
@@ -405,7 +405,7 @@ pub fn encode_string_map_to_bytes(string_map: Vec<(String, String)>) -> Vec<Byte
 /// Parsea un conjunto de [Byte]s de vuelta a un objeto [String].
 pub fn parse_bytes_to_string_map(bytes: &[Byte]) -> Result<Vec<(String, String)>> {
     let mut string_map: Vec<(String, String)> = Vec::new();
-    let length: UShort = UShort::from_be_bytes([bytes[0], bytes[1]]);
+    let length: Short = Short::from_be_bytes([bytes[0], bytes[1]]);
     let mut vec_position = 2;
     for _i in 0..length {
         let key = parse_bytes_to_string(bytes, &mut vec_position)?;

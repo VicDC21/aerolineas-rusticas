@@ -5,7 +5,7 @@ use std::{collections::HashMap, net::IpAddr};
 // Definiciones de notaciones
 
 /// Un entero compuesto por 2 bytes *con signo*.
-pub type Short = i16;
+pub type ShortInt = i16;
 
 /// Un entero de 4 bytes *con signo*.
 pub type Int = i32;
@@ -17,7 +17,7 @@ pub type Long = i64;
 pub type Byte = u8;
 
 /// Un entero de 2 bytes *sin signo*.
-pub type UShort = u16;
+pub type Short = u16;
 
 /// Un entero de 4 bytes *sin signo*.
 pub type Uint = u32;
@@ -37,7 +37,7 @@ pub type Double = f64;
 // Abreviaciones auxiliares
 
 /// Un mapa de endpoints con códigos de errores.
-pub type ReasonMap = HashMap<IpAddr, UShort>;
+pub type ReasonMap = HashMap<IpAddr, Short>;
 
 /// Un mapa de valores posibles para las opciones de un mensaje de tipo [STARTUP](crate::protocol::headers::opcode::Opcode::Startup).
 pub type SupportedMultiMap = HashMap<String, Vec<String>>;

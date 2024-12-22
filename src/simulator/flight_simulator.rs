@@ -94,7 +94,7 @@ impl FlightSimulator {
     /// ```
     /// # use aerolineas_rusticas::simulator::flight_simulator::FlightSimulator;
     /// let simulator = FlightSimulator::new(4, false).expect("Error al crear el simulador");
-    /// simulator.get_airports(); // Imprime aeropuertos disponibles
+    /// simulator.get_airports();
     /// ```
     pub fn get_airports(&self) {
         println!("Aeropuertos disponibles:");
@@ -116,13 +116,14 @@ impl FlightSimulator {
     /// # fn main() -> Result<()> {
     /// let simulator = FlightSimulator::new(4, false)?;
     ///
-    /// // Añadir un vuelo entre aeropuertos existentes
+    ///
     /// simulator.add_flight(
     ///    1,
     ///    "MAD".to_string(),  // Aeropuerto de Madrid
     ///    "BCN".to_string(),  // Aeropuerto de Barcelona
     ///    500.0               // Velocidad promedio en km/h
     /// )?;
+    /// assert_eq!(simulator.count_active_flights(), 1);
     /// # Ok(())
     /// # }
     /// ```
@@ -173,6 +174,7 @@ impl FlightSimulator {
     }
 
     /// Obtiene la cantidad de vuelos activos en el simulador.
+    /// Después de añadir un vuelo, cambiará el número de vuelos activos.
     ///
     /// # Ejemplo
     ///
@@ -183,7 +185,6 @@ impl FlightSimulator {
     /// let simulator = FlightSimulator::new(4, false)?;
     /// assert_eq!(simulator.count_active_flights(), 0);
     ///
-    /// // Después de añadir un vuelo, cambiará el número de vuelos activos
     /// # Ok(())
     /// # }
     /// ```

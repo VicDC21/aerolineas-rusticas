@@ -3,7 +3,7 @@ use crate::{
     protocol::{
         aliases::{
             results::Result,
-            types::{Byte, Int, Long, Short},
+            types::{Byte, Int, Long, ShortInt},
         },
         errors::error::Error,
         notations::consistency::Consistency,
@@ -71,7 +71,7 @@ impl Byteable for QueryBody {
             match flag {
                 QueryFlags::Values => {
                     if let Some(values) = &self.values {
-                        bytes.extend((values.len() as Short).to_be_bytes());
+                        bytes.extend((values.len() as ShortInt).to_be_bytes());
                         for value in values {
                             bytes.extend((value.len() as Int).to_be_bytes());
                             bytes.extend(value);

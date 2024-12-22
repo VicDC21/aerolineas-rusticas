@@ -8,7 +8,7 @@ use {
         protocol::{
             aliases::{
                 results::Result,
-                types::{Byte, Double, Int, Long, Short, Uint},
+                types::{Byte, Double, Int, Long, ShortInt, Uint},
             },
             errors::error::Error,
             headers::{
@@ -57,7 +57,7 @@ pub struct Client {
     addr_loader: AddrLoader,
 
     /// Un contador interno para llevar la cuenta de IDs de conexiones.
-    requests_stream: HashSet<Short>,
+    requests_stream: HashSet<ShortInt>,
 
     /// El _Consistency Level_ de las queries.
     consistency_level: Consistency,
@@ -70,7 +70,7 @@ impl Client {
     /// Crea una nueva instancia de cliente.
     ///
     /// El _Consistency Level_ será `Quorum` por defecto.
-    pub fn new(addr_loader: AddrLoader, requests_stream: HashSet<Short>) -> Self {
+    pub fn new(addr_loader: AddrLoader, requests_stream: HashSet<ShortInt>) -> Self {
         Self {
             addr_loader,
             requests_stream,
@@ -243,7 +243,7 @@ impl Client {
         query: &str,
         tls_stream: &mut TlsStream,
     ) -> Result<(ProtocolResult, Option<TlsStream>)> {
-        let mut stream_id: Short = 0;
+        let mut stream_id: ShortInt = 0;
         while self.requests_stream.contains(&stream_id) {
             stream_id += 1;
         }
@@ -279,7 +279,7 @@ impl Client {
     fn prepare_request_to_send(
         &mut self,
         statement: Statement,
-        stream_id: Short,
+        stream_id: ShortInt,
         query: &str,
     ) -> Result<Vec<Byte>> {
         let frame = match statement {
@@ -712,7 +712,7 @@ fn print_initial_message() {
 
 impl Default for Client {
     fn default() -> Self {
-        Self::new(AddrLoader::default_loaded(), HashSet::<Short>::new())
+        Self::new(AddrLoader::default_loaded(), HashSet::<ShortInt>::new())
     }
 }
 

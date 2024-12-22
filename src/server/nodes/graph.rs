@@ -7,7 +7,7 @@ use {
         protocol::{
             aliases::{
                 results::Result,
-                types::{Byte, Short},
+                types::{Byte, ShortInt},
             },
             errors::error::Error,
             notations::consistency::Consistency,
@@ -140,9 +140,9 @@ impl NodesGraph {
         let queries = load_init_queries();
 
         for (i, query) in queries.iter().enumerate() {
-            let stream_id = match format!("{}{}", node_id, i).parse::<Short>() {
+            let stream_id = match format!("{}{}", node_id, i).parse::<ShortInt>() {
                 Ok(stream_id) => stream_id,
-                Err(_) => node_id as Short + i as Short,
+                Err(_) => node_id as ShortInt + i as ShortInt,
             };
             match make_parse(&mut tokenize_query(query)) {
                 Ok(statement) => {

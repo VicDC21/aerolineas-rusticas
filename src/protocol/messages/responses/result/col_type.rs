@@ -4,7 +4,7 @@ use crate::{
     protocol::{
         aliases::{
             results::Result,
-            types::{Byte, UShort},
+            types::{Byte, Short},
         },
         errors::error::Error,
         traits::Byteable,
@@ -99,7 +99,7 @@ pub enum ColType {
     /// Los valores validos van desde 0 a 86399999999999.
     Time,
 
-    /// Un numero de 2 bytes complemento a 2 ([UShort]).
+    /// Un numero de 2 bytes complemento a 2 ([Short]).
     Smallint,
 
     /// Un numero de 1 byte complemento a 2 ([i8]).
@@ -128,7 +128,7 @@ pub enum ColType {
 
     /// El valor tiene la forma `<n><type_1>...<type_n>` donde:
     ///
-    /// * `<n>` es un número de 2 bytes ([UShort]) representando el número de elementos.
+    /// * `<n>` es un número de 2 bytes ([Short]) representando el número de elementos.
     /// * `<type_i>` es el [tipo](crate::protocol::messages::responses::result::col_type::ColType) del i-ésimo valor de la tupla.
     Tuple(Vec<Box<Self>>),
 }
@@ -140,7 +140,7 @@ impl Byteable for ColType {
             Self::Custom(nombre) => {
                 let nombre_bytes = nombre.as_bytes();
                 // litle endian para que los dos bytes menos significativos (los únicos que nos interesa
-                // para un [UShort]) estén al principio
+                // para un [Short]) estén al principio
                 let bytes_len = nombre_bytes.len().to_le_bytes();
                 let mut bytes_vec: Vec<Byte> = vec![
                     0x0,
@@ -228,7 +228,7 @@ impl TryFrom<&[Byte]> for ColType {
             }
         };
 
-        let value = UShort::from_be_bytes(bytes_arr);
+        let value = Short::from_be_bytes(bytes_arr);
 
         let ret = match value {
             0x0000 => ColType::Custom(parse_bytes_to_string(col_type_body, &mut 0)?),
@@ -305,7 +305,7 @@ impl ColType {
                 "Se esperaban al menos 2 bytes para la tupla".to_string(),
             ));
         }
-        let n = UShort::from_be_bytes([col_type_body[0], col_type_body[1]]);
+        let n = Short::from_be_bytes([col_type_body[0], col_type_body[1]]);
         let mut types: Vec<Box<Self>> = Vec::new();
         let mut cur_type_body = col_type_body;
         for _ in 0..n {

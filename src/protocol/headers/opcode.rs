@@ -132,14 +132,14 @@ pub enum Opcode {
     ///   Estas flags son similares a los de [QUERY](crate::protocol::headers::opcode::Opcode::Query)
     ///   y [EXECUTE](crate::protocol::headers::opcode::Opcode::Register), excepto que los últimos 4 bits
     ///   son siempre `0` pues sus opciones no tienen sentido en el contexto de un _batch_.
-    /// * `<n>` es un [UShort](crate::protocol::aliases::types::UShort) indicando la cantidad de _queries_ a continuación.
+    /// * `<n>` es un [Short](crate::protocol::aliases::types::Short) indicando la cantidad de _queries_ a continuación.
     /// * `<query_1>...<query_n>` son las _queries_ a ejecutar. Cada _query_ `<query_i>` tendrá el
     ///   formato `<kind><string_or_id><n>[<name_1>]<value_1>...[<name_n>]<value_n>` donde:
     ///     - `<kind>` será un [bool] indicando si la _query_ fue preparada o no.
     ///     - `<string_or_id>` depende de `<kind>`.
     ///         * Si `<kind> == false`, `<string_or_id>` es un [String] indicando la _query_ misma.
     ///         * Si `<kind> == true`, `<string_or_id>` es un vector de [Byte]s indicando el ID de la _query_ preparada.
-    ///     - `<n>` es un [UShort](crate::protocol::aliases::types::UShort) indicando la cantidad de valores
+    ///     - `<n>` es un [Short](crate::protocol::aliases::types::Short) indicando la cantidad de valores
     ///       a continuación _(podría ser `0`)_.
     ///     - `<name_i>` es un nombre opcional al valor que sigue. Sólo ha de estar presente si se
     ///       declaró la [flag correspondiente](crate::protocol::messages::requests::batch_flags::BatchFlag::WithNamesForValues).
