@@ -1,4 +1,4 @@
-use crate::protocol::errors::error::Error;
+use crate::protocol::{aliases::results::Result, errors::error::Error};
 
 #[derive(PartialEq)]
 
@@ -75,7 +75,7 @@ pub enum NativeType {
 impl NativeType {
     /// Verifica si la lista de tokens es un tipo de dato nativo. Si lo es, lo retorna.
     /// Si no lo es, retorna None, o Error en caso estar vacía la lista.
-    pub fn parse_data_type(tokens: &mut Vec<String>) -> Result<Option<NativeType>, Error> {
+    pub fn parse_data_type(tokens: &mut Vec<String>) -> Result<Option<NativeType>> {
         if tokens.is_empty() {
             return Err(Error::SyntaxError("Expected data type".to_string()));
         }

@@ -1,6 +1,7 @@
-use super::column_definition::ColumnDefinition;
-use super::option::Options;
-use crate::parser::table_name::TableName;
+use crate::parser::{
+    statements::ddl_statement::{column_definition::ColumnDefinition, option::Options},
+    table_name::TableName,
+};
 
 /// Representa diferentes instrucciones que se pueden aplicar para alterar una tabla.
 #[derive(Debug, PartialEq)]

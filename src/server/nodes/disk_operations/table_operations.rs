@@ -1,13 +1,15 @@
 //! Módulo que detalla las operaciones de tablas
 
-use std::{
-    fs::OpenOptions,
-    io::{BufRead, BufReader},
+use {
+    crate::{
+        protocol::{aliases::results::Result, errors::error::Error},
+        server::nodes::disk_operations::table_path::TablePath,
+    },
+    std::{
+        fs::OpenOptions,
+        io::{BufRead, BufReader},
+    },
 };
-
-use crate::protocol::{aliases::results::Result, errors::error::Error};
-
-use super::table_path::TablePath;
 
 /// Estructura para manejar operaciones comunes sobre tablas
 pub struct TableOperations {

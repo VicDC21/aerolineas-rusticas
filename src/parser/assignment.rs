@@ -1,10 +1,11 @@
-use crate::protocol::errors::error::Error;
-
-use super::{
-    data_types::{
-        identifier::identifier::Identifier, literal::list_literal::ListLiteral, term::Term,
+use crate::{
+    parser::{
+        data_types::{
+            identifier::identifier_mod::Identifier, literal::list_literal::ListLiteral, term::Term,
+        },
+        statements::ddl_statement::ddl_statement_parser::check_words,
     },
-    statements::ddl_statement::ddl_statement_parser::check_words,
+    protocol::{aliases::results::Result, errors::error::Error},
 };
 
 /// assignment: simple_selection'=' term
@@ -24,7 +25,7 @@ impl Assignment {
     /// Revisa que tipo de Assignment tiene el proximo valor de la lista, si el primer tipo de valor no es el esperado entonces devuelve None.
     /// Una vez comprobado que el primer parametro es correcto, entonces en cualquier caso donde se encuentre un error o
     /// falte un tipo de dato se devuelve un error. Si los datos son los esperados entonces devuelve un Assignment.
-    pub fn check_kind_of_assignment(lista: &mut Vec<String>) -> Result<Option<Assignment>, Error> {
+    pub fn check_kind_of_assignment(lista: &mut Vec<String>) -> Result<Option<Assignment>> {
         let column_name = match Identifier::check_identifier(lista)? {
             Some(value) => value,
             None => return Ok(None),
@@ -54,7 +55,7 @@ impl Assignment {
         ))
     }
 
-    fn check_column_name_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error> {
+    fn check_column_name_term(lista: &mut Vec<String>) -> Result<Option<Term>> {
         let term = match Term::is_term(lista)? {
             Some(value) => value,
             None => return Ok(None),
@@ -62,9 +63,7 @@ impl Assignment {
         Ok(Some(term))
     }
 
-    fn check_column_name_col_term(
-        lista: &mut Vec<String>,
-    ) -> Result<Option<(Identifier, Term)>, Error> {
+    fn check_column_name_col_term(lista: &mut Vec<String>) -> Result<Option<(Identifier, Term)>> {
         let column_name = match Identifier::check_identifier(lista)? {
             Some(value) => value,
             None => return Ok(None),
@@ -81,7 +80,7 @@ impl Assignment {
 
     fn check_column_name_list_col(
         lista: &mut Vec<String>,
-    ) -> Result<Option<(ListLiteral, Identifier)>, Error> {
+    ) -> Result<Option<(ListLiteral, Identifier)>> {
         let term = match ListLiteral::check_list_literal(lista)? {
             Some(value) => value,
             None => return Ok(None),

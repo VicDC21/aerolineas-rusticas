@@ -1,15 +1,19 @@
 //! Módulo para la estructura de vuelo.
 
-use chrono::{DateTime, Local, TimeZone};
-
-use crate::client::col_data::ColData;
-use crate::client::protocol_result::ProtocolResult;
-use crate::data::flights::{states::FlightState, types::FlightType};
-use crate::protocol::aliases::{
-    results::Result,
-    types::{Int, Long},
+use {
+    crate::{
+        client::{col_data::ColData, protocol_result::ProtocolResult},
+        data::flights::{states::FlightState, types::FlightType},
+        protocol::{
+            aliases::{
+                results::Result,
+                types::{Int, Long},
+            },
+            errors::error::Error,
+        },
+    },
+    chrono::{DateTime, Local, TimeZone},
 };
-use crate::protocol::errors::error::Error;
 
 /// Un vuelo propiamente dicho.
 #[derive(Clone, Debug)]

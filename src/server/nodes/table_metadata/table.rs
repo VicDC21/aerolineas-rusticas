@@ -1,11 +1,15 @@
 //! Módulo que detalla una tabla.
 
-use serde::{Deserialize, Serialize};
-
-use crate::parser::statements::dml_statement::main_statements::select::ordering::ProtocolOrdering;
-use crate::protocol::{aliases::results::Result, errors::error::Error};
-
-use super::{column_config::ColumnConfig, column_data_type::ColumnDataType};
+use {
+    crate::{
+        parser::statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
+        protocol::{aliases::results::Result, errors::error::Error},
+        server::nodes::table_metadata::{
+            column_config::ColumnConfig, column_data_type::ColumnDataType,
+        },
+    },
+    serde::{Deserialize, Serialize},
+};
 
 /// Representa una tabla en CQL.
 #[derive(Serialize, Deserialize)]
@@ -92,12 +96,7 @@ impl Table {
         }
         let res: Vec<usize> = primary_key_values
             .iter()
-            .map(|primary_key_value| {
-                columns
-                    .iter()
-                    .position(|s| s == primary_key_value)
-                    .unwrap_or(0)
-            })
+            .filter_map(|primary_key_value| columns.iter().position(|s| s == primary_key_value))
             .collect();
         Ok(res)
     }

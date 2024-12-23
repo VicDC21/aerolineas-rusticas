@@ -1,14 +1,21 @@
 //! Módulo para funciones auxiliares de plugins.
 
-use std::result::Result as StdResult;
-
-use eframe::egui::{ColorImage, Context};
-use image::{ImageError, ImageReader};
-use walkers::Position;
-use walkers::{extras::Image, Texture};
-
-use crate::data::airports::{airp::Airport, types::AirportType};
-use crate::protocol::{aliases::results::Result, errors::error::Error};
+use {
+    crate::{
+        data::airports::{airp::Airport, types::AirportType},
+        protocol::{
+            aliases::{results::Result, types::Float},
+            errors::error::Error,
+        },
+    },
+    eframe::egui::{ColorImage, Context},
+    image::{ImageError, ImageReader},
+    std::result::Result as StdResult,
+    walkers::{
+        Position,
+        {extras::Image, Texture},
+    },
+};
 
 /// Intenta cargar una [imagen](eframe::egui::ColorImage) de EGUI.
 pub fn load_egui_img(path: &str) -> StdResult<ColorImage, ImageError> {
@@ -40,7 +47,7 @@ pub fn load_airport_image(path: &str, airport: &Airport, context: &Context) -> R
 }
 
 /// Devuelve el nivel de zoom aceptable para mostrar el aeropuerto según el [tipo](AirportType).
-pub fn zoom_is_showable(airport_type: &AirportType, zoom: f32) -> bool {
+pub fn zoom_is_showable(airport_type: &AirportType, zoom: Float) -> bool {
     match airport_type {
         AirportType::LargeAirport => zoom >= 0.0,
         AirportType::MediumAirport => zoom >= 5.0,

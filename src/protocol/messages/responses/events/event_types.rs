@@ -1,17 +1,19 @@
 //! Módulo para tipos de eventos.
 
-use std::net::IpAddr;
-
-use std::convert::TryFrom;
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::messages::responses::events::schema_changes::{
-    options::SchemaChangeOption, targets::SchemaChangeTarget, types::SchemaChangeType,
-};
-use crate::protocol::traits::Byteable;
-use crate::protocol::utils::{
-    encode_ipaddr_to_bytes, encode_string_to_bytes, parse_bytes_to_ipaddr, parse_bytes_to_string,
+use {
+    crate::protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        messages::responses::events::schema_changes::{
+            options::SchemaChangeOption, targets::SchemaChangeTarget, types::SchemaChangeType,
+        },
+        traits::Byteable,
+        utils::{
+            encode_ipaddr_to_bytes, encode_string_to_bytes, parse_bytes_to_ipaddr,
+            parse_bytes_to_string,
+        },
+    },
+    std::{convert::TryFrom, net::IpAddr},
 };
 
 // use crate::protocol::traits::Byteable;
@@ -72,7 +74,7 @@ impl Byteable for EventType {
 
 impl TryFrom<&[Byte]> for EventType {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         let mut i = 0;
         let event_type = parse_bytes_to_string(&bytes[i..], &mut i)?;
 
@@ -128,11 +130,7 @@ impl TryFrom<&[Byte]> for EventType {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
-
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::messages::responses::events::event_types::EventType;
-    use crate::protocol::traits::Byteable;
+    use {super::*, std::net::Ipv4Addr};
 
     #[test]
     fn test_1_serializar() {

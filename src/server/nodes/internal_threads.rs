@@ -1,38 +1,43 @@
 //! Módulo que contiene las funciones que implementan los hilos internos de un nodo.
 
-use rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng};
-use rustls::{
-    pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
-    ServerConfig, ServerConnection, Stream,
-};
-use std::{
-    collections::HashSet,
-    io::{BufRead, BufReader, Read},
-    net::{SocketAddr, TcpListener, TcpStream},
-    sync::{
-        mpsc::{self, channel, Sender},
-        Arc, Mutex,
+use {
+    crate::{
+        client::cli::handle_pem_file_iter,
+        protocol::{
+            aliases::{
+                results::Result,
+                types::{Byte, Ulong},
+            },
+            errors::error::Error,
+            headers::opcode::Opcode,
+            traits::Byteable,
+        },
+        server::nodes::{
+            actions::opcode::SvAction,
+            addr::loader::AddrLoader,
+            node::{Node, NodeHandle, NodeId},
+            port_type::PortType,
+            session_handler::SessionHandler,
+            utils::send_to_node,
+        },
     },
-    thread::{self, sleep, Builder},
-    time::Duration,
+    rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng},
+    rustls::{
+        pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
+        ServerConfig, ServerConnection, Stream,
+    },
+    std::{
+        collections::HashSet,
+        io::{BufRead, BufReader, Read},
+        net::{SocketAddr, TcpListener, TcpStream},
+        sync::{
+            mpsc::{self, channel, Sender},
+            Arc, Mutex,
+        },
+        thread::{self, sleep, Builder},
+        time::Duration,
+    },
 };
-
-use crate::client::cli::handle_pem_file_iter;
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    headers::opcode::Opcode,
-    traits::Byteable,
-};
-use crate::server::nodes::{
-    actions::opcode::SvAction,
-    addr::loader::AddrLoader,
-    node::{Node, NodeHandle, NodeId},
-    port_type::PortType,
-    utils::send_to_node,
-};
-
-use super::session_handler::SessionHandler;
 
 /// Un stream TLS.
 type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
@@ -40,9 +45,9 @@ type TlsStream<'a> = Stream<'a, ServerConnection, TcpStream>;
 /// Cantidad de vecinos a los cuales un nodo tratará de acercarse en un ronda de _gossip_.
 const HANDSHAKE_NEIGHBOURS: Byte = 3;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _heartbeat_.
-const HEARTBEAT_SLEEP_MILLIS: u64 = 1000;
+const HEARTBEAT_SLEEP_MILLIS: Ulong = 1000;
 /// Cantidad de tiempo _(en milisegundos)_ que duerme el hilo de _gossip_.
-const GOSSIP_SLEEP_MILLIS: u64 = 350;
+const GOSSIP_SLEEP_MILLIS: Ulong = 350;
 
 /// El número de hilos para el [ThreadPool].
 ///
@@ -55,7 +60,7 @@ const GOSSIP_SLEEP_MILLIS: u64 = 350;
 /// </div>
 pub fn create_client_and_private_conexion(
     node: Node,
-    id: u8,
+    id: Byte,
     cli_socket: SocketAddr,
     priv_socket: SocketAddr,
     node_listeners: &mut Vec<Option<NodeHandle>>,
@@ -202,7 +207,7 @@ fn listen_single_client(
     let mut is_logged = false;
 
     loop {
-        let mut buffer: Vec<u8> = vec![0; 2048];
+        let mut buffer: Vec<Byte> = vec![0; 2048];
         let size = match tls.read(&mut buffer) {
             Ok(value) => value,
             Err(_err) => return Err(Error::ServerError("No se pudo leer el stream".to_string())),

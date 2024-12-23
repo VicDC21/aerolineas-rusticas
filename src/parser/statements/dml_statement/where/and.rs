@@ -1,6 +1,7 @@
-use super::expression::Expression;
-
-use crate::protocol::aliases::results::Result;
+use crate::{
+    parser::statements::dml_statement::r#where::expression::Expression,
+    protocol::aliases::results::Result,
+};
 
 /// Representa una operación lógica AND entre dos expresiones.
 #[derive(Debug)]

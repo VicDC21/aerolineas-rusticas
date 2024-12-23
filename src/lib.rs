@@ -3,7 +3,6 @@
 //! Por ahora sólo habrá una interacción cliente / servidor para probar.
 
 #![warn(missing_docs)]
-
 pub mod client;
 pub mod data;
 #[cfg(feature = "gui")]

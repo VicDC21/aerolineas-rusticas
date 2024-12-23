@@ -2,16 +2,17 @@
 
 mod common;
 
-use std::{thread::sleep, time::Duration};
-
-use aerolineas_rusticas::{
-    client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
-    data::{
-        flights::{flight::Flight, states::FlightState, types::FlightType},
-        login_info::LoginInfo,
+use {
+    aerolineas_rusticas::{
+        client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
+        data::{
+            flights::{flight::Flight, states::FlightState, types::FlightType},
+            login_info::LoginInfo,
+        },
     },
+    common::{clean_nodes, create_parsing_nodes},
+    std::{thread::sleep, time::Duration},
 };
-use common::{clean_nodes, create_parsing_nodes};
 
 #[test]
 fn test_simple_insert_and_select() {

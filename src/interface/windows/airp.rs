@@ -1,10 +1,14 @@
 //! Módulo para ventanas de widgets de aeropuertos.
 
-use chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike};
-use eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window};
-use egui_extras::DatePickerButton;
-
-use crate::{client::conn_holder::ConnectionHolder, data::login_info::LoginInfo};
+use {
+    crate::{
+        client::conn_holder::ConnectionHolder, data::login_info::LoginInfo,
+        protocol::aliases::types::Float,
+    },
+    chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike},
+    eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window},
+    egui_extras::DatePickerButton,
+};
 
 /// Seleccionar la fecha actual.
 pub fn date_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTime<Local>> {
@@ -79,7 +83,7 @@ pub fn airports_progress(ui: &Ui, start: usize, end: usize) {
         .title_bar(false)
         .anchor(Align2::CENTER_TOP, [0., 25.])
         .show(ctx, |ui| {
-            let progress = start as f32 / end as f32;
+            let progress = start as Float / end as Float;
             let progress_bar = ProgressBar::new(progress)
                 .desired_width(ctx.screen_rect().width() / 5.)
                 .animate(true)

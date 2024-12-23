@@ -1,4 +1,4 @@
-use crate::parser::data_types::{identifier::identifier::Identifier, term::Term};
+use crate::parser::data_types::{identifier::identifier_mod::Identifier, term::Term};
 
 /// Representa un selector en una declaración SQL.
 #[derive(Debug, PartialEq)]

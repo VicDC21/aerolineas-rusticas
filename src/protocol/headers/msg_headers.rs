@@ -1,13 +1,14 @@
 //! Módulo para estructura global de encabezados.
 
-use std::convert::TryFrom;
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::headers::{
-    flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+use {
+    crate::protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
+        traits::{Byteable, Maskable},
+    },
+    std::convert::TryFrom,
 };
-use crate::protocol::traits::{Byteable, Maskable};
 
 /// Estructura que engloba a todos los encabezados de cualquier mensaje en el protocolo.
 pub struct Headers {
@@ -67,7 +68,7 @@ impl Byteable for Headers {
 
 impl TryFrom<&[Byte]> for Headers {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         if bytes.len() < 9 {
             return Err(Error::Invalid(
                 "Se necesitan al menos 9 bytes para formar los encabezados.".to_string(),

@@ -1,15 +1,20 @@
 //! Módulo para estructuras de países.
-
-use std::collections::HashMap;
-use std::io::{BufRead, Result as IOResult};
-
-use crate::data::continents::types::ContinentType;
-use crate::data::utils::{
-    paths::{get_tokens, reader_from},
-    strings::breakdown,
+use {
+    crate::{
+        data::{
+            continents::types::ContinentType,
+            utils::{
+                paths::{get_tokens, reader_from},
+                strings::breakdown,
+            },
+        },
+        protocol::{aliases::results::Result, errors::error::Error},
+    },
+    std::{
+        collections::HashMap,
+        io::{BufRead, Result as IOResult},
+    },
 };
-use crate::protocol::aliases::results::Result;
-use crate::protocol::errors::error::Error;
 
 /// Un mapa de países.
 pub type CountriesMap = HashMap<String, Country>;

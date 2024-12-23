@@ -1,11 +1,17 @@
 //! Módulo para los tipos de columnas en una _response_ con filas.
 
-use crate::protocol::aliases::types::{Byte, Short};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::protocol::user::udt_type::UdtType;
-use crate::protocol::utils::parse_bytes_to_string;
-use crate::server::nodes::table_metadata::column_data_type::ColumnDataType;
+use crate::{
+    protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, Short},
+        },
+        errors::error::Error,
+        traits::Byteable,
+        utils::parse_bytes_to_string,
+    },
+    server::nodes::table_metadata::column_data_type::ColumnDataType,
+};
 
 /// Tipo nativo de columna, a ser incluido en la _spec_ del cuerpo de la _response_.
 #[derive(Clone, Debug)]
@@ -16,7 +22,7 @@ pub enum ColType {
     /// Secuencia de bytes ([ [Byte] ]) en rango ASCII [0, 127].
     Ascii,
 
-    /// Un número de 8 bytes en complemento a dos ([i64]).
+    /// Un número de 8 bytes en complemento a dos ([Long]).
     Bigint,
 
     /// Una secuencia de bytes "crudos" ([ [Byte] ]).
@@ -78,7 +84,7 @@ pub enum ColType {
     /// Número de 16 bytes (asumimos [Uuid](crate::protocol::aliases::types::Uuid)) representando un UUID (Versión 1) tal y como está especificado en RFC 4122.
     Timeuuid,
 
-    /// Una secuencia de 4 o 16 bytes ([u32], [u128] o [IpAddr](std::net::IpAddr)) denotado una dirección IPv4 o IPv6 respectivamente..
+    /// Una secuencia de 4 o 16 bytes ([Uint], [Byte] o [IpAddr](std::net::IpAddr)) denotado una dirección IPv4 o IPv6 respectivamente..
     Inet,
 
     /// Un numero integer que representa los dias con la epoca centrada en 2^31.
@@ -119,17 +125,6 @@ pub enum ColType {
 
     /// Un set con un tipo de columna especificado en este [Enum](crate::protocol::messages::responses::result::col_type::ColType).
     Set(Box<Self>),
-
-    /// El valor tiene la forma `<ks><udt_name><n><name_1><type_1>...<name_n><type_n>`, donde:
-    ///
-    /// * `<ks>` es un [String] representado el _keyspace_ al que pertenece este UDT.
-    /// * `<udt_name>` es un [String] representando el nombre del UDT.
-    /// * `<n>` es un número de 2 bytes ([Short]) que representa la cantidad de campos a continuación.
-    /// * `<name_i>` es un [String] representando el nombre del i-ésimo campo del UDT.
-    /// * `<value_i>` es una tipo de los especificados en este [Enum](crate::protocol::messages::responses::result::col_type::ColType), tal que el i-ésimo campo del UDT tiene valor de ese tipo.
-    ///
-    /// Toda la info está guardada en [UdtType].
-    Udt(UdtType),
 
     /// El valor tiene la forma `<n><type_1>...<type_n>` donde:
     ///
@@ -198,7 +193,6 @@ impl Byteable for ColType {
                 bytes_vec.extend((**boxed).as_bytes());
                 bytes_vec
             }
-            Self::Udt(udt_type) => udt_type.as_bytes(),
             Self::Tuple(types_vec) => {
                 let types_vec_len = types_vec.len().to_le_bytes();
                 let mut bytes_vec: Vec<Byte> = vec![
@@ -218,7 +212,7 @@ impl Byteable for ColType {
 
 impl TryFrom<&[Byte]> for ColType {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         if bytes.len() < 2 {
             return Err(Error::ConfigError("Se esperaban 2 bytes".to_string()));
         }
@@ -261,7 +255,6 @@ impl TryFrom<&[Byte]> for ColType {
             0x0020 => Self::deserialize_list_type(col_type_body)?,
             0x0021 => Self::deserialize_map_type(col_type_body)?,
             0x0022 => Self::deserialize_set_type(col_type_body)?,
-            0x0030 => ColType::Udt(UdtType::try_from(col_type_body)?),
             0x0031 => Self::deserialize_tuple_type(col_type_body)?,
             _ => {
                 return Err(Error::ConfigError(
@@ -274,7 +267,7 @@ impl TryFrom<&[Byte]> for ColType {
 }
 
 impl ColType {
-    fn deserialize_list_type(col_type_body: &[Byte]) -> Result<Self, Error> {
+    fn deserialize_list_type(col_type_body: &[Byte]) -> Result<Self> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
                 "Se esperaban al menos 2 bytes para el tipo de la lista".to_string(),
@@ -284,7 +277,7 @@ impl ColType {
         Ok(ColType::List(Box::new(inner_type)))
     }
 
-    fn deserialize_map_type(col_type_body: &[Byte]) -> Result<Self, Error> {
+    fn deserialize_map_type(col_type_body: &[Byte]) -> Result<Self> {
         if col_type_body.len() < 4 {
             return Err(Error::ConfigError(
                 "Se esperaban al menos 4 bytes para el map".to_string(),
@@ -296,7 +289,7 @@ impl ColType {
         Ok(ColType::Map((Box::new(key_type), Box::new(value_type))))
     }
 
-    fn deserialize_set_type(col_type_body: &[Byte]) -> Result<Self, Error> {
+    fn deserialize_set_type(col_type_body: &[Byte]) -> Result<Self> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
                 "Se esperaban al menos 2 bytes para la lista".to_string(),
@@ -306,7 +299,7 @@ impl ColType {
         Ok(ColType::Set(Box::new(inner_type)))
     }
 
-    fn deserialize_tuple_type(col_type_body: &[Byte]) -> Result<Self, Error> {
+    fn deserialize_tuple_type(col_type_body: &[Byte]) -> Result<Self> {
         if col_type_body.len() < 2 {
             return Err(Error::ConfigError(
                 "Se esperaban al menos 2 bytes para la tupla".to_string(),
@@ -337,10 +330,7 @@ impl From<ColumnDataType> for ColType {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::aliases::types::Byte;
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::messages::responses::result::col_type::ColType;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

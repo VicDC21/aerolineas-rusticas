@@ -1,11 +1,15 @@
 //! Módulo para funciones auxiliares de rutas.
 
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-
-use crate::data::utils::strings::unify_quotes_tokens;
-use crate::protocol::aliases::results::Result;
-use crate::protocol::errors::error::Error;
+use {
+    crate::{
+        data::utils::strings::unify_quotes_tokens,
+        protocol::{aliases::results::Result, errors::error::Error},
+    },
+    std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    },
+};
 
 /// Genera un reader desde una ruta.
 ///

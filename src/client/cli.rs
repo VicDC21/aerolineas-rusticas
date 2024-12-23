@@ -1,48 +1,52 @@
 //! Módulo del cliente.
 
-use std::{
-    collections::HashSet,
-    io::{stdin, BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpStream},
-    str::FromStr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-
-use crate::{
-    client::cql_frame::frame::Frame,
-    data::login_info::LoginInfo,
-    parser::{main_parser::make_parse, statements::statement::Statement},
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
-        headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
-        messages::responses::{
-            result::{col_type::ColType, rows_flags::RowsFlag},
-            result_kinds::ResultKind,
+use {
+    crate::{
+        client::{col_data::ColData, cql_frame::frame::Frame, protocol_result::ProtocolResult},
+        data::login_info::LoginInfo,
+        parser::{main_parser::make_parse, statements::statement::Statement},
+        protocol::{
+            aliases::{
+                results::Result,
+                types::{Byte, Double, Int, Long, ShortInt, Uint},
+            },
+            errors::error::Error,
+            headers::{
+                flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
+            },
+            messages::responses::{
+                result::{col_type::ColType, rows_flags::RowsFlag},
+                result_kinds::ResultKind,
+            },
+            notations::consistency::Consistency,
+            traits::Byteable,
+            utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
         },
-        notations::consistency::Consistency,
-        traits::Byteable,
-        utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
+        server::nodes::{
+            actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
+            table_metadata::column_data_type::ColumnDataType,
+        },
+        tokenizer::tokenizer_mod::tokenize_query,
     },
-    server::nodes::{
-        actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
-        table_metadata::column_data_type::ColumnDataType,
+    rustls::{
+        pki_types::{pem::PemObject, CertificateDer},
+        ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream,
     },
-    tokenizer::tokenizer::tokenize_query,
+    std::{
+        collections::HashSet,
+        io::{stdin, BufRead, BufReader, Read, Write},
+        net::{SocketAddr, TcpStream},
+        str::FromStr,
+        sync::Arc,
+        time::{Duration, Instant},
+    },
 };
-use rustls::{
-    pki_types::{pem::PemObject, CertificateDer},
-    ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream,
-};
-
-use super::{col_data::ColData, protocol_result::ProtocolResult};
 
 /// Un stream TLS.
 pub type TlsStream = LsStream<ClientConnection, TcpStream>;
 
 /// La cantidad máxima de intentos de reconexión.
-const MAX_RETRIES: u32 = 2;
+const MAX_RETRIES: Uint = 2;
 /// La cantidad (en bytes) del _header_ de un mensaje.
 const HEADER_SIZE: usize = 9;
 
@@ -53,7 +57,7 @@ pub struct Client {
     addr_loader: AddrLoader,
 
     /// Un contador interno para llevar la cuenta de IDs de conexiones.
-    requests_stream: HashSet<i16>,
+    requests_stream: HashSet<ShortInt>,
 
     /// El _Consistency Level_ de las queries.
     consistency_level: Consistency,
@@ -66,7 +70,7 @@ impl Client {
     /// Crea una nueva instancia de cliente.
     ///
     /// El _Consistency Level_ será `Quorum` por defecto.
-    pub fn new(addr_loader: AddrLoader, requests_stream: HashSet<i16>) -> Self {
+    pub fn new(addr_loader: AddrLoader, requests_stream: HashSet<ShortInt>) -> Self {
         Self {
             addr_loader,
             requests_stream,
@@ -239,7 +243,7 @@ impl Client {
         query: &str,
         tls_stream: &mut TlsStream,
     ) -> Result<(ProtocolResult, Option<TlsStream>)> {
-        let mut stream_id: i16 = 0;
+        let mut stream_id: ShortInt = 0;
         while self.requests_stream.contains(&stream_id) {
             stream_id += 1;
         }
@@ -261,7 +265,10 @@ impl Client {
                     self.login(self.login_info.to_owned(), &mut new_tls)?;
                     tls_opt = Some(new_tls);
                 }
-                Err(last_error.unwrap_or_else(|| Error::ServerError("Error desconocido".into())))
+                match last_error {
+                    Some(e) => Err(e),
+                    None => Err(Error::ServerError("Error desconocido".into())),
+                }
             }
             Err(err) => Err(Error::ServerError(err.to_string())),
         };
@@ -272,9 +279,9 @@ impl Client {
     fn prepare_request_to_send(
         &mut self,
         statement: Statement,
-        stream_id: i16,
+        stream_id: ShortInt,
         query: &str,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Vec<Byte>> {
         let frame = match statement {
             Statement::DmlStatement(_) | Statement::DdlStatement(_) => {
                 Frame::new(stream_id, query, self.consistency_level).as_bytes()
@@ -283,10 +290,6 @@ impl Client {
                 Client::prepare_auth_response_message(&user.user, &user.password)?
             }
             Statement::Startup => Client::prepare_startup_message()?,
-            Statement::UdtStatement(_) => {
-                self.requests_stream.remove(&stream_id);
-                return Err(Error::ServerError("UDT statements no soportados".into()));
-            }
         };
         Ok(frame)
     }
@@ -294,7 +297,7 @@ impl Client {
     fn write_to_server(
         &mut self,
         mut tls_opt: Option<TlsStream>,
-        frame: &[u8],
+        frame: &[Byte],
         tls_stream: &mut TlsStream,
     ) -> Result<(ProtocolResult, Option<TlsStream>)> {
         if let Some(cur_tls) = tls_opt.as_mut() {
@@ -423,13 +426,13 @@ impl Client {
         Err(Error::ServerError("Respuesta incompleta".into()))
     }
 
-    fn get_body_length(&self, response: &[u8]) -> Result<usize> {
+    fn get_body_length(&self, response: &[Byte]) -> Result<usize> {
         if response.len() < HEADER_SIZE {
             return Err(Error::ServerError("Respuesta incompleta".into()));
         }
 
         let length_bytes = [response[5], response[6], response[7], response[8]];
-        Ok(u32::from_be_bytes(length_bytes) as usize)
+        Ok(Uint::from_be_bytes(length_bytes) as usize)
     }
 
     fn handle_response(&mut self, request: &[Byte]) -> Result<ProtocolResult> {
@@ -517,7 +520,7 @@ impl Client {
 
     fn deserialize_rows(&self, _lenght: Length, request: &[Byte]) -> Result<ProtocolResult> {
         let _flags = RowsFlag::try_from(request[..4].to_vec())?;
-        let columns_count = u32::from_be_bytes([request[4], request[5], request[6], request[7]]);
+        let columns_count = Uint::from_be_bytes([request[4], request[5], request[6], request[7]]);
         let mut actual_position: usize = 8;
         let mut col_names: Vec<String> = Vec::new(); // usar col_names
         let mut col_types: Vec<ColType> = Vec::new(); // usar col_types que deberia ser ademas ColumnDataType
@@ -547,8 +550,8 @@ impl Client {
     fn match_col_type(
         &self,
         col_types: &[ColType],
-        i: u32,
-        request: &[u8],
+        i: Uint,
+        request: &[Byte],
         actual_position: &mut usize,
     ) -> Result<ColData> {
         let col_data = match ColumnDataType::from(col_types[i as usize].clone()) {
@@ -558,17 +561,17 @@ impl Client {
                 ColData::String(value)
             }
             ColumnDataType::Timestamp => {
-                let value = self.parse_column_value::<i64>(request, actual_position)?;
+                let value = self.parse_column_value::<Long>(request, actual_position)?;
                 *actual_position += value.to_string().len();
                 ColData::Timestamp(value)
             }
             ColumnDataType::Double => {
-                let value = self.parse_column_value::<f64>(request, actual_position)?;
+                let value = self.parse_column_value::<Double>(request, actual_position)?;
                 *actual_position += value.to_string().len();
                 ColData::Double(value)
             }
             ColumnDataType::Int => {
-                let value = self.parse_column_value::<i32>(request, actual_position)?;
+                let value = self.parse_column_value::<Int>(request, actual_position)?;
                 *actual_position += value.to_string().len();
                 ColData::Int(value)
             }
@@ -585,13 +588,13 @@ impl Client {
         }
     }
 
-    fn read_bytes_to_int(&self, request: &[Byte], actual_position: usize) -> Result<i32> {
+    fn read_bytes_to_int(&self, request: &[Byte], actual_position: usize) -> Result<Int> {
         if request.len() < actual_position + 4 {
             return Err(Error::Invalid(
                 "No se recibio una query con el largo esperado".to_string(),
             ));
         }
-        let number = i32::from_be_bytes([
+        let number = Int::from_be_bytes([
             request[actual_position],
             request[actual_position + 1],
             request[actual_position + 2],
@@ -616,7 +619,7 @@ impl Client {
         })
     }
 
-    fn parse_string(&self, request: &[u8], actual_position: &mut usize) -> Result<String> {
+    fn parse_string(&self, request: &[Byte], actual_position: &mut usize) -> Result<String> {
         let string_len = self.read_bytes_to_int(request, *actual_position)?;
         *actual_position += 4;
         let right_position = *actual_position + string_len as usize;
@@ -670,7 +673,7 @@ impl Client {
         response.append(&mut Length::new(0).as_bytes());
         let cql_version = vec![("CQL_VERSION".to_string(), "5.0.0".to_string())];
         let mut string_map_as_bytes = encode_string_map_to_bytes(cql_version);
-        let length: u32 = string_map_as_bytes.len() as u32;
+        let length: Uint = string_map_as_bytes.len() as Uint;
         response.append(&mut string_map_as_bytes);
         response.splice(5..9, length.to_be_bytes());
         Ok(response)
@@ -686,7 +689,7 @@ impl Client {
         response.append(&mut Length::new(0).as_bytes());
         let mut user = encode_string_to_bytes(user);
         let mut password = encode_string_to_bytes(password);
-        let length: u32 = (user.len() + password.len()) as u32;
+        let length: Uint = (user.len() + password.len()) as Uint;
         response.append(&mut user);
         response.append(&mut password);
         response.splice(5..9, length.to_be_bytes());
@@ -709,7 +712,7 @@ fn print_initial_message() {
 
 impl Default for Client {
     fn default() -> Self {
-        Self::new(AddrLoader::default_loaded(), HashSet::<i16>::new())
+        Self::new(AddrLoader::default_loaded(), HashSet::<ShortInt>::new())
     }
 }
 

@@ -1,6 +1,7 @@
-use crate::protocol::errors::error::Error;
-
-use super::unquoted_name::UnquotedName;
+use crate::{
+    parser::data_types::unquoted_name::UnquotedName,
+    protocol::{aliases::results::Result, errors::error::Error},
+};
 
 /// keyspace_name::= name
 /// name::= unquoted_name | quoted_name
@@ -22,7 +23,7 @@ impl Default for KeyspaceName {
 impl KeyspaceName {
     /// Verifica si la lista de tokens es un nombre de keyspace. Si lo es, lo retorna.
     /// Si no lo es, retorna None, o Error en caso de no cumplir con el protocolo.
-    pub fn check_kind_of_name(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
+    pub fn check_kind_of_name(lista: &mut Vec<String>) -> Result<Option<Self>> {
         if lista.is_empty() {
             return Err(Error::SyntaxError("Faltan argumentos".to_string()));
         }

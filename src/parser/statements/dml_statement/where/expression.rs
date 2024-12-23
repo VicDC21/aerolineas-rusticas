@@ -1,7 +1,11 @@
-use crate::parser::{data_types::identifier::identifier::Identifier, data_types::term::Term};
-use crate::protocol::{aliases::results::Result, errors::error::Error};
-
-use super::{and::And, operator::Operator, relation::Relation};
+use crate::{
+    parser::{
+        data_types::identifier::identifier_mod::Identifier,
+        data_types::term::Term,
+        statements::dml_statement::r#where::{and::And, operator::Operator, relation::Relation},
+    },
+    protocol::{aliases::results::Result, errors::error::Error},
+};
 
 /// Representa diferentes tipos de expresiones en el analizador sintáctico.
 #[derive(Debug)]

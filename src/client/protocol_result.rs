@@ -1,6 +1,4 @@
-use crate::protocol::errors::error::Error;
-
-use super::col_data::ColData;
+use crate::{client::col_data::ColData, protocol::errors::error::Error};
 
 /// Resultado de una operación en el protocolo de Cassandra.
 #[derive(Clone, Debug)]

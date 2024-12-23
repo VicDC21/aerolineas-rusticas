@@ -1,18 +1,22 @@
 //! Módulo para mensajes de errores.
 
-use std::{
-    backtrace::Backtrace,
-    fmt::{Display, Formatter, Result as FmtResult},
-    result::Result as StdResult,
+use {
+    crate::protocol::{
+        aliases::types::{Byte, Int, ReasonMap, Short},
+        errors::write_type::WriteType,
+        notations::consistency::Consistency,
+        traits::Byteable,
+        utils::{
+            encode_reasonmap_to_bytes, encode_string_to_bytes, parse_bytes_to_reasonmap,
+            parse_bytes_to_string,
+        },
+    },
+    std::{
+        backtrace::Backtrace,
+        fmt::{Display, Formatter, Result as FmtResult},
+        result::Result as StdResult,
+    },
 };
-
-use crate::protocol::aliases::types::{Byte, Int, ReasonMap, Short};
-use crate::protocol::errors::write_type::WriteType;
-use crate::protocol::utils::{
-    encode_reasonmap_to_bytes, encode_string_to_bytes, parse_bytes_to_reasonmap,
-    parse_bytes_to_string,
-};
-use crate::protocol::{notations::consistency::Consistency, traits::Byteable};
 
 /// La forma del mensaje de error es `<code><message>[...]`.
 /// Luego, dependiendo del código de error, tendrá más información o no luego del mensaje.
@@ -620,12 +624,9 @@ impl Display for Error {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
-
-    use super::Error;
-    use crate::protocol::{
-        aliases::types::ReasonMap, errors::write_type::WriteType,
-        notations::consistency::Consistency, traits::Byteable,
+    use {
+        super::*,
+        std::net::{IpAddr, Ipv4Addr},
     };
 
     #[test]

@@ -1,12 +1,13 @@
 //! Módulo que detalla las operaciones de filas
 
-use crate::parser::statements::dml_statement::{
-    if_condition::{Condition, IfCondition},
-    r#where::where_parser::Where,
+use crate::{
+    parser::statements::dml_statement::{
+        if_condition::{Condition, IfCondition},
+        r#where::where_parser::Where,
+    },
+    protocol::aliases::results::Result,
+    server::nodes::disk_operations::disk_handler::DiskHandler,
 };
-use crate::protocol::aliases::results::Result;
-
-use super::disk_handler::DiskHandler;
 
 /// Estructura para manejar operaciones comunes sobre filas
 pub struct RowOperations;

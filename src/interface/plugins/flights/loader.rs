@@ -1,34 +1,34 @@
 //! Módulo para un cargador de vuelos.
 
-use std::{
-    collections::hash_map::{Entry, HashMap},
-    sync::{
-        mpsc::{channel, Receiver, Sender},
-        Arc,
-    },
-    thread::{spawn, JoinHandle},
-    time::{Duration, Instant},
-};
-
-use chrono::{DateTime, Local};
-use eframe::egui::{Painter, Response};
-use walkers::{Plugin, Projector};
-
-use crate::{
-    client::{cli::Client, conn_holder::ConnectionHolder},
-    data::{
-        airports::airp::Airport,
-        flights::{flight::Flight, types::FlightType},
-        login_info::LoginInfo,
-        tracking::live_flight_data::LiveFlightData,
-    },
-    protocol::{
-        aliases::{
-            results::Result,
-            types::{Int, Long},
+use {
+    crate::{
+        client::{cli::Client, conn_holder::ConnectionHolder},
+        data::{
+            airports::airp::Airport,
+            flights::{flight::Flight, types::FlightType},
+            login_info::LoginInfo,
+            tracking::live_flight_data::LiveFlightData,
         },
-        errors::error::Error,
+        protocol::{
+            aliases::{
+                results::Result,
+                types::{Int, Long, Ulong},
+            },
+            errors::error::Error,
+        },
     },
+    chrono::{DateTime, Local},
+    eframe::egui::{Painter, Response},
+    std::{
+        collections::hash_map::{Entry, HashMap},
+        sync::{
+            mpsc::{channel, Receiver, Sender},
+            Arc,
+        },
+        thread::{spawn, JoinHandle},
+        time::{Duration, Instant},
+    },
+    walkers::{Plugin, Projector},
 };
 
 /// Los datos de vuelos ordenados por ID.
@@ -50,12 +50,12 @@ type FlightChild = (DateChild, Receiver<Vec<Flight>>);
 type FlightDataChild = (DateChild, Receiver<LiveDataMap>);
 
 /// Intervalo (en segundos) antes de cargar los vuelos de nuevo, como mínimo.
-const FLIGHTS_INTERVAL_SECS: u64 = 3;
+const FLIGHTS_INTERVAL_SECS: Ulong = 3;
 /// Intervalo (en segundos) antes de cargar los datos de vuelos de nuevo, como mínimo.
-const TRACKING_INTERVAL_SECS: u64 = 1;
+const TRACKING_INTERVAL_SECS: Ulong = 1;
 
 /// Un día en segundos.
-const DAY_IN_SECONDS: i64 = 86400;
+const DAY_IN_SECONDS: Long = 86400;
 
 /// Cargador de vuelos.
 pub struct FlightsLoader {
@@ -180,13 +180,18 @@ impl FlightsLoader {
                             }
                         }
 
-                        let flights = Self::load_flights(
+                        let flights = match Self::load_flights(
                             &mut con_info,
                             &flight_type,
                             selected_airport.as_ref(),
                             &timestamp,
-                        )
-                        .unwrap_or_default();
+                        ) {
+                            Ok(data) => data,
+                            Err(err) => {
+                                println!("Error cargando vuelos:\n{}", err);
+                                Vec::<Flight>::new()
+                            }
+                        };
 
                         if let Err(err) = to_parent.send(flights) {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{}", err);
@@ -278,7 +283,9 @@ impl FlightsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_fl_incoming(&mut self) -> Vec<Flight> {
-        self.incoming_flights.take().unwrap_or_default()
+        self.incoming_flights
+            .take()
+            .map_or(Vec::<Flight>::new(), |flights| flights)
     }
 
     /// **Consume** la lista de vuelos salientes actualmente en memoria para devolverla,
@@ -286,7 +293,9 @@ impl FlightsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_fl_departing(&mut self) -> Vec<Flight> {
-        self.departing_flights.take().unwrap_or_default()
+        self.departing_flights
+            .take()
+            .map_or(Vec::<Flight>::new(), |flights| flights)
     }
 
     /// **Consume** la lista de datos de vuelos entrantes actualmente en memoria
@@ -294,7 +303,9 @@ impl FlightsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_tr_incoming(&mut self) -> LiveDataMap {
-        self.incoming_tracking.take().unwrap_or_default()
+        self.incoming_tracking
+            .take()
+            .map_or(LiveDataMap::new(), |flights| flights)
     }
 
     /// **Consume** la lista de datos de vuelos salientes actualmente en memoria
@@ -302,7 +313,9 @@ impl FlightsLoader {
     ///
     /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
     pub fn take_tr_departing(&mut self) -> LiveDataMap {
-        self.departing_tracking.take().unwrap_or_default()
+        self.departing_tracking
+            .take()
+            .map_or(LiveDataMap::new(), |flights| flights)
     }
 
     /// Sincroniza la fecha seleccionada en la aplicación con la guardada aquí.
@@ -375,16 +388,22 @@ impl FlightsLoader {
             Some(airp) => airp,
             None => return Ok(Vec::<Flight>::new()),
         };
+
+        let iata_code = match &airport.iata_code {
+            Some(code) => code.to_string(),
+            None => return Ok(Vec::<Flight>::new()),
+        };
+
         let query = match flight_type {
             FlightType::Incoming => format!(
                 "SELECT * FROM vuelos_entrantes WHERE dest = '{}' AND llegada < {} AND llegada > {};",
-                airport.ident,
+                iata_code,
                 timestamp + (DAY_IN_SECONDS / 2),
                 timestamp - (DAY_IN_SECONDS / 2),
             ),
             FlightType::Departing => format!(
                 "SELECT * FROM vuelos_salientes WHERE orig = '{}' AND salida < {} AND salida > {};",
-                airport.ident,
+                iata_code,
                 timestamp + (DAY_IN_SECONDS / 2),
                 timestamp - (DAY_IN_SECONDS / 2),
             ),
@@ -425,14 +444,20 @@ impl FlightsLoader {
             Some(airp) => airp,
             None => return Ok(LiveDataMap::new()),
         };
+
+        let iata_code = match &airport.iata_code {
+            Some(code) => code.to_string(),
+            None => return Ok(LiveDataMap::new()),
+        };
+
         let query = match flight_type {
             FlightType::Incoming => format!(
                 "SELECT * FROM vuelos_entrantes_en_vivo WHERE dest = '{}';",
-                airport.ident
+                iata_code
             ),
             FlightType::Departing => format!(
                 "SELECT * FROM vuelos_salientes_en_vivo WHERE orig = '{}';",
-                airport.ident
+                iata_code
             ),
         };
 

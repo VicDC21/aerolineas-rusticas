@@ -1,6 +1,7 @@
-use crate::protocol::errors::error::Error;
-
-use super::statements::ddl_statement::ddl_statement_parser::check_words;
+use crate::{
+    parser::statements::ddl_statement::ddl_statement_parser::check_words,
+    protocol::aliases::results::Result,
+};
 
 /// Representa la clave primaria de una tabla.
 /// primary_key ::= PRIMARY KEY '(' column_name (',' column_name)* ')'
@@ -26,7 +27,7 @@ impl PrimaryKey {
     /// # Retornos
     ///
     /// * `Result<Self, Error>` - Un resultado que contiene el `PrimaryKey` si tiene éxito, o un `Error` si el análisis falla.
-    pub fn parse(lista: &mut Vec<String>) -> Result<Self, Error> {
+    pub fn parse(lista: &mut Vec<String>) -> Result<Self> {
         let mut partition_key = Vec::new();
         let mut clustering_columns = Vec::new();
 

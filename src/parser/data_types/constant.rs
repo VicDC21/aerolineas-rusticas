@@ -1,11 +1,15 @@
-use std::cmp::Ordering;
-
-use crate::protocol::{
-    aliases::types::{Double, Int, Uuid},
-    errors::error::Error,
+use {
+    crate::protocol::{
+        aliases::{
+            results::Result,
+            types::{Double, Int, Uint, Uuid},
+        },
+        errors::error::Error,
+    },
+    std::cmp::Ordering,
 };
 
-// Revisar u32 despues de mergear para no hacer conflicto
+// Revisar Uint despues de mergear para no hacer conflicto
 
 #[derive(Debug, Clone)]
 /// constant::= string | integer | double | boolean | uuid | blob | NULL
@@ -13,10 +17,10 @@ pub enum Constant {
     /// ''' (any character where ' can appear if doubled)+ '''.
     String(String),
 
-    /// re('-?[0-9]+'). Es un i32 normalito.
+    /// re('-?[0-9]+'). Es un Int normalito.
     Integer(Int),
 
-    /// re('-?[0-9]+(.[0-9]*)?([eE][+-]?[0-9+])?') | NAN | INFINITY. Es un [f64], con eso alcanza para representar las posibilidades.
+    /// re('-?[0-9]+(.[0-9]*)?([eE][+-]?[0-9+])?') | NAN | INFINITY. Es un [Double], con eso alcanza para representar las posibilidades.
     Double(Double),
 
     /// TRUE | FALSE
@@ -61,7 +65,7 @@ impl Constant {
 
     /// Recibe un vector de tokens y verifica si es una constante, si lo es, la retorna.
     /// Si no es una constante, retorna None, o Error en caso de no poder parsearlo.
-    pub fn is_constant(lista: &mut Vec<String>) -> Result<Option<Constant>, Error> {
+    pub fn is_constant(lista: &mut Vec<String>) -> Result<Option<Constant>> {
         if lista.len() > 2 && Constant::check_string(&lista[0], &lista[2]) {
             lista.remove(0);
             let string = Constant::String(lista.remove(0));
@@ -92,7 +96,7 @@ impl Constant {
         Ok(None)
     }
 
-    fn new_integer(integer_string: String) -> Result<Self, Error> {
+    fn new_integer(integer_string: String) -> Result<Self> {
         let int = match integer_string.parse::<Int>() {
             Ok(value) => value,
             Err(_e) => return Err(Error::Invalid("".to_string())),
@@ -100,7 +104,7 @@ impl Constant {
         Ok(Constant::Integer(int))
     }
 
-    fn new_double(double_string: String) -> Result<Self, Error> {
+    fn new_double(double_string: String) -> Result<Self> {
         let double = match double_string.parse::<Double>() {
             Ok(value) => value,
             Err(_e) => return Err(Error::Invalid("".to_string())),
@@ -108,7 +112,7 @@ impl Constant {
         Ok(Constant::Double(double))
     }
 
-    fn new_boolean(bool_string: String) -> Result<Self, Error> {
+    fn new_boolean(bool_string: String) -> Result<Self> {
         if bool_string == "TRUE" {
             Ok(Constant::Boolean(true))
         } else {
@@ -116,7 +120,7 @@ impl Constant {
         }
     }
 
-    fn new_uuid(mut uuid: String) -> Result<Self, Error> {
+    fn new_uuid(mut uuid: String) -> Result<Self> {
         uuid.remove(8);
         uuid.remove(12);
         uuid.remove(16);
@@ -128,7 +132,7 @@ impl Constant {
         Ok(Constant::Uuid(uuid))
     }
 
-    fn new_blob(mut blob_string: String) -> Result<Self, Error> {
+    fn new_blob(mut blob_string: String) -> Result<Self> {
         blob_string.remove(0);
         blob_string.remove(0);
         let blob = match Int::from_str_radix(&blob_string, 16) {
@@ -175,14 +179,14 @@ impl Constant {
     }
 
     fn check_hex(value: &str) -> bool {
-        Int::from_str_radix(value, value.len() as u32).is_ok()
+        Int::from_str_radix(value, value.len() as Uint).is_ok()
     }
 
     fn check_blob(value: &str) -> bool {
         if !value.starts_with("0x") {
             return false;
         };
-        Int::from_str_radix(&value[2..], (value.len() - 2) as u32).is_ok()
+        Int::from_str_radix(&value[2..], (value.len() - 2) as Uint).is_ok()
     }
 }
 

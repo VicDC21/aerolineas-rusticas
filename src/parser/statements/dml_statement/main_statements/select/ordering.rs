@@ -1,7 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::str::FromStr;
-
-use crate::protocol::{aliases::results::Result, errors::error::Error};
+use {
+    crate::protocol::{aliases::results::Result, errors::error::Error},
+    serde::{Deserialize, Serialize},
+    std::str::FromStr,
+};
 
 /// Representa la dirección de ordenación en una cláusula ORDER BY.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

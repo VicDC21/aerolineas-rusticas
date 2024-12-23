@@ -1,6 +1,5 @@
-use crate::protocol::errors::error::Error;
+use crate::protocol::aliases::results::Result;
 
-#[allow(dead_code)]
 /// '"' unquoted_name '"'
 pub struct QuotedName {
     /// Nombre con comillas.
@@ -8,9 +7,15 @@ pub struct QuotedName {
 }
 
 impl QuotedName {
+    /// Devuelve el nombre con comillas.
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl QuotedName {
     /// Crea un nuevo nombre con comillas.
-    pub fn new(word: String) -> Result<Self, Error> {
-        // TODO: Verificaciones
+    pub fn new(word: String) -> Result<Self> {
         Ok(QuotedName { name: word })
     }
 }

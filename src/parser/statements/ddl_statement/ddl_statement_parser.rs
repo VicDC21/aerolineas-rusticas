@@ -1,22 +1,21 @@
 use crate::{
     parser::{
-        data_types::{identifier::identifier::Identifier, keyspace_name::KeyspaceName},
+        data_types::{identifier::identifier_mod::Identifier, keyspace_name::KeyspaceName},
         primary_key::PrimaryKey,
+        statements::ddl_statement::{
+            alter_keyspace::AlterKeyspace,
+            alter_table::{AlterTable, AlterTableInstruction},
+            column_definition::ColumnDefinition,
+            create_keyspace::CreateKeyspace,
+            create_table::CreateTable,
+            drop_keyspace::DropKeyspace,
+            drop_table::DropTable,
+            option::Options,
+            truncate::Truncate,
+        },
         table_name::TableName,
     },
-    protocol::errors::error::Error,
-};
-
-use super::{
-    alter_keyspace::AlterKeyspace,
-    alter_table::{AlterTable, AlterTableInstruction},
-    column_definition::ColumnDefinition,
-    create_keyspace::CreateKeyspace,
-    create_table::CreateTable,
-    drop_keyspace::DropKeyspace,
-    drop_table::DropTable,
-    option::Options,
-    truncate::Truncate,
+    protocol::{aliases::results::Result, errors::error::Error},
 };
 
 /// ddl_statement::= use_statement
@@ -62,7 +61,7 @@ pub enum DdlStatement {
 
 /// Crea el enum `DdlStatement` con el tipo de struct de acuerdo a la sintaxis dada, si la entrada proporcionada no satisface
 /// los requerimientos de los tipos de datos, entonces devuelve None.
-pub fn ddl_statement(list: &mut Vec<String>) -> Result<Option<DdlStatement>, Error> {
+pub fn ddl_statement(list: &mut Vec<String>) -> Result<Option<DdlStatement>> {
     if let Some(parsed_value) = use_statement(list)? {
         return Ok(Some(DdlStatement::UseStatement(parsed_value)));
     } else if let Some(parsed_value) = create_keyspace_statement(list)? {
@@ -83,7 +82,7 @@ pub fn ddl_statement(list: &mut Vec<String>) -> Result<Option<DdlStatement>, Err
     Ok(None)
 }
 
-fn use_statement(list: &mut Vec<String>) -> Result<Option<KeyspaceName>, Error> {
+fn use_statement(list: &mut Vec<String>) -> Result<Option<KeyspaceName>> {
     if check_words(list, "USE") || check_words(list, "use") {
         let keyspace = match KeyspaceName::check_kind_of_name(list)? {
             Some(value) => value,
@@ -98,7 +97,7 @@ fn use_statement(list: &mut Vec<String>) -> Result<Option<KeyspaceName>, Error> 
     Ok(None)
 }
 
-fn create_keyspace_statement(list: &mut Vec<String>) -> Result<Option<CreateKeyspace>, Error> {
+fn create_keyspace_statement(list: &mut Vec<String>) -> Result<Option<CreateKeyspace>> {
     if check_words(list, "CREATE KEYSPACE") {
         let if_not_exists = check_words(list, "IF NOT EXISTS");
         let name = match KeyspaceName::check_kind_of_name(list)? {
@@ -114,7 +113,7 @@ fn create_keyspace_statement(list: &mut Vec<String>) -> Result<Option<CreateKeys
     Ok(None)
 }
 
-fn alter_keyspace_statement(list: &mut Vec<String>) -> Result<Option<AlterKeyspace>, Error> {
+fn alter_keyspace_statement(list: &mut Vec<String>) -> Result<Option<AlterKeyspace>> {
     if check_words(list, "ALTER KEYSPACE") {
         let mut if_exists = false;
         if check_words(list, "IF EXISTS") {
@@ -133,7 +132,7 @@ fn alter_keyspace_statement(list: &mut Vec<String>) -> Result<Option<AlterKeyspa
     Ok(None)
 }
 
-fn drop_keyspace_statement(list: &mut Vec<String>) -> Result<Option<DropKeyspace>, Error> {
+fn drop_keyspace_statement(list: &mut Vec<String>) -> Result<Option<DropKeyspace>> {
     if check_words(list, "DROP KEYSPACE") {
         let mut if_exists = false;
         if check_words(list, "IF EXISTS") {
@@ -154,7 +153,7 @@ fn drop_keyspace_statement(list: &mut Vec<String>) -> Result<Option<DropKeyspace
     Ok(None)
 }
 
-fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>, Error> {
+fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>> {
     if check_words(list, "CREATE TABLE") {
         let mut if_not_exists = false;
         if check_words(list, "IF NOT EXISTS") {
@@ -223,7 +222,7 @@ fn create_table_statement(list: &mut Vec<String>) -> Result<Option<CreateTable>,
     Ok(None)
 }
 
-fn alter_table_statement(list: &mut Vec<String>) -> Result<Option<AlterTable>, Error> {
+fn alter_table_statement(list: &mut Vec<String>) -> Result<Option<AlterTable>> {
     if check_words(list, "ALTER TABLE") {
         let name = match TableName::check_kind_of_name(list)? {
             Some(name) => name,
@@ -240,7 +239,7 @@ fn alter_table_statement(list: &mut Vec<String>) -> Result<Option<AlterTable>, E
     Ok(None)
 }
 
-fn drop_table_statement(list: &mut Vec<String>) -> Result<Option<DropTable>, Error> {
+fn drop_table_statement(list: &mut Vec<String>) -> Result<Option<DropTable>> {
     if check_words(list, "DROP TABLE") {
         let table_name = match TableName::check_kind_of_name(list)? {
             Some(value) => value,
@@ -255,7 +254,7 @@ fn drop_table_statement(list: &mut Vec<String>) -> Result<Option<DropTable>, Err
     Ok(None)
 }
 
-fn truncate_statement(list: &mut Vec<String>) -> Result<Option<Truncate>, Error> {
+fn truncate_statement(list: &mut Vec<String>) -> Result<Option<Truncate>> {
     if check_words(list, "TRUNCATE") {
         check_words(list, "TABLE");
         let table_name = match TableName::check_kind_of_name(list)? {
@@ -271,7 +270,7 @@ fn truncate_statement(list: &mut Vec<String>) -> Result<Option<Truncate>, Error>
     Ok(None)
 }
 
-fn options(list: &mut Vec<String>) -> Result<Vec<Options>, Error> {
+fn options(list: &mut Vec<String>) -> Result<Vec<Options>> {
     let mut options: Vec<Options> = Vec::new();
     match is_an_option(list)? {
         Some(value) => options.push(value),
@@ -291,7 +290,7 @@ fn options(list: &mut Vec<String>) -> Result<Vec<Options>, Error> {
     Ok(options)
 }
 
-fn is_an_option(list: &mut Vec<String>) -> Result<Option<Options>, Error> {
+fn is_an_option(list: &mut Vec<String>) -> Result<Option<Options>> {
     let value = match Identifier::check_identifier(list)? {
         Some(value) => value,
         None => {
@@ -338,7 +337,7 @@ pub fn check_words(list: &mut Vec<String>, palabra: &str) -> bool {
     true
 }
 
-fn parse_table_options(list: &mut Vec<String>) -> Result<Vec<Options>, Error> {
+fn parse_table_options(list: &mut Vec<String>) -> Result<Vec<Options>> {
     let mut options = Vec::new();
     loop {
         let option = Options::check_options(list)?;
@@ -350,7 +349,7 @@ fn parse_table_options(list: &mut Vec<String>) -> Result<Vec<Options>, Error> {
     Ok(options)
 }
 
-fn parse_clustering_order(order: &str) -> Result<Vec<(String, String)>, Error> {
+fn parse_clustering_order(order: &str) -> Result<Vec<(String, String)>> {
     let order = order.trim_matches(|c| c == '(' || c == ')');
     let parts: Vec<&str> = order.split(',').collect();
     let mut result = Vec::new();
@@ -367,7 +366,7 @@ fn parse_clustering_order(order: &str) -> Result<Vec<(String, String)>, Error> {
     Ok(result)
 }
 
-fn parse_column_definitions(list: &mut Vec<String>) -> Result<Vec<ColumnDefinition>, Error> {
+fn parse_column_definitions(list: &mut Vec<String>) -> Result<Vec<ColumnDefinition>> {
     let mut columns = Vec::new();
     loop {
         check_words(list, "(");
@@ -383,7 +382,7 @@ fn parse_column_definitions(list: &mut Vec<String>) -> Result<Vec<ColumnDefiniti
     Ok(columns)
 }
 
-fn parse_primary_key(list: &mut Vec<String>) -> Result<Option<PrimaryKey>, Error> {
+fn parse_primary_key(list: &mut Vec<String>) -> Result<Option<PrimaryKey>> {
     if check_words(list, "PRIMARY KEY") {
         if !check_words(list, "(") {
             return Err(Error::SyntaxError(
@@ -397,7 +396,7 @@ fn parse_primary_key(list: &mut Vec<String>) -> Result<Option<PrimaryKey>, Error
     }
 }
 
-fn parse_alter_table_instruction(list: &mut Vec<String>) -> Result<AlterTableInstruction, Error> {
+fn parse_alter_table_instruction(list: &mut Vec<String>) -> Result<AlterTableInstruction> {
     if check_words(list, "ADD") {
         let if_not_exists = check_words(list, "IF NOT EXISTS");
         let columns = parse_column_definitions(list)?;
@@ -421,7 +420,7 @@ fn parse_alter_table_instruction(list: &mut Vec<String>) -> Result<AlterTableIns
     }
 }
 
-fn parse_column_renames(list: &mut Vec<String>) -> Result<Vec<(String, String)>, Error> {
+fn parse_column_renames(list: &mut Vec<String>) -> Result<Vec<(String, String)>> {
     let mut renames = Vec::new();
 
     loop {
@@ -457,7 +456,7 @@ fn parse_column_renames(list: &mut Vec<String>) -> Result<Vec<(String, String)>,
     Ok(renames)
 }
 
-fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>, Error> {
+fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>> {
     let mut columns = Vec::new();
     loop {
         if list.is_empty() {
@@ -477,21 +476,23 @@ fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::data_types::cql_type::cql_type::CQLType;
     use crate::{
         parser::data_types::{
-            cql_type::native_types::NativeType::{Int, Text},
+            cql_type::{
+                cql_type_mod::CQLType,
+                native_types::NativeType::{Int, Text},
+            },
             identifier::{
                 quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
             },
             unquoted_name::UnquotedName,
         },
-        tokenizer::tokenizer::tokenize_query,
+        tokenizer::tokenizer_mod::tokenize_query,
     };
 
     // USE STATEMENT TESTS:
     #[test]
-    fn test_01_basic_use_statement() -> Result<(), Error> {
+    fn test_01_basic_use_statement() -> Result<()> {
         let query = "USE my_keyspace";
         let mut tokens = tokenize_query(query);
 
@@ -507,7 +508,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_use_statement_with_quoted_keyspace() -> Result<(), Error> {
+    fn test_02_use_statement_with_quoted_keyspace() -> Result<()> {
         let query = "USE \"My Keyspace\"";
         let mut tokens = tokenize_query(query);
 
@@ -521,7 +522,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_use_statement_case_sensitivity() -> Result<(), Error> {
+    fn test_03_use_statement_case_sensitivity() -> Result<()> {
         let query = "use MY_KEYSPACE";
         let mut tokens = tokenize_query(query);
 
@@ -535,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn test_04_invalid_use_statement() -> Result<(), Error> {
+    fn test_04_invalid_use_statement() -> Result<()> {
         let query = "USE";
         let mut tokens = tokenize_query(query);
 
@@ -546,7 +547,7 @@ mod tests {
 
     // CREATE KEYSPACE TESTS:
     #[test]
-    fn test_01_basic_create_keyspace_statement() -> Result<(), Error> {
+    fn test_01_basic_create_keyspace_statement() -> Result<()> {
         let query = "CREATE KEYSPACE my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}";
         let mut tokens = tokenize_query(query);
 
@@ -564,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_create_keyspace_with_if_not_exists() -> Result<(), Error> {
+    fn test_02_create_keyspace_with_if_not_exists() -> Result<()> {
         let query = "CREATE KEYSPACE IF NOT EXISTS my_keyspace WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 3, 'dc2': 2}";
         let mut tokens = tokenize_query(query);
 
@@ -580,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_create_keyspace_with_multiple_options() -> Result<(), Error> {
+    fn test_03_create_keyspace_with_multiple_options() -> Result<()> {
         let query = "CREATE KEYSPACE my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1} AND durable_writes = false";
         let mut tokens = tokenize_query(query);
 
@@ -596,7 +597,7 @@ mod tests {
     }
 
     #[test]
-    fn test_04_create_keyspace_with_quoted_name() -> Result<(), Error> {
+    fn test_04_create_keyspace_with_quoted_name() -> Result<()> {
         let query = "CREATE KEYSPACE \"My Keyspace\" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}";
         let mut tokens = tokenize_query(query);
 
@@ -612,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn test_05_invalid_create_keyspace_statement() -> Result<(), Error> {
+    fn test_05_invalid_create_keyspace_statement() -> Result<()> {
         let query = "CREATE KEYSPACE";
         let mut tokens = tokenize_query(query);
 
@@ -622,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn test_06_create_keyspace_missing_with_clause() -> Result<(), Error> {
+    fn test_06_create_keyspace_missing_with_clause() -> Result<()> {
         let query = "CREATE KEYSPACE my_keyspace";
         let mut tokens = tokenize_query(query);
 
@@ -633,7 +634,7 @@ mod tests {
 
     // ALTER KEYSPACE TESTS:
     #[test]
-    fn test_01_basic_alter_keyspace_statement() -> Result<(), Error> {
+    fn test_01_basic_alter_keyspace_statement() -> Result<()> {
         let query = "ALTER KEYSPACE my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}";
         let mut tokens = tokenize_query(query);
 
@@ -651,7 +652,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_alter_keyspace_with_if_exists() -> Result<(), Error> {
+    fn test_02_alter_keyspace_with_if_exists() -> Result<()> {
         let query = "ALTER KEYSPACE IF EXISTS my_keyspace WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 3, 'dc2': 2}";
         let mut tokens = tokenize_query(query);
 
@@ -667,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_alter_keyspace_with_multiple_options() -> Result<(), Error> {
+    fn test_03_alter_keyspace_with_multiple_options() -> Result<()> {
         let query = "ALTER KEYSPACE my_keyspace WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1} AND durable_writes = false";
         let mut tokens = tokenize_query(query);
 
@@ -684,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn test_04_alter_keyspace_with_quoted_name() -> Result<(), Error> {
+    fn test_04_alter_keyspace_with_quoted_name() -> Result<()> {
         let query = "ALTER KEYSPACE \"My Keyspace\" WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 3}";
         let mut tokens = tokenize_query(query);
 
@@ -700,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn test_05_invalid_alter_keyspace_statement() -> Result<(), Error> {
+    fn test_05_invalid_alter_keyspace_statement() -> Result<()> {
         let query = "ALTER KEYSPACE";
         let mut tokens = tokenize_query(query);
 
@@ -710,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    fn test_06_alter_keyspace_missing_with_clause() -> Result<(), Error> {
+    fn test_06_alter_keyspace_missing_with_clause() -> Result<()> {
         let query = "ALTER KEYSPACE my_keyspace";
         let mut tokens = tokenize_query(query);
 
@@ -721,7 +722,7 @@ mod tests {
 
     // DROP KEYSPACE TESTS:
     #[test]
-    fn test_01_basic_drop_keyspace_statement() -> Result<(), Error> {
+    fn test_01_basic_drop_keyspace_statement() -> Result<()> {
         let query = "DROP KEYSPACE my_keyspace";
         let mut tokens = tokenize_query(query);
 
@@ -738,7 +739,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_drop_keyspace_with_if_exists() -> Result<(), Error> {
+    fn test_02_drop_keyspace_with_if_exists() -> Result<()> {
         let query = "DROP KEYSPACE IF EXISTS my_keyspace";
         let mut tokens = tokenize_query(query);
 
@@ -754,7 +755,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_drop_keyspace_with_quoted_name() -> Result<(), Error> {
+    fn test_03_drop_keyspace_with_quoted_name() -> Result<()> {
         let query = "DROP KEYSPACE \"My Keyspace\"";
         let mut tokens = tokenize_query(query);
 
@@ -770,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn test_04_invalid_drop_keyspace_statement() -> Result<(), Error> {
+    fn test_04_invalid_drop_keyspace_statement() -> Result<()> {
         let query = "DROP KEYSPACE";
         let mut tokens = tokenize_query(query);
 
@@ -781,7 +782,7 @@ mod tests {
 
     // CREATE TABLE TESTS:
     #[test]
-    fn test_01_basic_create_table_statement() -> Result<(), Error> {
+    fn test_01_basic_create_table_statement() -> Result<()> {
         let query =
             "CREATE TABLE users (id UUID PRIMARY KEY, name TEXT, age INT) WITH 'COMPACT STORAGE'";
         let mut tokens = tokenize_query(query);
@@ -809,7 +810,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_create_table_with_if_not_exists() -> Result<(), Error> {
+    fn test_02_create_table_with_if_not_exists() -> Result<()> {
         let query = "CREATE TABLE IF NOT EXISTS users (id UUID PRIMARY KEY, name TEXT, age INT) WITH 'COMPACT STORAGE'";
         let mut tokens = tokenize_query(query);
 
@@ -826,7 +827,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_create_table_with_primary_key_and_clustering_column() -> Result<(), Error> {
+    fn test_03_create_table_with_primary_key_and_clustering_column() -> Result<()> {
         let query = "CREATE TABLE posts (
             user_id UUID,
             post_id TIMEUUID,
@@ -858,7 +859,7 @@ mod tests {
     }
 
     #[test]
-    fn test_04_create_table_with_compound_primary_key_and_clustering_column() -> Result<(), Error> {
+    fn test_04_create_table_with_compound_primary_key_and_clustering_column() -> Result<()> {
         let query = "CREATE TABLE posts (
             user_id UUID,
             post_id TIMEUUID,
@@ -890,7 +891,7 @@ mod tests {
     }
 
     #[test]
-    fn test_05_create_table_without_compact_storage() -> Result<(), Error> {
+    fn test_05_create_table_without_compact_storage() -> Result<()> {
         let query = "CREATE TABLE events (
             id UUID PRIMARY KEY,
             data TEXT
@@ -907,7 +908,7 @@ mod tests {
     }
 
     #[test]
-    fn test_06_create_table_with_quoted_names() -> Result<(), Error> {
+    fn test_06_create_table_with_quoted_names() -> Result<()> {
         let query = "CREATE TABLE \"My Table\" (
             \"User ID\" UUID PRIMARY KEY,
             \"Full Name\" TEXT
@@ -935,7 +936,7 @@ mod tests {
     }
 
     #[test]
-    fn test_07_invalid_create_table_statement() -> Result<(), Error> {
+    fn test_07_invalid_create_table_statement() -> Result<()> {
         let query = "CREATE TABLE";
         let mut tokens = tokenize_query(query);
 
@@ -945,7 +946,7 @@ mod tests {
     }
 
     #[test]
-    fn test_07_create_table_missing_with_clause() -> Result<(), Error> {
+    fn test_07_create_table_missing_with_clause() -> Result<()> {
         let query = "CREATE TABLE users (id UUID PRIMARY KEY, name TEXT)";
         let mut tokens = tokenize_query(query);
         assert!(create_table_statement(&mut tokens).is_ok());
@@ -955,7 +956,7 @@ mod tests {
     // ALTER TABLE TESTS:
 
     #[test]
-    fn test_01_basic_alter_table_statement() -> Result<(), Error> {
+    fn test_01_basic_alter_table_statement() -> Result<()> {
         let query = "ALTER TABLE users ADD new_column TEXT";
         let mut tokens = tokenize_query(query);
 
@@ -985,7 +986,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_alter_table_add_columns_with_if_not_exists() -> Result<(), Error> {
+    fn test_02_alter_table_add_columns_with_if_not_exists() -> Result<()> {
         let query = "ALTER TABLE users ADD IF NOT EXISTS (new_column1 TEXT, new_column2 INT)";
         let mut tokens = tokenize_query(query);
 
@@ -1024,7 +1025,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_alter_table_drop_columns_with_if_exists() -> Result<(), Error> {
+    fn test_03_alter_table_drop_columns_with_if_exists() -> Result<()> {
         let query = "ALTER TABLE users DROP IF EXISTS old_column1, old_column2";
         let mut tokens = tokenize_query(query);
 
@@ -1046,7 +1047,7 @@ mod tests {
     }
 
     #[test]
-    fn test_04_alter_table_rename_columns() -> Result<(), Error> {
+    fn test_04_alter_table_rename_columns() -> Result<()> {
         let query =
             "ALTER TABLE users RENAME old_column1 TO new_column1 AND old_column2 TO new_column2";
         let mut tokens = tokenize_query(query);
@@ -1072,7 +1073,7 @@ mod tests {
     }
 
     #[test]
-    fn test_05_alter_table_with_if_exists() -> Result<(), Error> {
+    fn test_05_alter_table_with_if_exists() -> Result<()> {
         let query = "ALTER TABLE IF EXISTS users RENAME old_column TO new_column";
         let mut tokens = tokenize_query(query);
 
@@ -1088,7 +1089,7 @@ mod tests {
     }
 
     #[test]
-    fn test_06_invalid_alter_table_statement() -> Result<(), Error> {
+    fn test_06_invalid_alter_table_statement() -> Result<()> {
         let query = "ALTER TABLE";
         let mut tokens = tokenize_query(query);
 
@@ -1099,7 +1100,7 @@ mod tests {
 
     // DROP TABLE TESTS:
     #[test]
-    fn test_01_basic_drop_table_statement() -> Result<(), Error> {
+    fn test_01_basic_drop_table_statement() -> Result<()> {
         let query = "DROP TABLE my_table";
         let mut tokens = tokenize_query(query);
 
@@ -1116,7 +1117,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_drop_table_with_if_exists() -> Result<(), Error> {
+    fn test_02_drop_table_with_if_exists() -> Result<()> {
         let query = "DROP TABLE IF EXISTS my_table";
         let mut tokens = tokenize_query(query);
 
@@ -1132,7 +1133,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_drop_table_with_quoted_name() -> Result<(), Error> {
+    fn test_03_drop_table_with_quoted_name() -> Result<()> {
         let query = "DROP TABLE \"My Table\"";
         let mut tokens = tokenize_query(query);
 
@@ -1148,7 +1149,7 @@ mod tests {
     }
 
     #[test]
-    fn test_04_invalid_drop_table_statement() -> Result<(), Error> {
+    fn test_04_invalid_drop_table_statement() -> Result<()> {
         let query = "DROP TABLE";
         let mut tokens = tokenize_query(query);
 
@@ -1158,7 +1159,7 @@ mod tests {
     }
 
     #[test]
-    fn test_01_basic_truncate_statement() -> Result<(), Error> {
+    fn test_01_basic_truncate_statement() -> Result<()> {
         let query = "TRUNCATE table_name";
         let mut tokens = tokenize_query(query);
 
@@ -1174,7 +1175,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_truncate_statement_with_table_keyword() -> Result<(), Error> {
+    fn test_02_truncate_statement_with_table_keyword() -> Result<()> {
         let query = "TRUNCATE TABLE table_name";
         let mut tokens = tokenize_query(query);
 
@@ -1189,7 +1190,7 @@ mod tests {
     }
 
     #[test]
-    fn test_03_truncate_statement_with_quoted_table_name() -> Result<(), Error> {
+    fn test_03_truncate_statement_with_quoted_table_name() -> Result<()> {
         let query = "TRUNCATE \"My Table\"";
         let mut tokens = tokenize_query(query);
 
@@ -1204,7 +1205,7 @@ mod tests {
     }
 
     #[test]
-    fn test_04_invalid_truncate_statement() -> Result<(), Error> {
+    fn test_04_invalid_truncate_statement() -> Result<()> {
         let query = "TRUNCATE";
         let mut tokens = tokenize_query(query);
 
@@ -1215,7 +1216,7 @@ mod tests {
 
     // EMPTY INPUT TESTS:
     #[test]
-    fn test_01_keyspace_empty_input() -> Result<(), Error> {
+    fn test_01_keyspace_empty_input() -> Result<()> {
         let mut tokens = vec![];
         let use_statement = use_statement(&mut tokens)?;
         let create_keyspace = create_keyspace_statement(&mut tokens)?;
@@ -1231,7 +1232,7 @@ mod tests {
     }
 
     #[test]
-    fn test_02_table_empty_input() -> Result<(), Error> {
+    fn test_02_table_empty_input() -> Result<()> {
         let mut tokens = vec![];
         let create_table = create_table_statement(&mut tokens)?;
         let alter_table = alter_table_statement(&mut tokens)?;

@@ -1,55 +1,62 @@
 //! Módulo para manejo del almacenamiento en disco.
 
-use crate::parser::{
-    assignment::Assignment,
-    data_types::{constant::Constant, term::Term},
-    primary_key::PrimaryKey,
-    statements::{
-        ddl_statement::{
-            create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
-        },
-        dml_statement::{
-            if_condition::{Condition, IfCondition},
-            main_statements::{
-                delete::Delete,
-                insert::Insert,
-                select::{order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select},
-                update::Update,
+use {
+    crate::{
+        parser::{
+            assignment::Assignment,
+            data_types::{constant::Constant, term::Term},
+            primary_key::PrimaryKey,
+            statements::{
+                ddl_statement::{
+                    create_keyspace::CreateKeyspace, create_table::CreateTable, option::Options,
+                },
+                dml_statement::{
+                    if_condition::{Condition, IfCondition},
+                    main_statements::{
+                        delete::Delete,
+                        insert::Insert,
+                        select::{
+                            order_by::OrderBy, ordering::ProtocolOrdering, select_operation::Select,
+                        },
+                        update::Update,
+                    },
+                    r#where::operator::Operator,
+                },
             },
-            r#where::operator::Operator,
+        },
+        protocol::{
+            aliases::{
+                results::Result,
+                types::{Byte, Int, Long, Uint},
+            },
+            errors::error::Error,
+            messages::responses::result::col_type::ColType,
+            traits::Byteable,
+            utils::encode_string_to_bytes,
+        },
+        server::{
+            nodes::{
+                disk_operations::{
+                    row_operations::RowOperations, table_operations::TableOperations,
+                    table_path::TablePath,
+                },
+                keyspace_metadata::{
+                    keyspace::Keyspace, replication_strategy::ReplicationStrategy,
+                },
+                node::Node,
+                node::NodeId,
+                table_metadata::table::Table,
+            },
+            utils::store_json,
         },
     },
-};
-use crate::protocol::{
-    aliases::{
-        results::Result,
-        types::{Byte, Int},
+    std::{
+        fs::{create_dir, File, OpenOptions},
+        io::{BufRead, BufReader, BufWriter, Write},
+        path::Path,
+        str::FromStr,
+        sync::RwLockWriteGuard,
     },
-    errors::error::Error,
-    messages::responses::result::col_type::ColType,
-    traits::Byteable,
-    utils::encode_string_to_bytes,
-};
-use crate::server::{
-    nodes::{
-        keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
-        node::Node,
-        node::NodeId,
-        table_metadata::table::Table,
-    },
-    utils::store_json,
-};
-
-use std::{
-    fs::{create_dir, File, OpenOptions},
-    io::{BufRead, BufReader, BufWriter, Write},
-    path::Path,
-    str::FromStr,
-    sync::RwLockWriteGuard,
-};
-
-use super::{
-    row_operations::RowOperations, table_operations::TableOperations, table_path::TablePath,
 };
 
 /// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
@@ -101,21 +108,13 @@ impl DiskHandler {
     pub fn store_node_metadata(node: RwLockWriteGuard<Node>) -> Result<()> {
         let path_folder = Path::new(NODES_METADATA_PATH);
         if !path_folder.exists() {
-            create_dir(path_folder).map_err(|e| {
-                Error::ServerError(format!(
-                    "Error al crear el directorio de metadatos de un nodo: {}",
-                    e
-                ))
-            })?;
-        }
-
-        if path_folder.is_dir() {
-            store_json(&*node, &Self::get_node_metadata_path(node.get_id()))
-        } else {
-            Err(Error::ServerError(
+            let _ = create_dir(path_folder);
+        } else if !path_folder.is_dir() {
+            return Err(Error::ServerError(
                 "El directorio de metadatos de nodos no es un directorio".to_string(),
-            ))
+            ));
         }
+        store_json(&*node, &Self::get_node_metadata_path(node.get_id()))
     }
 
     /// Crea un nuevo keyspace en el caso que corresponda.
@@ -269,7 +268,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        timestamp: i64,
+        timestamp: Long,
         node_number: Byte,
     ) -> Result<()> {
         let path = TablePath::new(
@@ -393,7 +392,7 @@ impl DiskHandler {
         let mut result = Vec::new();
         let mut rows = table_ops.read_rows(true)?;
         if let Some(the_where) = &statement.options.the_where {
-            rows.retain(|row| the_where.filter(row, &table_ops.columns).unwrap_or(false));
+            rows.retain(|row| matches!(the_where.filter(row, &table_ops.columns), Ok(true)));
         }
 
         if let Some(order) = &statement.options.order_by {
@@ -421,7 +420,7 @@ impl DiskHandler {
         storage_addr: &str,
         table: &Table,
         default_keyspace: &str,
-        timestamp: i64,
+        timestamp: Long,
         node_number: Byte,
     ) -> Result<Vec<String>> {
         let path = TablePath::new(
@@ -520,7 +519,7 @@ impl DiskHandler {
         statement: &Insert,
         table_ops: &TableOperations,
         values: &[String],
-        timestamp: i64,
+        timestamp: Long,
     ) -> Vec<String> {
         let table_columns: Vec<&str> = table_ops.columns.iter().map(|s| s.as_str()).collect();
 
@@ -714,7 +713,7 @@ impl DiskHandler {
     ) -> Result<Option<ReplicationStrategy>> {
         let (term3, term4) = &values[1];
         if term3.get_value() == "replication_factor" {
-            let replicas = match term4.get_value().parse::<u32>() {
+            let replicas = match term4.get_value().parse::<Uint>() {
                 Ok(replicas) => replicas,
                 Err(_) => {
                     return Err(Error::Invalid(
@@ -773,16 +772,19 @@ impl DiskHandler {
             return Ok(None);
         }
 
-        let mut clustering_keys_and_order = statement
-            .primary_key
-            .as_ref()
-            .map(|pk| {
-                pk.clustering_columns
-                    .iter()
-                    .map(|key| (key.clone(), ProtocolOrdering::Asc))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let mut clustering_keys_and_order = match statement.primary_key.as_ref().map(|pk| {
+            pk.clustering_columns
+                .iter()
+                .map(|key| (key.clone(), ProtocolOrdering::Asc))
+                .collect::<Vec<_>>()
+        }) {
+            Some(clustering_keys_and_order) => clustering_keys_and_order,
+            None => {
+                return Err(Error::Invalid(
+                    "No se pudo obtener la clave de clustering".to_string(),
+                ))
+            }
+        };
 
         if let Some(clustering_order) = &statement.clustering_order {
             Self::update_clustering_order(&mut clustering_keys_and_order, clustering_order)?;
@@ -836,7 +838,7 @@ impl DiskHandler {
         values: &[String],
         query_cols: &[String],
         table_cols: &[&str],
-        timestamp: i64,
+        timestamp: Long,
     ) -> String {
         let mut values_to_insert: Vec<&str> = vec![""; table_cols.len() - 1]; // - 1 porque hay que ignorar la columna del timestamp, se agrega luego
 
@@ -856,9 +858,9 @@ impl DiskHandler {
         query_cols: &[String],
         table_cols: &[String],
         table: &Table,
-    ) -> Vec<u8> {
-        let mut res: Vec<u8> = vec![0x0, 0x0, 0x0, 0x2];
-        let mut metadata: Vec<u8> = Vec::new();
+    ) -> Vec<Byte> {
+        let mut res: Vec<Byte> = vec![0x0, 0x0, 0x0, 0x2];
+        let mut metadata: Vec<Byte> = Vec::new();
         let flags: Int = 0;
         metadata.append(&mut flags.to_be_bytes().to_vec());
 
@@ -887,7 +889,7 @@ impl DiskHandler {
         let mut rows_content: Vec<Byte> = Vec::new();
         for row in result {
             for value in row {
-                let value_length = value.len() as i32;
+                let value_length = value.len() as Int;
                 rows_content.append(&mut value_length.to_be_bytes().to_vec());
                 rows_content.append(&mut value.as_bytes().to_vec());
             }
@@ -917,7 +919,10 @@ impl DiskHandler {
                 }
             }
             if !without_timestamp {
-                new_row.push(table_row.last().unwrap_or(&"0".to_string()).to_string())
+                match table_row.last() {
+                    Some(value) => new_row.push(value.to_string()),
+                    None => new_row.push("0".to_string()),
+                }
             }
         }
         new_row

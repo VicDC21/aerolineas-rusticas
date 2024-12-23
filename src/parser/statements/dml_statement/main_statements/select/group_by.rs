@@ -1,4 +1,4 @@
-use crate::parser::data_types::identifier::identifier::Identifier;
+use crate::parser::data_types::identifier::identifier_mod::Identifier;
 
 /// Representa una cláusula CQL GROUP BY.
 #[derive(Debug)]

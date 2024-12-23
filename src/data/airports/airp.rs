@@ -1,25 +1,26 @@
 //! Módulo para manejar los datos de un aeropuerto.
 
-use std::{
-    collections::HashMap,
-    io::{BufRead, Result as IOResult},
-    sync::mpsc::Sender,
-};
-
-use crate::{
-    data::{
-        airports::types::AirportType,
-        continents::types::ContinentType,
-        countries::{CountriesMap, Country},
-        utils::{
-            distances::{distance_euclidean, inside_area},
-            paths::{get_tokens, reader_from},
-            strings::{breakdown, to_option},
+use {
+    crate::{
+        data::{
+            airports::types::AirportType,
+            continents::types::ContinentType,
+            countries::{CountriesMap, Country},
+            utils::{
+                distances::{distance_euclidean, inside_area},
+                paths::{get_tokens, reader_from},
+                strings::{breakdown, to_option},
+            },
+        },
+        protocol::{
+            aliases::{results::Result, types::Double},
+            errors::error::Error,
         },
     },
-    protocol::{
-        aliases::{results::Result, types::Double},
-        errors::error::Error,
+    std::{
+        collections::HashMap,
+        io::{BufRead, Result as IOResult},
+        sync::mpsc::Sender,
     },
 };
 
@@ -142,8 +143,8 @@ impl Airport {
     }
 
     /// Trata de parsear las coordenadas a partir de strings.
-    pub fn coords(lat_str: &str, lon_str: &str) -> Result<(f64, f64)> {
-        let cur_lat = match lat_str.parse::<f64>() {
+    pub fn coords(lat_str: &str, lon_str: &str) -> Result<(Double, Double)> {
+        let cur_lat = match lat_str.parse::<Double>() {
             Ok(lat) => lat,
             Err(_) => {
                 return Err(Error::ServerError(format!(
@@ -152,7 +153,7 @@ impl Airport {
                 )))
             }
         };
-        let cur_lon = match lon_str.parse::<f64>() {
+        let cur_lon = match lon_str.parse::<Double>() {
             Ok(lon) => lon,
             Err(_) => {
                 return Err(Error::ServerError(format!(
@@ -196,10 +197,11 @@ impl Airport {
         };
         let continent = ContinentType::try_from(tokens[7].as_str())?;
         let iso_country = tokens[8].to_string();
-        let country = countries_cache
-            .get(&iso_country)
-            .unwrap_or(&Country::try_from_code(&iso_country)?)
-            .clone();
+        let country = match countries_cache.get(&iso_country) {
+            Some(c) => c,
+            None => &Country::try_from_code(&iso_country)?,
+        };
+
         let iso_region = tokens[9].to_string();
         let municipality = tokens[10].to_string();
         let scheduled_service = match tokens[11].as_str() {
@@ -222,7 +224,7 @@ impl Airport {
             position,
             elevation_ft,
             continent,
-            country,
+            country: country.clone(),
             iso_region,
             municipality,
             scheduled_service,
@@ -238,7 +240,7 @@ impl Airport {
     /// Devuelve una lista de aeropuertos que están cerca de la posición dada.
     pub fn by_distance(
         pos: (Double, Double),
-        tolerance: &f64,
+        tolerance: &Double,
         countries_cache: &CountriesMap,
     ) -> Result<Vec<Self>> {
         let reader = reader_from(AIRPORTS_PATH, true)?;
@@ -260,7 +262,7 @@ impl Airport {
     /// Devuelve una lista de aeropuertos que están cerca de la posición dada, basado en un cache.
     pub fn by_distance_cache(
         pos: (Double, Double),
-        tolerance: &f64,
+        tolerance: &Double,
         cache: &AirportsMap,
     ) -> Vec<Self> {
         let mut airports = Vec::<Self>::new();
@@ -328,7 +330,7 @@ impl Airport {
         for line in reader.lines().map_while(IOResult::ok) {
             let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
             airports.insert(
-                tokens[1].to_string(),
+                tokens[13].to_string(),
                 Self::from_tokens(tokens, &countries_cache)?,
             );
         }

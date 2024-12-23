@@ -1,10 +1,11 @@
 //! Módulo para contener los distintos tipos de aeropuertos.
-
-use std::convert::TryFrom;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::data::traits::PrettyShow;
-use crate::protocol::errors::error::Error;
+use {
+    crate::{data::traits::PrettyShow, protocol::errors::error::Error},
+    std::{
+        convert::TryFrom,
+        fmt::{Display, Formatter, Result as FmtResult},
+    },
+};
 
 /// El tipo de un aeropuerto.
 ///
@@ -82,8 +83,7 @@ impl TryFrom<&str> for AirportType {
 
 #[cfg(test)]
 mod tests {
-    use crate::data::airports::types::AirportType;
-    use crate::protocol::errors::error::Error;
+    use super::*;
 
     #[test]
     fn test_1_nombres_correctos() {

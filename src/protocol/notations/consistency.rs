@@ -1,14 +1,15 @@
 //! Módulo para enumerar niveles de consistencia.
 
-use std::{fmt, str::FromStr};
-
-use crate::protocol::{
-    aliases::{
-        results::Result,
-        types::{Byte, Short},
+use {
+    crate::protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, Short},
+        },
+        errors::error::Error,
+        traits::Byteable,
     },
-    errors::error::Error,
-    traits::Byteable,
+    std::{fmt, str::FromStr},
 };
 
 /// Nivela los modos de consistencia para los _read request_.
@@ -99,14 +100,14 @@ impl Byteable for Consistency {
 impl TryFrom<&[Byte]> for Consistency {
     type Error = Error;
 
-    fn try_from(short: &[Byte]) -> Result<Self> {
-        if short.len() < 2 {
+    fn try_from(short_int: &[Byte]) -> Result<Self> {
+        if short_int.len() < 2 {
             return Err(Error::ConfigError(
                 "El vector de bytes no tiene 2 bytes".to_string(),
             ));
         }
 
-        let value = Short::from_be_bytes([short[0], short[1]]);
+        let value = Short::from_be_bytes([short_int[0], short_int[1]]);
         match value {
             0x0000 => Ok(Consistency::Any),
             0x0001 => Ok(Consistency::One),
@@ -172,11 +173,7 @@ impl fmt::Display for Consistency {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use crate::protocol::{
-        errors::error::Error, notations::consistency::Consistency, traits::Byteable,
-    };
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

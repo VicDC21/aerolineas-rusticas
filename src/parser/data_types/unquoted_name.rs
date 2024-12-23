@@ -1,6 +1,5 @@
-use crate::protocol::errors::error::Error;
+use crate::protocol::aliases::results::Result;
 
-#[allow(dead_code)]
 /// re('[a-zA-Z_0-9]\{1, 48}')
 #[derive(Default, Debug, PartialEq, Clone)]
 pub struct UnquotedName {
@@ -10,7 +9,7 @@ pub struct UnquotedName {
 
 impl UnquotedName {
     /// Crea un nuevo nombre sin comillas.
-    pub fn new(word: String) -> Result<Self, Error> {
+    pub fn new(word: String) -> Result<Self> {
         Ok(UnquotedName { name: word })
     }
 

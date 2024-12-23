@@ -1,8 +1,10 @@
 //! Módulo para el opcode del mensaje el protocolo.
 
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    traits::Byteable,
+};
 
 /// Describe la operación a utilizar en el protocolo.
 #[derive(PartialEq)]
@@ -192,7 +194,7 @@ impl Byteable for Opcode {
 
 impl TryFrom<Byte> for Opcode {
     type Error = Error;
-    fn try_from(byte: Byte) -> Result<Self, Self::Error> {
+    fn try_from(byte: Byte) -> Result<Self> {
         match byte {
             0x00 => Ok(Opcode::RequestError),
             0x01 => Ok(Opcode::Startup),
@@ -220,9 +222,7 @@ impl TryFrom<Byte> for Opcode {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::headers::opcode::Opcode;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

@@ -1,8 +1,6 @@
 //! Módulo para correr los nodos.
 
-use std::env::args;
-
-use aerolineas_rusticas::server::nodes::graph::NodesGraph;
+use {aerolineas_rusticas::server::nodes::graph::NodesGraph, std::env::args};
 
 fn main() {
     let argv = args().collect::<Vec<String>>();

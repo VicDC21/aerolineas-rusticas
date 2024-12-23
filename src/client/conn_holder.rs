@@ -1,12 +1,14 @@
 //! Módulo para info de conexión.
 
-use std::sync::{Arc, Mutex};
-
-use crate::{
-    client::cli::{get_client_connection, Client, TlsStream},
-    data::login_info::LoginInfo,
-    protocol::{aliases::results::Result, errors::error::Error},
+use {
+    crate::{
+        client::cli::{get_client_connection, Client, TlsStream},
+        data::login_info::LoginInfo,
+        protocol::{aliases::results::Result, errors::error::Error},
+    },
+    std::sync::{Arc, Mutex},
 };
+
 /// Estructura que guarda información de la conexión a un nodo.
 pub struct ConnectionHolder {
     /// El cliente.

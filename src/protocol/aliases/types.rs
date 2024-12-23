@@ -1,9 +1,11 @@
 //! Módulo para aliases de tipos de datos explicados en el protocolo de Cassandra.
 
-use std::collections::HashMap;
-use std::net::IpAddr;
+use std::{collections::HashMap, net::IpAddr};
 
 // Definiciones de notaciones
+
+/// Un entero compuesto por 2 bytes *con signo*.
+pub type ShortInt = i16;
 
 /// Un entero de 4 bytes *con signo*.
 pub type Int = i32;
@@ -16,6 +18,12 @@ pub type Byte = u8;
 
 /// Un entero de 2 bytes *sin signo*.
 pub type Short = u16;
+
+/// Un entero de 4 bytes *sin signo*.
+pub type Uint = u32;
+
+/// Un entero de 8 bytes *sin signo*.
+pub type Ulong = u64;
 
 /// Un entero de 16 bytes que emula un UUID (asumimos no tiene signo).
 pub type Uuid = u128;

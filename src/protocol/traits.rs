@@ -1,8 +1,9 @@
 //! Traits en común con objetos del protocolo de Cassandra.
 
-use std::ops::{BitAnd, BitOrAssign};
-
-use crate::protocol::aliases::types::Byte;
+use {
+    crate::protocol::aliases::types::Byte,
+    std::ops::{BitAnd, BitOrAssign},
+};
 
 /// Colapsa una propiedad en una colección de bytes.
 pub trait Byteable {

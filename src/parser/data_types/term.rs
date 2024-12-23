@@ -1,6 +1,7 @@
-use super::constant::Constant;
-use crate::protocol::errors::error::Error;
-use std::cmp::Ordering;
+use {
+    crate::{parser::data_types::constant::Constant, protocol::aliases::results::Result},
+    std::cmp::Ordering,
+};
 
 /// Término de una expresión.
 #[derive(Debug, Clone)]
@@ -27,7 +28,7 @@ impl Term {
 
     /// Verifica si la lista de tokens es un término. Si lo es, lo retorna.
     /// Si no lo es, retorna None, o Error en caso de no poder parsearla.
-    pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>, Error> {
+    pub fn is_term(lista: &mut Vec<String>) -> Result<Option<Term>> {
         if let Some(constant) = Constant::is_constant(lista)? {
             return Ok(Some(Term::Constant(constant)));
         }

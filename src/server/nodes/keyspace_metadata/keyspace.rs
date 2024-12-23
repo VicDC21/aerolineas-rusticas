@@ -1,8 +1,12 @@
 //! Módulo que detalla un keyspace.
 
-use serde::{Deserialize, Serialize};
-
-use super::replication_strategy::ReplicationStrategy;
+use {
+    crate::{
+        protocol::aliases::types::Uint,
+        server::nodes::keyspace_metadata::replication_strategy::ReplicationStrategy,
+    },
+    serde::{Deserialize, Serialize},
+};
 
 /// Representa un keyspace en CQL.
 #[derive(Serialize, Deserialize)]
@@ -26,7 +30,7 @@ impl Keyspace {
 
     /// Obtiene la cantidad de réplicas de la estrategia de replicación simple.
     /// Si no es estrategia simple, retorna None.
-    pub fn simple_replicas(&self) -> Option<u32> {
+    pub fn simple_replicas(&self) -> Option<Uint> {
         self.replication.simple_replicas()
     }
 

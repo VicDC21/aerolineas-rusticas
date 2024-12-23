@@ -1,16 +1,18 @@
 //! Módulo que dibuja aeropuertos.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use eframe::egui::{Context, Painter, Pos2, Response, Rgba, Stroke};
-use walkers::{extras::Image, Plugin, Position, Projector, Texture};
-
-use crate::data::{
-    airports::{airp::Airport, types::AirportType},
-    utils::distances::distance_euclidean_pos2,
+use {
+    crate::{
+        data::{
+            airports::{airp::Airport, types::AirportType},
+            utils::distances::distance_euclidean_pos2,
+        },
+        interface::plugins::utils::{load_egui_img, zoom_is_showable},
+        protocol::aliases::types::{Double, Float},
+    },
+    eframe::egui::{Context, Painter, Pos2, Response, Rgba, Stroke},
+    std::{collections::HashMap, sync::Arc},
+    walkers::{extras::Image, Plugin, Position, Projector, Texture},
 };
-use crate::interface::plugins::utils::{load_egui_img, zoom_is_showable};
 
 /// Mapa de íconos de tipos de aeropuertos.
 pub type IconsMap = HashMap<AirportType, Option<Texture>>;
@@ -31,12 +33,12 @@ const BALLOON_ICON: &str = "media/img/airports/hot_air_balloon.png";
 const CLOSED_ICON: &str = "media/img/airports/closed.png";
 
 /// Reducción de dimensiones mínimas para que entre en la pantalla.
-const BASE_DIM_RED: f32 = 0.02;
+const BASE_DIM_RED: Float = 0.02;
 
 // Distancia mínima para un cursor sin clickear.
-const MIN_HOVER_DIST: f64 = 13.0;
+const MIN_HOVER_DIST: Double = 13.0;
 // Aumento de dimensiones al apoyar el cursor sobre un objeto.
-const HOVER_INCR: f32 = 0.02;
+const HOVER_INCR: Float = 0.02;
 
 /// Este plugin se encarga de dibujar la información en pantalla de los
 /// aeropuertos cargados por [AirportsLoader](crate::interface::plugins::airports::loader::AirportsLoader).
@@ -48,12 +50,12 @@ pub struct AirportsDrawer {
     icons: IconsMap,
 
     /// Propiedad de zoom.
-    zoom: f32,
+    zoom: Float,
 }
 
 impl AirportsDrawer {
     /// Crea una nueva instancia del renderizador.
-    pub fn new(airports: Arc<Vec<Airport>>, zoom: f32, ctx: &Context) -> Self {
+    pub fn new(airports: Arc<Vec<Airport>>, zoom: Float, ctx: &Context) -> Self {
         Self {
             airports,
             icons: Self::load_icons(ctx),
@@ -108,13 +110,13 @@ impl AirportsDrawer {
     /// Actualiza el valor de zoom desde afuera.
     ///
     /// Devuelve esta misma instancia para encadenar funciones.
-    pub fn sync_zoom(&mut self, real_zoom: f32) -> &mut Self {
+    pub fn sync_zoom(&mut self, real_zoom: Float) -> &mut Self {
         self.zoom = real_zoom;
         self
     }
 
     /// Devuelve las propiedades necesarias para dibujar un círculo según el tipo de aeropuerto.
-    fn circle_by_airport_type(airport_type: &AirportType) -> (f32, Rgba, Stroke) {
+    fn circle_by_airport_type(airport_type: &AirportType) -> (Float, Rgba, Stroke) {
         match airport_type {
             AirportType::LargeAirport => (
                 5.5,
@@ -168,7 +170,7 @@ impl AirportsDrawer {
 
     /// Devuelve las redimensiones de una imagen para que se muestre bien entre
     /// los límites de la pantalla actual.
-    pub fn scale_img_by_type(airport_type: &AirportType) -> f32 {
+    pub fn scale_img_by_type(airport_type: &AirportType) -> Float {
         let extra = match airport_type {
             AirportType::LargeAirport => 0.01,
             AirportType::MediumAirport => 0.007,
@@ -182,7 +184,7 @@ impl AirportsDrawer {
     }
 
     /// Redimensiona una imagen si el cursor está cerca.
-    pub fn scale_img_by_pos(img: &mut Image, base: f32, cur_pos: &Pos2, airport_pos: &Pos2) {
+    pub fn scale_img_by_pos(img: &mut Image, base: Float, cur_pos: &Pos2, airport_pos: &Pos2) {
         if distance_euclidean_pos2(cur_pos, airport_pos) <= MIN_HOVER_DIST {
             img.scale(base + HOVER_INCR, base + HOVER_INCR);
         }

@@ -1,12 +1,17 @@
 //! Módulo para _targets_ de cambios de _schema_.
 
-use std::convert::TryFrom;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
-use crate::protocol::utils::{encode_string_to_bytes, parse_bytes_to_string};
+use {
+    crate::protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        traits::Byteable,
+        utils::{encode_string_to_bytes, parse_bytes_to_string},
+    },
+    std::{
+        convert::TryFrom,
+        fmt::{Display, Formatter, Result as FmtResult},
+    },
+};
 
 /// Denota un _target_ en un evento [SCHEMA_CHANGE](crate::protocol::messages::responses::events::event_types::EventType::SchemaChange).
 pub enum SchemaChangeTarget {
@@ -34,7 +39,7 @@ impl Byteable for SchemaChangeTarget {
 
 impl TryFrom<&[Byte]> for SchemaChangeTarget {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         let string = parse_bytes_to_string(bytes, &mut 0)?;
         match string.as_str() {
             "KEYSPACE" => Ok(Self::Keyspace),
@@ -64,9 +69,7 @@ impl Display for SchemaChangeTarget {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::messages::responses::events::schema_changes::targets::SchemaChangeTarget;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_mostrar() {

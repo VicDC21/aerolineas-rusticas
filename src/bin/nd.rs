@@ -1,8 +1,9 @@
 //! Módulo para correr un nodo.
 
-use std::env::args;
-
-use aerolineas_rusticas::{protocol::aliases::types::Byte, server::nodes::node::Node};
+use {
+    aerolineas_rusticas::{protocol::aliases::types::Byte, server::nodes::node::Node},
+    std::env::args,
+};
 
 fn main() {
     let argv = args().collect::<Vec<String>>();

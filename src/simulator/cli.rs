@@ -10,17 +10,26 @@ use {
         },
         simulator::flight_simulator::FlightSimulator,
     },
+    serde::Deserialize,
     std::{thread, time::Duration},
 };
 
+#[derive(Deserialize)]
+/// Configuración de los vuelos
+pub struct FlightConfigs {
+    /// Configuraciones de los vuelos.
+    pub flight_configs: Vec<FlightConfig>,
+}
+
 /// Configuración de un vuelo.
+#[derive(Debug, Deserialize)]
 pub struct FlightConfig {
     /// ID del vuelo.
     pub flight_id: Int,
     /// Código del aeropuerto de origen.
-    pub origin: &'static str,
+    pub origin: String,
     /// Código del aeropuerto de destino.
-    pub destination: &'static str,
+    pub destination: String,
     /// Velocidad inicial del vuelo.
     pub spd: Double,
 }
@@ -64,8 +73,8 @@ fn script_loop(simulator: &FlightSimulator, flights: &[FlightConfig]) {
                 flight.destination.to_string(),
                 flight.spd,
             ) {
-                Ok(_) => println!("Vuelo añadido exitosamente!"),
-                Err(e) => println!("Error al añadir vuelo: {}", e),
+                Ok(_) => println!("Vuelo {}, añadido exitosamente!", flight.flight_id),
+                Err(e) => println!("Error al añadir vuelo {}: {}", flight.flight_id, e),
             }
             thread::sleep(Duration::from_secs(1));
         }
@@ -88,7 +97,10 @@ fn app_loop(simulator: &FlightSimulator) -> Result<()> {
             "2" => handle_view_flight(simulator)?,
             "3" => handle_view_all_flights(simulator),
             "4" => handle_view_airports(simulator),
-            "5" => break Ok(()),
+            "5" => match handle_termination(simulator) {
+                Some(_) => {}
+                None => break Ok(()),
+            },
             _ => println!("Opción no válida"),
         }
     }
@@ -208,11 +220,15 @@ fn handle_view_all_flights(simulator: &FlightSimulator) {
 }
 
 fn handle_view_airports(simulator: &FlightSimulator) {
-    println!("Aeropuertos disponibles:");
-    for (code, airport) in simulator.airports.iter() {
-        println!(
-            "{}: {} ({}, {})",
-            code, airport.name, airport.municipality, airport.country.name
-        );
+    simulator.get_airports();
+}
+
+fn handle_termination(simulator: &FlightSimulator) -> Option<()> {
+    let active_flights = simulator.count_active_flights();
+    if active_flights == 0 {
+        return None;
     }
+    println!("AVISO: Hay {} vuelo(s) aún en curso.", active_flights);
+    println!("El programa esperará a que todos los vuelos finalicen antes de cerrar.");
+    Some(())
 }

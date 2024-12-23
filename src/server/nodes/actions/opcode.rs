@@ -1,22 +1,25 @@
 //! Módulo para una acción especial de los nodos.
 
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-};
-
-use crate::protocol::{
-    aliases::{
-        results::Result as SvResult,
-        types::{Byte, Int},
+use {
+    crate::{
+        protocol::{
+            aliases::{
+                results::Result as SvResult,
+                types::{Byte, Int},
+            },
+            errors::error::Error,
+            traits::Byteable,
+            utils::{encode_iter_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
+        },
+        server::nodes::{
+            node::{NodeId, NodesMap},
+            states::{endpoints::EndpointState, heartbeat::HeartbeatState},
+        },
     },
-    errors::error::Error,
-    traits::Byteable,
-    utils::{encode_iter_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
-};
-use crate::server::nodes::{
-    node::{NodeId, NodesMap},
-    states::{endpoints::EndpointState, heartbeat::HeartbeatState},
+    std::{
+        collections::{HashMap, HashSet},
+        convert::TryFrom,
+    },
 };
 
 /// Un mapa de [EndpointState]s, tal que se puedan pasar entre nodos.

@@ -1,10 +1,16 @@
 //! Módulo para un "valor" como lo es en la notaciones del protocolo de Cassandra.
 
-use std::convert::TryFrom;
-
-use crate::protocol::aliases::types::{Byte, Int};
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use {
+    crate::protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, Int},
+        },
+        errors::error::Error,
+        traits::Byteable,
+    },
+    std::convert::TryFrom,
+};
 
 /// Un valor cambia de significado según el [Int] utilizado para inicializarlo.
 pub enum Value {
@@ -40,7 +46,7 @@ impl Byteable for Value {
 
 impl TryFrom<Vec<Byte>> for Value {
     type Error = Error;
-    fn try_from(bytes_vec: Vec<Byte>) -> Result<Self, Self::Error> {
+    fn try_from(bytes_vec: Vec<Byte>) -> Result<Self> {
         if bytes_vec.len() < 4 {
             return Err(Error::ProtocolError(
                 "Se esperan al menos 4 bytes para denominar la longitud del valor.".to_string(),
@@ -71,9 +77,7 @@ impl TryFrom<Vec<Byte>> for Value {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::notations::value::Value;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

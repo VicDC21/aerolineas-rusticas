@@ -1,8 +1,9 @@
-use crate::protocol::errors::error::Error;
-
-use super::{
-    data_types::keyspace_name::KeyspaceName,
-    statements::ddl_statement::ddl_statement_parser::check_words,
+use crate::{
+    parser::{
+        data_types::keyspace_name::KeyspaceName,
+        statements::ddl_statement::ddl_statement_parser::check_words,
+    },
+    protocol::{aliases::results::Result, errors::error::Error},
 };
 
 /// Representa un nombre de tabla en Cassandra, que puede incluir un keyspace opcional.
@@ -38,7 +39,7 @@ impl TableName {
     /// * `Ok(Some(TableName))` si se encuentra un keyspace y nombre válidos.
     /// * `Ok(None)` si la lista está vacía.
     /// * `Err(Error::SyntaxError)` si no se proporciona un nombre de keyspace válido.
-    pub fn check_kind_of_name(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
+    pub fn check_kind_of_name(lista: &mut Vec<String>) -> Result<Option<Self>> {
         if lista.is_empty() {
             return Ok(None);
         }

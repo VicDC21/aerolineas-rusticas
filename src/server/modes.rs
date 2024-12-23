@@ -1,8 +1,13 @@
 //! Módulo para modos de conección al servidor.
 
-use std::convert::TryFrom;
-
-use crate::protocol::{aliases::types::Byte, errors::error::Error, traits::Byteable};
+use {
+    crate::protocol::{
+        aliases::{results::Result, types::Byte},
+        errors::error::Error,
+        traits::Byteable,
+    },
+    std::convert::TryFrom,
+};
 
 /// Indica el modo de conexión al instanciar el servidor.
 #[derive(Clone, Debug)]
@@ -25,7 +30,7 @@ impl Byteable for ConnectionMode {
 
 impl TryFrom<&[Byte]> for ConnectionMode {
     type Error = Error;
-    fn try_from(bytes: &[Byte]) -> Result<Self, Self::Error> {
+    fn try_from(bytes: &[Byte]) -> Result<Self> {
         if bytes.is_empty() {
             return Err(Error::ServerError(
                 "El conjunto de bytes está vacío.".to_string(),

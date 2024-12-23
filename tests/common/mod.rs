@@ -4,16 +4,17 @@
 //! de que cargo crea que los archivos son archivos de tests en sí.
 #![allow(dead_code)] // Las funciones sí se usan, pero no lo descubre por no estar en la lib
 
-use std::{
-    fs::remove_dir_all,
-    io::{ErrorKind, Result as IOResult},
-    thread::{sleep, spawn, JoinHandle},
-    time::Duration,
-};
-
-use aerolineas_rusticas::{
-    protocol::aliases::results::Result,
-    server::nodes::{graph::NodesGraph, node::Node},
+use {
+    aerolineas_rusticas::{
+        protocol::aliases::results::Result,
+        server::nodes::{graph::NodesGraph, node::Node},
+    },
+    std::{
+        fs::remove_dir_all,
+        io::{ErrorKind, Result as IOResult},
+        thread::{sleep, spawn, JoinHandle},
+        time::Duration,
+    },
 };
 
 /// Un handle común en nuestra librería.

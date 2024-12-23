@@ -2,10 +2,11 @@
 
 mod common;
 
-use std::{io::Write, thread::sleep, time::Duration};
-
-use aerolineas_rusticas::client::{cli::Client, conn_holder::ConnectionHolder};
-use common::{clean_nodes, create_echo_nodes};
+use {
+    aerolineas_rusticas::client::{cli::Client, conn_holder::ConnectionHolder},
+    common::{clean_nodes, create_echo_nodes},
+    std::{io::Write, thread::sleep, time::Duration},
+};
 
 #[test]
 fn test_simple_connection() {

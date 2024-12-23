@@ -2,10 +2,9 @@ use crate::{
     parser::{
         data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words,
     },
-    protocol::errors::error::Error,
+    protocol::{aliases::results::Result, errors::error::Error},
 };
 
-#[allow(dead_code)]
 /// Literal de tipo lista.
 #[derive(Debug)]
 pub struct ListLiteral {
@@ -16,7 +15,7 @@ pub struct ListLiteral {
 impl ListLiteral {
     /// Verifica si la lista de tokens es una lista de literales. Si lo es, lo retorna.
     /// Si no lo es, retorna None, o Error en caso de no cumplir con la sintaxis.
-    pub fn check_list_literal(lista: &mut Vec<String>) -> Result<Option<Self>, Error> {
+    pub fn check_list_literal(lista: &mut Vec<String>) -> Result<Option<Self>> {
         let mut values: Vec<Term> = Vec::new();
         if check_words(lista, "[") {
             while check_words(lista, ",") || !check_words(lista, "]") {
@@ -32,5 +31,10 @@ impl ListLiteral {
             }
         }
         Ok(Some(ListLiteral { values }))
+    }
+
+    /// Returns the values of the list.
+    pub fn values(&self) -> &Vec<Term> {
+        &self.values
     }
 }

@@ -1,13 +1,14 @@
 //! Módulo para objetos de utilidad y funciones auxiliares del protocolo de Cassandra.
 
-use std::net::IpAddr;
-
-use crate::protocol::{
-    aliases::{
-        results::Result,
-        types::{Byte, Int, ReasonMap, Short},
+use {
+    crate::protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, Int, ReasonMap, Short},
+        },
+        errors::error::Error,
     },
-    errors::error::Error,
+    std::net::IpAddr,
 };
 
 /// Transforma un [String] a una colección de [Byte]s tal cual como está especificado
@@ -243,15 +244,15 @@ pub fn encode_iter_to_bytes(iterator: impl Iterator<Item = Vec<Byte>>) -> Vec<By
 /// }
 /// ```
 pub fn parse_bytes_to_string(bytes_vec: &[Byte], i: &mut usize) -> Result<String> {
-    let short_len: usize = 2; // los bytes de un Short
-    if bytes_vec.len() < short_len {
+    let short_int: usize = 2; // los bytes de un short_int
+    if bytes_vec.len() < short_int {
         return Err(Error::SyntaxError(
             "Se esperaban 2 bytes que indiquen el tamaño del string a formar".to_string(),
         ));
     }
     let string_len = Short::from_le_bytes([bytes_vec[1], bytes_vec[0]]) as usize;
-    *i += string_len + short_len;
-    match String::from_utf8(bytes_vec[short_len..(string_len + short_len)].to_vec()) {
+    *i += string_len + short_int;
+    match String::from_utf8(bytes_vec[short_int..(string_len + short_int)].to_vec()) {
         Ok(string) => Ok(string),
         Err(_) => Err(Error::Invalid(
             "El cuerpo del string no se pudo parsear".to_string(),
@@ -404,7 +405,7 @@ pub fn encode_string_map_to_bytes(string_map: Vec<(String, String)>) -> Vec<Byte
 /// Parsea un conjunto de [Byte]s de vuelta a un objeto [String].
 pub fn parse_bytes_to_string_map(bytes: &[Byte]) -> Result<Vec<(String, String)>> {
     let mut string_map: Vec<(String, String)> = Vec::new();
-    let length: Short = u16::from_be_bytes([bytes[0], bytes[1]]);
+    let length: Short = Short::from_be_bytes([bytes[0], bytes[1]]);
     let mut vec_position = 2;
     for _i in 0..length {
         let key = parse_bytes_to_string(bytes, &mut vec_position)?;
@@ -413,11 +414,3 @@ pub fn parse_bytes_to_string_map(bytes: &[Byte]) -> Result<Vec<(String, String)>
     }
     Ok(string_map)
 }
-
-// pub fn encode_bytes_to_bytes(value: String) -> Vec<Byte> {
-//     let
-//     let value_lenght = value.len() as i32;
-//     rows_content.append(&mut value_lenght.to_be_bytes().to_vec());
-//     rows_content.append(&mut value.as_bytes().to_vec());
-
-// }

@@ -1,12 +1,16 @@
-use crate::protocol::{
-    aliases::{results::Result, types::Byte},
-    errors::error::Error,
-    notations::consistency::Consistency,
-    traits::Byteable,
-    utils::{encode_long_string_to_bytes, parse_bytes_to_long_string},
+use crate::{
+    client::cql_frame::query_flags::QueryFlags,
+    protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, Int, Long, ShortInt},
+        },
+        errors::error::Error,
+        notations::consistency::Consistency,
+        traits::Byteable,
+        utils::{encode_long_string_to_bytes, parse_bytes_to_long_string},
+    },
 };
-
-use super::flags::query_flags::QueryFlags;
 
 /// Body para queries individuales
 pub struct QueryBody {
@@ -14,10 +18,10 @@ pub struct QueryBody {
     consistency: Consistency,
     flags: Vec<QueryFlags>,
     values: Option<Vec<Vec<Byte>>>,
-    page_size: Option<i32>,
+    page_size: Option<Int>,
     paging_state: Option<Vec<Byte>>,
     serial_consistency: Option<Consistency>,
-    timestamp: Option<i64>,
+    timestamp: Option<Long>,
 }
 
 impl QueryBody {
@@ -52,7 +56,7 @@ impl Byteable for QueryBody {
 
         // Query string
         let query_bytes = encode_long_string_to_bytes(&self.query);
-        // bytes.extend((query_bytes.len() as i32).to_be_bytes());
+        // bytes.extend((query_bytes.len() as Int).to_be_bytes());
         bytes.extend(query_bytes);
 
         // Consistency
@@ -67,9 +71,9 @@ impl Byteable for QueryBody {
             match flag {
                 QueryFlags::Values => {
                     if let Some(values) = &self.values {
-                        bytes.extend((values.len() as i16).to_be_bytes());
+                        bytes.extend((values.len() as ShortInt).to_be_bytes());
                         for value in values {
-                            bytes.extend((value.len() as i32).to_be_bytes());
+                            bytes.extend((value.len() as Int).to_be_bytes());
                             bytes.extend(value);
                         }
                     }
@@ -81,13 +85,13 @@ impl Byteable for QueryBody {
                 }
                 QueryFlags::WithPagingState => {
                     if let Some(state) = &self.paging_state {
-                        bytes.extend((state.len() as i32).to_be_bytes());
+                        bytes.extend((state.len() as Int).to_be_bytes());
                         bytes.extend(state);
                     }
                 }
                 QueryFlags::WithSerialConsistency => {
                     if let Some(consistency) = &self.serial_consistency {
-                        bytes.extend((*consistency as u16).to_be_bytes());
+                        bytes.extend((*consistency as Byte).to_be_bytes());
                     }
                 }
                 QueryFlags::WithDefaultTimestamp => {

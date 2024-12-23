@@ -1,20 +1,26 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
-use std::{
-    fs::{read_dir, File},
-    hash::{DefaultHasher, Hash, Hasher},
-    io::{BufRead, BufReader, Read, Result as IOResult, Write},
-    net::TcpStream,
-    path::PathBuf,
-};
-
-use crate::server::nodes::{addr::loader::AddrLoader, node::NodeId, port_type::PortType};
-use crate::{
-    protocol::{
-        aliases::{results::Result, types::Byte},
-        errors::error::Error,
+use {
+    crate::{
+        protocol::{
+            aliases::{
+                results::Result,
+                types::{Byte, Ulong},
+            },
+            errors::error::Error,
+        },
+        server::{
+            nodes::{addr::loader::AddrLoader, node::NodeId, port_type::PortType},
+            utils::printable_bytes,
+        },
     },
-    server::utils::printable_bytes,
+    std::{
+        fs::{read_dir, File},
+        hash::{DefaultHasher, Hash, Hasher},
+        io::{BufRead, BufReader, Read, Result as IOResult, Write},
+        net::TcpStream,
+        path::PathBuf,
+    },
 };
 
 /// La ruta de _queries_ iniciales.
@@ -26,7 +32,7 @@ const QUERY_EXT: &str = "cql";
 ///
 /// En esta función es determinístico, es decir, siempre devolverá el mismo valor para el mismo input.
 /// Esto es así porque cada vez vuelve a instanciar un `DefaultHasher` nuevo, manteniendo la misma semilla.
-pub fn hash_value<T: Hash>(value: T) -> u64 {
+pub fn hash_value<T: Hash>(value: T) -> Ulong {
     let mut hasher = DefaultHasher::new();
     value.hash(&mut hasher);
     hasher.finish()
@@ -36,10 +42,10 @@ pub fn hash_value<T: Hash>(value: T) -> u64 {
 ///
 /// Se asume que el vector de IDs de los nodos está ordenado de menor a mayor.
 pub fn next_node_in_the_cluster(current_id: Byte, nodes_ids: &[Byte]) -> Byte {
-    let current_index = nodes_ids.binary_search(&current_id).unwrap_or({
-        // No debería ocurrir, ya que current_id pertenece a nodes_ids siempre
-        0
-    });
+    let current_index = match nodes_ids.binary_search(&current_id) {
+        Ok(index) => index,
+        Err(_) => return nodes_ids[0], // si no se encuentra, se asume que es el primer nodo
+    };
     if current_index + 1 == nodes_ids.len() {
         nodes_ids[0]
     } else {
@@ -77,7 +83,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
     bytes: Vec<Byte>,
     port_type: PortType,
     wait_response: bool,
-    timeout: Option<u64>,
+    timeout: Option<Ulong>,
 ) -> Result<Vec<Byte>> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
@@ -135,14 +141,14 @@ pub fn send_to_node_and_wait_response_with_timeout(
 }
 
 /// Divide un rango en `n` partes iguales.
-pub fn divide_range(start: u64, end: u64, n: usize) -> Vec<(u64, u64)> {
+pub fn divide_range(start: Ulong, end: Ulong, n: usize) -> Vec<(Ulong, Ulong)> {
     let range_length = end - start;
-    let part_length = range_length / n as u64;
-    let remainder = range_length % n as u64;
+    let part_length = range_length / n as Ulong;
+    let remainder = range_length % n as Ulong;
 
     (0..n)
         .map(|i| {
-            let part_start = start + i as u64 * part_length + remainder.min(i as u64);
+            let part_start = start + i as Ulong * part_length + remainder.min(i as Ulong);
             let part_end = part_start + part_length + if i < remainder as usize { 1 } else { 0 };
             (part_start, part_end)
         })

@@ -1,28 +1,28 @@
 //! Módulo para paneles de la interfaz.
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
-
-use eframe::egui::{
-    Button, Color32, FontId, Frame, Margin, Response, RichText, ScrollArea, Separator, SidePanel,
-    Ui,
-};
-
-use crate::{
-    client::conn_holder::ConnectionHolder,
-    data::{
-        airports::airp::Airport,
-        flights::{flight::Flight, types::FlightType},
-        traits::PrettyShow,
+use {
+    crate::{
+        client::conn_holder::ConnectionHolder,
+        data::{
+            airports::airp::Airport,
+            flights::{flight::Flight, types::FlightType},
+            traits::PrettyShow,
+        },
+        interface::{
+            data::widget_details::WidgetDetails,
+            panels::crud::{delete_flight_by_id, insert_flight},
+            windows::flight_editor::FlightEditorWindow,
+        },
+        protocol::aliases::types::{Int, Long},
     },
-    interface::{
-        data::widget_details::WidgetDetails,
-        panels::crud::{delete_flight_by_id, insert_flight},
-        windows::flight_editor::FlightEditorWindow,
+    eframe::egui::{
+        Button, Color32, FontId, Frame, Margin, Response, RichText, ScrollArea, Separator,
+        SidePanel, Ui,
     },
-    protocol::aliases::types::{Int, Long},
+    std::{
+        collections::{HashMap, HashSet},
+        sync::Arc,
+    },
 };
 
 /// IDs de aeropuertos a borrar después.
@@ -164,8 +164,13 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
 
         ui.separator();
 
+        let iata_code = match &airport.iata_code {
+            Some(iata) => iata.to_string(),
+            None => "N/A".to_string(),
+        };
+
         ui.label(
-            RichText::new(format!("\t{:<20}{:>25}", "Ident:", &airport.ident))
+            RichText::new(format!("\t{:<20}{:>25}", "Ident:", iata_code))
                 .color(text_color)
                 .font(font.clone()),
         );
@@ -194,7 +199,10 @@ fn show_airport_info(ui: &mut Ui, airport: &Option<Airport>) {
             RichText::new(format!(
                 "\t{:<20}{:>25}",
                 "Elevation (ft):",
-                &airport.elevation_ft.unwrap_or(-999)
+                match &airport.elevation_ft {
+                    Some(elevation) => elevation.to_string(),
+                    None => "N/A".to_string(),
+                }
             ))
             .color(text_color)
             .font(font.clone()),

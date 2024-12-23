@@ -1,8 +1,8 @@
 //! Módulo que detalla la configuración de una columna.
-
-use serde::{Deserialize, Serialize};
-
-use super::column_data_type::ColumnDataType;
+use {
+    crate::server::nodes::table_metadata::column_data_type::ColumnDataType,
+    serde::{Deserialize, Serialize},
+};
 
 /// Representa la configuración de una columna.
 #[derive(Debug, Serialize, Deserialize)]

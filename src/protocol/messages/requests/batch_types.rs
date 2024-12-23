@@ -1,8 +1,10 @@
 //! Tipos de _requests_ de tipo BATCH.
 
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use crate::protocol::{
+    aliases::{results::Result, types::Byte},
+    errors::error::Error,
+    traits::Byteable,
+};
 
 /// El tipo de una instrucción BATCH, que es un conjunto de _queries_.
 pub enum BatchType {
@@ -28,7 +30,7 @@ impl Byteable for BatchType {
 
 impl TryFrom<Byte> for BatchType {
     type Error = Error;
-    fn try_from(byte: Byte) -> Result<Self, Self::Error> {
+    fn try_from(byte: Byte) -> Result<Self> {
         match byte {
             0x00 => Ok(BatchType::Logged),
             0x01 => Ok(BatchType::Unlogged),
@@ -40,8 +42,7 @@ impl TryFrom<Byte> for BatchType {
 
 #[cfg(test)]
 mod tests {
-    use super::BatchType;
-    use crate::protocol::{errors::error::Error, traits::Byteable};
+    use super::*;
 
     #[test]
     fn test_1_serializar() {

@@ -1,21 +1,27 @@
 //! Módulo para un header de stream.
 
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::protocol::aliases::types::Byte;
-use crate::protocol::errors::error::Error;
-use crate::protocol::traits::Byteable;
+use {
+    crate::protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, ShortInt},
+        },
+        errors::error::Error,
+        traits::Byteable,
+    },
+    std::fmt::{Display, Formatter, Result as FmtResult},
+};
 
 /// Cada frame tiene un stream id para hacer coincidir el IDs entre las requests y responses.
 #[derive(Eq, Clone, Hash, PartialEq)]
 pub struct Stream {
     /// El ID del stream.
-    id: i16,
+    id: ShortInt,
 }
 
 impl Stream {
     /// Crea un nuevo header de Stream.
-    pub fn new(id: i16) -> Self {
+    pub fn new(id: ShortInt) -> Self {
         Self { id }
     }
 }
@@ -28,8 +34,8 @@ impl Byteable for Stream {
 
 impl TryFrom<Vec<Byte>> for Stream {
     type Error = Error;
-    fn try_from(short: Vec<Byte>) -> Result<Self, Self::Error> {
-        let bytes_array: [Byte; 2] = match short.try_into() {
+    fn try_from(short_int: Vec<Byte>) -> Result<Self> {
+        let bytes_array: [Byte; 2] = match short_int.try_into() {
             Ok(bytes_array) => bytes_array,
             Err(_) => {
                 return Err(Error::ConfigError(
@@ -37,7 +43,7 @@ impl TryFrom<Vec<Byte>> for Stream {
                 ))
             }
         };
-        let value = i16::from_be_bytes(bytes_array);
+        let value = ShortInt::from_be_bytes(bytes_array);
         Ok(Stream::new(value))
     }
 }
@@ -50,15 +56,12 @@ impl Display for Stream {
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::aliases::types::Byte;
-    use crate::protocol::errors::error::Error;
-    use crate::protocol::headers::stream::Stream;
-    use crate::protocol::traits::Byteable;
+    use super::*;
 
     #[test]
     fn test_1_serializar() {
         for i in 0..1000 {
-            let ind = i as i16; // por las dudas casteamos
+            let ind = i as ShortInt; // por las dudas casteamos
 
             let stream = Stream::new(ind);
             let id_bytes = stream.as_bytes();
@@ -72,7 +75,7 @@ mod tests {
     #[test]
     fn test_2_deserializar() {
         for i in 0..1000 {
-            let ind = i as i16;
+            let ind = i as ShortInt;
 
             let stream_res = Stream::try_from(ind.to_be_bytes().to_vec());
             assert!(stream_res.is_ok());

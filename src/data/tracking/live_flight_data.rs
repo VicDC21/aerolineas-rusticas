@@ -1,19 +1,19 @@
 //! Módulo para datos de vuelos en vivo.
 
-use std::time::Duration;
-
-use chrono::{DateTime, TimeZone, Utc};
-
-use crate::{
-    client::{col_data::ColData, protocol_result::ProtocolResult},
-    data::flights::{states::FlightState, types::FlightType},
-    protocol::{
-        aliases::{
-            results::Result,
-            types::{Double, Int, Long},
+use {
+    crate::{
+        client::{col_data::ColData, protocol_result::ProtocolResult},
+        data::flights::{states::FlightState, types::FlightType},
+        protocol::{
+            aliases::{
+                results::Result,
+                types::{Double, Int, Long},
+            },
+            errors::error::Error,
         },
-        errors::error::Error,
     },
+    chrono::{DateTime, TimeZone, Utc},
+    std::time::Duration,
 };
 
 /// Datos de vuelo en vivo.
