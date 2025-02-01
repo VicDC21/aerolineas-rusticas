@@ -123,7 +123,7 @@ pub struct Node {
 }
 
 impl Node {
-    /// Crea un nuevo nodo.
+    /// Crea un nodo.
     pub fn new(id: NodeId, mode: ConnectionMode) -> Result<Self> {
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
@@ -162,17 +162,27 @@ impl Node {
         Ok(())
     }
 
-    /// Inicia un nuevo nodo con un ID específico en modo de conexión _parsing_.
+    /// Inicia un nodo con un ID específico en modo de conexión _parsing_.
     pub fn init_in_parsing_mode(id: NodeId) -> Result<()> {
         Self::init(id, ConnectionMode::Parsing)
     }
 
-    /// Inicia un nuevo nodo con un ID específico en modo de conexión _echo_.
+    /// Inicia un nodo con un ID específico en modo de conexión _echo_.
     pub fn init_in_echo_mode(id: NodeId) -> Result<()> {
         Self::init(id, ConnectionMode::Echo)
     }
 
-    /// Crea un nuevo nodo con un ID específico.
+    /// Inicia un nuevo nodo con un ID específico en modo de conexión _parsing_.
+    pub fn init_new_in_parsing_mode(id: NodeId, ip: &str) -> Result<()> {
+        Self::init(id, ConnectionMode::Parsing)
+    }
+
+    /// Inicia un nuevo nodo con un ID específico en modo de conexión _echo_.
+    pub fn init_new_in_echo_mode(id: NodeId, ip: &str) -> Result<()> {
+        Self::init(id, ConnectionMode::Echo)
+    }
+
+    /// Crea un nodo con un ID específico.
     fn init(id: NodeId, mode: ConnectionMode) -> Result<()> {
         let mut nodes_weights: Vec<usize> = Vec::new();
         let handlers = Self::bootstrap(id, mode, &mut nodes_weights)?;
@@ -198,9 +208,9 @@ impl Node {
         nodes_weights: &mut Vec<usize>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_nodes_ids();
-        if nodes_ids.len() != N_NODES as usize {
+        if nodes_ids.len() < N_NODES as usize {
             return Err(Error::ServerError(format!(
-                "El archivo de IPs de los nodos no tiene la cantidad correcta de nodos. Se esperaban {} nodos, se encontraron {}.",
+                "El archivo de IPs de los nodos no tiene la cantidad correcta de nodos. Se esperaban al menos {} nodos, se encontraron {}.",
                 N_NODES, nodes_ids.len()
             )));
         }
