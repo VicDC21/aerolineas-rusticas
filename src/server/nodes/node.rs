@@ -73,7 +73,10 @@ pub type NodeHandle = JoinHandle<Result<()>>;
 
 /// Cantidad inicial de nodos en el clúster.
 ///
-/// DEBE coincidir con la cantidad de nodos en el archivo de IPs `node_ips.csv`.
+/// No necesariamente debe coincidir con la cantidad de nodos en el archivo de IPs `node_ips.csv`,
+/// ya que se pueden incorporar nodos nuevos al clúster.
+///
+/// Lo que NO es posible, es que sea menor.
 pub const N_NODES: Byte = 5;
 /// El límite posible para los rangos de los nodos.
 pub const NODES_RANGE_END: Ulong = 18446744073709551615;
@@ -169,12 +172,12 @@ impl Node {
 
     /// Inicia un nodo con un ID específico en modo de conexión _parsing_.
     pub fn init_in_parsing_mode(id: NodeId) -> Result<()> {
-        Self::init(id, ConnectionMode::Parsing)
+        Self::init(id, ConnectionMode::Parsing, false)
     }
 
     /// Inicia un nodo con un ID específico en modo de conexión _echo_.
     pub fn init_in_echo_mode(id: NodeId) -> Result<()> {
-        Self::init(id, ConnectionMode::Echo)
+        Self::init(id, ConnectionMode::Echo, false)
     }
 
     /// Inicia un nuevo nodo con un ID específico en modo de conexión _parsing_.
@@ -188,9 +191,9 @@ impl Node {
     }
 
     /// Crea un nodo con un ID específico.
-    fn init(id: NodeId, mode: ConnectionMode) -> Result<()> {
+    fn init(id: NodeId, mode: ConnectionMode, is_new: bool) -> Result<()> {
         let mut nodes_weights: Vec<usize> = Vec::new();
-        let handlers = Self::bootstrap(id, mode, &mut nodes_weights)?;
+        let handlers = Self::bootstrap(id, mode, &mut nodes_weights, is_new)?;
 
         let (_beater, _beat_stopper) = beater(id)?;
         let (_gossiper, _gossip_stopper) = gossiper(id, &nodes_weights)?;
@@ -227,7 +230,7 @@ impl Node {
         }
         DiskHandler::store_new_node_id_and_ip(id, ip);
 
-        Ok(())
+        Self::init(id, mode, true)
     }
 
     /// Inicia la metadata y los hilos necesarios para que el nodo se conecte al cluster.
@@ -235,6 +238,7 @@ impl Node {
         id: NodeId,
         mode: ConnectionMode,
         nodes_weights: &mut Vec<usize>,
+        is_new: bool,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_nodes_ids();
         if nodes_ids.len() < N_NODES as usize {
@@ -261,7 +265,7 @@ impl Node {
         } else {
             Self::new(id, mode)?
         };
-        node.inicialize_nodes_weights();
+        node.inicialize_nodes_weights(Self::get_actual_n_nodes());
         *nodes_weights = node.nodes_weights.clone();
         let max_weight_id = node.max_weight();
 
@@ -277,14 +281,18 @@ impl Node {
         // pues asumimos que todos los demás ya fueron iniciados.
         if id == nodes_ids[(N_NODES - 1) as usize] {
             Self::send_states_to_node(max_weight_id);
+        } else if is_new {
+            // Si es un nodo nuevo, debemos hacer que conozca al resto del clúster, para poder
+            // enviar su información a los demás mediante gossip, así sabrán de su existencia.
+            Self::send_states_to_node(id);
         }
 
         Ok(handlers)
     }
 
-    fn inicialize_nodes_weights(&mut self) {
-        self.nodes_weights = vec![1; N_NODES as usize];
-        self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo tiene el triple de probabilidades de ser elegido.
+    fn inicialize_nodes_weights(&mut self, actual_n_nodes: usize) {
+        self.nodes_weights = vec![1; actual_n_nodes];
+        self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo original tiene el triple de probabilidades de ser elegido.
     }
 
     /// Se le ordena a todos los nodos existentes que envien su _endpoint state_ al nodo con el ID dado.
@@ -524,6 +532,7 @@ impl Node {
     pub fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
         let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
         if !self.has_endpoint_state_by_id(&guessed_id) {
+            println!("Nodo {} presentado.", guessed_id);
             self.neighbours_states.insert(guessed_id, state);
         }
         Ok(())
@@ -534,6 +543,9 @@ impl Node {
     /// No se comprueba si las entradas nuevas son más recientes o no: reemplaza todo sin preguntar.
     pub fn update_neighbours(&mut self, new_neighbours: NodesMap) -> Result<()> {
         for (node_id, endpoint_state) in new_neighbours {
+            if !self.has_endpoint_state_by_id(&node_id) {
+                println!("Nodo {} presentado.", node_id);
+            }
             self.neighbours_states.insert(node_id, endpoint_state);
         }
 

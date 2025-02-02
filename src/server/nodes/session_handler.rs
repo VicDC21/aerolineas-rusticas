@@ -1588,7 +1588,7 @@ impl SessionHandler {
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
-        if node_reader.neighbours_states.len() == N_NODES as usize
+        if node_reader.neighbours_states.len() == Node::get_actual_n_nodes()
             && *node_reader.endpoint_state.get_appstate_status() != AppStatus::Normal
         {
             drop(node_reader);
