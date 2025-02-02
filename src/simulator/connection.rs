@@ -8,10 +8,8 @@ use crate::{
 pub fn set_client_and_connection(has_to_connect: bool) -> Result<(Client, Option<TlsStream>)> {
     let mut client = Client::default();
     client.set_consistency_level("One")?;
-    let tls_stream = match create_connection(&mut client, has_to_connect) {
-        Ok(tls_stream) => tls_stream,
-        Err(err) => return Err(err),
-    };
+    let tls_stream = create_connection(&mut client, has_to_connect)?;
+
     Ok((client, tls_stream))
 }
 

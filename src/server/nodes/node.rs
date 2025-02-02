@@ -763,10 +763,8 @@ impl Node {
 
     /// Procesa una declaración SELECT.
     pub fn process_select(&self, select: &Select, node_id: Byte) -> Result<Vec<Byte>> {
-        let table = match self.get_table(&select.from.get_name()) {
-            Ok(table) => table,
-            Err(err) => return Err(err),
-        };
+        let table = self.get_table(&select.from.get_name())?;
+
         // SIEMPRE ANTES DE UN DISKHANDLER HACER UN LOCK/WRITE
         let mut res = DiskHandler::do_select(
             select,
@@ -802,10 +800,8 @@ impl Node {
             "Inserta internamente siendo el nodo {} a la tabla del nodo {}",
             self.id, node_number
         );
-        let table = match self.get_table(&insert.table.get_name()) {
-            Ok(table) => table,
-            Err(err) => return Err(err),
-        };
+        let table = self.get_table(&insert.table.get_name())?;
+
         DiskHandler::do_insert(
             insert,
             &self.storage_addr,
@@ -856,10 +852,8 @@ impl Node {
         timestamp: Long,
         node_number: Byte,
     ) -> Result<Vec<Byte>> {
-        let table = match self.get_table(&update.table_name.get_name()) {
-            Ok(table) => table,
-            Err(err) => return Err(err),
-        };
+        let table = self.get_table(&update.table_name.get_name())?;
+
         DiskHandler::do_update(
             update,
             &self.storage_addr,
@@ -873,10 +867,7 @@ impl Node {
 
     /// Procesa una declaración DELETE.
     pub fn process_delete(&mut self, delete: &Delete, node_number: Byte) -> Result<Vec<Byte>> {
-        let table = match self.get_table(&delete.from.get_name()) {
-            Ok(table) => table,
-            Err(err) => return Err(err),
-        };
+        let table = self.get_table(&delete.from.get_name())?;
 
         DiskHandler::do_delete(
             delete,
