@@ -67,6 +67,8 @@ const STORAGE_NODE_PATH: &str = "storage_node";
 pub const NODES_METADATA_PATH: &str = "nodes_metadata";
 /// El nombre individual del directorio de metadatos de un nodo.
 const NODE_METADATA_PATH: &str = "metadata_node";
+/// La ruta para el almacenamiento de las IPs de los nodos.
+const NODES_IPS_PATH: &str = "node_ips.csv";
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
@@ -79,6 +81,19 @@ impl DiskHandler {
         let storage_addr: String = Self::get_node_storage(id);
         Self::create_directory(&storage_addr)?;
         Ok(storage_addr)
+    }
+
+    /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.
+    pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) {
+        let file = OpenOptions::new()
+            .append(true)
+            .open(NODES_IPS_PATH)
+            .expect("No se pudo abrir el archivo de IPs de nodos");
+
+        let mut writer = BufWriter::new(&file);
+        writer
+            .write_all(format!("{},{}\n", id, ip).as_bytes())
+            .expect("No se pudo escribir en el archivo de IPs de nodos");
     }
 
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.

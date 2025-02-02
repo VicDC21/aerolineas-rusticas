@@ -53,7 +53,12 @@ use {
         },
     },
     serde::{Deserialize, Serialize},
-    std::{collections::HashMap, net::TcpStream, path::Path, thread::JoinHandle},
+    std::{
+        collections::HashMap,
+        net::{IpAddr, TcpStream},
+        path::Path,
+        thread::JoinHandle,
+    },
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -66,7 +71,7 @@ pub type OpenConnectionsMap = HashMap<Stream, TcpStream>;
 /// El handle donde vive una operación de nodo.
 pub type NodeHandle = JoinHandle<Result<()>>;
 
-/// Cantidad de nodos fija en cualquier momento.
+/// Cantidad inicial de nodos en el clúster.
 ///
 /// DEBE coincidir con la cantidad de nodos en el archivo de IPs `node_ips.csv`.
 pub const N_NODES: Byte = 5;
@@ -138,7 +143,7 @@ impl Node {
             users_default_keyspace_name: HashMap::new(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
-            nodes_ranges: divide_range(0, NODES_RANGE_END, N_NODES as usize),
+            nodes_ranges: divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes()),
             tables_and_partitions_keys_values: HashMap::new(),
             open_connections: OpenConnectionsMap::new(),
             nodes_weights: Vec::new(),
@@ -156,7 +161,7 @@ impl Node {
         self.neighbours_states = neighbours_states;
         self.endpoint_state = endpoint_state;
         self.storage_addr = DiskHandler::get_node_storage(id);
-        self.nodes_ranges = divide_range(0, NODES_RANGE_END, N_NODES as usize);
+        self.nodes_ranges = divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes());
         self.open_connections = OpenConnectionsMap::new();
 
         Ok(())
@@ -174,12 +179,12 @@ impl Node {
 
     /// Inicia un nuevo nodo con un ID específico en modo de conexión _parsing_.
     pub fn init_new_in_parsing_mode(id: NodeId, ip: &str) -> Result<()> {
-        Self::init(id, ConnectionMode::Parsing)
+        Self::init_new(id, ip, ConnectionMode::Parsing)
     }
 
     /// Inicia un nuevo nodo con un ID específico en modo de conexión _echo_.
     pub fn init_new_in_echo_mode(id: NodeId, ip: &str) -> Result<()> {
-        Self::init(id, ConnectionMode::Echo)
+        Self::init_new(id, ip, ConnectionMode::Echo)
     }
 
     /// Crea un nodo con un ID específico.
@@ -198,6 +203,30 @@ impl Node {
         let _ = gossiper.join();*/
 
         Self::wait(handlers);
+        Ok(())
+    }
+
+    /// Crea un nuevo nodo con un ID e IP específicos.
+    fn init_new(id: NodeId, ip: &str, mode: ConnectionMode) -> Result<()> {
+        let nodes_ids = Self::get_nodes_ids();
+        let nodes_ips = AddrLoader::default_loaded().get_ips();
+        if nodes_ids.contains(&id) {
+            return Err(Error::ServerError(format!(
+                "El ID {} ya está en uso por otro nodo.",
+                id
+            )));
+        }
+        // Aca ya sabemos que la IP es válida, entonces no hace falta un else
+        if let Ok(ip) = ip.parse::<IpAddr>() {
+            if nodes_ips.contains(&ip) {
+                return Err(Error::ServerError(format!(
+                    "La IP {} ya está en uso por otro nodo.",
+                    ip
+                )));
+            }
+        }
+        DiskHandler::store_new_node_id_and_ip(id, ip);
+
         Ok(())
     }
 
@@ -415,6 +444,11 @@ impl Node {
         let mut nodes_ids: Vec<NodeId> = AddrLoader::default_loaded().get_ids();
         nodes_ids.sort();
         nodes_ids
+    }
+
+    /// Devuelve la cantidad de nodos actual en el clúster, en base al archivo de IPs `node_ips.csv`.
+    pub fn get_actual_n_nodes() -> usize {
+        AddrLoader::default_loaded().get_ids().len()
     }
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
