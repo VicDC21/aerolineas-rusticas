@@ -41,7 +41,7 @@ use {
             nodes::{
                 actions::opcode::{GossipInfo, SvAction},
                 disk_operations::disk_handler::DiskHandler,
-                node::{Node, NodeId, NodesMap, N_NODES},
+                node::{Node, NodeId, NodesMap /*N_NODES*/},
                 port_type::PortType,
                 states::{
                     appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState,
@@ -513,7 +513,7 @@ impl SessionHandler {
         let mut response: Vec<Byte> = Vec::new();
         let mut actual_node_id = self.id;
         let nodes_ids = Node::get_nodes_ids();
-        for _ in 0..N_NODES {
+        for _ in 0..Node::get_actual_n_nodes() {
             response = if actual_node_id != self.id {
                 send_to_node_and_wait_response_with_timeout(
                     actual_node_id,
@@ -539,7 +539,7 @@ impl SessionHandler {
         let mut response: Vec<Byte> = Vec::new();
         let mut actual_node_id = self.id;
         let nodes_ids = Node::get_nodes_ids();
-        for _ in 0..N_NODES {
+        for _ in 0..Node::get_actual_n_nodes() {
             response = if actual_node_id != self.id {
                 send_to_node_and_wait_response_with_timeout(
                     actual_node_id,
@@ -575,7 +575,7 @@ impl SessionHandler {
         let mut responses = Vec::new();
         let mut actual_node_id = self.id;
         let nodes_ids = Node::get_nodes_ids();
-        for _ in 0..N_NODES {
+        for _ in 0..Node::get_actual_n_nodes() {
             let response = if actual_node_id != self.id {
                 send_to_node_and_wait_response_with_timeout(
                     actual_node_id,
@@ -612,7 +612,7 @@ impl SessionHandler {
         let mut responses = Vec::new();
         let mut actual_node_id = self.id;
         let nodes_ids = Node::get_nodes_ids();
-        for _ in 0..N_NODES {
+        for _ in 0..Node::get_actual_n_nodes() {
             let response = if actual_node_id != self.id {
                 send_to_node_and_wait_response_with_timeout(
                     actual_node_id,
@@ -1161,7 +1161,7 @@ impl SessionHandler {
         let mut node_to_replicate = node_id;
         drop(node_reader);
 
-        for i in 0..N_NODES {
+        for i in 0..Node::get_actual_n_nodes() {
             if (i as Uint) < replication_factor_quantity {
                 response = if node_to_replicate == self.id {
                     let mut node_writer = self.write()?;
