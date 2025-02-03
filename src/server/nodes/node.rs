@@ -533,6 +533,10 @@ impl Node {
         let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
         if !self.has_endpoint_state_by_id(&guessed_id) {
             println!("Nodo {} presentado.", guessed_id);
+            if Self::get_actual_n_nodes() > N_NODES as usize {
+                self.nodes_ranges = divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes());
+                self.nodes_weights.push(1);
+            }
             self.neighbours_states.insert(guessed_id, state);
         }
         Ok(())
@@ -545,6 +549,11 @@ impl Node {
         for (node_id, endpoint_state) in new_neighbours {
             if !self.has_endpoint_state_by_id(&node_id) {
                 println!("Nodo {} presentado.", node_id);
+                if Self::get_actual_n_nodes() > N_NODES as usize {
+                    self.nodes_ranges =
+                        divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes());
+                    self.nodes_weights.push(1);
+                }
             }
             self.neighbours_states.insert(node_id, endpoint_state);
         }

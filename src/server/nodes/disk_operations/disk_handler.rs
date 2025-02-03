@@ -83,19 +83,6 @@ impl DiskHandler {
         Ok(storage_addr)
     }
 
-    /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.
-    pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) {
-        let file = OpenOptions::new()
-            .append(true)
-            .open(NODES_IPS_PATH)
-            .expect("No se pudo abrir el archivo de IPs de nodos");
-
-        let mut writer = BufWriter::new(&file);
-        writer
-            .write_all(format!("{},{}\n", id, ip).as_bytes())
-            .expect("No se pudo escribir en el archivo de IPs de nodos");
-    }
-
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
     pub fn get_node_storage(id: NodeId) -> String {
         format!("{}/{}_{}", STORAGE_PATH, STORAGE_NODE_PATH, id)
@@ -130,6 +117,19 @@ impl DiskHandler {
             ));
         }
         store_json(&*node, &Self::get_node_metadata_path(node.get_id()))
+    }
+
+    /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.
+    pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) {
+        let file = OpenOptions::new()
+            .append(true)
+            .open(NODES_IPS_PATH)
+            .expect("No se pudo abrir el archivo de IPs de nodos");
+
+        let mut writer = BufWriter::new(&file);
+        writer
+            .write_all(format!("{},{}\n", id, ip).as_bytes())
+            .expect("No se pudo escribir en el archivo de IPs de nodos");
     }
 
     /// Crea un nuevo keyspace en el caso que corresponda.
