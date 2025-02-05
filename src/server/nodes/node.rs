@@ -531,11 +531,14 @@ impl Node {
     /// Agrega un nuevo vecino conocido por el nodo.
     pub fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
         let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
+        let actual_n_nodes = Self::get_actual_n_nodes();
         if !self.has_endpoint_state_by_id(&guessed_id) {
             println!("Nodo {} presentado.", guessed_id);
-            if Self::get_actual_n_nodes() > N_NODES as usize {
-                self.nodes_ranges = divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes());
-                self.nodes_weights.push(1);
+            if actual_n_nodes > N_NODES as usize {
+                self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
+                if self.nodes_weights.len() < actual_n_nodes {
+                    self.nodes_weights.push(1);
+                }
             }
             self.neighbours_states.insert(guessed_id, state);
         }
@@ -546,13 +549,15 @@ impl Node {
     ///
     /// No se comprueba si las entradas nuevas son más recientes o no: reemplaza todo sin preguntar.
     pub fn update_neighbours(&mut self, new_neighbours: NodesMap) -> Result<()> {
+        let actual_n_nodes = Self::get_actual_n_nodes();
         for (node_id, endpoint_state) in new_neighbours {
             if !self.has_endpoint_state_by_id(&node_id) {
                 println!("Nodo {} presentado.", node_id);
-                if Self::get_actual_n_nodes() > N_NODES as usize {
-                    self.nodes_ranges =
-                        divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes());
-                    self.nodes_weights.push(1);
+                if actual_n_nodes > N_NODES as usize {
+                    self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
+                    if self.nodes_weights.len() < actual_n_nodes {
+                        self.nodes_weights.push(1);
+                    }
                 }
             }
             self.neighbours_states.insert(node_id, endpoint_state);
