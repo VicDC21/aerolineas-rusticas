@@ -568,7 +568,10 @@ impl Node {
             // la informacion en su archivo csv, entonces se agrega a su archivo correspondiente.
             // Se asume que esta info es válida.
             if !Self::id_exists(&node_id) {
-                DiskHandler::store_new_node_id_and_ip(node_id, endpoint_state.get_addr().to_string().as_str());
+                DiskHandler::store_new_node_id_and_ip(
+                    node_id,
+                    endpoint_state.get_addr().to_string().as_str(),
+                );
             }
             if !self.has_endpoint_state_by_id(&node_id) {
                 println!("Nodo {} presentado.", node_id);

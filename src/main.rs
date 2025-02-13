@@ -127,8 +127,7 @@ fn print_err(res: Result<()>) {
     }
 }
 
-
-/* 
+/*
 ENUNCIADO:
 
 Reconfiguración dinámica del cluster
@@ -177,9 +176,8 @@ PASO 3:
 Preguntas a martin:
 
 Los nodos originales pueden ser dados de baja?
-Habria que ver si hay que agregarle algo de seguridad para poder usar este comando, 
+Habria que ver si hay que agregarle algo de seguridad para poder usar este comando,
 ya que estas agregando un nodo nuevo al cluster (preguntar a martin).
 
 
 */
-
