@@ -65,7 +65,7 @@ pub enum SvAction {
     Ack2(NodesMap),
 
     /// Añadir un nuevo vecino.
-    NewNeighbour(EndpointState),
+    NewNeighbour(NodeId, EndpointState),
 
     /// Pedirle a este nodo que envie su endpoint state a otro nodo, dado el ID de este último.
     SendEndpointState(NodeId),
@@ -216,8 +216,8 @@ impl Byteable for SvAction {
                 bytes_vec.extend(Self::encode_nodes_map_to_bytes(nodes_map));
                 bytes_vec
             }
-            Self::NewNeighbour(state) => {
-                let mut bytes = vec![0xF6];
+            Self::NewNeighbour(id, state) => {
+                let mut bytes = vec![0xF6, *id];
                 bytes.extend(state.as_bytes());
                 bytes
             }
@@ -323,13 +323,16 @@ impl TryFrom<&[Byte]> for SvAction {
                 )?))
             }
             0xF6 => {
-                if bytes.len() < 2 {
+                if bytes.len() < 3 {
                     return Err(Error::ServerError(
                         "Conjunto de bytes demasiado chico para `NewNeighbour`.".to_string(),
                     ));
                 }
-                let state = EndpointState::try_from(&bytes[1..])?;
-                Ok(Self::NewNeighbour(state))
+                i += 1;
+                let id = bytes[i];
+                i += 1;
+                let state = EndpointState::try_from(&bytes[i..])?;
+                Ok(Self::NewNeighbour(id, state))
             }
             0xF7 => {
                 if bytes.len() < 2 {

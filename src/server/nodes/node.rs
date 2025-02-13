@@ -211,9 +211,7 @@ impl Node {
 
     /// Crea un nuevo nodo con un ID e IP específicos.
     fn init_new(id: NodeId, ip: &str, mode: ConnectionMode) -> Result<()> {
-        let nodes_ids = Self::get_nodes_ids();
-        let nodes_ips = AddrLoader::default_loaded().get_ips();
-        if nodes_ids.contains(&id) {
+        if Self::id_exists(&id) {
             return Err(Error::ServerError(format!(
                 "El ID {} ya está en uso por otro nodo.",
                 id
@@ -221,7 +219,7 @@ impl Node {
         }
         // Aca ya sabemos que la IP es válida, entonces no hace falta un else
         if let Ok(ip) = ip.parse::<IpAddr>() {
-            if nodes_ips.contains(&ip) {
+            if Self::ip_exists(&ip) {
                 return Err(Error::ServerError(format!(
                     "La IP {} ya está en uso por otro nodo.",
                     ip
@@ -459,6 +457,16 @@ impl Node {
         AddrLoader::default_loaded().get_ids().len()
     }
 
+    /// Devuelve _true_ si el ID dado existe en el archivo de IPs `node_ips.csv`, _false_ en caso contrario.
+    fn id_exists(id: &NodeId) -> bool {
+        AddrLoader::default_loaded().get_ids().contains(id)
+    }
+
+    /// Devuelve _true_ si la IP dada existe en el archivo de IPs `node_ips.csv`, _false_ en caso contrario.
+    fn ip_exists(ip: &IpAddr) -> bool {
+        AddrLoader::default_loaded().get_ips().contains(ip)
+    }
+
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
     pub fn select_node(&self, value: &str) -> NodeId {
         let nodes_ids = Self::get_nodes_ids();
@@ -483,7 +491,7 @@ impl Node {
     pub fn send_endpoint_state(&self, id: NodeId) {
         if send_to_node(
             id,
-            SvAction::NewNeighbour(self.get_endpoint_state().clone()).as_bytes(),
+            SvAction::NewNeighbour(self.id, self.get_endpoint_state().clone()).as_bytes(),
             PortType::Priv,
         )
         .is_err()
@@ -529,18 +537,23 @@ impl Node {
     }
 
     /// Agrega un nuevo vecino conocido por el nodo.
-    pub fn add_neighbour_state(&mut self, state: EndpointState) -> Result<()> {
-        let guessed_id = AddrLoader::default_loaded().get_id(state.get_addr())?;
+    pub fn add_neighbour_state(&mut self, id: NodeId, state: EndpointState) -> Result<()> {
+        // Esto es para el caso en el que el nodo se encuentra en otra computadora y no tiene
+        // la informacion en su archivo csv, entonces se agrega a su archivo correspondiente.
+        // Se asume que esta info es válida.
+        if !Self::id_exists(&id) {
+            DiskHandler::store_new_node_id_and_ip(id, state.get_addr().to_string().as_str());
+        }
         let actual_n_nodes = Self::get_actual_n_nodes();
-        if !self.has_endpoint_state_by_id(&guessed_id) {
-            println!("Nodo {} presentado.", guessed_id);
+        if !self.has_endpoint_state_by_id(&id) {
+            println!("Nodo {} presentado.", id);
             if actual_n_nodes > N_NODES as usize {
                 self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
                 if self.nodes_weights.len() < actual_n_nodes {
                     self.nodes_weights.push(1);
                 }
             }
-            self.neighbours_states.insert(guessed_id, state);
+            self.neighbours_states.insert(id, state);
         }
         Ok(())
     }
@@ -551,6 +564,12 @@ impl Node {
     pub fn update_neighbours(&mut self, new_neighbours: NodesMap) -> Result<()> {
         let actual_n_nodes = Self::get_actual_n_nodes();
         for (node_id, endpoint_state) in new_neighbours {
+            // Esto es para el caso en el que el nodo se encuentra en otra computadora y no tiene
+            // la informacion en su archivo csv, entonces se agrega a su archivo correspondiente.
+            // Se asume que esta info es válida.
+            if !Self::id_exists(&node_id) {
+                DiskHandler::store_new_node_id_and_ip(node_id, endpoint_state.get_addr().to_string().as_str());
+            }
             if !self.has_endpoint_state_by_id(&node_id) {
                 println!("Nodo {} presentado.", node_id);
                 if actual_n_nodes > N_NODES as usize {

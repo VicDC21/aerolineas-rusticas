@@ -171,7 +171,6 @@ impl SessionHandler {
                 self.write()?.beat();
             }
             SvAction::Gossip(neighbours) => {
-                // println!("Empieza gossip");
                 self.gossip(neighbours)?;
             }
             SvAction::Syn(emissor_id, gossip_info) => {
@@ -183,8 +182,8 @@ impl SessionHandler {
             SvAction::Ack2(nodes_map) => {
                 self.ack2(nodes_map)?;
             }
-            SvAction::NewNeighbour(state) => {
-                self.write()?.add_neighbour_state(state)?;
+            SvAction::NewNeighbour(id, state) => {
+                self.write()?.add_neighbour_state(id, state)?;
             }
             SvAction::SendEndpointState(id) => {
                 self.read()?.send_endpoint_state(id);
