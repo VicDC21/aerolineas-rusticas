@@ -1,29 +1,55 @@
 //! Módulo para correr un nodo.
 
 use {
-    aerolineas_rusticas::{protocol::aliases::types::Byte, server::nodes::node::Node},
-    std::env::args,
+    aerolineas_rusticas::{protocol::aliases::{types::Byte, results::Result}, server::nodes::node::Node},
+    std::{env::args, net::IpAddr},
 };
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
 
-    if argv.len() >= 2 {
-        match argv[1].parse::<Byte>() {
-            Ok(id) => {
-                if argv.len() == 3 && argv[2].to_ascii_lowercase() == "echo" {
-                    if let Err(err) = Node::init_in_echo_mode(id) {
-                        println!("{}", err);
+    if argv.len() >= 3 {
+        if argv[2] == "new" && argv.len() >= 4 {
+            // cargo run nd new <id> <ip> [echo]
+            match argv[3].parse::<Byte>() {
+                Ok(id) => {
+                    if argv[4].parse::<IpAddr>().is_ok() {
+                        println!("Nodo nuevo con id {} y dirección IP {}.", id, argv[4]);
+                        if argv.len() == 5 && argv[4].to_ascii_lowercase() == "echo" {
+                            print_err(Node::init_new_in_echo_mode(id, &argv[4]))
+                        } else {
+                            print_err(Node::init_new_in_parsing_mode(id, &argv[4]))
+                        }
+                    } else {
+                        println!("La IP no es válida.");
                     }
-                } else if let Err(err) = Node::init_in_parsing_mode(id) {
-                    println!("{}", err);
+                }
+                Err(_) => {
+                    println!("El id debe ser un número entero entre 0 y 255.");
                 }
             }
-            Err(_) => {
-                println!("El id debe ser un número entero entre 0 y 255.");
+        } else {
+            // cargo run nd <id> [echo]
+            match argv[2].parse::<Byte>() {
+                Ok(id) => {
+                    if argv.len() == 4 && argv[3].to_ascii_lowercase() == "echo" {
+                        print_err(Node::init_in_echo_mode(id))
+                    } else {
+                        print_err(Node::init_in_parsing_mode(id))
+                    }
+                }
+                Err(_) => {
+                    println!("El id debe ser un número entero entre 0 y 255.");
+                }
             }
         }
     } else {
-        println!("Uso:\n\ncargo run nd <id> [echo]\n");
+        println!("Uso:\n\ncargo run nd [new] <id> [<ip>] [echo]\n");
     };
+}
+
+fn print_err(res: Result<()>) {
+    if let Err(err) = res {
+        println!("{}", err);
+    }
 }
