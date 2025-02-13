@@ -126,3 +126,60 @@ fn print_err(res: Result<()>) {
         println!("{}", err);
     }
 }
+
+
+/* 
+ENUNCIADO:
+
+Reconfiguración dinámica del cluster
+
+Se pide realizar todos los cambios necesarios para que el sistema distribuido de DB soporte la
+incorporación y/o desvinculación de un nodo de la red. Es decir, dado un cluster de N nodos se
+deberá poder iniciar e incorporar un nuevo nodo a la red, de manera que este mismo reciba un
+rango de particionamiento para cada una de las tablas de la DB y los nodos existentes le envíen
+la información correspondiente a los datos del segmento de partición asignado al nuevo nodo. El
+nuevo nodo deberá entonces recibir la información de tablas, particiones y datos almacenados (de
+su propio segmento de particiones unicamente)
+
+
+
+NOTAS:
+
+Se agrega un nodo que funciona correctamente con gossip.
+Se agrega a traves de la consola mediante el comando "cargo run nd new <id> <ip> [echo]", habria que ver si hay que agregarle algo
+de seguridad para poder usar este comando, ya que estas agregando un nodo nuevo al cluster (preguntar a martin).
+
+
+Falta hacer que se recoloquen todas las tablas teniendo en cuenta el nuevo nodo agregado, habria que crear un estado que permita que los nodos
+se reorganicen tranquilamente sin que los usuarios puedan hacer consultas.
+
+
+PASO 3:
+    Formato de mensaje entre nodos para reinsertar cada fila donde corresponda, que cada componente mande cuantos elementos tiene dentro.
+    Ej: 2 Keyspace, adentro de la primer keyspace 2 tablas, adentro de la primer tabla, 2 filas
+
+    Keyspace
+        tabla
+            fila
+            fila
+        tabla
+            fila
+            fila
+    Keyspace
+        tabla
+            fila
+            ...
+        ...
+    ...
+
+
+
+Preguntas a martin:
+
+Los nodos originales pueden ser dados de baja?
+Habria que ver si hay que agregarle algo de seguridad para poder usar este comando, 
+ya que estas agregando un nodo nuevo al cluster (preguntar a martin).
+
+
+*/
+
