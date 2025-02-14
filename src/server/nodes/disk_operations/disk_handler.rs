@@ -163,6 +163,21 @@ impl DiskHandler {
         }
     }
 
+    /// Crea el directorio de un keyspace.
+    pub fn create_keyspace_dir(keyspace_name: &str, storage_addr: &str) -> Result<()> {
+        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let path_folder = Path::new(&keyspace_addr);
+        if path_folder.exists() && path_folder.is_dir() {
+            return Err(Error::ServerError(format!(
+                "El directorio del keyspace {} ya existe",
+                keyspace_name
+            )));
+        } else {
+            create_dir(path_folder).map_err(|e| Error::ServerError(e.to_string()))?;
+        }
+        Ok(())
+    }
+
     /// Elimina un keyspace en el caso que corresponda.
     pub fn drop_keyspace(keyspace_name: &str, storage_addr: &str) -> Result<()> {
         let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
@@ -219,7 +234,8 @@ impl DiskHandler {
         )))
     }
 
-    fn create_table_csv_file(
+    /// Crea el archivo csv de la tabla dada.
+    pub fn create_table_csv_file(
         storage_addr: &str,
         keyspace_name: &str,
         table_name: &str,
@@ -244,6 +260,20 @@ impl DiskHandler {
             .write_all((",row_timestamp\n").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
         Ok(())
+    }
+
+    /// Borra el archivo csv de la tabla dada.
+    pub fn delete_table_csv_file(
+        storage_addr: &str,
+        keyspace_name: &str,
+        table_name: &str,
+        node_number: Byte,
+    ) -> Result<()> {
+        let table_addr = format!(
+            "{}/{}/{}_replica_node_{}.csv",
+            storage_addr, keyspace_name, table_name, node_number
+        );
+        std::fs::remove_file(table_addr).map_err(|e| Error::ServerError(e.to_string()))
     }
 
     /// Repara las filas de la tabla con las filas pasadas por parámetro.

@@ -245,7 +245,16 @@ impl SessionHandler {
                 )?;
             }
             SvAction::ReceiveMetadata(metadata) => {
-                self.write()?.receive_metadata(metadata)?;
+                let mut node_writer = self.write()?;
+                node_writer.receive_metadata(metadata)?;
+            }
+            SvAction::ReallocationNeeded => self.write()?.reallocation_needed(),
+            SvAction::UpdateReplicas(new_node_id) => {
+                let res = self.write()?.update_node_replicas(new_node_id)?;
+                let _ = tcp_stream.write_all(&res);
+                if let Err(err) = tcp_stream.flush() {
+                    return Err(Error::ServerError(err.to_string()));
+                };
             }
         };
         Ok(stop)
@@ -306,7 +315,9 @@ impl SessionHandler {
         let left_response = match header.opcode {
             Opcode::Startup => self.handle_startup(&request[9..]),
             Opcode::Options => self.handle_options(),
-            Opcode::Query => self.handle_query(request, &header.length, is_internal_request, is_logged),
+            Opcode::Query => {
+                self.handle_query(request, &header.length, is_internal_request, is_logged)
+            }
             Opcode::Prepare => self.handle_prepare(),
             Opcode::Execute => self.handle_execute(),
             Opcode::Register => self.handle_register(),
@@ -1596,8 +1607,10 @@ impl SessionHandler {
     /// Consulta si el nodo ya está listo para recibir _queries_. Si lo está, actualiza su estado.
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
+        let node_status = node_reader.endpoint_state.get_appstate_status();
         if node_reader.neighbours_states.len() == Node::get_actual_n_nodes()
-            && *node_reader.endpoint_state.get_appstate_status() != AppStatus::Normal
+            && *node_status != AppStatus::Normal
+            && *node_status != AppStatus::ReallocatingData
         {
             drop(node_reader);
 

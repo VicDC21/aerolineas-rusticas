@@ -97,6 +97,12 @@ pub enum SvAction {
     /// Recibe la metadata `keyspaces`, `tables`, `tables_and_partitions_keys_values` y `default_keyspace_name`,
     /// para luego actualizar los atributos propios.
     ReceiveMetadata(Vec<Byte>),
+
+    /// Aviso de que se reacomodará el clúster, para no seguir realizando operaciones cliente-servidor.
+    ReallocationNeeded,
+
+    /// Actualiza las réplicas para adaptarse al nuevo nodo.
+    UpdateReplicas(NodeId),
 }
 
 impl SvAction {
@@ -264,7 +270,9 @@ impl Byteable for SvAction {
                 let mut bytes = vec![0xFF];
                 bytes.extend(metadata);
                 bytes
-            }, 
+            }
+            Self::ReallocationNeeded => vec![0xE0],
+            Self::UpdateReplicas(new_node_id) => vec![0xE1, *new_node_id],
         }
     }
 }
@@ -376,6 +384,8 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xFE => Ok(Self::SendMetadata(bytes[1])),
             0xFF => Ok(Self::ReceiveMetadata(bytes[1..].to_vec())),
+            0xE0 => Ok(Self::ReallocationNeeded),
+            0xE1 => Ok(Self::UpdateReplicas(bytes[1])),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

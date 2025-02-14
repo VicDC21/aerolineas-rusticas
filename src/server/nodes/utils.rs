@@ -53,6 +53,35 @@ pub fn next_node_in_the_cluster(current_id: Byte, nodes_ids: &[Byte]) -> Byte {
     }
 }
 
+/// Devuelve el ID del nodo `n`-ésimo en el cluster.
+/// Si `reverse` es `true`, se busca el `n`-ésimo nodo en sentido contrario.
+///
+/// Se asume que el vector de IDs de los nodos está ordenado de menor a mayor.
+pub fn n_th_node_in_the_cluster(
+    current_id: Byte,
+    nodes_ids: &[Byte],
+    n: usize,
+    reverse: bool,
+) -> Byte {
+    let current_index = match nodes_ids.binary_search(&current_id) {
+        Ok(index) => index,
+        Err(_) => return nodes_ids[0], // si no se encuentra, se asume que es el primer nodo
+    };
+    let mut new_index = if reverse {
+        current_index - n
+    } else {
+        current_index + n
+    };
+    if new_index >= nodes_ids.len() {
+        new_index -= nodes_ids.len();
+    }
+    if new_index < 1 {
+        // era menor a 0
+        new_index += nodes_ids.len();
+    }
+    nodes_ids[new_index]
+}
+
 /// Manda un mensaje a un nodo específico.
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;

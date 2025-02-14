@@ -40,23 +40,29 @@ use {
                 internal_threads::{beater, create_client_and_private_conexion, gossiper},
                 keyspace_metadata::keyspace::Keyspace,
                 port_type::PortType,
-                session_handler::get_partition_value_from_insert,
+                session_handler::{get_partition_value_from_insert, TIMEOUT_SECS},
                 states::{
                     appstatus::AppStatus,
                     endpoints::EndpointState,
                     heartbeat::{GenType, VerType},
                 },
                 table_metadata::table::Table,
-                utils::{divide_range, hash_value, send_to_node},
+                utils::{
+                    divide_range, hash_value, n_th_node_in_the_cluster, send_to_node,
+                    send_to_node_and_wait_response_with_timeout,
+                },
             },
             utils::load_json,
         },
-    }, serde::{Deserialize, Serialize}, serde_json::{json, Value}, std::{
+    },
+    serde::{Deserialize, Serialize},
+    serde_json::{json, Value},
+    std::{
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
         thread::JoinHandle,
-    }
+    },
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -204,7 +210,7 @@ impl Node {
         let _ = gossiper.join();*/
 
         if is_new {
-            //self::reallocation_of_nodes()
+            Self::notify_reallocation_is_needed();
             Self::request_previous_metadata_for_new_node(id);
         }
 
@@ -1038,11 +1044,37 @@ impl Node {
         Ok(replicas)
     }
 
+    /// Notifica a todos los nodos que una reasignacion de los datos es necesaria.
+    fn notify_reallocation_is_needed() {
+        let nodes_ids = Self::get_nodes_ids();
+        for node_id in nodes_ids {
+            if send_to_node(
+                node_id,
+                SvAction::ReallocationNeeded.as_bytes(),
+                PortType::Priv,
+            )
+            .is_err()
+            {
+                println!(
+                    "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                    node_id, node_id,
+                );
+            }
+        }
+    }
+
+    /// Actualiza el estado del nodo a ReallocatingData, notificando que el nodo debe
+    /// reasignar sus datos antes de poder seguir funcionando normalmente.
+    pub fn reallocation_needed(&mut self) {
+        self.endpoint_state
+            .set_appstate_status(AppStatus::ReallocatingData);
+    }
+
     /// Pide la metadata previa del clúster para un nodo nuevo, así inicia con toda
     /// la información necesaria para acoplarse.
     fn request_previous_metadata_for_new_node(id: NodeId) {
         // Elegimos un nodo arbitrario, ya que todos los nodos tienen la misma metadata.
-        let node_id = Self::get_nodes_ids()[0];        
+        let node_id = Self::get_nodes_ids()[0];
         if send_to_node(
             node_id,
             SvAction::SendMetadata(id).as_bytes(),
@@ -1083,22 +1115,27 @@ impl Node {
             Err(e) => return Err(Error::ServerError(e.to_string())),
         };
 
-        let tables: HashMap<String, Table> = match serde_json::from_value(metadata_json["tables"].clone()) {
-            Ok(value) => value,
-            Err(e) => return Err(Error::ServerError(e.to_string())),
-        };
-        let keyspaces: HashMap<String, Keyspace> = match serde_json::from_value(metadata_json["keyspaces"].clone()) {
-            Ok(value) => value,
-            Err(e) => return Err(Error::ServerError(e.to_string())),
-        };
-        let tables_and_partitions_keys_values: HashMap<String, Vec<String>> = match serde_json::from_value(metadata_json["tables_and_partitions_keys_values"].clone()) {
-            Ok(value) => value,
-            Err(e) => return Err(Error::ServerError(e.to_string())),
-        };
-        let default_keyspace_name: String = match serde_json::from_value(metadata_json["default_keyspace_name"].clone()) {
-            Ok(value) => value,
-            Err(e) => return Err(Error::ServerError(e.to_string())),
-        };
+        let tables: HashMap<String, Table> =
+            match serde_json::from_value(metadata_json["tables"].clone()) {
+                Ok(value) => value,
+                Err(e) => return Err(Error::ServerError(e.to_string())),
+            };
+        let keyspaces: HashMap<String, Keyspace> =
+            match serde_json::from_value(metadata_json["keyspaces"].clone()) {
+                Ok(value) => value,
+                Err(e) => return Err(Error::ServerError(e.to_string())),
+            };
+        let tables_and_partitions_keys_values: HashMap<String, Vec<String>> =
+            match serde_json::from_value(metadata_json["tables_and_partitions_keys_values"].clone())
+            {
+                Ok(value) => value,
+                Err(e) => return Err(Error::ServerError(e.to_string())),
+            };
+        let default_keyspace_name: String =
+            match serde_json::from_value(metadata_json["default_keyspace_name"].clone()) {
+                Ok(value) => value,
+                Err(e) => return Err(Error::ServerError(e.to_string())),
+            };
 
         self.tables = tables;
         self.keyspaces = keyspaces;
@@ -1106,7 +1143,63 @@ impl Node {
         self.default_keyspace_name = default_keyspace_name;
 
         println!("Metadata del clúster recibida.");
+
+        for keyspace_name in self.keyspaces.keys() {
+            DiskHandler::create_keyspace_dir(keyspace_name, &self.storage_addr)?;
+        }
+        for table in self.tables.values() {
+            let replicas_to_create = 3;
+            for position in 0..replicas_to_create {
+                let id_of_replica =
+                    n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), position, true);
+                DiskHandler::create_table_csv_file(
+                    &self.storage_addr,
+                    &table.keyspace,
+                    &table.name,
+                    &table.get_columns_names(),
+                    id_of_replica,
+                )?;
+            }
+        }
+        let replicas_to_create = 3;
+        for position in 1..replicas_to_create {
+            let id_of_replica =
+                n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), position, false);
+            let _response = send_to_node_and_wait_response_with_timeout(
+                id_of_replica,
+                SvAction::UpdateReplicas(self.id).as_bytes(),
+                PortType::Priv,
+                true,
+                Some(TIMEOUT_SECS),
+            )?;
+        }
+
         Ok(())
+    }
+
+    /// Actualiza las replicas para adaptarse al nodo nuevo.
+    pub fn update_node_replicas(&mut self, new_node_id: NodeId) -> Result<Vec<Byte>> {
+        for table in self.tables.values() {
+            DiskHandler::create_table_csv_file(
+                &self.storage_addr,
+                &table.keyspace,
+                &table.name,
+                &table.get_columns_names(),
+                new_node_id,
+            )?;
+        }
+        let replica_pos_to_delete = 2;
+        let id_of_replica_to_delete =
+            n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), replica_pos_to_delete, true);
+        for table in self.tables.values() {
+            DiskHandler::delete_table_csv_file(
+                &self.storage_addr,
+                &table.keyspace,
+                &table.name,
+                id_of_replica_to_delete,
+            )?;
+        }
+        Ok(vec![1])
     }
 
     /// Espera a que terminen todos los handlers.
