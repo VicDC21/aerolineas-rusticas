@@ -51,14 +51,12 @@ use {
             },
             utils::load_json,
         },
-    },
-    serde::{Deserialize, Serialize},
-    std::{
+    }, serde::{Deserialize, Serialize}, serde_json::{json, Value}, std::{
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
         thread::JoinHandle,
-    },
+    }
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -205,11 +203,16 @@ impl Node {
         let _ = gossip_stopper.send(true);
         let _ = gossiper.join();*/
 
+        if is_new {
+            //self::reallocation_of_nodes()
+            Self::request_previous_metadata_for_new_node(id);
+        }
+
         Self::wait(handlers);
         Ok(())
     }
 
-    /// Crea un nuevo nodo con un ID e IP específicos.
+    /// Agrega un nuevo nodo al clúster con un ID e IP específicos.
     fn init_new(id: NodeId, ip: &str, mode: ConnectionMode) -> Result<()> {
         if Self::id_exists(&id) {
             return Err(Error::ServerError(format!(
@@ -523,6 +526,14 @@ impl Node {
         self.neighbours_states.contains_key(node_id)
     }
 
+    /// Consulta si el nodo puede procesar consultas.
+    pub fn is_responsive(&self) -> bool {
+        matches!(
+            self.endpoint_state.get_appstate().get_status(),
+            AppStatus::Normal
+        )
+    }
+
     /// Consulta si el nodo todavía esta booteando.
     pub fn is_bootstraping(&self) -> bool {
         matches!(
@@ -832,10 +843,6 @@ impl Node {
         timestamp: Long,
         node_number: Byte,
     ) -> Result<Vec<Byte>> {
-        println!(
-            "Inserta internamente siendo el nodo {} a la tabla del nodo {}",
-            self.id, node_number
-        );
         let table = self.get_table(&insert.table.get_name())?;
 
         DiskHandler::do_insert(
@@ -1029,6 +1036,77 @@ impl Node {
             }
         };
         Ok(replicas)
+    }
+
+    /// Pide la metadata previa del clúster para un nodo nuevo, así inicia con toda
+    /// la información necesaria para acoplarse.
+    fn request_previous_metadata_for_new_node(id: NodeId) {
+        // Elegimos un nodo arbitrario, ya que todos los nodos tienen la misma metadata.
+        let node_id = Self::get_nodes_ids()[0];        
+        if send_to_node(
+            node_id,
+            SvAction::SendMetadata(id).as_bytes(),
+            PortType::Priv,
+        )
+        .is_err()
+        {
+            println!(
+                "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                node_id, id,
+            )
+        }
+    }
+
+    /// Devuelve la metadata necesaria para la inicialización de un nuevo nodo.
+    pub fn get_metadata_to_new_node_as_bytes(&self) -> Result<Vec<Byte>> {
+        let metadata = json!({
+            "tables": self.tables,
+            "keyspaces": self.keyspaces,
+            "tables_and_partitions_keys_values": self.tables_and_partitions_keys_values,
+            "default_keyspace_name": self.default_keyspace_name,
+        });
+        let serialized = match serde_json::to_string(&metadata) {
+            Ok(value) => value,
+            Err(e) => return Err(Error::ServerError(e.to_string())),
+        };
+        Ok(serialized.as_bytes().to_vec())
+    }
+
+    /// Recibe la metadata para completar la inicialización de un nodo nuevo.
+    pub fn receive_metadata(&mut self, metadata: Vec<Byte>) -> Result<()> {
+        let metadata_str = match String::from_utf8(metadata) {
+            Ok(value) => value,
+            Err(e) => return Err(Error::ServerError(e.to_string())),
+        };
+        let metadata_json: Value = match serde_json::from_str(&metadata_str) {
+            Ok(value) => value,
+            Err(e) => return Err(Error::ServerError(e.to_string())),
+        };
+
+        let tables: HashMap<String, Table> = match serde_json::from_value(metadata_json["tables"].clone()) {
+            Ok(value) => value,
+            Err(e) => return Err(Error::ServerError(e.to_string())),
+        };
+        let keyspaces: HashMap<String, Keyspace> = match serde_json::from_value(metadata_json["keyspaces"].clone()) {
+            Ok(value) => value,
+            Err(e) => return Err(Error::ServerError(e.to_string())),
+        };
+        let tables_and_partitions_keys_values: HashMap<String, Vec<String>> = match serde_json::from_value(metadata_json["tables_and_partitions_keys_values"].clone()) {
+            Ok(value) => value,
+            Err(e) => return Err(Error::ServerError(e.to_string())),
+        };
+        let default_keyspace_name: String = match serde_json::from_value(metadata_json["default_keyspace_name"].clone()) {
+            Ok(value) => value,
+            Err(e) => return Err(Error::ServerError(e.to_string())),
+        };
+
+        self.tables = tables;
+        self.keyspaces = keyspaces;
+        self.tables_and_partitions_keys_values = tables_and_partitions_keys_values;
+        self.default_keyspace_name = default_keyspace_name;
+
+        println!("Metadata del clúster recibida.");
+        Ok(())
     }
 
     /// Espera a que terminen todos los handlers.

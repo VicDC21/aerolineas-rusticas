@@ -17,7 +17,7 @@ use {
             addr::loader::AddrLoader,
             node::{Node, NodeHandle, NodeId},
             port_type::PortType,
-            session_handler::SessionHandler,
+            session_handler::{make_error_response, SessionHandler},
             utils::send_to_node,
         },
     },
@@ -28,7 +28,7 @@ use {
     },
     std::{
         collections::HashSet,
-        io::{BufRead, BufReader, Read},
+        io::{BufRead, BufReader, Read, Write},
         net::{SocketAddr, TcpListener, TcpStream},
         sync::{
             mpsc::{self, channel, Sender},
@@ -224,9 +224,17 @@ fn listen_single_client(
             }
             break;
         }
-        let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
-        if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
-            is_logged = true;
+
+        if !session_handler.node_is_responsive()? {
+            let error = make_error_response(Error::ServerError(
+                "Se esta cambiando la estructura de los nodos, vuelva luego.".to_string(),
+            ));
+            let _ = tls.write_all(&error);
+        } else {
+            let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
+            if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
+                is_logged = true;
+            }
         }
     }
     Ok(())

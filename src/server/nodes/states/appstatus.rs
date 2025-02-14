@@ -26,6 +26,9 @@ pub enum AppStatus {
 
     /// El nodo no está respondiendo a los mensajes.
     Offline,
+
+    /// El nodo está reasignando su data.
+    ReallocatingData,
 }
 
 impl Byteable for AppStatus {
@@ -36,6 +39,7 @@ impl Byteable for AppStatus {
             Self::Left => vec![0x2],
             Self::Remove => vec![0x3],
             Self::Offline => vec![0x4],
+            Self::ReallocatingData => vec![0x5],
         }
     }
 }
@@ -56,6 +60,7 @@ impl TryFrom<&[Byte]> for AppStatus {
             0x2 => Ok(Self::Left),
             0x3 => Ok(Self::Remove),
             0x4 => Ok(Self::Offline),
+            0x5 => Ok(Self::ReallocatingData),
             _ => Err(Error::ServerError(format!(
                 "El ID '{}' no corresponde a ningún estado de aplicación.",
                 first

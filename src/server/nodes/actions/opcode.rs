@@ -89,6 +89,14 @@ pub enum SvAction {
 
     /// Agrega una relacion de tabla con un partition value
     AddPartitionValueToMetadata(String, String),
+
+    /// Pide los metadatos del nodo receptor para el nodo del ID dado, específicamente
+    /// `keyspaces`, `tables`, `tables_and_partitions_keys_values` y `default_keyspace_name`.
+    SendMetadata(NodeId),
+
+    /// Recibe la metadata `keyspaces`, `tables`, `tables_and_partitions_keys_values` y `default_keyspace_name`,
+    /// para luego actualizar los atributos propios.
+    ReceiveMetadata(Vec<Byte>),
 }
 
 impl SvAction {
@@ -251,6 +259,12 @@ impl Byteable for SvAction {
                 bytes.extend(encode_string_to_bytes(partition_value));
                 bytes
             }
+            Self::SendMetadata(node_id) => vec![0xFE, *node_id],
+            Self::ReceiveMetadata(metadata) => {
+                let mut bytes = vec![0xFF];
+                bytes.extend(metadata);
+                bytes
+            }, 
         }
     }
 }
@@ -360,6 +374,8 @@ impl TryFrom<&[Byte]> for SvAction {
                     partition_value,
                 ))
             }
+            0xFE => Ok(Self::SendMetadata(bytes[1])),
+            0xFF => Ok(Self::ReceiveMetadata(bytes[1..].to_vec())),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

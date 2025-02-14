@@ -236,6 +236,17 @@ impl SessionHandler {
                     None => None,
                 };
             }
+            SvAction::SendMetadata(node_id) => {
+                let response = self.read()?.get_metadata_to_new_node_as_bytes()?;
+                send_to_node(
+                    node_id,
+                    SvAction::ReceiveMetadata(response).as_bytes(),
+                    PortType::Priv,
+                )?;
+            }
+            SvAction::ReceiveMetadata(metadata) => {
+                self.write()?.receive_metadata(metadata)?;
+            }
         };
         Ok(stop)
     }
@@ -295,9 +306,7 @@ impl SessionHandler {
         let left_response = match header.opcode {
             Opcode::Startup => self.handle_startup(&request[9..]),
             Opcode::Options => self.handle_options(),
-            Opcode::Query => {
-                self.handle_query(request, &header.length, is_internal_request, is_logged)
-            }
+            Opcode::Query => self.handle_query(request, &header.length, is_internal_request, is_logged),
             Opcode::Prepare => self.handle_prepare(),
             Opcode::Execute => self.handle_execute(),
             Opcode::Register => self.handle_register(),
@@ -1822,6 +1831,11 @@ impl SessionHandler {
         Ok(is_ready)
     }
 
+    /// Consulta si el nodo contenido puede recibir consultas.
+    pub fn node_is_responsive(&self) -> Result<bool> {
+        Ok(self.read()?.is_responsive())
+    }
+
     fn handle_result_from_node(
         &self,
         results_from_another_nodes: &mut Vec<Byte>,
@@ -1948,7 +1962,7 @@ impl Clone for SessionHandler {
 // ################################## AUXILIARES INDEPENDIENTES #################################
 // ##############################################################################################
 
-fn make_error_response(err: Error) -> Vec<Byte> {
+pub fn make_error_response(err: Error) -> Vec<Byte> {
     let mut response: Vec<Byte> = Vec::new();
     let mut bytes_err = err.as_bytes();
     response.append(&mut Version::ResponseV5.as_bytes());
