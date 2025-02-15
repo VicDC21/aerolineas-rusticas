@@ -28,7 +28,8 @@ pub type EndpointsVec = Vec<EndpointState>;
 /// Contiene los metadatos mínimos para comparar versiones de nodos.
 pub type GossipInfo = HashMap<NodeId, HeartbeatState>;
 
-const ACTION_MASK: Byte = 0xF0;
+//const ACTION_MASK: Byte = 0xF0;
+const ACTION_MASK: Byte = 0xE0;
 
 /// Una "acción" de servidor es un mensaje especial que no entra en ninguna especificaión
 /// del protocolo de Cassandra, y en su lugar es usado para acciones especiales fuera
@@ -108,7 +109,7 @@ pub enum SvAction {
 impl SvAction {
     /// Consulta si el conjunto de bytes dados empieza por el prefijo relevante.
     ///
-    /// Esto es, si los 4 bits más significativos son todos `1`.
+    /// Esto es, si al menos los 3 bits más significativos son todos `1`.
     pub fn is_action(bytes: &[Byte]) -> bool {
         if bytes.is_empty() {
             return false;
@@ -290,7 +291,7 @@ impl TryFrom<&[Byte]> for SvAction {
         let first = bytes[i];
         if !Self::is_action(bytes) {
             return Err(Error::ServerError(format!(
-                "Conjunto de bytes no empieza por `1111...`. En su lugar se recibió {:#b}",
+                "Conjunto de bytes no empieza por `111...`. En su lugar se recibió {:#b}",
                 first
             )));
         }

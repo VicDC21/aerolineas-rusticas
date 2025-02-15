@@ -1197,7 +1197,7 @@ impl Node {
                 new_node_id,
             )?;
         }
-        let replica_pos_to_delete = 2;
+        let replica_pos_to_delete = 3;
         let id_of_replica_to_delete =
             n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), replica_pos_to_delete, true);
         for table in self.tables.values() {
