@@ -247,6 +247,8 @@ impl SessionHandler {
             SvAction::ReceiveMetadata(metadata) => {
                 let mut node_writer = self.write()?;
                 node_writer.receive_metadata(metadata)?;
+                // Además continuamos el proceso de adaptación del clúster.
+                node_writer.create_necessary_dirs_and_csvs()?;
             }
             SvAction::ReallocationNeeded => self.write()?.reallocation_needed(),
             SvAction::UpdateReplicas(new_node_id) => {

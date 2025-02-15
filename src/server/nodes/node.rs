@@ -194,6 +194,28 @@ impl Node {
         Self::init_new(id, ip, ConnectionMode::Echo)
     }
 
+    /// Agrega un nuevo nodo al clúster con un ID e IP específicos.
+    fn init_new(id: NodeId, ip: &str, mode: ConnectionMode) -> Result<()> {
+        if Self::id_exists(&id) {
+            return Err(Error::ServerError(format!(
+                "El ID {} ya está en uso por otro nodo.",
+                id
+            )));
+        }
+        // Aca ya sabemos que la IP es válida, entonces no hace falta un else
+        if let Ok(ip) = ip.parse::<IpAddr>() {
+            if Self::ip_exists(&ip) {
+                return Err(Error::ServerError(format!(
+                    "La IP {} ya está en uso por otro nodo.",
+                    ip
+                )));
+            }
+        }
+        DiskHandler::store_new_node_id_and_ip(id, ip);
+
+        Self::init(id, mode, true)
+    }
+
     /// Crea un nodo con un ID específico.
     fn init(id: NodeId, mode: ConnectionMode, is_new: bool) -> Result<()> {
         let mut nodes_weights: Vec<usize> = Vec::new();
@@ -216,28 +238,6 @@ impl Node {
 
         Self::wait(handlers);
         Ok(())
-    }
-
-    /// Agrega un nuevo nodo al clúster con un ID e IP específicos.
-    fn init_new(id: NodeId, ip: &str, mode: ConnectionMode) -> Result<()> {
-        if Self::id_exists(&id) {
-            return Err(Error::ServerError(format!(
-                "El ID {} ya está en uso por otro nodo.",
-                id
-            )));
-        }
-        // Aca ya sabemos que la IP es válida, entonces no hace falta un else
-        if let Ok(ip) = ip.parse::<IpAddr>() {
-            if Self::ip_exists(&ip) {
-                return Err(Error::ServerError(format!(
-                    "La IP {} ya está en uso por otro nodo.",
-                    ip
-                )));
-            }
-        }
-        DiskHandler::store_new_node_id_and_ip(id, ip);
-
-        Self::init(id, mode, true)
     }
 
     /// Inicia la metadata y los hilos necesarios para que el nodo se conecte al cluster.
@@ -1071,7 +1071,7 @@ impl Node {
     }
 
     /// Pide la metadata previa del clúster para un nodo nuevo, así inicia con toda
-    /// la información necesaria para acoplarse.
+    /// la información necesaria para unirse al resto de nodos.
     fn request_previous_metadata_for_new_node(id: NodeId) {
         // Elegimos un nodo arbitrario, ya que todos los nodos tienen la misma metadata.
         let node_id = Self::get_nodes_ids()[0];
@@ -1143,15 +1143,23 @@ impl Node {
         self.default_keyspace_name = default_keyspace_name;
 
         println!("Metadata del clúster recibida.");
+        Ok(())
+    }
 
+    /// Crea los directorios y archivos CSV necesarios para el nodo nuevo.
+    ///
+    /// Además notifica a los nodos que correspondan que deben actualizar sus réplicas
+    /// para adaptarse.
+    pub fn create_necessary_dirs_and_csvs(&self) -> Result<()> {
         for keyspace_name in self.keyspaces.keys() {
             DiskHandler::create_keyspace_dir(keyspace_name, &self.storage_addr)?;
         }
+
+        let nodes_ids = Self::get_nodes_ids();
+        let replicas_to_create = 3;
         for table in self.tables.values() {
-            let replicas_to_create = 3;
             for position in 0..replicas_to_create {
-                let id_of_replica =
-                    n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), position, true);
+                let id_of_replica = n_th_node_in_the_cluster(self.id, &nodes_ids, position, true);
                 DiskHandler::create_table_csv_file(
                     &self.storage_addr,
                     &table.keyspace,
@@ -1161,11 +1169,9 @@ impl Node {
                 )?;
             }
         }
-        let replicas_to_create = 3;
         for position in 1..replicas_to_create {
-            let id_of_replica =
-                n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), position, false);
-            let _response = send_to_node_and_wait_response_with_timeout(
+            let id_of_replica = n_th_node_in_the_cluster(self.id, &nodes_ids, position, false);
+            let _ = send_to_node_and_wait_response_with_timeout(
                 id_of_replica,
                 SvAction::UpdateReplicas(self.id).as_bytes(),
                 PortType::Priv,
@@ -1178,6 +1184,9 @@ impl Node {
     }
 
     /// Actualiza las replicas para adaptarse al nodo nuevo.
+    ///
+    /// Se encarga de crear los archivos CSV necesarios para el nuevo nodo, y eliminar los que
+    /// ya no le corresponden.
     pub fn update_node_replicas(&mut self, new_node_id: NodeId) -> Result<Vec<Byte>> {
         for table in self.tables.values() {
             DiskHandler::create_table_csv_file(
@@ -1199,6 +1208,7 @@ impl Node {
                 id_of_replica_to_delete,
             )?;
         }
+        // Devolvemos un mensaje de éxito.
         Ok(vec![1])
     }
 
