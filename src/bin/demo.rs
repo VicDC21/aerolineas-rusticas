@@ -1,5 +1,5 @@
 use {
-    aerolineas_rusticas::simulator::cli::{run_sim, FlightConfigs},
+    simulator::cli::{run_sim, FlightConfigs},
     std::{fs::File, io::BufReader, path::Path},
 };
 

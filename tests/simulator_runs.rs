@@ -3,15 +3,14 @@
 mod common;
 
 use {
-    aerolineas_rusticas::{
-        client::{cli::Client, conn_holder::ConnectionHolder, protocol_result::ProtocolResult},
-        data::{
-            flights::{states::FlightState, types::FlightType},
-            login_info::LoginInfo,
-            tracking::live_flight_data::LiveFlightData,
-        },
-        simulator::flight_simulator::FlightSimulator,
+    client::{cli::Client, conn_holder::ConnectionHolder},
+    data::{
+        flights::{states::FlightState, types::FlightType},
+        login_info::LoginInfo,
+        protocol_result::ProtocolResult,
+        tracking::live_flight_data::LiveFlightData,
     },
+    simulator::flight_simulator::FlightSimulator,
     common::{clean_nodes, create_parsing_nodes},
     std::{thread::sleep, time::Duration},
 };

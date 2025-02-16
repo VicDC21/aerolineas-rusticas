@@ -1,0 +1,121 @@
+//! Módulo para plugin que detecta clicks.
+
+use {
+    crate::plugins::utils::zoom_is_showable,
+    data::{airports::airp::Airport, utils::distances::distance_euclidean_pos2},
+    eframe::egui::{Painter, PointerButton, Response},
+    protocol::aliases::types::{Double, Float},
+    std::sync::Arc,
+    walkers::{Plugin, Position, Projector},
+};
+
+// Distancia mínima para un potencial click.
+const MIN_CLICK_DIST: Double = 13.0;
+
+/// Rastrea el mouse y decta clicks.
+pub struct ScreenClicker {
+    // La lista de aeropuertos actualmente en memoria.
+    airports: Arc<Vec<Airport>>,
+
+    // El nivel de zoom actual.
+    zoom: Float,
+
+    // El último aeropuerto clickeado con el botón primario.
+    current_airport: Option<Option<Airport>>,
+
+    // El último aeropuerto clickeado con el botón secundario.
+    extra_airport: Option<Option<Airport>>,
+}
+
+impl ScreenClicker {
+    /// Crea una nueva instancia con la referencia al aeropuerto actual.
+    pub fn new(
+        airports: Arc<Vec<Airport>>,
+        zoom: Float,
+        current_airport: Option<Option<Airport>>,
+        extra_airport: Option<Option<Airport>>,
+    ) -> Self {
+        Self {
+            airports,
+            zoom,
+            current_airport,
+            extra_airport,
+        }
+    }
+
+    // Actualiza el valor de la lista de aeropuertos.
+    ///
+    /// Devuelve esta misma instancia para encadenar funciones.
+    pub fn sync_airports(&mut self, real_airports: Arc<Vec<Airport>>) -> &mut Self {
+        if !real_airports.is_empty() {
+            self.airports = real_airports;
+        }
+        self
+    }
+
+    /// Actualiza el valor de zoom desde afuera.
+    ///
+    /// Devuelve esta misma instancia para encadenar funciones.
+    pub fn sync_zoom(&mut self, real_zoom: Float) -> &mut Self {
+        self.zoom = real_zoom;
+        self
+    }
+
+    /// **Consume** el aeropuerto actualmente seleccionado y lo devuelve.
+    /// En su lugar deja [None].
+    ///
+    /// En caso de haber sido consumida en una iteración anterior, devuelve un vector vacío.
+    pub fn take_cur_airport(&mut self) -> Option<Option<Airport>> {
+        self.current_airport.take()
+    }
+
+    /// **Consume** el aeropuerto secundario y lo devuelve.
+    pub fn take_extra_airport(&mut self) -> Option<Option<Airport>> {
+        self.extra_airport.take()
+    }
+}
+
+impl Default for ScreenClicker {
+    fn default() -> Self {
+        Self::new(Arc::new(Vec::new()), 0.0, None, None)
+    }
+}
+
+impl Plugin for &mut ScreenClicker {
+    fn run(&mut self, response: &Response, _painter: Painter, projector: &Projector) {
+        let cur_opt = response.interact_pointer_pos();
+        let prim_click = response.clicked_by(PointerButton::Primary);
+        let sec_click = response.clicked_by(PointerButton::Secondary);
+
+        if !((prim_click) || sec_click) {
+            // Si arrastró o hizo otra cosa no nos interesa
+            return;
+        }
+
+        if let Some(cur_pos) = cur_opt {
+            for airport in self.airports.iter() {
+                let (lat, lon) = airport.position;
+                let airport_pos = projector
+                    .project(Position::from_lat_lon(lat, lon))
+                    .to_pos2();
+                if zoom_is_showable(&airport.airport_type, self.zoom)
+                    && distance_euclidean_pos2(&cur_pos, &airport_pos) < MIN_CLICK_DIST
+                {
+                    if prim_click {
+                        self.current_airport = Some(Some(airport.clone()));
+                    } else if sec_click {
+                        self.extra_airport = Some(Some(airport.clone()));
+                    }
+                    return;
+                }
+            }
+        }
+
+        // hubo click pero no cerca de ningún aeropuerto
+        if prim_click {
+            self.current_airport = Some(None);
+        } else if sec_click {
+            self.extra_airport = Some(None);
+        }
+    }
+}

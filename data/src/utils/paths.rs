@@ -1,0 +1,43 @@
+//! Módulo para funciones auxiliares de rutas.
+
+use {
+    crate::utils::strings::unify_quotes_tokens,
+    protocol::{aliases::results::Result, errors::error::Error},
+    std::{
+        fs::File,
+        io::{BufRead, BufReader},
+    },
+};
+
+/// Genera un reader desde una ruta.
+///
+/// Se puede elegir si se intenta saltarse la primera línea.
+pub fn reader_from(path: &str, skip_header: bool) -> Result<BufReader<File>> {
+    match File::open(path) {
+        Ok(file) => {
+            let mut bufreader = BufReader::new(file);
+            if skip_header {
+                if let Err(err) = bufreader.read_line(&mut String::new()) {
+                    println!("No se pudo saltar la primera línea:\n\n{}", err);
+                }
+            }
+            Ok(bufreader)
+        }
+        Err(_) => Err(Error::ServerError(format!(
+            "No se encontró un archivo en la ruta '{}'.",
+            path
+        ))),
+    }
+}
+
+/// Separa un &[str] con un delimitador dado, y también verifica si tiene una longitud necesaria.
+pub fn get_tokens(string: &str, delimiter: char, expected_len: usize) -> Result<Vec<String>> {
+    let tokens = string.split(delimiter).collect::<Vec<&str>>();
+    if tokens.len() < expected_len {
+        return Err(Error::ServerError(format!(
+            "La línea '{}' no parece tener suficientes elementos.",
+            string
+        )));
+    }
+    unify_quotes_tokens(tokens)
+}

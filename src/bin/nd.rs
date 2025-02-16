@@ -1,10 +1,8 @@
 //! Módulo para correr un nodo.
 
 use {
-    aerolineas_rusticas::{
-        protocol::aliases::{results::Result, types::Byte},
-        server::nodes::node::Node,
-    },
+    protocol::aliases::{results::Result, types::Byte},
+    server::nodes::node::Node,
     std::{env::args, net::IpAddr},
 };
 

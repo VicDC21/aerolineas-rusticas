@@ -1,7 +1,14 @@
 [workspace]
-
 members = [
-    "protocol"
+    # librerías
+    "client",
+    "data",
+    "interface",
+    "parser",
+    "protocol",
+    "server",
+    "simulator",
+    "tokenizer"
 ]
 
 # [package]

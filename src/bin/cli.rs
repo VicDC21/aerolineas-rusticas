@@ -1,6 +1,6 @@
 //! Módulo para correr el cliente.
 
-use aerolineas_rusticas::client::cli::Client;
+use client::cli::Client;
 
 fn main() {
     let mut client = Client::default();

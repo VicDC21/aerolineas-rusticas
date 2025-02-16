@@ -1,15 +1,13 @@
 use {
-    aerolineas_rusticas::{
-        client::cli::Client,
-        protocol::aliases::{results::Result, types::Byte},
-        server::nodes::{graph::NodesGraph, node::Node},
-        simulator::cli::{run_sim, FlightConfigs},
-    },
+    client::cli::Client,
+    protocol::aliases::{results::Result, types::Byte},
+    server::nodes::{graph::NodesGraph, node::Node},
+    simulator::cli::{run_sim, FlightConfigs},
     std::{env::args, fs::File, io::BufReader, net::IpAddr, path::Path},
 };
 
 #[cfg(feature = "gui")]
-use aerolineas_rusticas::interface::run::run_app;
+use interface::run::run_app;
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
