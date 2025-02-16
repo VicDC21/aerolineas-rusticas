@@ -249,6 +249,7 @@ impl SessionHandler {
                 node_writer.receive_metadata(metadata)?;
                 // Además continuamos el proceso de adaptación del clúster.
                 node_writer.create_necessary_dirs_and_csvs()?;
+                node_writer.send_run_reallocation_message(self.id);
             }
             SvAction::ReallocationNeeded => self.write()?.reallocation_needed(),
             SvAction::UpdateReplicas(new_node_id) => {
@@ -258,6 +259,11 @@ impl SessionHandler {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
+            SvAction::RunReallocation(initial_node_id) => {
+                self.write()?.reallocate_rows()?;
+                self.write()?.send_run_reallocation_message(initial_node_id);
+            }
+            SvAction::AddReallocatedRows(rows) => self.write()?.add_reallocated_rows(rows)?,
         };
         Ok(stop)
     }

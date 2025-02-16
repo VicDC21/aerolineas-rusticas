@@ -411,6 +411,26 @@ impl DiskHandler {
         Ok(rows_as_string)
     }
 
+    /// Obtiene todas las filas de la tabla dada.
+    pub fn get_all_rows(
+        table_name: &str,
+        storage_addr: &str,
+        default_keyspace: &str,
+        keyspace: &str,
+        node_number: Byte,
+    ) -> Result<Vec<Vec<String>>> {
+        let path = TablePath::new(
+            storage_addr,
+            Some(keyspace.to_string()),
+            table_name,
+            default_keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+        let rows = table_ops.read_rows(false)?;
+        Ok(rows)
+    }
+
     /// Selecciona filas en una tabla en el caso que corresponda.
     pub fn do_select(
         statement: &Select,
@@ -1065,5 +1085,13 @@ impl DiskHandler {
         }
 
         Ok(result)
+    }
+
+    pub fn remove_rows_in_reallocation(
+        storage_addr: &str,
+        table: &Table,
+        node_number: Byte,
+    ) -> Result<Vec<Byte>> {
+        todo!()
     }
 }

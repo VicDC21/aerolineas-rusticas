@@ -1074,7 +1074,12 @@ impl Node {
     /// la información necesaria para unirse al resto de nodos.
     fn request_previous_metadata_for_new_node(id: NodeId) {
         // Elegimos un nodo arbitrario, ya que todos los nodos tienen la misma metadata.
-        let node_id = Self::get_nodes_ids()[0];
+        let nodes_ids = Self::get_nodes_ids();
+        let node_id = if nodes_ids[0] == id {
+            nodes_ids[1]
+        } else {
+            nodes_ids[0]
+        };
         if send_to_node(
             node_id,
             SvAction::SendMetadata(id).as_bytes(),
@@ -1210,6 +1215,130 @@ impl Node {
         }
         // Devolvemos un mensaje de éxito.
         Ok(vec![1])
+    }
+
+    /// Envía un mensaje al "primer" nodo del clúster para que inicie la reasignación de filas.
+    pub fn send_run_reallocation_message(&self, initial_node_id: NodeId) {
+        let next_node_id = n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), 1, false);
+        if next_node_id != initial_node_id {
+            if send_to_node(
+                next_node_id,
+                SvAction::RunReallocation(initial_node_id).as_bytes(),
+                PortType::Priv,
+            )
+            .is_err()
+            {
+                println!(
+                    "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                    next_node_id, self.id,
+                )
+            }
+        } else {
+            // cambiar estado a normal, y terminaria el proceso de realocacion
+        }
+    }
+
+    /// Filtra las tablas que contiene para asegurarse de tener las filas que le
+    /// corresponden luego de que el rango de particiones haya cambiado por el
+    /// agregado de un nodo nuevo.
+    ///
+    /// Además notifica a sus réplicas que deben filtrarse también y al nodo siguiente
+    /// en el anillo del clúster.
+    pub fn reallocate_rows(&mut self) -> Result<()> {
+        for table in self.tables.values() {
+            let mut nodes_rows: HashMap<NodeId, Vec<String>> = HashMap::new();
+            let nodes_ids = Self::get_nodes_ids();
+            let rows = DiskHandler::get_all_rows(
+                table.get_name(),
+                &self.storage_addr,
+                &self.get_default_keyspace_name()?,
+                table.get_keyspace(),
+                self.id,
+            )?;
+            for node_id in &nodes_ids {
+                nodes_rows.insert(*node_id, Vec::new());
+                if let Some(node_rows) = nodes_rows.get_mut(node_id) {
+                    node_rows.push(table.get_keyspace().to_string())
+                }
+                if let Some(node_rows) = nodes_rows.get_mut(node_id) {
+                    node_rows.push(table.get_name().to_string())
+                }
+            }
+
+            for row in rows {
+                let partition_key_value = &row[table.get_position_of_partition_key()?];
+                let node_id = self.select_node(partition_key_value);
+                if let Some(node_rows) = nodes_rows.get_mut(&node_id) {
+                    node_rows.push(row.join(","))
+                }
+            }
+
+            for (node_id, rows) in nodes_rows.iter() {
+                if rows.len() > 2 {
+                    send_to_node(
+                        *node_id,
+                        SvAction::AddReallocatedRows(rows.join("\n").as_bytes().to_vec())
+                            .as_bytes(),
+                        PortType::Priv,
+                    )?
+                }
+            }
+
+            // Filtrar replicas
+
+            let replicas_quantity = match self.keyspaces.get(&table.keyspace) {
+                Some(keyspace) => match keyspace.simple_replicas() {
+                    Some(replicas) => replicas,
+                    None => {
+                        return Err(Error::ServerError(
+                            "Se debe usar tipo de réplicas simple".to_string(),
+                        ))
+                    }
+                },
+                None => {
+                    return Err(Error::ServerError(
+                        "El keyspace pedido no existe".to_string(),
+                    ))
+                }
+            };
+            for position in 0..replicas_quantity {
+                let actual_replica_node =
+                    n_th_node_in_the_cluster(self.id, &nodes_ids, position as usize, true);
+                let mut node_rows: Vec<String> = Vec::new();
+                if position != 0 {
+                    let rows = DiskHandler::get_all_rows(
+                        table.get_name(),
+                        &self.storage_addr,
+                        &self.get_default_keyspace_name()?,
+                        table.get_keyspace(),
+                        actual_replica_node,
+                    )?;
+                    for row in rows {
+                        let partition_key_value = &row[table.get_position_of_partition_key()?];
+                        let node_id = self.select_node(partition_key_value);
+                        if node_id == (actual_replica_node as u8) {
+                            node_rows.push(row.join(","))
+                        }
+                    }
+                } else if let Some(rows) = nodes_rows.remove(&self.id) {
+                    node_rows.extend(rows);
+                }
+                DiskHandler::repair_rows(
+                    &self.storage_addr,
+                    table.get_name(),
+                    table.get_keyspace(),
+                    &self.get_default_keyspace_name()?,
+                    actual_replica_node,
+                    &node_rows.join("\n"),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// TODO
+    pub fn add_reallocated_rows(&self, _rows: Vec<Byte>) -> Result<()> {
+        todo!()
     }
 
     /// Espera a que terminen todos los handlers.

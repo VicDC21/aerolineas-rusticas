@@ -104,6 +104,12 @@ pub enum SvAction {
 
     /// Actualiza las réplicas para adaptarse al nuevo nodo.
     UpdateReplicas(NodeId),
+
+    /// Avisa al receptor que debe comenzar el proceso de reasignación de sus filas.
+    RunReallocation(NodeId),
+
+    /// TODO
+    AddReallocatedRows(Vec<Byte>),
 }
 
 impl SvAction {
@@ -274,6 +280,12 @@ impl Byteable for SvAction {
             }
             Self::ReallocationNeeded => vec![0xE0],
             Self::UpdateReplicas(new_node_id) => vec![0xE1, *new_node_id],
+            Self::RunReallocation(initial_node_id) => vec![0xE2, *initial_node_id],
+            Self::AddReallocatedRows(rows) => {
+                let mut bytes = vec![0xE3];
+                bytes.extend(rows);
+                bytes
+            }
         }
     }
 }
@@ -387,6 +399,8 @@ impl TryFrom<&[Byte]> for SvAction {
             0xFF => Ok(Self::ReceiveMetadata(bytes[1..].to_vec())),
             0xE0 => Ok(Self::ReallocationNeeded),
             0xE1 => Ok(Self::UpdateReplicas(bytes[1])),
+            0xE2 => Ok(Self::RunReallocation(bytes[1])),
+            0xE3 => Ok(Self::AddReallocatedRows(bytes[1..].to_vec())),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first
