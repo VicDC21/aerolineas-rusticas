@@ -1,4 +1,4 @@
-use crate::statements::ddl_statement::ddl_statement_parser::check_words
+use crate::statements::ddl_statement::ddl_statement_parser::check_words;
 use protocol::aliases::results::Result;
 
 /// Verifica si la lista dada es una sentencia de STARTUP. Si lo es, retorna Some(()), si no, retorna None.

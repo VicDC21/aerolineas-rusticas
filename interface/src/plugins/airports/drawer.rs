@@ -1,11 +1,11 @@
 //! Módulo que dibuja aeropuertos.
 
 use {
-    crate::plugins::utils::{load_egui_img, zoom_is_showable},
-    data::{
-        airports::{airp::Airport, types::AirportType},
+    crate::{
+        plugins::utils::{load_egui_img, zoom_is_showable},
         utils::distances::distance_euclidean_pos2,
     },
+    data::airports::{airp::Airport, types::AirportType},
     eframe::egui::{Context, Painter, Pos2, Response, Rgba, Stroke},
     protocol::aliases::types::{Double, Float},
     std::{collections::HashMap, sync::Arc},

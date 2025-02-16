@@ -1,17 +1,8 @@
-use crate::{
-    connection::set_client_and_connection,
-    utils::get_current_timestamp,
-};
-use client::cli::{
-    Client,
-    TlsStream,
-};
+use crate::{connection::set_client_and_connection, utils::get_current_timestamp};
+use client::cli::{Client, TlsStream};
 use data::tracking::live_flight_data::LiveFlightData;
 use protocol::{
-    aliases::{
-        results::Result,
-        types::Double,
-    },
+    aliases::{results::Result, types::Double},
     errors::error::Error,
 };
 

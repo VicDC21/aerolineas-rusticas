@@ -47,9 +47,7 @@ use {
             types::{Byte, Int, Long, Short, Uint, Ulong},
         },
         errors::error::Error,
-        headers::{
-            flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
-        },
+        headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         messages::responses::result_kinds::ResultKind,
         traits::Byteable,
     },

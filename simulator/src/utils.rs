@@ -1,21 +1,12 @@
 use protocol::{
     aliases::{
         results::Result,
-        types::{
-            Double,
-            Long
-        },
+        types::{Double, Long},
     },
     errors::error::Error,
 };
-use rand::{
-    rngs::ThreadRng,
-    Rng,
-};
-use std::time::{
-    SystemTime,
-    UNIX_EPOCH,
-};
+use rand::{rngs::ThreadRng, Rng};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Funciones de utilidad para cálculos de vuelo
 pub struct FlightCalculations;

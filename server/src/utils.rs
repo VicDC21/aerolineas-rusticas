@@ -5,7 +5,7 @@ use {
         aliases::{results::Result, types::Byte},
         errors::error::Error,
     },
-    rustls::pki_types::CertificateDer,
+    rustls::pki_types::{pem::PemObject, CertificateDer},
     serde::{Deserialize, Serialize},
     std::{
         fs::{self, File},

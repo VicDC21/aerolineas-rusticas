@@ -2,7 +2,8 @@
 
 use {
     chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike},
-    client::conn_holder::ConnectionHolder, data::login_info::LoginInfo,
+    client::conn_holder::ConnectionHolder,
+    data::login_info::LoginInfo,
     eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window},
     egui_extras::DatePickerButton,
     protocol::aliases::types::Float,

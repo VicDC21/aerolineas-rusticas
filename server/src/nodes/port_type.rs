@@ -1,9 +1,6 @@
 //! Módulo para decidir el tipo de puerto.
 
-use {
-    protocol::aliases::types::Short,
-    std::convert::From,
-};
+use {protocol::aliases::types::Short, std::convert::From};
 
 /// Los nodos pueden utilizar varios puertos en sus conexiones.
 #[derive(Clone)]

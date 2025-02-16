@@ -1,16 +1,11 @@
 use crate::{
-    data_types::constant::Constant,
-    data_types::identifier::identifier_mod::Identifier,
-    data_types::term::Term,
-    statements::dml_statement::r#where::operator::Operator,
+    data_types::constant::Constant, data_types::identifier::identifier_mod::Identifier,
+    data_types::term::Term, statements::dml_statement::r#where::operator::Operator,
 };
 use protocol::{
     aliases::{
         results::Result,
-        types::{
-            Double,
-            Int
-        },
+        types::{Double, Int},
     },
     errors::error::Error,
 };

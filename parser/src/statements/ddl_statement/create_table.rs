@@ -1,18 +1,6 @@
 use crate::{
-    data_types::cql_type::{
-        cql_type_mod::CQLType,
-        native_types::NativeType,
-    },
-    primary_key::PrimaryKey,
-    statements::ddl_statement::column_definition::ColumnDefinition,
+    primary_key::PrimaryKey, statements::ddl_statement::column_definition::ColumnDefinition,
     table_name::TableName,
-};
-use protocol::{aliases::results::Result, errors::error::Error};
-use server::nodes::{
-    table_metadata::{
-        column_config::ColumnConfig,
-        column_data_type::ColumnDataType,
-    },
 };
 
 /// Representa una declaración CREATE TABLE en CQL.
@@ -60,35 +48,5 @@ impl CreateTable {
     /// Obtiene el nombre del keyspace al que pertenece la tabla.
     pub fn get_keyspace(&self) -> Option<String> {
         self.name.get_keyspace()
-    }
-
-    /// Obtiene las columnas de la tabla.
-    pub fn get_columns(&self) -> Result<Vec<ColumnConfig>> {
-        let mut vec = Vec::new();
-        for column in self.columns.iter() {
-            let vec_column = column.get_column_name();
-            let data_type: ColumnDataType = match column.get_data_type() {
-                CQLType::NativeType(native_type) => self.get_cql_type(native_type)?,
-                _ => {
-                    return Err(Error::Invalid(
-                        "Solo es soportado el tipo de dato nativo.".to_string(),
-                    ))
-                }
-            };
-            vec.push(ColumnConfig::new(vec_column, data_type));
-        }
-        Ok(vec)
-    }
-
-    fn get_cql_type(&self, native_type: &NativeType) -> Result<ColumnDataType> {
-        match native_type {
-            NativeType::Double => Ok(ColumnDataType::Double),
-            NativeType::Int => Ok(ColumnDataType::Int),
-            NativeType::Text => Ok(ColumnDataType::String),
-            NativeType::TimeStamp => Ok(ColumnDataType::Timestamp),
-            _ => Err(Error::SyntaxError(
-                "No se proporciono un tipo de dato soportado".to_string(),
-            )),
-        }
     }
 }

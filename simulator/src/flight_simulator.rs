@@ -1,7 +1,4 @@
-use crate::{
-    initializer::initialize_flight,
-    updater::simulate_flight
-};
+use crate::{initializer::initialize_flight, updater::simulate_flight};
 use data::{
     airports::airp::{Airport, AirportsMap},
     flights::states::FlightState,
@@ -18,11 +15,8 @@ use server::pool::threadpool::ThreadPool;
 use std::{
     collections::HashMap,
     process::exit,
-    sync::{
-        Arc,
-        RwLock
-    },
-},
+    sync::{Arc, RwLock},
+};
 
 /// La duración de una simulación.
 pub const FLIGHT_LIMIT_SECS: Ulong = 10;

@@ -1,23 +1,26 @@
 //! Módulo que contiene las funciones que implementan los hilos internos de un nodo.
 
 use {
-    crate::nodes::{
-        actions::opcode::SvAction,
-        addr::loader::AddrLoader,
-        node::{Node, NodeHandle, NodeId},
-        port_type::PortType,
-        session_handler::{make_error_response, SessionHandler},
-        utils::{handle_pem_file_iter, send_to_node},
-    },
-        protocol::{
-            aliases::{
-                results::Result,
-                types::{Byte, Ulong},
-            },
-            errors::error::Error,
-            headers::opcode::Opcode,
-            traits::Byteable,
+    crate::{
+        nodes::{
+            actions::opcode::SvAction,
+            addr::loader::AddrLoader,
+            node::{Node, NodeHandle, NodeId},
+            port_type::PortType,
+            session_handler::{make_error_response, SessionHandler},
+            utils::send_to_node,
         },
+        utils::handle_pem_file_iter,
+    },
+    protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, Ulong},
+        },
+        errors::error::Error,
+        headers::opcode::Opcode,
+        traits::Byteable,
+    },
     rand::{distributions::WeightedIndex, prelude::Distribution, thread_rng},
     rustls::{
         pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer},
@@ -374,11 +377,7 @@ pub fn gossiper(id: NodeId, nodes_weights: &[usize]) -> Result<(NodeHandle, Send
     }
 }
 
-fn exec_gossip(
-    receiver: Receiver<bool>,
-    id: NodeId,
-    weights: Vec<usize>,
-) -> Result<()> {
+fn exec_gossip(receiver: Receiver<bool>, id: NodeId, weights: Vec<usize>) -> Result<()> {
     loop {
         sleep(Duration::from_millis(GOSSIP_SLEEP_MILLIS));
         if let Ok(stop) = receiver.try_recv() {

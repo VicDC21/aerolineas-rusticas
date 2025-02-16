@@ -5,9 +5,7 @@ use {
         data::{app_details::AirlinesDetails, widget_details::WidgetDetails},
         panels::show::{cur_airport_info, extra_airport_info},
         plugins::{
-            airports::{
-                clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader,
-            },
+            airports::{clicker::ScreenClicker, drawer::AirportsDrawer, loader::AirportsLoader},
             flights::{loader::FlightsLoader, updater::FlightsUpdater},
         },
         windows::{

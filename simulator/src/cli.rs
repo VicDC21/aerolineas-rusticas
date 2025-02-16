@@ -3,10 +3,7 @@ use data::tracking::live_flight_data::LiveFlightData;
 use protocol::{
     aliases::{
         results::Result,
-        types::{
-            Double,
-            Int,
-        },
+        types::{Double, Int},
     },
     errors::error::Error,
 };

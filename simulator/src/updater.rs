@@ -1,33 +1,17 @@
 use crate::{
     connection::set_client_and_connection,
     flight_simulator::FLIGHT_LIMIT_SECS,
-    initializer::{
-        initialize_flight_parameters,
-        prepare_flight,
-    },
+    initializer::{initialize_flight_parameters, prepare_flight},
     sender::send_flight_update,
     utils::FlightCalculations,
 };
-use client::cli::{
-    Client,
-    TlsStream,
-};
-use data::{
-    flights::states::FlightState,
-    tracking::live_flight_data::LiveFlightData,
-};
+use client::cli::{Client, TlsStream};
+use data::{flights::states::FlightState, tracking::live_flight_data::LiveFlightData};
 use protocol::aliases::{
     results::Result,
-    types::{
-        Double,
-        Int,
-        Ulong,
-    },
+    types::{Double, Int, Ulong},
 };
-use rand::{
-    thread_rng,
-    rngs::ThreadRng,
-};
+use rand::{rngs::ThreadRng, thread_rng};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},

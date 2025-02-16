@@ -1,10 +1,7 @@
 //! Módulo que detalla una tabla.
 
 use {
-    crate::nodes::table_metadata::{
-        column_config::ColumnConfig,
-        column_data_type::ColumnDataType,
-    },
+    crate::nodes::table_metadata::{column_config::ColumnConfig, column_data_type::ColumnDataType},
     parser::statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
     protocol::{aliases::results::Result, errors::error::Error},
     serde::{Deserialize, Serialize},

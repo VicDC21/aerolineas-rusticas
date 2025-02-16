@@ -4,8 +4,9 @@ use {
     crate::{
         col_data::ColData,
         flights::{states::FlightState, types::FlightType},
-        protocol_result::ProtocolResult
+        protocol_result::ProtocolResult,
     },
+    chrono::{DateTime, Local, TimeZone},
     protocol::{
         aliases::{
             results::Result,
@@ -13,7 +14,6 @@ use {
         },
         errors::error::Error,
     },
-    chrono::{DateTime, Local, TimeZone},
 };
 
 /// Un vuelo propiamente dicho.

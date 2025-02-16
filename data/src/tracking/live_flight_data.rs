@@ -4,7 +4,7 @@ use {
     crate::{
         col_data::ColData,
         flights::{states::FlightState, types::FlightType},
-        protocol_result::ProtocolResult
+        protocol_result::ProtocolResult,
     },
     chrono::{DateTime, TimeZone, Utc},
     protocol::{

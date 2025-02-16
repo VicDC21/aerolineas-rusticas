@@ -1,6 +1,7 @@
 //! Módulo para el estado de un vuelo.
 use {
-    crate::{data::traits::PrettyShow, protocol::errors::error::Error},
+    crate::traits::PrettyShow,
+    protocol::errors::error::Error,
     std::fmt::{Display, Formatter, Result as FmtResult},
 };
 

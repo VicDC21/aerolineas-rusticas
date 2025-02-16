@@ -17,15 +17,15 @@ use {
         utils::load_json,
     },
     parser::{main_parser::make_parse, statements::statement::Statement},
-        protocol::{
-            aliases::{
-                results::Result,
-                types::{Byte, ShortInt},
-            },
-            errors::error::Error,
-            notations::consistency::Consistency,
-            traits::Byteable,
+    protocol::{
+        aliases::{
+            results::Result,
+            types::{Byte, ShortInt},
         },
+        errors::error::Error,
+        notations::consistency::Consistency,
+        traits::Byteable,
+    },
     rand::{
         distributions::{Distribution, WeightedIndex},
         thread_rng,

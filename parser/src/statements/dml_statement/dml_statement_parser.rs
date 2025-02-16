@@ -1,17 +1,12 @@
 use crate::{
     assignment::Assignment,
     data_types::{
-        identifier::identifier_mod::Identifier,
-        literal::tuple_literal::TupleLiteral,
-        term::Term,
+        identifier::identifier_mod::Identifier, literal::tuple_literal::TupleLiteral, term::Term,
     },
     statements::{
         ddl_statement::ddl_statement_parser::check_words,
         dml_statement::{
-            if_condition::{
-                Condition,
-                IfCondition
-            },
+            if_condition::{Condition, IfCondition},
             main_statements::{
                 delete::Delete,
                 insert::Insert,
@@ -455,15 +450,13 @@ mod tests {
         data_types::{
             constant::Constant,
             identifier::{
-                quoted_identifier::QuotedIdentifier,
-                unquoted_identifier::UnquotedIdentifier,
+                quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
             },
             keyspace_name::KeyspaceName,
             unquoted_name::UnquotedName,
         },
         statements::dml_statement::{
-            main_statements::select::ordering::ProtocolOrdering,
-            r#where::expression::Expression,
+            main_statements::select::ordering::ProtocolOrdering, r#where::expression::Expression,
         },
     };
     use tokenizer::tok::tokenize_query;

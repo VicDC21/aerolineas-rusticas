@@ -9,9 +9,7 @@ use {
             types::{Byte, Double, Int, Long, ShortInt, Uint},
         },
         errors::error::Error,
-        headers::{
-            flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version,
-        },
+        headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         messages::responses::{
             result::{col_type::ColType, rows_flags::RowsFlag},
             result_kinds::ResultKind,
@@ -20,15 +18,14 @@ use {
         traits::Byteable,
         utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
     },
-    server::nodes::{
-        actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
+    rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream},
+    server::{
         cql_frame::frame::Frame,
-        table_metadata::column_data_type::ColumnDataType,
+        nodes::{
+            actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
+            table_metadata::column_data_type::ColumnDataType,
+        },
         utils::handle_pem_file_iter,
-    },
-    tokenizer::tok::tokenize_query,
-    rustls::{
-        ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream,
     },
     std::{
         collections::HashSet,
@@ -38,6 +35,7 @@ use {
         sync::Arc,
         time::{Duration, Instant},
     },
+    tokenizer::tok::tokenize_query,
 };
 
 /// Un stream TLS.

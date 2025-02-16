@@ -1,6 +1,4 @@
-use crate::{
-    data_types::keyspace_name::KeyspaceName, statements::ddl_statement::option::Options,
-};
+use crate::{data_types::keyspace_name::KeyspaceName, statements::ddl_statement::option::Options};
 
 /// alter_keyspace_statement::= ALTER KEYSPACE [ IF EXISTS ] keyspace_name
 /// WITH options

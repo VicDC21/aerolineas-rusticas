@@ -1,11 +1,9 @@
 //! Módulo para operaciones CRUD en los paneles.
 
 use {
-    crate::utils::send_client_query,
+    crate::{utils::distances::distance_eta, utils::util::send_client_query},
     client::conn_holder::ConnectionHolder,
-    data::{
-        airports::airp::Airport, flights::states::FlightState, utils::distances::distance_eta,
-    },
+    data::{airports::airp::Airport, flights::states::FlightState},
     protocol::aliases::{
         results::Result,
         types::{Int, Long, Ulong},

@@ -1,31 +1,19 @@
 use crate::{
-    flight_simulator::{
-        FlightSimulator,
-        FLIGHT_LIMIT_SECS
-    },
+    flight_simulator::{FlightSimulator, FLIGHT_LIMIT_SECS},
     sender::send_flight_update,
     updater::update_flight_in_list,
-    utils::{
-        get_current_timestamp,
-        FlightCalculations,
-    },
+    utils::{get_current_timestamp, FlightCalculations},
 };
 use client::cli::{Client, TlsStream};
 use data::{
     airports::airp::Airport,
-    flights::{
-        states::FlightState,
-        types::FlightType
-    },
+    flights::{states::FlightState, types::FlightType},
     tracking::live_flight_data::LiveFlightData,
 };
 use protocol::{
     aliases::{
         results::Result,
-        types::{
-            Double,
-            Int,
-        },
+        types::{Double, Int},
     },
     errors::error::Error,
 };

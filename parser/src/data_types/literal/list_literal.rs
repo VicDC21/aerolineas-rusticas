@@ -1,4 +1,4 @@
-use crate::data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words;
+use crate::{data_types::term::Term, statements::ddl_statement::ddl_statement_parser::check_words};
 use protocol::{aliases::results::Result, errors::error::Error};
 
 /// Literal de tipo lista.

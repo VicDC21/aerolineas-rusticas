@@ -10,13 +10,19 @@ members = [
     "simulator",
     "tokenizer"
 ]
+# Necesario para que bien compatible con la edición 2021.
+# Por defecto es el "1", que confunde a Rust después.
+resolver = "2"
 
-# [package]
-# name = "aerolineas_rusticas"
-# version = "0.1.0"
-# edition = "2021"
-# # Para que funcione el `cargo run` por sí solo, y llame al binario principal.
-# default-run = "aerolineas_rusticas"
+
+[workspace.package]
+authors = [
+    "Franco Lighterman Reismann",
+    "Matias Mendiola",
+    "Francisco Antonio Pereyra",
+    "Victor Cipriano"
+]
+edition = "2021"
 
 # [features]
 # # La interfaz incorpora muchísimas dependencias. De ser posible, evitar compilarlo salvo

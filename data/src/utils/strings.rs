@@ -1,6 +1,6 @@
 //! Módulo para funciones auxiliares de [String]s.
 
-use crate::aliases::results::Result;
+use protocol::aliases::results::Result;
 
 /// Saca el caracter **LF** (`"\n"`), o de ser posible **CRLF** (`"\r\n"`).
 ///

@@ -7,18 +7,21 @@ use {
                 row_operations::RowOperations, table_operations::TableOperations,
                 table_path::TablePath,
             },
-            keyspace_metadata::{
-                keyspace::Keyspace, replication_strategy::ReplicationStrategy,
+            keyspace_metadata::{keyspace::Keyspace, replication_strategy::ReplicationStrategy},
+            node::{Node, NodeId},
+            table_metadata::{
+                column_config::ColumnConfig, column_data_type::ColumnDataType, table::Table,
             },
-            node::Node,
-            node::NodeId,
-            table_metadata::table::Table,
         },
         utils::store_json,
     },
     parser::{
         assignment::Assignment,
-        data_types::{constant::Constant, term::Term},
+        data_types::{
+            constant::Constant,
+            cql_type::{cql_type_mod::CQLType, native_types::NativeType},
+            term::Term,
+        },
         primary_key::PrimaryKey,
         statements::{
             ddl_statement::{
@@ -197,6 +200,36 @@ impl DiskHandler {
         }
     }
 
+    fn get_cql_type(native_type: &NativeType) -> Result<ColumnDataType> {
+        match native_type {
+            NativeType::Double => Ok(ColumnDataType::Double),
+            NativeType::Int => Ok(ColumnDataType::Int),
+            NativeType::Text => Ok(ColumnDataType::String),
+            NativeType::TimeStamp => Ok(ColumnDataType::Timestamp),
+            _ => Err(Error::SyntaxError(
+                "No se proporciono un tipo de dato soportado".to_string(),
+            )),
+        }
+    }
+
+    /// Obtiene las columnas de la tabla.
+    fn get_columns_from_table(cr_tabl: &CreateTable) -> Result<Vec<ColumnConfig>> {
+        let mut vec = Vec::new();
+        for column in cr_tabl.columns.iter() {
+            let vec_column = column.get_column_name();
+            let data_type: ColumnDataType = match column.get_data_type() {
+                CQLType::NativeType(native_type) => Self::get_cql_type(native_type)?,
+                _ => {
+                    return Err(Error::Invalid(
+                        "Solo es soportado el tipo de dato nativo.".to_string(),
+                    ))
+                }
+            };
+            vec.push(ColumnConfig::new(vec_column, data_type));
+        }
+        Ok(vec)
+    }
+
     /// Crea una nueva tabla en el caso que corresponda.
     pub fn create_table(
         statement: &CreateTable,
@@ -206,7 +239,7 @@ impl DiskHandler {
     ) -> Result<Option<Table>> {
         let (keyspace_name, table_name) =
             Self::validate_and_get_keyspace_table_names(statement, default_keyspace, storage_addr)?;
-        let columns = statement.get_columns()?;
+        let columns = Self::get_columns_from_table(statement)?;
         let columns_names = columns
             .iter()
             .map(|c| c.get_name())
@@ -920,7 +953,7 @@ impl DiskHandler {
             if let Some((_, data_type)) =
                 cols_name_and_type.iter().find(|(name, _)| name == col_name)
             {
-                let col_type = data_type.into::<ColType>();
+                let col_type: ColType = data_type.into();
                 metadata.append(&mut encode_string_to_bytes(col_name));
                 metadata.append(&mut col_type.as_bytes());
             }

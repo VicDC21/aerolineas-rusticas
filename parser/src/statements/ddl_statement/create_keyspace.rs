@@ -1,7 +1,4 @@
-use crate::{
-    data_types::keyspace_name::KeyspaceName,
-    statements::ddl_statement::option::Options,
-};
+use crate::{data_types::keyspace_name::KeyspaceName, statements::ddl_statement::option::Options};
 
 /// Representa una declaración CQL `CREATE KEYSPACE`.
 #[derive(Debug)]

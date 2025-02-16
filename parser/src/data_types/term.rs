@@ -1,6 +1,5 @@
 use {
-    crate::{parser::data_types::constant::Constant, protocol::aliases::results::Result},
-    std::cmp::Ordering,
+    crate::data_types::constant::Constant, protocol::aliases::results::Result, std::cmp::Ordering,
 };
 
 /// Término de una expresión.

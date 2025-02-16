@@ -1,8 +1,8 @@
 //! Módulo para plugin que detecta clicks.
 
 use {
-    crate::plugins::utils::zoom_is_showable,
-    data::{airports::airp::Airport, utils::distances::distance_euclidean_pos2},
+    crate::{plugins::utils::zoom_is_showable, utils::distances::distance_euclidean_pos2},
+    data::airports::airp::Airport,
     eframe::egui::{Painter, PointerButton, Response},
     protocol::aliases::types::{Double, Float},
     std::sync::Arc,

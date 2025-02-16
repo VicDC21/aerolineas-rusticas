@@ -1,11 +1,11 @@
 //! Módulo para plugin que va actualizando los vuelos en curso.
 
 use {
+    crate::plugins::{flights::loader::LiveDataMap, utils::load_egui_img},
     data::{
         airports::airp::{Airport, AirportsMap},
         tracking::live_flight_data::LiveFlightData,
     },
-    crate::plugins::{flights::loader::LiveDataMap, utils::load_egui_img},
     eframe::egui::{Color32, Context, Painter, Response, Shape, Stroke},
     protocol::aliases::{results::Result, types::Double},
     std::sync::Arc,

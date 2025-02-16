@@ -9,9 +9,7 @@ use {
             disk_operations::disk_handler::DiskHandler,
             node::{Node, NodeId, NodesMap /*N_NODES*/},
             port_type::PortType,
-            states::{
-                appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState,
-            },
+            states::{appstatus::AppStatus, endpoints::EndpointState, heartbeat::HeartbeatState},
             table_metadata::table::Table,
             utils::{
                 hash_value, next_node_in_the_cluster, send_to_node,

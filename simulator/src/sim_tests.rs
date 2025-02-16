@@ -1,14 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::flight_simulator::{
-        FlightSimulator,
-        FLIGHT_LIMIT_SECS,
-    };
+    use crate::flight_simulator::{FlightSimulator, FLIGHT_LIMIT_SECS};
     use data::flights::states::FlightState;
-    use protocol::aliases::{
-        results::Result,
-        types::Double,
-    };
+    use protocol::aliases::{results::Result, types::Double};
     use std::{thread, time::Duration};
 
     #[test]

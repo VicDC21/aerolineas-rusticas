@@ -2,12 +2,12 @@
 
 use {
     data::airports::{airp::Airport, types::AirportType},
+    eframe::egui::{ColorImage, Context},
+    image::{ImageError, ImageReader},
     protocol::{
         aliases::{results::Result, types::Float},
         errors::error::Error,
     },
-    eframe::egui::{ColorImage, Context},
-    image::{ImageError, ImageReader},
     std::result::Result as StdResult,
     walkers::{
         Position,

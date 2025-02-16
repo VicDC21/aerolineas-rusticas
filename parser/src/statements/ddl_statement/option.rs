@@ -1,7 +1,5 @@
 use crate::data_types::{
-    identifier::identifier_mod::Identifier,
-    literal::map_literal::MapLiteral,
-    term::Term,
+    identifier::identifier_mod::Identifier, literal::map_literal::MapLiteral, term::Term,
 };
 use protocol::{aliases::results::Result, errors::error::Error};
 

@@ -1,7 +1,7 @@
 //! Módulo para el editor de detalles de un vuelo.
 
 use {
-    crate::utils::send_client_query,
+    crate::utils::util::send_client_query,
     chrono::{DateTime, Local},
     client::conn_holder::ConnectionHolder,
     data::{
@@ -9,8 +9,8 @@ use {
         tracking::live_flight_data::LiveFlightData,
         traits::PrettyShow,
     },
-    protocol::aliases::results::Result,
     eframe::egui::{Align2, Color32, ComboBox, Frame, Key, RichText, Ui, Window},
+    protocol::aliases::results::Result,
 };
 
 /// Editor para modificar detalles de un vuelo en curso y sus datos en vivo.

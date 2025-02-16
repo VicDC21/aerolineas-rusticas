@@ -1,6 +1,7 @@
 //! Módulo para el _Heartbeat State_ de un nodo.
 
 use {
+    chrono::Utc,
     protocol::{
         aliases::{
             results::Result,
@@ -9,7 +10,6 @@ use {
         errors::error::Error,
         traits::Byteable,
     },
-    chrono::Utc,
     std::{
         cmp::{Ordering, PartialEq, PartialOrd},
         convert::TryFrom,

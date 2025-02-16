@@ -1,9 +1,6 @@
 //! Módulo para persisitir las configs de algunos widgets.
 
-use {
-    crate::windows::flight_editor::FlightEditorWindow
-    data::login_info::LoginInfo,
-};
+use {crate::windows::flight_editor::FlightEditorWindow, data::login_info::LoginInfo};
 
 /// Detalles de algunos widgets que necesitan persistir entre ciclos.
 pub struct WidgetDetails {

@@ -1,15 +1,9 @@
 use crate::{
-    data_types::{
-        identifier::identifier_mod::Identifier,
-        keyspace_name::KeyspaceName,
-    },
+    data_types::{identifier::identifier_mod::Identifier, keyspace_name::KeyspaceName},
     primary_key::PrimaryKey,
     statements::ddl_statement::{
         alter_keyspace::AlterKeyspace,
-        alter_table::{
-            AlterTable,
-            AlterTableInstruction,
-        },
+        alter_table::{AlterTable, AlterTableInstruction},
         column_definition::ColumnDefinition,
         create_keyspace::CreateKeyspace,
         create_table::CreateTable,
@@ -480,15 +474,15 @@ fn parse_column_names(list: &mut Vec<String>) -> Result<Vec<String>> {
 mod tests {
     use super::*;
     use crate::data_types::{
-            cql_type::{
-                cql_type_mod::CQLType,
-                native_types::NativeType::{Int, Text},
-            },
-            identifier::{
-                quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
-            },
-            unquoted_name::UnquotedName,
-        };
+        cql_type::{
+            cql_type_mod::CQLType,
+            native_types::NativeType::{Int, Text},
+        },
+        identifier::{
+            quoted_identifier::QuotedIdentifier, unquoted_identifier::UnquotedIdentifier,
+        },
+        unquoted_name::UnquotedName,
+    };
     use tokenizer::tok::tokenize_query;
 
     // USE STATEMENT TESTS:

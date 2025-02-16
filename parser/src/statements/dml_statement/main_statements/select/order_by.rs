@@ -1,11 +1,9 @@
 use {
     crate::{
-        parser::{
-            data_types::identifier::identifier_mod::Identifier,
-            statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
-        },
-        protocol::aliases::types::Double,
+        data_types::identifier::identifier_mod::Identifier,
+        statements::dml_statement::main_statements::select::ordering::ProtocolOrdering,
     },
+    protocol::aliases::types::Double,
     std::cmp::Ordering,
 };
 

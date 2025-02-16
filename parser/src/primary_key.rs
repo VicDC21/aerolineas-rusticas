@@ -1,4 +1,3 @@
-
 use crate::statements::ddl_statement::ddl_statement_parser::check_words;
 use protocol::aliases::results::Result;
 

@@ -4,38 +4,20 @@ use {
     crate::{
         airports::types::AirportType,
         continents::types::ContinentType,
-        countries::{
-            CountriesMap,
-            Country,
-        },
+        countries::{CountriesMap, Country},
         utils::{
-            distances::{
-                distance_euclidean,
-                inside_area,
-            },
-            paths::{
-                get_tokens,
-                reader_from,
-            },
-            strings::{
-                breakdown,
-                to_option,
-            },
+            distances::{distance_euclidean, inside_area},
+            paths::{get_tokens, reader_from},
+            strings::{breakdown, to_option},
         },
     },
     protocol::{
-        aliases::{
-            results::Result,
-            types::Double
-        },
+        aliases::{results::Result, types::Double},
         errors::error::Error,
     },
     std::{
         collections::HashMap,
-        io::{
-            BufRead,
-            Result as IOResult,
-        },
+        io::{BufRead, Result as IOResult},
         sync::mpsc::Sender,
     },
 };

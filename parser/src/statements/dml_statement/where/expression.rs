@@ -1,16 +1,9 @@
 use crate::{
     data_types::identifier::identifier_mod::Identifier,
     data_types::term::Term,
-    statements::dml_statement::r#where::{
-        and::And,
-        operator::Operator,
-        relation::Relation
-    },
+    statements::dml_statement::r#where::{and::And, operator::Operator, relation::Relation},
 };
-use protocol::{
-    aliases::results::Result,
-    errors::error::Error,
-};
+use protocol::{aliases::results::Result, errors::error::Error};
 
 /// Representa diferentes tipos de expresiones en el analizador sintáctico.
 #[derive(Debug)]
