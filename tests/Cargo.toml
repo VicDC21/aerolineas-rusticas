@@ -5,7 +5,7 @@ authors.workspace = true
 edition.workspace = true
 publish = false
 
-[dev-dependencies]
+[dependencies]
 client = { path = "../client" }
 data = { path = "../data" }
 protocol = { path = "../protocol" }
@@ -13,13 +13,13 @@ server = { path = "../server" }
 simulator = { path = "../simulator" }
 
 [[test]]
-name = "Client and Nodes Connection"
+name = "client_nodes_connection"
 path = "./client_nodes_connection.rs"
 
 [[test]]
-name = "Insert and Select"
+name = "insert_and_select"
 path = "./insert_and_select.rs"
 
 [[test]]
-name = "Simulator Runs"
+name = "simulator_runs"
 path = "./simulator_runs.rs"

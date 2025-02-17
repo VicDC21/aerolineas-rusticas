@@ -10,7 +10,7 @@ members = [
     "simulator",
     "tokenizer",
 
-    # integration tests
+    # tests de integración
     "tests"
 ]
 # Necesario para que bien compatible con la edición 2021.

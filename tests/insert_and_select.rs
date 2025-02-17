@@ -4,12 +4,12 @@ mod common;
 
 use {
     client::{cli::Client, conn_holder::ConnectionHolder},
+    common::{clean_nodes, create_parsing_nodes},
     data::{
         flights::{flight::Flight, states::FlightState, types::FlightType},
         login_info::LoginInfo,
         protocol_result::ProtocolResult,
     },
-    common::{clean_nodes, create_parsing_nodes},
     std::{thread::sleep, time::Duration},
 };
 

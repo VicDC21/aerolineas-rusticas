@@ -1,4 +1,4 @@
-//! Paquete para funciones públicas comunes entre tests de integración.
+//! Módulo para funciones públicas comunes entre tests de integración.
 //!
 //! Dichas funciones se definen directamente en este archivo, o sino corremos el riesgo
 //! de que cargo crea que los archivos son archivos de tests en sí.

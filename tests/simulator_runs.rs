@@ -4,6 +4,7 @@ mod common;
 
 use {
     client::{cli::Client, conn_holder::ConnectionHolder},
+    common::{clean_nodes, create_parsing_nodes},
     data::{
         flights::{states::FlightState, types::FlightType},
         login_info::LoginInfo,
@@ -11,7 +12,6 @@ use {
         tracking::live_flight_data::LiveFlightData,
     },
     simulator::flight_simulator::FlightSimulator,
-    common::{clean_nodes, create_parsing_nodes},
     std::{thread::sleep, time::Duration},
 };
 
