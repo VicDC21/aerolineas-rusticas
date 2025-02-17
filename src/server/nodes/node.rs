@@ -211,7 +211,7 @@ impl Node {
                 )));
             }
         }
-        DiskHandler::store_new_node_id_and_ip(id, ip);
+        DiskHandler::store_new_node_id_and_ip(id, ip)?;
 
         Self::init(id, mode, true)
     }
@@ -559,7 +559,7 @@ impl Node {
         // la informacion en su archivo csv, entonces se agrega a su archivo correspondiente.
         // Se asume que esta info es válida.
         if !Self::id_exists(&id) {
-            DiskHandler::store_new_node_id_and_ip(id, state.get_addr().to_string().as_str());
+            DiskHandler::store_new_node_id_and_ip(id, state.get_addr().to_string().as_str())?;
         }
         let actual_n_nodes = Self::get_actual_n_nodes();
         if !self.has_endpoint_state_by_id(&id) {
@@ -588,7 +588,7 @@ impl Node {
                 DiskHandler::store_new_node_id_and_ip(
                     node_id,
                     endpoint_state.get_addr().to_string().as_str(),
-                );
+                )?;
             }
             if !self.has_endpoint_state_by_id(&node_id) {
                 println!("Nodo {} presentado.", node_id);
@@ -1044,7 +1044,7 @@ impl Node {
         Ok(replicas)
     }
 
-    /// Notifica a todos los nodos que una reasignacion de los datos es necesaria.
+    /// Notifica a todos los nodos que una relocalización de los datos es necesaria.
     fn notify_reallocation_is_needed() {
         let nodes_ids = Self::get_nodes_ids();
         for node_id in nodes_ids {
@@ -1217,7 +1217,7 @@ impl Node {
         Ok(vec![1])
     }
 
-    /// Envía un mensaje al "primer" nodo del clúster para que inicie la reasignación de filas.
+    /// Envía un mensaje al "primer" nodo del clúster para que inicie la relocalización de filas.
     pub fn send_run_reallocation_message(&self, initial_node_id: NodeId) {
         let next_node_id = n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), 1, false);
         if next_node_id != initial_node_id {
@@ -1234,13 +1234,14 @@ impl Node {
                 )
             }
         } else {
-            // cambiar estado a normal, y terminaria el proceso de realocacion
+            self.notify_end_of_reallocation_process();
         }
     }
 
     /// Filtra las tablas que contiene para asegurarse de tener las filas que le
     /// corresponden luego de que el rango de particiones haya cambiado por el
-    /// agregado de un nodo nuevo.
+    /// agregado de un nodo nuevo. Las filas que ya no le correspondan, se las envía al
+    /// nodo correcto.
     ///
     /// Además notifica a sus réplicas que deben filtrarse también y al nodo siguiente
     /// en el anillo del clúster.
@@ -1275,12 +1276,19 @@ impl Node {
 
             for (node_id, rows) in nodes_rows.iter() {
                 if rows.len() > 2 {
-                    send_to_node(
-                        *node_id,
-                        SvAction::AddReallocatedRows(rows.join("\n").as_bytes().to_vec())
-                            .as_bytes(),
-                        PortType::Priv,
-                    )?
+                    for position in 1..3 {
+                        let next_node_id = n_th_node_in_the_cluster(
+                            *node_id,
+                            &Self::get_nodes_ids(),
+                            position,
+                            false,
+                        );
+                        send_to_node(
+                            next_node_id,
+                            SvAction::AddReallocatedRows(*node_id, rows.join("\n")).as_bytes(),
+                            PortType::Priv,
+                        )?
+                    }
                 }
             }
 
@@ -1321,7 +1329,7 @@ impl Node {
                         }
                     }
                 } else if let Some(rows) = nodes_rows.remove(&self.id) {
-                    node_rows.extend(rows);
+                    node_rows.extend(rows[2..].to_vec());
                 }
                 DiskHandler::repair_rows(
                     &self.storage_addr,
@@ -1336,9 +1344,56 @@ impl Node {
         Ok(())
     }
 
-    /// TODO
-    pub fn add_reallocated_rows(&self, _rows: Vec<Byte>) -> Result<()> {
-        todo!()
+    /// Agrega al nodo las filas reasignadas, se asume que corresponden al nodo receptor.
+    ///
+    /// _node_id_ se usa para diferenciar entre las réplicas de los nodos vecinos.
+    pub fn add_reallocated_rows(&self, node_id: NodeId, rows: String) -> Result<()> {
+        let rows_splitted: Vec<&str> = rows.split("\n").collect();
+        DiskHandler::append_new_rows(
+            rows_splitted[2..].join("\n").to_string(),
+            &self.storage_addr,
+            rows_splitted[0],
+            rows_splitted[1],
+            node_id,
+        )
+    }
+
+    /// Avisa a todos los vecinos que finalizó el proceso de relocalización.
+    fn notify_end_of_reallocation_process(&self) {
+        let nodes_ids = Self::get_nodes_ids();
+        for node_id in nodes_ids {
+            if send_to_node_and_wait_response_with_timeout(
+                node_id,
+                SvAction::FinishReallocation.as_bytes(),
+                PortType::Priv,
+                true,
+                Some(TIMEOUT_SECS),
+            )
+            .is_err()
+            {
+                println!(
+                    "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                    node_id, node_id,
+                );
+            }
+        }
+    }
+
+    /// Realiza los últimos procesos para dar por terminado el proceso de relocalización.
+    pub fn finish_reallocation(&mut self) -> Result<Vec<Byte>> {
+        let nodes_ids = Self::get_nodes_ids();
+        for table in self.tables.values() {
+            for position in 0..3 {
+                let id_of_replica = n_th_node_in_the_cluster(self.id, &nodes_ids, position, true);
+                DiskHandler::sort_rows(table, &self.storage_addr, id_of_replica)?;
+            }
+        }
+        // Una vez todo finalizado, el estado del nodo vuelve a ser normal.
+        self.endpoint_state.set_appstate_status(AppStatus::Normal);
+        println!("Relocalización finalizada.");
+
+        // Devolvemos un mensaje de éxito.
+        Ok(vec![1])
     }
 
     /// Espera a que terminen todos los handlers.

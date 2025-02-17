@@ -27,7 +27,7 @@ pub enum AppStatus {
     /// El nodo no está respondiendo a los mensajes.
     Offline,
 
-    /// El nodo está reasignando su data.
+    /// El nodo está relocalizando su data.
     ReallocatingData,
 }
 

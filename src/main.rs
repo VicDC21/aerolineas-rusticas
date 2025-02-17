@@ -180,6 +180,6 @@ Habria que ver si hay que agregarle algo de seguridad para poder usar este coman
 ya que estas agregando un nodo nuevo al cluster (preguntar a martin).
 
 
-La reasignacion de nodos deberia funcionar con algun nodo apagado?
+La relocalización de nodos deberia funcionar con algun nodo apagado?
 
 */

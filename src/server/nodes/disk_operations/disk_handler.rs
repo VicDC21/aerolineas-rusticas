@@ -120,7 +120,7 @@ impl DiskHandler {
     }
 
     /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.
-    pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) {
+    pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) -> Result<()> {
         let file = OpenOptions::new()
             .append(true)
             .open(NODES_IPS_PATH)
@@ -129,7 +129,56 @@ impl DiskHandler {
         let mut writer = BufWriter::new(&file);
         writer
             .write_all(format!("{},{}\n", id, ip).as_bytes())
-            .expect("No se pudo escribir en el archivo de IPs de nodos");
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Escribe _new_rows_ al final de la tabla dada.
+    pub fn append_new_rows(
+        new_rows: String,
+        storage_addr: &str,
+        keyspace_name: &str,
+        table_name: &str,
+        node_number: NodeId,
+    ) -> Result<()> {
+        let table_addr = format!(
+            "{}/{}/{}_replica_node_{}.csv",
+            storage_addr, keyspace_name, table_name, node_number
+        );
+        let file = OpenOptions::new()
+            .append(true)
+            .open(&table_addr)
+            .map_err(|e| Error::ServerError(format!("La ruta {} no existe: {}", &table_addr, e)))?;
+
+        let mut writer = BufWriter::new(&file);
+        writer.write_all(new_rows.as_bytes()).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo escribir en la ruta {}: {}",
+                &table_addr, e
+            ))
+        })?;
+        Ok(())
+    }
+
+    /// Ordena las filas que contiene la tabla dada.
+    pub fn sort_rows(table: &Table, storage_addr: &str, node_number: Byte) -> Result<()> {
+        let mut rows = Self::get_all_rows(
+            &table.name,
+            storage_addr,
+            &table.keyspace,
+            &table.keyspace,
+            node_number,
+        )?;
+        let path = TablePath::new(
+            storage_addr,
+            Some(table.keyspace.to_string()),
+            &table.name,
+            &table.keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+
+        Self::order_and_save_rows(&table_ops, &mut rows, table)
     }
 
     /// Crea un nuevo keyspace en el caso que corresponda.
@@ -1085,13 +1134,5 @@ impl DiskHandler {
         }
 
         Ok(result)
-    }
-
-    pub fn remove_rows_in_reallocation(
-        storage_addr: &str,
-        table: &Table,
-        node_number: Byte,
-    ) -> Result<Vec<Byte>> {
-        todo!()
     }
 }

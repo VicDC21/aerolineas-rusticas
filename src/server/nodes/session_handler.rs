@@ -263,7 +263,16 @@ impl SessionHandler {
                 self.write()?.reallocate_rows()?;
                 self.write()?.send_run_reallocation_message(initial_node_id);
             }
-            SvAction::AddReallocatedRows(rows) => self.write()?.add_reallocated_rows(rows)?,
+            SvAction::AddReallocatedRows(node_id, rows) => {
+                self.write()?.add_reallocated_rows(node_id, rows)?
+            }
+            SvAction::FinishReallocation => {
+                let res = self.write()?.finish_reallocation()?;
+                let _ = tcp_stream.write_all(&res);
+                if let Err(err) = tcp_stream.flush() {
+                    return Err(Error::ServerError(err.to_string()));
+                };
+            }
         };
         Ok(stop)
     }

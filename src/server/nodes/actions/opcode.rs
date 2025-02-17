@@ -9,7 +9,10 @@ use {
             },
             errors::error::Error,
             traits::Byteable,
-            utils::{encode_iter_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
+            utils::{
+                encode_iter_to_bytes, encode_long_string_to_bytes, encode_string_to_bytes,
+                parse_bytes_to_long_string, parse_bytes_to_string,
+            },
         },
         server::nodes::{
             node::{NodeId, NodesMap},
@@ -105,11 +108,18 @@ pub enum SvAction {
     /// Actualiza las réplicas para adaptarse al nuevo nodo.
     UpdateReplicas(NodeId),
 
-    /// Avisa al receptor que debe comenzar el proceso de reasignación de sus filas.
+    /// Avisa al receptor que debe comenzar el proceso de relocalización de sus filas.
     RunReallocation(NodeId),
 
-    /// TODO
-    AddReallocatedRows(Vec<Byte>),
+    /// Agrega las filas dadas al nodo receptor, que fueron relocalizadas.
+    ///
+    /// Se envía además el ID del nodo que inició el proceso, para dar una vuelta
+    /// entera y finalizar.
+    AddReallocatedRows(NodeId, String),
+
+    /// Avisa a los nodos que deben terminar el proceso de relocalización, para poder continuar
+    /// realizando operaciones cliente-servidor.
+    FinishReallocation,
 }
 
 impl SvAction {
@@ -281,11 +291,12 @@ impl Byteable for SvAction {
             Self::ReallocationNeeded => vec![0xE0],
             Self::UpdateReplicas(new_node_id) => vec![0xE1, *new_node_id],
             Self::RunReallocation(initial_node_id) => vec![0xE2, *initial_node_id],
-            Self::AddReallocatedRows(rows) => {
-                let mut bytes = vec![0xE3];
-                bytes.extend(rows);
+            Self::AddReallocatedRows(node_id, rows) => {
+                let mut bytes = vec![0xE3, *node_id];
+                bytes.extend(encode_long_string_to_bytes(rows));
                 bytes
             }
+            Self::FinishReallocation => vec![0xE4],
         }
     }
 }
@@ -400,7 +411,12 @@ impl TryFrom<&[Byte]> for SvAction {
             0xE0 => Ok(Self::ReallocationNeeded),
             0xE1 => Ok(Self::UpdateReplicas(bytes[1])),
             0xE2 => Ok(Self::RunReallocation(bytes[1])),
-            0xE3 => Ok(Self::AddReallocatedRows(bytes[1..].to_vec())),
+            0xE3 => {
+                let node_id = bytes[1];
+                let rows = parse_bytes_to_long_string(&bytes[2..], &mut i)?;
+                Ok(Self::AddReallocatedRows(node_id, rows))
+            }
+            0xE4 => Ok(Self::FinishReallocation),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first
