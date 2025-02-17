@@ -5,7 +5,7 @@ mod common;
 use {
     client::{cli::Client, conn_holder::ConnectionHolder},
     data::{
-        flights::{flight::Flight states::FlightState, types::FlightType},
+        flights::{flight::Flight, states::FlightState, types::FlightType},
         login_info::LoginInfo,
         protocol_result::ProtocolResult,
     },

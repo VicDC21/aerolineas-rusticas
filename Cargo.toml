@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    # librerías
     "client",
     "data",
     "interface",
@@ -7,7 +8,10 @@ members = [
     "protocol",
     "server",
     "simulator",
-    "tokenizer"
+    "tokenizer",
+
+    # integration tests
+    "tests"
 ]
 # Necesario para que bien compatible con la edición 2021.
 # Por defecto es el "1", que confunde a Rust después.
