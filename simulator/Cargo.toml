@@ -3,6 +3,7 @@ name = "simulator"
 version = "0.5.0"
 authors.workspace = true
 edition.workspace = true
+default-run = "sim"
 
 [dependencies]
 client = { path = "../client" }
@@ -10,4 +11,19 @@ data = { path = "../data" }
 protocol = { path = "../protocol" }
 rand = { version = "0.8.5" }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 server = { path = "../server" }
+
+[[bin]]
+name = "sim"
+path = "./src/bin/sim.rs"
+test = true
+doctest = true
+doc = true
+
+[[bin]]
+name = "demo"
+path = "./src/bin/demo.rs"
+test = true
+doctest = true
+doc = true
