@@ -36,7 +36,7 @@ impl FlightSimulator {
     /// # Ejemplo
     ///
     /// ```
-    /// # use simulator:flight_simulator::FlightSimulator;
+    /// # use simulator::flight_simulator::FlightSimulator;
     /// let simulator = FlightSimulator::new(4, false).expect("Error al crear el simulador");
     /// assert!(simulator.get_all_flights().is_empty());
     /// ```    
@@ -56,7 +56,7 @@ impl FlightSimulator {
     /// # Ejemplo
     ///
     /// ```
-    /// # use simulator:flight_simulator::FlightSimulator;
+    /// # use simulator::flight_simulator::FlightSimulator;
     /// let simulator = FlightSimulator::new(4, false).expect("Error al crear el simulador");
     /// assert!(simulator.get_flight_data(123).is_none());
     /// ```    
@@ -72,7 +72,7 @@ impl FlightSimulator {
     /// # Ejemplo
     ///
     /// ```
-    /// # use simulator:flight_simulator::FlightSimulator;
+    /// # use simulator::flight_simulator::FlightSimulator;
     /// let simulator = FlightSimulator::new(4, false).expect("Error al crear el simulador");
     /// assert!(simulator.get_all_flights().is_empty());
     /// ```    
@@ -88,7 +88,7 @@ impl FlightSimulator {
     /// # Ejemplo
     ///
     /// ```
-    /// # use simulator:flight_simulator::FlightSimulator;
+    /// # use simulator::flight_simulator::FlightSimulator;
     /// let simulator = FlightSimulator::new(4, false).expect("Error al crear el simulador");
     /// simulator.get_airports();
     /// ```
@@ -107,7 +107,7 @@ impl FlightSimulator {
     /// # Ejemplo
     ///
     /// ```
-    /// # use simulator:flight_simulator::FlightSimulator;
+    /// # use simulator::flight_simulator::FlightSimulator;
     /// # use protocol::{aliases::results::Result,errors::error::Error};
     /// # fn main() -> Result<()> {
     /// let simulator = FlightSimulator::new(4, false)?;
@@ -175,7 +175,7 @@ impl FlightSimulator {
     /// # Ejemplo
     ///
     /// ```
-    /// # use simulator:flight_simulator::FlightSimulator;
+    /// # use simulator::flight_simulator::FlightSimulator;
     /// # use protocol::{aliases::results::Result,errors::error::Error};
     /// # fn main() -> Result<()> {
     /// let simulator = FlightSimulator::new(4, false)?;
@@ -201,7 +201,7 @@ impl Default for FlightSimulator {
     /// # Ejemplo
     ///
     /// ```
-    /// # use simulator:flight_simulator::FlightSimulator;
+    /// # use simulator::flight_simulator::FlightSimulator;
     /// let simulator = FlightSimulator::default();
     /// assert_eq!(simulator.count_active_flights(), 0);
     /// ```
