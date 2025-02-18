@@ -109,12 +109,12 @@ pub enum SvAction {
     UpdateReplicas(NodeId),
 
     /// Avisa al receptor que debe comenzar el proceso de relocalización de sus filas.
-    RunReallocation(NodeId),
-
-    /// Agrega las filas dadas al nodo receptor, que fueron relocalizadas.
     ///
     /// Se envía además el ID del nodo que inició el proceso, para dar una vuelta
     /// entera y finalizar.
+    RunReallocation(NodeId),
+
+    /// Agrega las filas dadas al nodo receptor, que fueron relocalizadas.
     AddReallocatedRows(NodeId, String),
 
     /// Avisa a los nodos que deben terminar el proceso de relocalización, para poder continuar
