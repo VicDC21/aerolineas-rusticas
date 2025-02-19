@@ -96,6 +96,7 @@ pub fn n_th_node_in_the_cluster(
     if new_index < 0 {
         new_index += nodes_ids_len;
     }
+    println!("Los nodes_ids son {:?}", nodes_ids);
     nodes_ids[new_index as usize]
 }
 /*

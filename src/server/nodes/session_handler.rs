@@ -249,6 +249,8 @@ impl SessionHandler {
                 node_writer.receive_metadata(metadata)?;
                 // Además continuamos el proceso de adaptación del clúster.
                 node_writer.create_necessary_dirs_and_csvs()?;
+                node_writer.get_tables_of_replicas()?;
+
                 Node::notify_reallocation_is_needed();
             }
             SvAction::ReallocationNeeded => self.write()?.reallocation_needed(),
@@ -268,6 +270,13 @@ impl SessionHandler {
             }
             SvAction::FinishReallocation => {
                 let res = self.write()?.finish_reallocation()?;
+                let _ = tcp_stream.write_all(&res);
+                if let Err(err) = tcp_stream.flush() {
+                    return Err(Error::ServerError(err.to_string()));
+                };
+            }
+            SvAction::GetAllTablesOfReplica(node_id) => {
+                let res = self.read()?.copy_tables(node_id)?;
                 let _ = tcp_stream.write_all(&res);
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));

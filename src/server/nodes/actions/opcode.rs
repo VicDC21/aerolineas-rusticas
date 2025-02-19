@@ -120,6 +120,9 @@ pub enum SvAction {
     /// Avisa a los nodos que deben terminar el proceso de relocalización, para poder continuar
     /// realizando operaciones cliente-servidor.
     FinishReallocation,
+
+    /// TODO
+    GetAllTablesOfReplica(NodeId),
 }
 
 impl SvAction {
@@ -297,6 +300,7 @@ impl Byteable for SvAction {
                 bytes
             }
             Self::FinishReallocation => vec![0xE4],
+            Self::GetAllTablesOfReplica(node_id) => vec![0xE5, *node_id],
         }
     }
 }
@@ -417,6 +421,7 @@ impl TryFrom<&[Byte]> for SvAction {
                 Ok(Self::AddReallocatedRows(node_id, rows))
             }
             0xE4 => Ok(Self::FinishReallocation),
+            0xE5 => Ok(Self::GetAllTablesOfReplica(bytes[1])),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

@@ -1228,6 +1228,82 @@ impl Node {
         Ok(())
     }
 
+    /// TODO
+    pub fn get_tables_of_replicas(&mut self) -> Result<()> {
+        for i in 1..N_NODES {
+            let node_to_consult =
+                n_th_node_in_the_cluster(self.id, &Node::get_nodes_ids(), i as usize, true);
+            let rows: Vec<u8> = send_to_node_and_wait_response_with_timeout(
+                node_to_consult,
+                SvAction::GetAllTablesOfReplica(self.id).as_bytes(),
+                PortType::Priv,
+                true,
+                Some(TIMEOUT_SECS * 10),
+            )?;
+            if rows.len() < 2 {
+                continue;
+            }
+            let rows_string = match String::from_utf8(rows) {
+                Ok(value) => value,
+                Err(_e) => {
+                    return Err(Error::ServerError(
+                        "Error al tranformar bytes a string".to_string(),
+                    ))
+                }
+            };
+            let tables_data: Vec<&str> = rows_string.split("\n\n\n").collect();
+            for table_data in tables_data {
+                let rows_of_table: Vec<&str> = table_data.split("\n").collect();
+                DiskHandler::repair_rows(
+                    &self.storage_addr,
+                    rows_of_table[1],
+                    rows_of_table[0],
+                    rows_of_table[0],
+                    node_to_consult,
+                    &rows_of_table[2..].join("\n"),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// TODO
+    pub fn copy_tables(&self, node_id: NodeId) -> Result<Vec<Byte>> {
+        let mut distance = 3;
+        for i in 1..Node::get_actual_n_nodes() {
+            if n_th_node_in_the_cluster(self.id, &Node::get_nodes_ids(), i, false) == node_id {
+                distance = i;
+            }
+        }
+        let mut final_rows: Vec<String> = Vec::new();
+        for table in self.tables.values() {
+            if (distance as Uint)
+                >= self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?
+            {
+                continue;
+            }
+
+            let rows = DiskHandler::get_all_rows(
+                table.get_name(),
+                &self.storage_addr,
+                table.get_keyspace(),
+                table.get_keyspace(),
+                self.id,
+            )?;
+            if rows.is_empty() {
+                continue;
+            }
+            final_rows.insert(0, table.get_name().to_string());
+            final_rows.insert(0, table.get_keyspace().to_string());
+            for row in rows {
+                final_rows.push(row.join(","));
+            }
+            final_rows.push("\n".to_string());
+        }
+        let rows_as_string = final_rows.join("\n").as_bytes().to_vec();
+        Ok(rows_as_string)
+    }
+
     /// Actualiza las replicas para adaptarse al nodo nuevo.
     ///
     /// Se encarga de crear los archivos CSV necesarios para el nuevo nodo, y eliminar los que
