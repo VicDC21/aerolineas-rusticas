@@ -27,14 +27,14 @@ pub enum AppStatus {
     /// El nodo no está respondiendo a los mensajes.
     Offline,
 
+    /// El nodo esta listo para empezar la realocacion.
+    RelocationIsNeeded,
+
     /// El nodo está relocalizando su data.
-    ReallocatingData,
+    RelocatingData,
 
     /// El nodo esta listo para pasarse a estado `Normal`.
     Ready,
-
-    /// El nodo esta listo para empezar la realocacion.
-    ReallocationIsNeeded,
 }
 
 impl Byteable for AppStatus {
@@ -45,9 +45,9 @@ impl Byteable for AppStatus {
             Self::Left => vec![0x2],
             Self::Remove => vec![0x3],
             Self::Offline => vec![0x4],
-            Self::ReallocatingData => vec![0x5],
+            Self::RelocatingData => vec![0x5],
             Self::Ready => vec![0x6],
-            Self::ReallocationIsNeeded => vec![0x7],
+            Self::RelocationIsNeeded => vec![0x7],
         }
     }
 }
@@ -68,9 +68,9 @@ impl TryFrom<&[Byte]> for AppStatus {
             0x2 => Ok(Self::Left),
             0x3 => Ok(Self::Remove),
             0x4 => Ok(Self::Offline),
-            0x5 => Ok(Self::ReallocatingData),
+            0x5 => Ok(Self::RelocatingData),
             0x6 => Ok(Self::Ready),
-            0x7 => Ok(Self::ReallocationIsNeeded),
+            0x7 => Ok(Self::RelocationIsNeeded),
             _ => Err(Error::ServerError(format!(
                 "El ID '{}' no corresponde a ningún estado de aplicación.",
                 first

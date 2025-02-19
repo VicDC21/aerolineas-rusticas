@@ -96,23 +96,9 @@ pub fn n_th_node_in_the_cluster(
     if new_index < 0 {
         new_index += nodes_ids_len;
     }
-    println!("Los nodes_ids son {:?}", nodes_ids);
     nodes_ids[new_index as usize]
 }
-/*
-/// TODO
-pub fn diff_of_ids_index(self_id: NodeId, other_id: NodeId, nodes_ids: &[NodeId]) -> Result<i8> {
-    let self_index = match nodes_ids.binary_search(&self_id) {
-        Ok(index) => index as i8,
-        Err(_) => return Err(Error::ServerError(format!("El ID {} no existe.", self_id))),
-    };
-    let other_index = match nodes_ids.binary_search(&other_id) {
-        Ok(index) => index as i8,
-        Err(_) => return Err(Error::ServerError(format!("El ID {} no existe.", other_id))),
-    };
-    Ok(self_index.diff(other_index))
-}
-*/
+
 /// Manda un mensaje a un nodo específico.
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;

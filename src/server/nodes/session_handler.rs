@@ -251,9 +251,9 @@ impl SessionHandler {
                 node_writer.create_necessary_dirs_and_csvs()?;
                 node_writer.get_tables_of_replicas()?;
 
-                Node::notify_reallocation_is_needed();
+                Node::notify_relocation_is_needed();
             }
-            SvAction::ReallocationNeeded => self.write()?.reallocation_needed(),
+            SvAction::RelocationNeeded => self.write()?.relocation_needed(),
             SvAction::UpdateReplicas(new_node_id) => {
                 let res = self.write()?.update_node_replicas(new_node_id)?;
                 let _ = tcp_stream.write_all(&res);
@@ -261,19 +261,8 @@ impl SessionHandler {
                     return Err(Error::ServerError(err.to_string()));
                 };
             }
-            SvAction::RunReallocation(initial_node_id) => {
-                self.write()?.reallocate_rows()?;
-                self.write()?.send_run_reallocation_message(initial_node_id);
-            }
-            SvAction::AddReallocatedRows(node_id, rows) => {
-                self.write()?.add_reallocated_rows(node_id, rows)?
-            }
-            SvAction::FinishReallocation => {
-                let res = self.write()?.finish_reallocation()?;
-                let _ = tcp_stream.write_all(&res);
-                if let Err(err) = tcp_stream.flush() {
-                    return Err(Error::ServerError(err.to_string()));
-                };
+            SvAction::AddRelocatedRows(node_id, rows) => {
+                self.write()?.add_relocated_rows(node_id, rows)?
             }
             SvAction::GetAllTablesOfReplica(node_id) => {
                 let res = self.read()?.copy_tables(node_id)?;
@@ -1636,8 +1625,8 @@ impl SessionHandler {
         let node_status = node_reader.endpoint_state.get_appstate_status();
         if node_reader.neighbours_states.len() == Node::get_actual_n_nodes()
             && *node_status != AppStatus::Normal
-            && *node_status != AppStatus::ReallocationIsNeeded
-            && *node_status != AppStatus::ReallocatingData
+            && *node_status != AppStatus::RelocationIsNeeded
+            && *node_status != AppStatus::RelocatingData
             && *node_status != AppStatus::Ready
         {
             drop(node_reader);
@@ -1655,25 +1644,25 @@ impl SessionHandler {
         Ok(())
     }
 
-    /// TODO
-    fn is_reallocation_needed(&self) -> Result<()> {
+    /// Consulta si la relocalización es necesaria, si es cierto, inicia el proceso de relocalización.
+    fn is_relocation_needed(&self) -> Result<()> {
         let node_reader = self.read()?;
-        if *node_reader.endpoint_state.get_appstate_status() == AppStatus::ReallocationIsNeeded {
+        if *node_reader.endpoint_state.get_appstate_status() == AppStatus::RelocationIsNeeded {
             drop(node_reader);
 
             let mut node_writer = self.write()?;
             node_writer
                 .endpoint_state
-                .set_appstate_status(AppStatus::ReallocatingData);
+                .set_appstate_status(AppStatus::RelocatingData);
             println!("Iniciando relocalización.");
 
-            node_writer.run_reallocation()?;
+            node_writer.run_relocation()?;
         }
         Ok(())
     }
 
-    /// TODO
-    fn is_reallocation_done(&self) -> Result<()> {
+    /// Consulta si la relocalización finalizó, si es cierto, actualiza el estado del nodo.
+    fn is_relocation_done(&self) -> Result<()> {
         let node_reader = self.read()?;
         if *node_reader.endpoint_state.get_appstate_status() != AppStatus::Ready {
             return Ok(());
@@ -1690,11 +1679,7 @@ impl SessionHandler {
         drop(node_reader);
 
         if ready_nodes_counter == n_nodes {
-            let mut node_writer = self.write()?;
-            node_writer
-                .endpoint_state
-                .set_appstate_status(AppStatus::Normal);
-            println!("El nodo {} finalizó la relocalización.", self.id);
+            self.write()?.finish_relocation()?;
         }
         Ok(())
     }
@@ -1712,8 +1697,8 @@ impl SessionHandler {
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     pub fn gossip(&self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done()?;
-        self.is_reallocation_needed()?;
-        self.is_reallocation_done()?;
+        self.is_relocation_needed()?;
+        self.is_relocation_done()?;
 
         for neighbour_id in neighbours {
             if send_to_node(

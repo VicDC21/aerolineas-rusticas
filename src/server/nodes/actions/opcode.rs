@@ -103,25 +103,15 @@ pub enum SvAction {
     ReceiveMetadata(Vec<Byte>),
 
     /// Aviso de que se reacomodará el clúster, para no seguir realizando operaciones cliente-servidor.
-    ReallocationNeeded,
+    RelocationNeeded,
 
     /// Actualiza las réplicas para adaptarse al nuevo nodo.
     UpdateReplicas(NodeId),
 
-    /// Avisa al receptor que debe comenzar el proceso de relocalización de sus filas.
-    ///
-    /// Se envía además el ID del nodo que inició el proceso, para dar una vuelta
-    /// entera y finalizar.
-    RunReallocation(NodeId),
-
     /// Agrega las filas dadas al nodo receptor, que fueron relocalizadas.
-    AddReallocatedRows(NodeId, String),
+    AddRelocatedRows(NodeId, String),
 
-    /// Avisa a los nodos que deben terminar el proceso de relocalización, para poder continuar
-    /// realizando operaciones cliente-servidor.
-    FinishReallocation,
-
-    /// TODO
+    /// Pide todas las filas de todas las tablas al nodo receptor.
     GetAllTablesOfReplica(NodeId),
 }
 
@@ -291,16 +281,14 @@ impl Byteable for SvAction {
                 bytes.extend(metadata);
                 bytes
             }
-            Self::ReallocationNeeded => vec![0xE0],
+            Self::RelocationNeeded => vec![0xE0],
             Self::UpdateReplicas(new_node_id) => vec![0xE1, *new_node_id],
-            Self::RunReallocation(initial_node_id) => vec![0xE2, *initial_node_id],
-            Self::AddReallocatedRows(node_id, rows) => {
-                let mut bytes = vec![0xE3, *node_id];
+            Self::AddRelocatedRows(node_id, rows) => {
+                let mut bytes = vec![0xE2, *node_id];
                 bytes.extend(encode_long_string_to_bytes(rows));
                 bytes
             }
-            Self::FinishReallocation => vec![0xE4],
-            Self::GetAllTablesOfReplica(node_id) => vec![0xE5, *node_id],
+            Self::GetAllTablesOfReplica(node_id) => vec![0xE3, *node_id],
         }
     }
 }
@@ -412,16 +400,14 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xFE => Ok(Self::SendMetadata(bytes[1])),
             0xFF => Ok(Self::ReceiveMetadata(bytes[1..].to_vec())),
-            0xE0 => Ok(Self::ReallocationNeeded),
+            0xE0 => Ok(Self::RelocationNeeded),
             0xE1 => Ok(Self::UpdateReplicas(bytes[1])),
-            0xE2 => Ok(Self::RunReallocation(bytes[1])),
-            0xE3 => {
+            0xE2 => {
                 let node_id = bytes[1];
                 let rows = parse_bytes_to_long_string(&bytes[2..], &mut i)?;
-                Ok(Self::AddReallocatedRows(node_id, rows))
+                Ok(Self::AddRelocatedRows(node_id, rows))
             }
-            0xE4 => Ok(Self::FinishReallocation),
-            0xE5 => Ok(Self::GetAllTablesOfReplica(bytes[1])),
+            0xE3 => Ok(Self::GetAllTablesOfReplica(bytes[1])),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first
