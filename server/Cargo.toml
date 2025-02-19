@@ -7,6 +7,7 @@ default-run = "sv"
 
 [dependencies]
 chrono = { version = "0.4.38" }
+logger = { path = "../logger" }
 parser = { path = "../parser" }
 protocol = { path = "../protocol" }
 rand = { version = "0.8.5" }

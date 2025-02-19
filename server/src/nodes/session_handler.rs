@@ -19,6 +19,7 @@ use {
         utils::printable_bytes,
     },
     chrono::Utc,
+    logger::log::Logger,
     parser::{
         data_types::keyspace_name::KeyspaceName,
         main_parser::make_parse,
@@ -70,6 +71,8 @@ pub const TIMEOUT_SECS: Ulong = 1;
 pub struct SessionHandler {
     /// ID del nodo.
     pub id: NodeId,
+    /// Logger para el manejo de logs.
+    pub logger: Logger,
     /// Referencia compartida del lock conteniendo al nodo.
     pub lock: Arc<RwLock<Node>>,
 }
@@ -79,6 +82,7 @@ impl SessionHandler {
     pub fn new(id: NodeId, node: Node) -> Self {
         SessionHandler {
             id,
+            logger: node.get_logger(),
             lock: Arc::new(RwLock::new(node)),
         }
     }
@@ -88,12 +92,6 @@ impl SessionHandler {
         match self.lock.write() {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
-                /*let err = Err(Error::ServerError(format!(
-                    "Lock envenenado desde nodo con ID {} para escritura: {}",
-                    self.id, &poisoned
-                )));
-                let _unused: std::sync::RwLockWriteGuard<'_, Node> = poisoned.into_inner();
-                err*/
                 println!(
                     "Lock envenenado detectado desde el nodo con ID {} para escritura: {}",
                     self.id, &poisoned
@@ -1964,6 +1962,7 @@ impl Clone for SessionHandler {
     fn clone(&self) -> Self {
         SessionHandler {
             id: self.id,
+            logger: self.logger.clone(),
             lock: Arc::clone(&self.lock),
         }
     }

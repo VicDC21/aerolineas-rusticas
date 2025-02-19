@@ -16,7 +16,7 @@ fn main() {
                 Ok(id) => {
                     if argv[4].parse::<IpAddr>().is_ok() {
                         println!("Nodo nuevo con id {} y dirección IP {}.", id, argv[4]);
-                        if argv.len() == 5 && argv[4].to_ascii_lowercase() == "echo" {
+                        if argv.len() == 5 && argv[4].eq_ignore_ascii_case("echo") {
                             print_err(Node::init_new_in_echo_mode(id, &argv[4]))
                         } else {
                             print_err(Node::init_new_in_parsing_mode(id, &argv[4]))
@@ -33,7 +33,7 @@ fn main() {
             // cargo run nd <id> [echo]
             match argv[2].parse::<Byte>() {
                 Ok(id) => {
-                    if argv.len() == 4 && argv[3].to_ascii_lowercase() == "echo" {
+                    if argv.len() == 4 && argv[3].eq_ignore_ascii_case("echo") {
                         print_err(Node::init_in_echo_mode(id))
                     } else {
                         print_err(Node::init_in_parsing_mode(id))

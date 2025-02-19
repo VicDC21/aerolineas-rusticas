@@ -114,13 +114,6 @@ impl NodesGraph {
 
         self.handlers.extend(nodes);
 
-        /*Paramos los handlers especiales primero
-        let _ = beat_stopper.send(true);
-        let _ = beater.join();
-
-        let _ = gossip_stopper.send(true);
-        let _ = gossiper.join();*/
-
         // Corremos los scripts iniciales
         if let Err(err) = self.send_init_queries() {
             println!("Error en las queries iniciales:\n{}", err);
