@@ -56,7 +56,7 @@ use {
     std::{
         collections::{HashMap, HashSet},
         io::{Read, Write},
-        path::PathBuf,
+        path::Path,
         sync::{Arc, RwLock},
     },
     tokenizer::tok::tokenize_query,
@@ -64,6 +64,8 @@ use {
 
 /// El tiempo de espera _(en segundos)_ por una respuesta.
 pub const TIMEOUT_SECS: Ulong = 1;
+/// La ruta para el almacenamiento de los logs de mensajes de los nodos.
+const NODES_LOGS_PATH: &str = "logs";
 
 /// Se encarga de procesar todo lo relacionado a una sesión de un cliente.
 ///
@@ -81,11 +83,14 @@ pub struct SessionHandler {
 impl SessionHandler {
     /// Crea un nuevo `SessionHandler` con un nodo específico.
     pub fn new(id: NodeId, node: Node) -> Result<Self> {
+        DiskHandler::create_directory(NODES_LOGS_PATH)?;
         let logger = Logger::new(
-            &PathBuf::from("logs"),
+            Path::new(NODES_LOGS_PATH),
             &node.endpoint_state.get_addr().to_string(),
         )
         .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        println!("Creando un nuevo SessionHandler para el nodo con ID {}", id);
 
         Ok(SessionHandler {
             id,
