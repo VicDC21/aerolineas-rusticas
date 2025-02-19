@@ -249,7 +249,7 @@ impl SessionHandler {
                 node_writer.receive_metadata(metadata)?;
                 // Además continuamos el proceso de adaptación del clúster.
                 node_writer.create_necessary_dirs_and_csvs()?;
-                node_writer.send_run_reallocation_message(self.id);
+                Node::notify_reallocation_is_needed();
             }
             SvAction::ReallocationNeeded => self.write()?.reallocation_needed(),
             SvAction::UpdateReplicas(new_node_id) => {
@@ -1627,7 +1627,9 @@ impl SessionHandler {
         let node_status = node_reader.endpoint_state.get_appstate_status();
         if node_reader.neighbours_states.len() == Node::get_actual_n_nodes()
             && *node_status != AppStatus::Normal
+            && *node_status != AppStatus::ReallocationIsNeeded
             && *node_status != AppStatus::ReallocatingData
+            && *node_status != AppStatus::Ready
         {
             drop(node_reader);
 
@@ -1636,6 +1638,54 @@ impl SessionHandler {
                 .endpoint_state
                 .set_appstate_status(AppStatus::Normal);
             println!("El nodo {} fue iniciado correctamente.", self.id);
+
+            if node_writer.is_new_node {
+                Node::request_previous_metadata_for_new_node(self.id);
+            }
+        }
+        Ok(())
+    }
+
+    /// TODO
+    fn is_reallocation_needed(&self) -> Result<()> {
+        let node_reader = self.read()?;
+        if *node_reader.endpoint_state.get_appstate_status() == AppStatus::ReallocationIsNeeded {
+            drop(node_reader);
+
+            let mut node_writer = self.write()?;
+            node_writer
+                .endpoint_state
+                .set_appstate_status(AppStatus::ReallocatingData);
+            println!("Iniciando relocalización.");
+
+            node_writer.run_reallocation()?;
+        }
+        Ok(())
+    }
+
+    /// TODO
+    fn is_reallocation_done(&self) -> Result<()> {
+        let node_reader = self.read()?;
+        if *node_reader.endpoint_state.get_appstate_status() != AppStatus::Ready {
+            return Ok(());
+        }
+        let n_nodes = Node::get_actual_n_nodes();
+        let mut ready_nodes_counter = 0;
+        for endpoint_state in node_reader.neighbours_states.values() {
+            if *endpoint_state.get_appstate_status() == AppStatus::Ready
+                || *endpoint_state.get_appstate_status() == AppStatus::Normal
+            {
+                ready_nodes_counter += 1;
+            }
+        }
+        drop(node_reader);
+
+        if ready_nodes_counter == n_nodes {
+            let mut node_writer = self.write()?;
+            node_writer
+                .endpoint_state
+                .set_appstate_status(AppStatus::Normal);
+            println!("El nodo {} finalizó la relocalización.", self.id);
         }
         Ok(())
     }
@@ -1653,6 +1703,8 @@ impl SessionHandler {
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     pub fn gossip(&self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done()?;
+        self.is_reallocation_needed()?;
+        self.is_reallocation_done()?;
 
         for neighbour_id in neighbours {
             if send_to_node(

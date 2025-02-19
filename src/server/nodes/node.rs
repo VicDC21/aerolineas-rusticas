@@ -132,11 +132,15 @@ pub struct Node {
 
     /// Los pesos de los nodos.
     nodes_weights: Vec<usize>,
+
+    /// Indica si es un nodo distinto a los N_NODES originales.
+    #[serde(skip)]
+    pub is_new_node: bool,
 }
 
 impl Node {
     /// Crea un nodo.
-    pub fn new(id: NodeId, mode: ConnectionMode) -> Result<Self> {
+    pub fn new(id: NodeId, mode: ConnectionMode, is_new_node: bool) -> Result<Self> {
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
         neighbours_states.insert(id, endpoint_state.clone());
@@ -154,13 +158,19 @@ impl Node {
             tables_and_partitions_keys_values: HashMap::new(),
             open_connections: OpenConnectionsMap::new(),
             nodes_weights: Vec::new(),
+            is_new_node,
         })
     }
 
     /// Setea el valor por defecto de los campos que no son guardados en su archivo JSON.
     ///
     /// Se asume que esta función se llama sobre un nodo que fue cargado recientemente de su archivo JSON.
-    pub fn set_default_fields(&mut self, id: NodeId, mode: ConnectionMode) -> Result<()> {
+    pub fn set_default_fields(
+        &mut self,
+        id: NodeId,
+        mode: ConnectionMode,
+        is_new: bool,
+    ) -> Result<()> {
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
         neighbours_states.insert(id, endpoint_state.clone());
@@ -170,6 +180,7 @@ impl Node {
         self.storage_addr = DiskHandler::get_node_storage(id);
         self.nodes_ranges = divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes());
         self.open_connections = OpenConnectionsMap::new();
+        self.is_new_node = is_new;
 
         Ok(())
     }
@@ -231,11 +242,6 @@ impl Node {
         let _ = gossip_stopper.send(true);
         let _ = gossiper.join();*/
 
-        if is_new {
-            Self::notify_reallocation_is_needed();
-            Self::request_previous_metadata_for_new_node(id);
-        }
-
         Self::wait(handlers);
         Ok(())
     }
@@ -267,10 +273,10 @@ impl Node {
         let node_metadata_path = Path::new(&metadata_path);
         let mut node = if node_metadata_path.exists() {
             let mut node: Node = load_json(&metadata_path)?;
-            node.set_default_fields(id, mode)?;
+            node.set_default_fields(id, mode, is_new)?;
             node
         } else {
-            Self::new(id, mode)?
+            Self::new(id, mode, is_new)?
         };
         node.inicialize_nodes_weights(Self::get_actual_n_nodes());
         *nodes_weights = node.nodes_weights.clone();
@@ -1056,8 +1062,22 @@ impl Node {
         }
     }
 
+    /// TODO
+    pub fn new_node_is_online(id: NodeId) {
+        //Self::notify_reallocation_is_needed();
+        Self::request_previous_metadata_for_new_node(id);
+    }
+
+    /// TODO
+    pub fn run_reallocation(&mut self) -> Result<()> {
+        self.reallocation_needed();
+        self.reallocate_rows()?;
+        self.node_ready_to_use();
+        Ok(())
+    }
+
     /// Notifica a todos los nodos que una relocalización de los datos es necesaria.
-    fn notify_reallocation_is_needed() {
+    pub fn notify_reallocation_is_needed() {
         let nodes_ids = Self::get_nodes_ids();
         for node_id in nodes_ids {
             if send_to_node(
@@ -1079,12 +1099,17 @@ impl Node {
     /// reasignar sus datos antes de poder seguir funcionando normalmente.
     pub fn reallocation_needed(&mut self) {
         self.endpoint_state
-            .set_appstate_status(AppStatus::ReallocatingData);
+            .set_appstate_status(AppStatus::ReallocationIsNeeded);
+    }
+
+    /// Actualiza el estado del nodo a estado Ready para luego poder pasar a estado Normal.
+    pub fn node_ready_to_use(&mut self) {
+        self.endpoint_state.set_appstate_status(AppStatus::Ready);
     }
 
     /// Pide la metadata previa del clúster para un nodo nuevo, así inicia con toda
     /// la información necesaria para unirse al resto de nodos.
-    fn request_previous_metadata_for_new_node(id: NodeId) {
+    pub fn request_previous_metadata_for_new_node(id: NodeId) {
         // Elegimos un nodo arbitrario, ya que todos los nodos tienen la misma metadata.
         let nodes_ids = Self::get_nodes_ids();
         let node_id = if nodes_ids[0] == id {
@@ -1188,18 +1213,16 @@ impl Node {
             }
         }
 
-        let replicas_to_create = self
-            .get_quantity_of_replicas_from_keyspace_name(&self.get_default_keyspace_name()?)?
-            as usize;
-        for position in 1..replicas_to_create {
-            let id_of_replica = n_th_node_in_the_cluster(self.id, &nodes_ids, position, false);
-            let _ = send_to_node_and_wait_response_with_timeout(
-                id_of_replica,
-                SvAction::UpdateReplicas(self.id).as_bytes(),
-                PortType::Priv,
-                true,
-                Some(TIMEOUT_SECS),
-            )?;
+        for node_id in nodes_ids {
+            if node_id != self.id {
+                let _ = send_to_node_and_wait_response_with_timeout(
+                    node_id,
+                    SvAction::UpdateReplicas(self.id).as_bytes(),
+                    PortType::Priv,
+                    true,
+                    Some(TIMEOUT_SECS),
+                )?;
+            }
         }
 
         Ok(())
@@ -1210,7 +1233,25 @@ impl Node {
     /// Se encarga de crear los archivos CSV necesarios para el nuevo nodo, y eliminar los que
     /// ya no le corresponden.
     pub fn update_node_replicas(&mut self, new_node_id: NodeId) -> Result<Vec<Byte>> {
+        // let nodes_ids = Self::get_nodes_ids();
         for table in self.tables.values() {
+            let quantity_of_replicas =
+                self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
+            // if abs_diff_of_ids_index(self.id, new_node_id, &nodes_ids)? >= quantity_of_replicas {
+            //     continue
+            // }
+            let mut update_table_replica = false;
+            for pos in 1..quantity_of_replicas {
+                let node_id =
+                    n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), pos as usize, true);
+                if node_id == new_node_id {
+                    update_table_replica = true
+                }
+            }
+            if !update_table_replica {
+                continue;
+            }
+
             DiskHandler::create_table_csv_file(
                 &self.storage_addr,
                 &table.keyspace,
@@ -1218,11 +1259,8 @@ impl Node {
                 &table.get_columns_names(),
                 new_node_id,
             )?;
-        }
-        for table in self.tables.values() {
-            // Posición de la última rúplica
-            let replica_pos_to_delete =
-                self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as usize;
+            // Posición de la última réplica
+            let replica_pos_to_delete = quantity_of_replicas as usize;
             let id_of_replica_to_delete = n_th_node_in_the_cluster(
                 self.id,
                 &Self::get_nodes_ids(),
@@ -1277,13 +1315,13 @@ impl Node {
             let nodes_ids = Self::get_nodes_ids();
 
             self.filter_and_repair_rows(&mut nodes_rows, &nodes_ids, table)?;
-            //self.filter_replicas_rows_and_repair(&mut nodes_rows, &nodes_ids, table)?;
+            self.filter_replicas_rows_and_repair(&mut nodes_rows, &nodes_ids, table)?;
         }
         Ok(())
     }
 
     /// Filtra sus propias filas para quedarse con las que le correspondan según el valor de _hashing_
-    /// de la _partition key_ de la tabla, también envía las filas ya filtradas a sus réplicas.
+    /// de la _partition key_ de la tabla.
     ///
     /// Además, reenvía las que le correspondan a otros nodos.
     fn filter_and_repair_rows(
@@ -1322,7 +1360,7 @@ impl Node {
                 for position in 0..replicas_quantity {
                     let next_node_id =
                         n_th_node_in_the_cluster(*node_id, &Self::get_nodes_ids(), position, false);
-                    if *node_id == self.id {
+                    if next_node_id == self.id {
                         DiskHandler::repair_rows(
                             &self.storage_addr,
                             table.get_name(),
@@ -1331,7 +1369,7 @@ impl Node {
                             *node_id,
                             &rows[2..].join("\n"),
                         )?;
-                    } else {
+                    } else if *node_id != self.id {
                         send_to_node(
                             next_node_id,
                             SvAction::AddReallocatedRows(*node_id, rows.join("\n")).as_bytes(),
@@ -1343,37 +1381,39 @@ impl Node {
         }
         Ok(())
     }
-    /*
-        fn filter_replicas_rows_and_repair(
-            &self,
-            nodes_rows: &mut HashMap<NodeId, Vec<String>>,
-            nodes_ids: &[NodeId],
-            table: &Table,
-        ) -> Result<()> {
-            let replicas_quantity =
-                self.get_quantity_of_replicas_from_keyspace_name(table.get_keyspace())?;
-            for position in 0..replicas_quantity {
-                let actual_replica_node =
-                    n_th_node_in_the_cluster(self.id, nodes_ids, position as usize, true);
-                let mut node_rows: Vec<String> = Vec::new();
-                if position != 0 {
-                    let rows = DiskHandler::get_all_rows(
-                        table.get_name(),
-                        &self.storage_addr,
-                        &self.get_default_keyspace_name()?,
-                        table.get_keyspace(),
-                        actual_replica_node,
-                    )?;
-                    for row in rows {
-                        let partition_key_value = &row[table.get_position_of_partition_key()?];
-                        let node_id = self.select_node(partition_key_value);
-                        if node_id == (actual_replica_node as u8) {
-                            node_rows.push(row.join(","))
-                        }
+
+    /// Filtra las replicas locales del nodo, de acuerdo al nuevo _hashing_.
+    fn filter_replicas_rows_and_repair(
+        &self,
+        nodes_rows: &mut HashMap<NodeId, Vec<String>>,
+        nodes_ids: &[NodeId],
+        table: &Table,
+    ) -> Result<()> {
+        let replicas_quantity =
+            self.get_quantity_of_replicas_from_keyspace_name(table.get_keyspace())?;
+        for position in 0..replicas_quantity {
+            let actual_replica_node =
+                n_th_node_in_the_cluster(self.id, nodes_ids, position as usize, true);
+            let mut node_rows: Vec<String> = Vec::new();
+            if position != 0 {
+                let rows = DiskHandler::get_all_rows(
+                    table.get_name(),
+                    &self.storage_addr,
+                    &self.get_default_keyspace_name()?,
+                    table.get_keyspace(),
+                    actual_replica_node,
+                )?;
+                for row in rows {
+                    let partition_key_value = &row[table.get_position_of_partition_key()?];
+                    let node_id = self.select_node(partition_key_value);
+                    if node_id == (actual_replica_node as u8) {
+                        node_rows.push(row.join(","))
                     }
-                } else if let Some(rows) = nodes_rows.remove(&self.id) {
-                    node_rows.extend(rows[2..].to_vec());
                 }
+            } else if let Some(rows) = nodes_rows.remove(&self.id) {
+                node_rows.extend(rows[2..].to_vec());
+            }
+            if !node_rows.is_empty() {
                 DiskHandler::repair_rows(
                     &self.storage_addr,
                     table.get_name(),
@@ -1383,9 +1423,10 @@ impl Node {
                     &node_rows.join("\n"),
                 )?;
             }
-            Ok(())
         }
-    */
+        Ok(())
+    }
+
     /// Agrega al nodo las filas reasignadas, se asume que corresponden al nodo receptor.
     ///
     /// _node_id_ se usa para diferenciar entre las réplicas de los nodos vecinos.
