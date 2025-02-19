@@ -212,6 +212,11 @@ Los tests, siendo que se desee ejecutarlos manualmente, se puede con:
 $ cargo test --all-features
 ```
 
+# Docker
+
+Los detalles de cómo correr el proyecto usando [Docker](https://www.docker.com/)
+son explicados [aquí](./docker_tutorial.md).
+
 # Cómo contribuir
 
 Las convenciones generales a seguir para contribuir en el proyecto quedan exhaustivamente
