@@ -56,6 +56,7 @@ use {
     std::{
         collections::{HashMap, HashSet},
         io::{Read, Write},
+        path::PathBuf,
         sync::{Arc, RwLock},
     },
     tokenizer::tok::tokenize_query,
@@ -79,12 +80,18 @@ pub struct SessionHandler {
 
 impl SessionHandler {
     /// Crea un nuevo `SessionHandler` con un nodo específico.
-    pub fn new(id: NodeId, node: Node) -> Self {
-        SessionHandler {
+    pub fn new(id: NodeId, node: Node) -> Result<Self> {
+        let logger = Logger::new(
+            &PathBuf::from("logs"),
+            &node.endpoint_state.get_addr().to_string(),
+        )
+        .map_err(|e| Error::ServerError(e.to_string()))?;
+
+        Ok(SessionHandler {
             id,
-            logger: node.get_logger(),
+            logger,
             lock: Arc::new(RwLock::new(node)),
-        }
+        })
     }
 
     /// Accede al nodo para escritura mutable, es lockeado para otros.

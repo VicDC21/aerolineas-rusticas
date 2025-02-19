@@ -24,7 +24,6 @@ use {
         },
         utils::load_json,
     },
-    logger::log::Logger,
     parser::{
         data_types::keyspace_name::KeyspaceName,
         statements::{
@@ -57,7 +56,7 @@ use {
     std::{
         collections::HashMap,
         net::{IpAddr, TcpStream},
-        path::{Path, PathBuf},
+        path::Path,
         thread::JoinHandle,
     },
 };
@@ -129,10 +128,6 @@ pub struct Node {
 
     /// Los pesos de los nodos.
     nodes_weights: Vec<usize>,
-
-    // Logger para manejo de registros.
-    #[serde(skip)]
-    logger: Logger,
 }
 
 impl Node {
@@ -140,7 +135,6 @@ impl Node {
     pub fn new(id: NodeId, mode: ConnectionMode) -> Result<Self> {
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
-        let cloned_endpoint_state = endpoint_state.clone();
         neighbours_states.insert(id, endpoint_state.clone());
 
         Ok(Self {
@@ -156,11 +150,6 @@ impl Node {
             tables_and_partitions_keys_values: HashMap::new(),
             open_connections: OpenConnectionsMap::new(),
             nodes_weights: Vec::new(),
-            logger: Logger::new(
-                &PathBuf::from("logs"),
-                &cloned_endpoint_state.get_addr().to_string(),
-            )
-            .map_err(|e| Error::ServerError(e.to_string()))?,
         })
     }
 
@@ -199,11 +188,6 @@ impl Node {
     /// Inicia un nuevo nodo con un ID específico en modo de conexión _echo_.
     pub fn init_new_in_echo_mode(id: NodeId, ip: &str) -> Result<()> {
         Self::init_new(id, ip, ConnectionMode::Echo)
-    }
-
-    /// Devuelve el logger del nodo.
-    pub fn get_logger(&self) -> Logger {
-        self.logger.clone()
     }
 
     /// Agrega un nuevo nodo al clúster con un ID e IP específicos.

@@ -66,7 +66,15 @@ pub fn create_client_and_private_conexion(
     priv_socket: SocketAddr,
     node_listeners: &mut Vec<Option<NodeHandle>>,
 ) -> Result<()> {
-    let sendable_node = SessionHandler::new(id, node);
+    let sendable_node = match SessionHandler::new(id, node) {
+        Ok(handler) => handler,
+        Err(err) => {
+            return Err(Error::ServerError(format!(
+                "Error creando un SessionHandler para el nodo: [{}]:\n\n{}",
+                id, err
+            )));
+        }
+    };
     let cli_node = sendable_node.clone();
     let priv_node = sendable_node.clone();
 
