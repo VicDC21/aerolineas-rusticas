@@ -1286,7 +1286,6 @@ impl Node {
             {
                 continue;
             }
-
             let rows = DiskHandler::get_all_rows(
                 table.get_name(),
                 &self.storage_addr,
@@ -1451,7 +1450,7 @@ impl Node {
             let actual_replica_node =
                 n_th_node_in_the_cluster(self.id, nodes_ids, position as usize, true);
             let mut node_rows: Vec<String> = Vec::new();
-            if position != 0 {
+            if actual_replica_node != self.id {
                 let rows = DiskHandler::get_all_rows(
                     table.get_name(),
                     &self.storage_addr,
@@ -1469,16 +1468,14 @@ impl Node {
             } else if let Some(rows) = nodes_rows.remove(&self.id) {
                 node_rows.extend(rows[2..].to_vec());
             }
-            if !node_rows.is_empty() {
-                DiskHandler::repair_rows(
-                    &self.storage_addr,
-                    table.get_name(),
-                    table.get_keyspace(),
-                    &self.get_default_keyspace_name()?,
-                    actual_replica_node,
-                    &node_rows.join("\n"),
-                )?;
-            }
+            DiskHandler::repair_rows(
+                &self.storage_addr,
+                table.get_name(),
+                table.get_keyspace(),
+                &self.get_default_keyspace_name()?,
+                actual_replica_node,
+                &node_rows.join("\n"),
+            )?;
         }
         Ok(())
     }
