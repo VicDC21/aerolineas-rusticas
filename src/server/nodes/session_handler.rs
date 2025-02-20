@@ -254,8 +254,8 @@ impl SessionHandler {
                 Node::notify_relocation_is_needed();
             }
             SvAction::RelocationNeeded => self.write()?.relocation_needed(),
-            SvAction::UpdateReplicas(new_node_id) => {
-                let res = self.write()?.update_node_replicas(new_node_id)?;
+            SvAction::UpdateReplicas(node_id, is_deletion) => {
+                let res = self.write()?.update_node_replicas(node_id, is_deletion)?;
                 let _ = tcp_stream.write_all(&res);
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
@@ -270,6 +270,10 @@ impl SessionHandler {
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
                 };
+            }
+            SvAction::DeleteNode => {
+                self.read()?.notify_update_replicas(false)?;
+                self.write()?.node_to_deletion();
             }
         };
         Ok(stop)
@@ -1684,6 +1688,27 @@ impl SessionHandler {
         Ok(())
     }
 
+    /// TODO
+    fn node_is_leaving(&self) -> Result<()> {
+        let node_reader = self.read()?;
+        let mut id_to_delete: Vec<NodeId> = Vec::new();
+        for (id, endpoint_state) in &node_reader.neighbours_states {
+            if *endpoint_state.get_appstate_status() == AppStatus::Left {
+                id_to_delete.push(*id);
+            }
+        }
+        drop(node_reader);
+        for id in id_to_delete {
+            DiskHandler::delete_node_id_and_ip(id)?;
+            let mut node_writer = self.write()?;
+            node_writer
+                .endpoint_state
+                .set_appstate_status(AppStatus::RelocationIsNeeded);
+        }
+
+        Ok(())
+    }
+
     /// Consigue la información de _gossip_ que contiene este nodo.
     fn get_gossip_info(&self) -> Result<GossipInfo> {
         let mut gossip_info = GossipInfo::new();
@@ -1697,6 +1722,7 @@ impl SessionHandler {
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     pub fn gossip(&self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done()?;
+        self.node_is_leaving()?;
         self.is_relocation_needed()?;
         self.is_relocation_done()?;
 

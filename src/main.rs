@@ -76,6 +76,16 @@ fn run_nd(argv: Vec<String>) {
                     println!("El id debe ser un número entero entre 0 y 255.");
                 }
             }
+        } else if argv[2] == "delete" && argv.len() >= 3 {
+            // cargo run nd delete <id>
+            match argv[3].parse::<Byte>() {
+                Ok(id) => {
+                    print_err(Node::delete_node(id));
+                }
+                Err(_) => {
+                    println!("El id debe ser un número entero entre 0 y 255.");
+                }
+            }
         } else {
             // cargo run nd <id> [echo]
             match argv[2].parse::<Byte>() {

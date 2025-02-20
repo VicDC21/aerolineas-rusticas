@@ -133,6 +133,44 @@ impl DiskHandler {
         Ok(())
     }
 
+    /// TODO
+    pub fn delete_node_id_and_ip(id: NodeId) -> Result<()> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(NODES_IPS_PATH)
+            .expect("No se pudo abrir el archivo de IPs de nodos para lectura");
+        let reader = BufReader::new(&file);
+        let mut new_content = String::new();
+        for line in reader.lines() {
+            let line = line.map_err(|_| {
+                Error::ServerError(
+                    "No se pudo obtener una linea en el archivo de IPs de nodos".to_string(),
+                )
+            })?;
+            let current_id = line.split(',').next().ok_or_else(|| {
+                Error::ServerError(
+                    "No se pudo obtener el ID de un nodo en el archivo de IPs de nodos".to_string(),
+                )
+            })?;
+            if current_id != id.to_string() {
+                new_content.push_str(&line);
+            }
+        }
+
+        let file = OpenOptions::new()
+            .write(true)
+            .open(NODES_IPS_PATH)
+            .expect("No se pudo abrir el archivo de IPs de nodos para escritura");
+        let mut writer = BufWriter::new(&file);
+        if writer.write_all(new_content.as_bytes()).is_err() {
+            return Err(Error::ServerError(
+                "No se pudo escribir en el archivo de IPs de nodos".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Escribe _new_rows_ al final de la tabla dada.
     pub fn append_new_rows(
         new_rows: String,

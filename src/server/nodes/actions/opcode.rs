@@ -105,14 +105,17 @@ pub enum SvAction {
     /// Aviso de que se reacomodará el clúster, para no seguir realizando operaciones cliente-servidor.
     RelocationNeeded,
 
-    /// Actualiza las réplicas para adaptarse al nuevo nodo.
-    UpdateReplicas(NodeId),
+    /// Actualiza las réplicas para adaptarse al nodo nuevo o borrado.
+    UpdateReplicas(NodeId, bool),
 
     /// Agrega las filas dadas al nodo receptor, que fueron relocalizadas.
     AddRelocatedRows(NodeId, String),
 
     /// Pide todas las filas de todas las tablas al nodo receptor.
     GetAllTablesOfReplica(NodeId),
+
+    /// Aviso al nodo receptor que debe ser dado de baja del clúster.
+    DeleteNode,
 }
 
 impl SvAction {
@@ -282,13 +285,17 @@ impl Byteable for SvAction {
                 bytes
             }
             Self::RelocationNeeded => vec![0xE0],
-            Self::UpdateReplicas(new_node_id) => vec![0xE1, *new_node_id],
+            Self::UpdateReplicas(new_node_id, is_deletion) => {
+                let bool_to_byte = if *is_deletion { 1 } else { 0 };
+                vec![0xE1, *new_node_id, bool_to_byte]
+            }
             Self::AddRelocatedRows(node_id, rows) => {
                 let mut bytes = vec![0xE2, *node_id];
                 bytes.extend(encode_long_string_to_bytes(rows));
                 bytes
             }
             Self::GetAllTablesOfReplica(node_id) => vec![0xE3, *node_id],
+            Self::DeleteNode => vec![0xE4],
         }
     }
 }
@@ -401,13 +408,20 @@ impl TryFrom<&[Byte]> for SvAction {
             0xFE => Ok(Self::SendMetadata(bytes[1])),
             0xFF => Ok(Self::ReceiveMetadata(bytes[1..].to_vec())),
             0xE0 => Ok(Self::RelocationNeeded),
-            0xE1 => Ok(Self::UpdateReplicas(bytes[1])),
+            0xE1 => {
+                let mut is_deletion = true;
+                if bytes[2] == 0 {
+                    is_deletion = false;
+                }
+                Ok(Self::UpdateReplicas(bytes[1], is_deletion))
+            }
             0xE2 => {
                 let node_id = bytes[1];
                 let rows = parse_bytes_to_long_string(&bytes[2..], &mut i)?;
                 Ok(Self::AddRelocatedRows(node_id, rows))
             }
             0xE3 => Ok(Self::GetAllTablesOfReplica(bytes[1])),
+            0xE4 => Ok(Self::DeleteNode),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

@@ -344,6 +344,28 @@ impl Node {
         nodes_ids[max_id]
     }
 
+    /// TODO
+    pub fn delete_node(id_to_delete: NodeId) -> Result<()> {
+        if !Self::id_exists(&id_to_delete) {
+            return Err(Error::ServerError(format!(
+                "El ID {} no está en el archivo de IPs de los nodos.",
+                id_to_delete
+            )));
+        }
+        send_to_node(
+            id_to_delete,
+            SvAction::DeleteNode.as_bytes(),
+            PortType::Priv,
+        )?;
+
+        Ok(())
+    }
+
+    /// TODO
+    pub fn node_to_deletion(&mut self) {
+        self.endpoint_state.set_appstate_status(AppStatus::Left);
+    }
+
     fn add_table(&mut self, table: Table) {
         let table_name = table.get_name().to_string();
         let partition_key: Vec<String> = Vec::new();
@@ -1064,7 +1086,6 @@ impl Node {
 
     /// Inicia el proceso de relocalización.
     pub fn run_relocation(&mut self) -> Result<()> {
-        self.relocation_needed();
         self.relocate_rows()?;
         self.node_ready_to_use();
         Ok(())
@@ -1206,19 +1227,23 @@ impl Node {
                 )?;
             }
         }
+        self.notify_update_replicas(true)?;
+        Ok(())
+    }
 
-        for node_id in nodes_ids {
+    /// Notifica a los demas nodos TODO
+    pub fn notify_update_replicas(&self, is_deletion: bool) -> Result<()> {
+        for node_id in Self::get_nodes_ids() {
             if node_id != self.id {
                 let _ = send_to_node_and_wait_response_with_timeout(
                     node_id,
-                    SvAction::UpdateReplicas(self.id).as_bytes(),
+                    SvAction::UpdateReplicas(self.id, is_deletion).as_bytes(),
                     PortType::Priv,
                     true,
                     Some(TIMEOUT_SECS),
                 )?;
             }
         }
-
         Ok(())
     }
 
@@ -1307,51 +1332,84 @@ impl Node {
         Ok(rows_as_string)
     }
 
-    /// Actualiza las replicas para adaptarse al nodo nuevo.
+    /// Actualiza las replicas para adaptarse a la creacion o borrado de un nodo.
     ///
-    /// Se encarga de crear los archivos CSV necesarios para el nuevo nodo, y eliminar los que
+    /// Se encarga de crear los archivos CSV necesarios para este nodo, y eliminar los que
     /// ya no le corresponden.
-    pub fn update_node_replicas(&mut self, new_node_id: NodeId) -> Result<Vec<Byte>> {
-        // let nodes_ids = Self::get_nodes_ids();
+    pub fn update_node_replicas(
+        &mut self,
+        node_id: NodeId,
+        is_deletion: bool,
+    ) -> Result<Vec<Byte>> {
         for table in self.tables.values() {
             let quantity_of_replicas =
                 self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
-            // if abs_diff_of_ids_index(self.id, new_node_id, &nodes_ids)? >= quantity_of_replicas {
-            //     continue
-            // }
             let mut update_table_replica = false;
             for pos in 1..quantity_of_replicas {
-                let node_id =
+                let replica_node_id =
                     n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), pos as usize, true);
-                if node_id == new_node_id {
+                if replica_node_id == node_id {
                     update_table_replica = true
                 }
             }
             if !update_table_replica {
                 continue;
             }
+            self.delete_and_create_replicas(quantity_of_replicas, is_deletion, node_id, table)?;
+        }
+        // Devolvemos un mensaje de éxito.
+        Ok(vec![1])
+    }
 
-            DiskHandler::create_table_csv_file(
-                &self.storage_addr,
-                &table.keyspace,
-                &table.name,
-                &table.get_columns_names(),
-                new_node_id,
-            )?;
-            // Posición de la última réplica
-            let replica_pos_to_delete = quantity_of_replicas as usize;
-            let id_of_replica_to_delete = n_th_node_in_the_cluster(
-                self.id,
-                &Self::get_nodes_ids(),
-                replica_pos_to_delete,
-                true,
-            );
-            DiskHandler::delete_table_csv_file(
-                &self.storage_addr,
-                &table.keyspace,
-                &table.name,
-                id_of_replica_to_delete,
-            )?;
+    fn delete_and_create_replicas(
+        &self,
+        quantity_of_replicas: Byte,
+        is_deletion: bool,
+        mut node_id: NodeId,
+        table: &Table,
+    ) -> Result<()> {
+        let replica_pos = quantity_of_replicas as usize;
+        let mut id_of_replica =
+            n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), replica_pos, true);
+        if !is_deletion {
+            let aux1 = node_id;
+            let aux2 = id_of_replica;
+            id_of_replica = aux1;
+            node_id = aux2;
+        }
+        DiskHandler::create_table_csv_file(
+            &self.storage_addr,
+            &table.keyspace,
+            &table.name,
+            &table.get_columns_names(),
+            node_id,
+        )?;
+        DiskHandler::delete_table_csv_file(
+            &self.storage_addr,
+            &table.keyspace,
+            &table.name,
+            id_of_replica,
+        )?;
+        Ok(())
+    }
+
+    /// todo
+    pub fn update_node_replicas_2_delete(&mut self, node_id: NodeId) -> Result<Vec<Byte>> {
+        // let nodes_ids = Self::get_nodes_ids();
+        for table in self.tables.values() {
+            let quantity_of_replicas =
+                self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
+            let mut update_table_replica = false;
+            for pos in 1..quantity_of_replicas {
+                let replica_node_id =
+                    n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), pos as usize, true);
+                if replica_node_id == node_id {
+                    update_table_replica = true
+                }
+            }
+            if !update_table_replica {
+                continue;
+            }
         }
         // Devolvemos un mensaje de éxito.
         Ok(vec![1])
