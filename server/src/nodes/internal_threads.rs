@@ -109,7 +109,7 @@ pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result
         .logger
         .info(
             &format!("Escuchando conexiones de cliente en {}", socket),
-            Color::Green,
+            Color::Blue,
             true,
         )
         .map_err(|e| Error::ServerError(e.to_string()))?;
@@ -122,7 +122,7 @@ pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler) -> Resul
         .logger
         .info(
             &format!("Escuchando conexiones privadas en {}", socket),
-            Color::Green,
+            Color::Blue,
             true,
         )
         .map_err(|e| Error::ServerError(e.to_string()))?;
@@ -231,11 +231,6 @@ fn listen_single_client(
     let tls = &mut tls_stream;
     let mut is_logged = false;
 
-    session_handler
-        .logger
-        .info("Conexión TLS establecida con cliente", Color::Green, true)
-        .map_err(|e| Error::ServerError(e.to_string()))?;
-
     loop {
         let mut buffer: Vec<Byte> = vec![0; 2048];
         let size = match tls.read(&mut buffer) {
@@ -254,14 +249,14 @@ fn listen_single_client(
             .logger
             .info(
                 &format!("Mensaje recibido (CLI): {:?}", buffer),
-                Color::Blue,
+                Color::Green,
                 true,
             )
             .map_err(|e| Error::ServerError(e.to_string()))?;
         if is_exit(&buffer[..]) {
             session_handler
                 .logger
-                .info("Recibido mensaje EXIT desde cliente", Color::Yellow, true)
+                .info("Recibido mensaje EXIT desde cliente", Color::Green, true)
                 .map_err(|e| Error::ServerError(e.to_string()))?;
             match arc_exit.lock() {
                 Ok(mut locked_in) => *locked_in = true,
@@ -282,7 +277,7 @@ fn listen_single_client(
             let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
             session_handler
                 .logger
-                .info(&format!("Respuesta enviada: {:?}", res), Color::Blue, true)
+                .info(&format!("Respuesta enviada: {:?}", res), Color::Green, true)
                 .map_err(|e| Error::ServerError(e.to_string()))?;
             if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
                 is_logged = true;

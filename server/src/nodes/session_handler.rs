@@ -19,7 +19,7 @@ use {
         utils::printable_bytes,
     },
     chrono::Utc,
-    logger::log::Logger,
+    logger::log::{Color, Logger},
     parser::{
         data_types::keyspace_name::KeyspaceName,
         main_parser::make_parse,
@@ -90,7 +90,13 @@ impl SessionHandler {
         )
         .map_err(|e| Error::ServerError(e.to_string()))?;
 
-        println!("Creando un nuevo SessionHandler para el nodo con ID {}", id);
+        logger
+            .info(
+                format!("Creando un nuevo SessionHandler para el nodo con ID {}", id).as_str(),
+                Color::Yellow,
+                true,
+            )
+            .map_err(|e| Error::ServerError(e.to_string()))?;
 
         Ok(SessionHandler {
             id,
@@ -154,10 +160,12 @@ impl SessionHandler {
         match SvAction::get_action(&bytes[..]) {
             Some(action) => {
                 if let Err(err) = self.handle_sv_action(action, stream) {
-                    println!(
-                        "[{} - ACTION] Error en la acción del servidor: {}",
-                        self.id, err
-                    );
+                    self.logger
+                        .error(
+                            format!("Error en la acción del servidor: {}", err).as_str(),
+                            true,
+                        )
+                        .map_err(|e| Error::ServerError(e.to_string()))?;
                 }
                 Ok(vec![])
             }
@@ -177,6 +185,9 @@ impl SessionHandler {
                 self.write()?.beat();
             }
             SvAction::Gossip(neighbours) => {
+                self.logger
+                    .info("Iniciando ronda de Gossip", Color::Blue, true)
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.gossip(neighbours)?;
             }
             SvAction::Syn(emissor_id, gossip_info) => {
@@ -190,11 +201,25 @@ impl SessionHandler {
             }
             SvAction::NewNeighbour(id, state) => {
                 self.write()?.add_neighbour_state(id, state)?;
+                self.logger
+                    .info(
+                        format!("Se incorporó al cluster el nodo {}", id).as_str(),
+                        Color::Yellow,
+                        true,
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::SendEndpointState(id) => {
                 self.read()?.send_endpoint_state(id);
             }
             SvAction::InternalQuery(bytes) => {
+                self.logger
+                    .info(
+                        format!("Manejo de query interna {:?}", bytes).as_str(),
+                        Color::Red,
+                        true,
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 let response = self.handle_request(&bytes, true, true);
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
@@ -224,6 +249,16 @@ impl SessionHandler {
                 };
             }
             SvAction::RepairRows(table_name, node_id, rows_bytes) => {
+                self.logger
+                    .warn(
+                        format!(
+                            "Reparando columnas de la tabla {} para el nodo {}",
+                            table_name, node_id
+                        )
+                        .as_str(),
+                        true,
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.repair_rows(table_name, node_id, rows_bytes)?;
             }
             SvAction::AddPartitionValueToMetadata(table_name, partition_value) => {
@@ -243,6 +278,13 @@ impl SessionHandler {
                 };
             }
             SvAction::SendMetadata(node_id) => {
+                self.logger
+                    .info(
+                        format!("Enviando metadatos al nodo {}", node_id).as_str(),
+                        Color::Green,
+                        true,
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 let response = self.read()?.get_metadata_to_new_node_as_bytes()?;
                 send_to_node(
                     node_id,
@@ -251,6 +293,9 @@ impl SessionHandler {
                 )?;
             }
             SvAction::ReceiveMetadata(metadata) => {
+                self.logger
+                    .info("Recibiendo metadatos", Color::Green, true)
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 let mut node_writer = self.write()?;
                 node_writer.receive_metadata(metadata)?;
                 // Además continuamos el proceso de adaptación del clúster.
@@ -258,6 +303,9 @@ impl SessionHandler {
             }
             SvAction::ReallocationNeeded => self.write()?.reallocation_needed(),
             SvAction::UpdateReplicas(new_node_id) => {
+                self.logger
+                    .info("Actualizando réplicas", Color::Green, true)
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 let res = self.write()?.update_node_replicas(new_node_id)?;
                 let _ = tcp_stream.write_all(&res);
                 if let Err(err) = tcp_stream.flush() {
@@ -1655,7 +1703,14 @@ impl SessionHandler {
             {
                 // No devolvemos error porque no se considera un error que un vecino
                 // no responda en esta instancia, sino que esta apagado.
+                // Pero para el logger si generamos un log de advertencia/aviso
                 self.write()?.acknowledge_offline_neighbour(neighbour_id);
+                self.logger
+                    .warn(
+                        format!("El nodo {} se encuentra apagado", neighbour_id).as_str(),
+                        true,
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
         }
         Ok(())
@@ -1684,10 +1739,16 @@ impl SessionHandler {
             SvAction::Ack(self.id.to_owned(), own_gossip_info, response_nodes).as_bytes(),
             PortType::Priv,
         ) {
-            println!(
-                "Ocurrió un error al mandar un mensaje ACK al nodo [{}]:\n\n{}",
-                emissor_id, err
-            );
+            if let Err(log_err) = self.logger.error(
+                format!(
+                    "[{} - ERROR] Ocurrió un error al mandar un mensaje ACK al nodo [{}]:\n\n{}",
+                    self.id, emissor_id, err
+                )
+                .as_str(),
+                true,
+            ) {
+                println!("Error logging message: {}", log_err);
+            }
         }
         Ok(())
     }
@@ -1754,10 +1815,16 @@ impl SessionHandler {
             SvAction::Ack2(nodes_for_receptor).as_bytes(),
             PortType::Priv,
         ) {
-            println!(
-                "Ocurrió un error al mandar un mensaje ACK2 al nodo [{}]:\n\n{}",
-                receptor_id, err
-            );
+            if let Err(log_err) = self.logger.error(
+                format!(
+                    "[{} - ERROR] Ocurrió un error al mandar un mensaje ACK2 al nodo [{}]:\n\n{}",
+                    self.id, receptor_id, err
+                )
+                .as_str(),
+                true,
+            ) {
+                println!("Error logging message: {}", log_err);
+            }
         }
         Ok(())
     }

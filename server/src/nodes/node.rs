@@ -552,7 +552,6 @@ impl Node {
         }
         let actual_n_nodes = Self::get_actual_n_nodes();
         if !self.has_endpoint_state_by_id(&id) {
-            println!("Nodo {} presentado.", id);
             if actual_n_nodes > N_NODES as usize {
                 self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
                 if self.nodes_weights.len() < actual_n_nodes {
@@ -579,15 +578,13 @@ impl Node {
                     endpoint_state.get_addr().to_string().as_str(),
                 );
             }
-            if !self.has_endpoint_state_by_id(&node_id) {
-                println!("Nodo {} presentado.", node_id);
-                if actual_n_nodes > N_NODES as usize {
-                    self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
-                    if self.nodes_weights.len() < actual_n_nodes {
-                        self.nodes_weights.push(1);
-                    }
+            if !self.has_endpoint_state_by_id(&node_id) && actual_n_nodes > N_NODES as usize {
+                self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
+                if self.nodes_weights.len() < actual_n_nodes {
+                    self.nodes_weights.push(1);
                 }
             }
+
             self.neighbours_states.insert(node_id, endpoint_state);
         }
 
