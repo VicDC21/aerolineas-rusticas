@@ -154,7 +154,7 @@ impl Node {
             users_default_keyspace_name: HashMap::new(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
-            nodes_ranges: divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes()),
+            nodes_ranges: divide_range(0, NODES_RANGE_END, Self::get_all_n_nodes()),
             tables_and_partitions_keys_values: HashMap::new(),
             open_connections: OpenConnectionsMap::new(),
             nodes_weights: Vec::new(),
@@ -178,7 +178,7 @@ impl Node {
         self.neighbours_states = neighbours_states;
         self.endpoint_state = endpoint_state;
         self.storage_addr = DiskHandler::get_node_storage(id);
-        self.nodes_ranges = divide_range(0, NODES_RANGE_END, Self::get_actual_n_nodes());
+        self.nodes_ranges = divide_range(0, NODES_RANGE_END, self.get_actual_n_nodes());
         self.open_connections = OpenConnectionsMap::new();
         self.is_new_node = is_new;
 
@@ -222,6 +222,7 @@ impl Node {
                 )));
             }
         }
+        println!("Se inicia el nodo {} y se agrega a la lista de ids", id);
         DiskHandler::store_new_node_id_and_ip(id, ip)?;
 
         Self::init(id, mode, true)
@@ -253,7 +254,7 @@ impl Node {
         nodes_weights: &mut Vec<usize>,
         is_new: bool,
     ) -> Result<Vec<Option<NodeHandle>>> {
-        let nodes_ids = Self::get_nodes_ids();
+        let nodes_ids = Self::get_all_nodes_ids();
         if nodes_ids.len() < N_NODES as usize {
             return Err(Error::ServerError(format!(
                 "El archivo de IPs de los nodos no tiene la cantidad correcta de nodos. Se esperaban al menos {} nodos, se encontraron {}.",
@@ -278,7 +279,7 @@ impl Node {
         } else {
             Self::new(id, mode, is_new)?
         };
-        node.inicialize_nodes_weights(Self::get_actual_n_nodes());
+        node.inicialize_nodes_weights(Self::get_all_n_nodes());
         *nodes_weights = node.nodes_weights.clone();
         let max_weight_id = node.max_weight();
 
@@ -310,7 +311,7 @@ impl Node {
 
     /// Se le ordena a todos los nodos existentes que envien su _endpoint state_ al nodo con el ID dado.
     fn send_states_to_node(id: NodeId) {
-        for node_id in Self::get_nodes_ids() {
+        for node_id in Self::get_all_nodes_ids() {
             if id == node_id {
                 continue;
             }
@@ -334,7 +335,7 @@ impl Node {
     ///
     /// Si todos son iguales, agarra el primero.
     pub fn max_weight(&self) -> NodeId {
-        let nodes_ids = Self::get_nodes_ids();
+        let nodes_ids = self.get_nodes_ids();
         let mut max_id: usize = 0;
         for i in 0..nodes_ids.len() {
             if self.nodes_weights[i] > self.nodes_weights[max_id] {
@@ -483,14 +484,41 @@ impl Node {
     }
 
     /// Devuelve los IDs de los nodos del cluster. Ordenados de menor a mayor.
-    pub fn get_nodes_ids() -> Vec<NodeId> {
+    pub fn get_nodes_ids(&self) -> Vec<NodeId> {
+        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_loaded().get_ids();
+        for (id, state) in &self.neighbours_states {
+            if *state.get_appstate().get_status() == AppStatus::Left
+                || *state.get_appstate().get_status() == AppStatus::Remove
+            {
+                nodes_ids.retain(|id_to_retain| id_to_retain != id);
+            }
+        }
+        nodes_ids.sort();
+        nodes_ids
+    }
+
+    /// Devuelve los IDs de todos los nodos del cluster sin importar su Status. Ordenados de menor a mayor.
+    pub fn get_all_nodes_ids() -> Vec<NodeId> {
         let mut nodes_ids: Vec<NodeId> = AddrLoader::default_loaded().get_ids();
         nodes_ids.sort();
         nodes_ids
     }
 
     /// Devuelve la cantidad de nodos actual en el clúster, en base al archivo de IPs `node_ips.csv`.
-    pub fn get_actual_n_nodes() -> usize {
+    pub fn get_actual_n_nodes(&self) -> usize {
+        let mut actual_n_nodes = AddrLoader::default_loaded().get_ids().len();
+        for state in self.neighbours_states.values() {
+            if *state.get_appstate().get_status() == AppStatus::Left
+                || *state.get_appstate().get_status() == AppStatus::Remove
+            {
+                actual_n_nodes -= 1;
+            }
+        }
+        actual_n_nodes
+    }
+
+    /// Devuelve la cantidad de todos los nodos en el cluster, sin importar su Status.
+    pub fn get_all_n_nodes() -> usize {
         AddrLoader::default_loaded().get_ids().len()
     }
 
@@ -506,7 +534,7 @@ impl Node {
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
     pub fn select_node(&self, value: &str) -> NodeId {
-        let nodes_ids = Self::get_nodes_ids();
+        let nodes_ids = self.get_nodes_ids();
         let hash_val = hash_value(value);
 
         let mut i = 0;
@@ -583,14 +611,22 @@ impl Node {
 
     /// Agrega un nuevo vecino conocido por el nodo.
     pub fn add_neighbour_state(&mut self, id: NodeId, state: EndpointState) -> Result<()> {
+        let mut actual_n_nodes = self.get_actual_n_nodes();
         // Esto es para el caso en el que el nodo se encuentra en otra computadora y no tiene
         // la informacion en su archivo csv, entonces se agrega a su archivo correspondiente.
         // Se asume que esta info es válida.
-        if !Self::id_exists(&id) {
+        if !Self::id_exists(&id) && *state.get_appstate().get_status() != AppStatus::Left {
+            println!(
+                "El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.",
+                id,
+                *state.get_appstate().get_status()
+            );
             DiskHandler::store_new_node_id_and_ip(id, state.get_addr().to_string().as_str())?;
+            actual_n_nodes = self.get_actual_n_nodes();
         }
-        let actual_n_nodes = Self::get_actual_n_nodes();
-        if !self.has_endpoint_state_by_id(&id) {
+        if !self.has_endpoint_state_by_id(&id)
+            && *state.get_appstate().get_status() != AppStatus::Left
+        {
             println!("Nodo {} presentado.", id);
             if actual_n_nodes > N_NODES as usize {
                 self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
@@ -607,18 +643,24 @@ impl Node {
     ///
     /// No se comprueba si las entradas nuevas son más recientes o no: reemplaza todo sin preguntar.
     pub fn update_neighbours(&mut self, new_neighbours: NodesMap) -> Result<()> {
-        let actual_n_nodes = Self::get_actual_n_nodes();
+        let mut actual_n_nodes = self.get_actual_n_nodes();
         for (node_id, endpoint_state) in new_neighbours {
             // Esto es para el caso en el que el nodo se encuentra en otra computadora y no tiene
             // la informacion en su archivo csv, entonces se agrega a su archivo correspondiente.
             // Se asume que esta info es válida.
-            if !Self::id_exists(&node_id) {
+            if !Self::id_exists(&node_id)
+                && *endpoint_state.get_appstate().get_status() != AppStatus::Left
+            {
+                println!("El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.", node_id, *endpoint_state.get_appstate().get_status());
                 DiskHandler::store_new_node_id_and_ip(
                     node_id,
                     endpoint_state.get_addr().to_string().as_str(),
                 )?;
+                actual_n_nodes = self.get_actual_n_nodes();
             }
-            if !self.has_endpoint_state_by_id(&node_id) {
+            if !self.has_endpoint_state_by_id(&node_id)
+                && *endpoint_state.get_appstate().get_status() != AppStatus::Left
+            {
                 println!("Nodo {} presentado.", node_id);
                 if actual_n_nodes > N_NODES as usize {
                     self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
@@ -1093,7 +1135,7 @@ impl Node {
 
     /// Notifica a todos los nodos que una relocalización de los datos es necesaria.
     pub fn notify_relocation_is_needed() {
-        let nodes_ids = Self::get_nodes_ids();
+        let nodes_ids = Self::get_all_nodes_ids();
         for node_id in nodes_ids {
             if send_to_node(
                 node_id,
@@ -1126,7 +1168,7 @@ impl Node {
     /// la información necesaria para unirse al resto de nodos.
     pub fn request_previous_metadata_for_new_node(id: NodeId) {
         // Elegimos un nodo arbitrario, ya que todos los nodos tienen la misma metadata.
-        let nodes_ids = Self::get_nodes_ids();
+        let nodes_ids = Self::get_all_nodes_ids();
         let node_id = if nodes_ids[0] == id {
             nodes_ids[1]
         } else {
@@ -1212,7 +1254,7 @@ impl Node {
             DiskHandler::create_keyspace_dir(keyspace_name, &self.storage_addr)?;
         }
 
-        let nodes_ids = Self::get_nodes_ids();
+        let nodes_ids = self.get_nodes_ids();
         for table in self.tables.values() {
             let replicas_to_create =
                 self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as usize;
@@ -1227,13 +1269,13 @@ impl Node {
                 )?;
             }
         }
-        self.notify_update_replicas(true)?;
+        self.notify_update_replicas(false)?;
         Ok(())
     }
 
     /// Notifica a los demas nodos TODO
     pub fn notify_update_replicas(&self, is_deletion: bool) -> Result<()> {
-        for node_id in Self::get_nodes_ids() {
+        for node_id in self.get_nodes_ids() {
             if node_id != self.id {
                 let _ = send_to_node_and_wait_response_with_timeout(
                     node_id,
@@ -1250,9 +1292,8 @@ impl Node {
     /// Consulta a los nodos vecinos si las replicas de las tablas de ellos le corresponden a este nodo
     /// y si le corresponden las agrega.
     pub fn get_tables_of_replicas(&mut self) -> Result<()> {
-        for i in 1..Self::get_actual_n_nodes() {
-            let node_to_consult =
-                n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), i, true);
+        for i in 1..self.get_actual_n_nodes() {
+            let node_to_consult = n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), i, true);
             let rows: Vec<u8> = send_to_node_and_wait_response_with_timeout(
                 node_to_consult,
                 SvAction::GetAllTablesOfReplica(self.id).as_bytes(),
@@ -1290,7 +1331,7 @@ impl Node {
     /// Segun el node_id recibido, revisa si este deberia tener alguna de las replicas de las tablas que
     /// le pertenecen a este nodo. Si no le pertenece ninguna replica devuelve un vector vacio.
     pub fn copy_tables(&self, node_id: NodeId) -> Result<Vec<Byte>> {
-        let mut nodes_ids = Self::get_nodes_ids();
+        let mut nodes_ids = self.get_nodes_ids();
         // Se necesita que el nodo pertenezca aunque todavía no se haya presentado, solo en
         // este caso excepcional.
         if !nodes_ids.contains(&node_id) {
@@ -1347,7 +1388,7 @@ impl Node {
             let mut update_table_replica = false;
             for pos in 1..quantity_of_replicas {
                 let replica_node_id =
-                    n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), pos as usize, true);
+                    n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), pos as usize, true);
                 if replica_node_id == node_id {
                     update_table_replica = true
                 }
@@ -1370,8 +1411,8 @@ impl Node {
     ) -> Result<()> {
         let replica_pos = quantity_of_replicas as usize;
         let mut id_of_replica =
-            n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), replica_pos, true);
-        if !is_deletion {
+            n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), replica_pos, true);
+        if is_deletion {
             let aux1 = node_id;
             let aux2 = id_of_replica;
             id_of_replica = aux1;
@@ -1395,14 +1436,14 @@ impl Node {
 
     /// todo
     pub fn update_node_replicas_2_delete(&mut self, node_id: NodeId) -> Result<Vec<Byte>> {
-        // let nodes_ids = Self::get_nodes_ids();
+        // let nodes_ids = self.get_nodes_ids();
         for table in self.tables.values() {
             let quantity_of_replicas =
                 self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
             let mut update_table_replica = false;
             for pos in 1..quantity_of_replicas {
                 let replica_node_id =
-                    n_th_node_in_the_cluster(self.id, &Self::get_nodes_ids(), pos as usize, true);
+                    n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), pos as usize, true);
                 if replica_node_id == node_id {
                     update_table_replica = true
                 }
@@ -1425,7 +1466,7 @@ impl Node {
     pub fn relocate_rows(&mut self) -> Result<()> {
         for table in self.tables.values() {
             let mut nodes_rows: HashMap<NodeId, Vec<String>> = HashMap::new();
-            let nodes_ids = Self::get_nodes_ids();
+            let nodes_ids = self.get_nodes_ids();
 
             self.filter_and_repair_rows(&mut nodes_rows, &nodes_ids, table)?;
             self.filter_replicas_rows_and_repair(&mut nodes_rows, &nodes_ids, table)?;
@@ -1472,7 +1513,7 @@ impl Node {
                     as usize;
                 for position in 0..replicas_quantity {
                     let next_node_id =
-                        n_th_node_in_the_cluster(*node_id, &Self::get_nodes_ids(), position, false);
+                        n_th_node_in_the_cluster(*node_id, &self.get_nodes_ids(), position, false);
                     if next_node_id == self.id {
                         DiskHandler::repair_rows(
                             &self.storage_addr,
@@ -1554,7 +1595,7 @@ impl Node {
 
     /// Realiza las últimas tareas para dar por terminado el proceso de relocalización.
     pub fn finish_relocation(&mut self) -> Result<()> {
-        let nodes_ids = Self::get_nodes_ids();
+        let nodes_ids = self.get_nodes_ids();
         for table in self.tables.values() {
             let replicas_quantity =
                 self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as usize;

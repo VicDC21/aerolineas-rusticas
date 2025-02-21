@@ -80,6 +80,7 @@ fn run_nd(argv: Vec<String>) {
             // cargo run nd delete <id>
             match argv[3].parse::<Byte>() {
                 Ok(id) => {
+                    println!("Nodo a eliminar: {}", argv[3]);
                     print_err(Node::delete_node(id));
                 }
                 Err(_) => {
@@ -185,11 +186,10 @@ PASO 3:
 
 Preguntas a martin:
 
-Los nodos originales pueden ser dados de baja?
+Los nodos originales pueden ser dados de baja? Suponiendo a los originales los N nodos nombrados en el enunciado (En nuestro caso 5 nodos).
+Y si pueden ser dados de baja, hay que mantener N nodos funcionando o pueden haber menos de N nodos?
+
 Habria que ver si hay que agregarle algo de seguridad para poder usar este comando,
 ya que estas agregando un nodo nuevo al cluster (preguntar a martin).
-
-
-La relocalización de nodos deberia funcionar con algun nodo apagado?
 
 */

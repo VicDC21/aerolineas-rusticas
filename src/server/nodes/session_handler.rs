@@ -272,7 +272,7 @@ impl SessionHandler {
                 };
             }
             SvAction::DeleteNode => {
-                self.read()?.notify_update_replicas(false)?;
+                self.read()?.notify_update_replicas(true)?;
                 self.write()?.node_to_deletion();
             }
         };
@@ -550,8 +550,11 @@ impl SessionHandler {
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
         let mut actual_node_id = self.id;
-        let nodes_ids = Node::get_nodes_ids();
-        for _ in 0..Node::get_actual_n_nodes() {
+        let node_reader = self.read()?;
+        let nodes_ids = node_reader.get_nodes_ids();
+        let nodes_quantity = node_reader.get_actual_n_nodes();
+        drop(node_reader);
+        for _ in 0..nodes_quantity {
             response = if actual_node_id != self.id {
                 send_to_node_and_wait_response_with_timeout(
                     actual_node_id,
@@ -576,8 +579,11 @@ impl SessionHandler {
     ) -> Result<Vec<Byte>> {
         let mut response: Vec<Byte> = Vec::new();
         let mut actual_node_id = self.id;
-        let nodes_ids = Node::get_nodes_ids();
-        for _ in 0..Node::get_actual_n_nodes() {
+        let node_reader = self.read()?;
+        let nodes_ids = node_reader.get_nodes_ids();
+        let nodes_quantity = node_reader.get_actual_n_nodes();
+        drop(node_reader);
+        for _ in 0..nodes_quantity {
             response = if actual_node_id != self.id {
                 send_to_node_and_wait_response_with_timeout(
                     actual_node_id,
@@ -608,12 +614,12 @@ impl SessionHandler {
                 keyspace_name
             )));
         }
+        let nodes_quantity = node_reader.get_actual_n_nodes();
+        let nodes_ids = node_reader.get_nodes_ids();
         drop(node_reader);
-
         let mut responses = Vec::new();
         let mut actual_node_id = self.id;
-        let nodes_ids = Node::get_nodes_ids();
-        for _ in 0..Node::get_actual_n_nodes() {
+        for _ in 0..nodes_quantity {
             let response = if actual_node_id != self.id {
                 send_to_node_and_wait_response_with_timeout(
                     actual_node_id,
@@ -645,12 +651,12 @@ impl SessionHandler {
                 keyspace_name
             )));
         }
+        let nodes_ids = node_reader.get_nodes_ids();
+        let nodes_quantity = node_reader.get_actual_n_nodes();
         drop(node_reader);
-
         let mut responses = Vec::new();
         let mut actual_node_id = self.id;
-        let nodes_ids = Node::get_nodes_ids();
-        for _ in 0..Node::get_actual_n_nodes() {
+        for _ in 0..nodes_quantity {
             let response = if actual_node_id != self.id {
                 send_to_node_and_wait_response_with_timeout(
                     actual_node_id,
@@ -680,10 +686,9 @@ impl SessionHandler {
         let keyspace = node_reader.get_keyspace_from_name(&keyspace_name)?;
         let quantity_replicas: Uint =
             node_reader.get_quantity_of_replicas_from_keyspace(keyspace)?;
+        let nodes_ids = node_reader.get_nodes_ids();
         drop(node_reader);
-
         let mut response: Vec<Byte> = Vec::new();
-        let nodes_ids = Node::get_nodes_ids();
         for actual_node_id in &nodes_ids {
             let mut next_node_id = *actual_node_id;
             for _ in 0..quantity_replicas {
@@ -892,7 +897,9 @@ impl SessionHandler {
     ) -> Result<Vec<Byte>> {
         let (select, request) = select_and_request;
         let mut result: Vec<Byte> = Vec::new();
-        let nodes_ids = Node::get_nodes_ids();
+        let node_reader = self.read()?;
+        let nodes_ids = node_reader.get_nodes_ids();
+        drop(node_reader);
         let mut node_replica = next_node_in_the_cluster(node_id, &nodes_ids);
 
         for _ in 1..replication_factor_quantity {
@@ -1015,7 +1022,9 @@ impl SessionHandler {
 
         let first_hashed_value = hash_value(response_from_first_responsive_replica);
         let mut responses: Vec<Vec<Byte>> = Vec::new();
-        let nodes_ids = Node::get_nodes_ids();
+        let node_reader = self.read()?;
+        let nodes_ids = node_reader.get_nodes_ids();
+        drop(node_reader);
         let mut node_to_consult = next_node_in_the_cluster(responsive_replica, &nodes_ids);
         let mut inconsistent_digest_request = false;
         for _ in (replicas_asked as Uint)..replication_factor_quantity {
@@ -1099,7 +1108,9 @@ impl SessionHandler {
         let mut rows_of_nodes: Vec<Vec<Vec<String>>> = vec![];
         let mut req_with_node_replica = request[9..].to_vec();
         req_with_node_replica.push(node_id);
-        let nodes_ids = Node::get_nodes_ids();
+        let node_reader = self.read()?;
+        let nodes_ids = node_reader.get_nodes_ids();
+        drop(node_reader);
         let mut node_to_consult = node_id;
         for _ in 0..replication_factor_quantity {
             let res = if node_to_consult == self.id {
@@ -1195,11 +1206,12 @@ impl SessionHandler {
             consistency_level.as_usize(replication_factor_quantity as usize)?;
         let mut consistency_counter = 0;
         let mut wait_response = true;
-        let nodes_ids = Node::get_nodes_ids();
+        let nodes_ids = node_reader.get_nodes_ids();
         let mut node_to_replicate = node_id;
+        let nodes_quantity = node_reader.get_actual_n_nodes();
         drop(node_reader);
 
-        for i in 0..Node::get_actual_n_nodes() {
+        for i in 0..nodes_quantity {
             if (i as Uint) < replication_factor_quantity {
                 response = if node_to_replicate == self.id {
                     let mut node_writer = self.write()?;
@@ -1436,7 +1448,9 @@ impl SessionHandler {
         timestamp: Long,
         consistency_counter: &mut usize,
     ) -> Result<()> {
-        let nodes_ids = Node::get_nodes_ids();
+        let node_reader = self.read()?;
+        let nodes_ids = node_reader.get_nodes_ids();
+        drop(node_reader);
         let mut node_to_replicate = next_node_in_the_cluster(node_id, &nodes_ids);
         for _ in 1..replication_factor {
             let current_response = if node_to_replicate == self.id {
@@ -1532,7 +1546,9 @@ impl SessionHandler {
     ) -> Result<()> {
         let mut consistency_counter = 0;
         let mut wait_response = true;
-        let nodes_ids = Node::get_nodes_ids();
+        let node_reader = self.read()?;
+        let nodes_ids = node_reader.get_nodes_ids();
+        drop(node_reader);
         let mut node_to_replicate = node_id;
         for _ in 0..replication_factor {
             let current_response = if node_to_replicate == self.id {
@@ -1627,11 +1643,14 @@ impl SessionHandler {
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
         let node_status = node_reader.endpoint_state.get_appstate_status();
-        if node_reader.neighbours_states.len() == Node::get_actual_n_nodes()
+
+        if node_reader.neighbours_states.len() == node_reader.get_actual_n_nodes()
             && *node_status != AppStatus::Normal
             && *node_status != AppStatus::RelocationIsNeeded
             && *node_status != AppStatus::RelocatingData
             && *node_status != AppStatus::Ready
+            && *node_status != AppStatus::Left
+            && *node_status != AppStatus::Remove
         {
             drop(node_reader);
 
@@ -1671,7 +1690,7 @@ impl SessionHandler {
         if *node_reader.endpoint_state.get_appstate_status() != AppStatus::Ready {
             return Ok(());
         }
-        let n_nodes = Node::get_actual_n_nodes();
+        let n_nodes = node_reader.get_actual_n_nodes();
         let mut ready_nodes_counter = 0;
         for endpoint_state in node_reader.neighbours_states.values() {
             if *endpoint_state.get_appstate_status() == AppStatus::Ready
@@ -1694,16 +1713,27 @@ impl SessionHandler {
         let mut id_to_delete: Vec<NodeId> = Vec::new();
         for (id, endpoint_state) in &node_reader.neighbours_states {
             if *endpoint_state.get_appstate_status() == AppStatus::Left {
+                println!("Se va a borrar al nodo {} de la lista de vecinos", id);
                 id_to_delete.push(*id);
             }
         }
         drop(node_reader);
         for id in id_to_delete {
+            println!("Se borra al nodo {} de la lista de ips", id);
             DiskHandler::delete_node_id_and_ip(id)?;
             let mut node_writer = self.write()?;
-            node_writer
-                .endpoint_state
-                .set_appstate_status(AppStatus::RelocationIsNeeded);
+            if id != self.id {
+                node_writer
+                    .endpoint_state
+                    .set_appstate_status(AppStatus::RelocationIsNeeded);
+                println!("Borro a nodo {} de los vecinos del nodo {}", id, self.id);
+                node_writer.neighbours_states.remove(&id);
+            } else {
+                node_writer.relocate_rows()?;
+                node_writer
+                    .endpoint_state
+                    .set_appstate_status(AppStatus::Remove);
+            }
         }
 
         Ok(())

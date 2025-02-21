@@ -140,25 +140,30 @@ impl DiskHandler {
             .open(NODES_IPS_PATH)
             .expect("No se pudo abrir el archivo de IPs de nodos para lectura");
         let reader = BufReader::new(&file);
-        let mut new_content = String::new();
+        let mut new_rows: Vec<String> = Vec::new();
         for line in reader.lines() {
             let line = line.map_err(|_| {
                 Error::ServerError(
                     "No se pudo obtener una linea en el archivo de IPs de nodos".to_string(),
                 )
             })?;
+            println!("linea leida: {}", line);
             let current_id = line.split(',').next().ok_or_else(|| {
                 Error::ServerError(
                     "No se pudo obtener el ID de un nodo en el archivo de IPs de nodos".to_string(),
                 )
             })?;
             if current_id != id.to_string() {
-                new_content.push_str(&line);
+                new_rows.push(line);
             }
         }
+        println!("Nuevo contenido: {:?}", new_rows);
+        let mut new_content = new_rows.join("\n");
+        new_content.push('\n');
 
         let file = OpenOptions::new()
             .write(true)
+            .truncate(true)
             .open(NODES_IPS_PATH)
             .expect("No se pudo abrir el archivo de IPs de nodos para escritura");
         let mut writer = BufWriter::new(&file);
@@ -337,15 +342,30 @@ impl DiskHandler {
             .write(true)
             .create_new(true)
             .open(&table_addr)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo crear la tabla con dirección `{}` para escritura: {}",
+                    table_addr, e
+                ))
+            })?;
 
         let mut writer = BufWriter::new(&file);
         writer
             .write_all(columns_names.join(",").as_bytes())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo escribir las columnas en la tabla con dirección `{}`: {}",
+                    table_addr, e
+                ))
+            })?;
         writer
             .write_all((",row_timestamp\n").as_bytes())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo escribir las columnas en la tabla con dirección `{}`: {}",
+                    table_addr, e
+                ))
+            })?;
         Ok(())
     }
 
