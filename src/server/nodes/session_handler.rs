@@ -1155,8 +1155,7 @@ impl SessionHandler {
                 let table = node_writer.get_table(table_name)?;
                 DiskHandler::repair_rows(
                     &node_writer.storage_addr,
-                    table_name,
-                    table.get_keyspace(),
+                    table,
                     &node_writer.default_keyspace_name,
                     replica_to_repair,
                     &rows_as_string,
@@ -1941,8 +1940,7 @@ impl SessionHandler {
 
         DiskHandler::repair_rows(
             &node_writer.storage_addr,
-            &table_name,
-            keyspace_name,
+            table,
             &node_writer.get_default_keyspace_name()?,
             node_id,
             &rows,

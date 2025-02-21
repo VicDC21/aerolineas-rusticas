@@ -1315,7 +1315,7 @@ impl Node {
             let tables_data: Vec<&str> = rows_string.split("\n\n\n").collect();
             for table_data in tables_data {
                 let rows_of_table: Vec<&str> = table_data.split("\n").collect();
-                DiskHandler::repair_rows(
+                DiskHandler::truncate_rows(
                     &self.storage_addr,
                     rows_of_table[1],
                     rows_of_table[0],
@@ -1515,7 +1515,7 @@ impl Node {
                     let next_node_id =
                         n_th_node_in_the_cluster(*node_id, &self.get_nodes_ids(), position, false);
                     if next_node_id == self.id {
-                        DiskHandler::repair_rows(
+                        DiskHandler::truncate_rows(
                             &self.storage_addr,
                             table.get_name(),
                             table.get_keyspace(),
@@ -1567,7 +1567,7 @@ impl Node {
             } else if let Some(rows) = nodes_rows.remove(&self.id) {
                 node_rows.extend(rows[2..].to_vec());
             }
-            DiskHandler::repair_rows(
+            DiskHandler::truncate_rows(
                 &self.storage_addr,
                 table.get_name(),
                 table.get_keyspace(),

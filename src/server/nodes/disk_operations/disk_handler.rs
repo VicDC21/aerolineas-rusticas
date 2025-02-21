@@ -387,7 +387,7 @@ impl DiskHandler {
     ///
     /// **PRECAUCIÓN**: Esta función trunca todo el contenido previo de la tabla y este es irrecuperable luego de su uso, por lo que se debe
     /// tener cuidado al utilizarla.
-    pub fn repair_rows(
+    pub fn truncate_rows(
         storage_addr: &str,
         table_name: &str,
         keyspace_name: &str,
@@ -413,6 +413,34 @@ impl DiskHandler {
 
         Ok(())
     }
+
+    /// TODO
+    pub fn repair_rows(
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+        node_number: Byte,
+        repaired_rows: &str,
+    ) -> Result<()> {
+        let rows_as_string: Vec<Vec<String>> = repaired_rows
+            .split('\n')
+            .map(|row| row.split(',').map(|s| s.to_string()).collect())
+            .collect();
+        let path = TablePath::new(
+            storage_addr,
+            Some(table.get_keyspace().to_string()),
+            table.get_name(),
+            default_keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+        for new_row in rows_as_string{
+            let rows = table_ops.read_rows(false)?;
+            Self::insert_new_row(rows, new_row, table, &table_ops)?;
+        }
+        Ok(())
+    }
+
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
     pub fn do_insert(
@@ -501,6 +529,10 @@ impl DiskHandler {
         let table_ops = TableOperations::new(path)?;
         let query_cols = vec!["*".to_string()];
         let mut rows = table_ops.read_rows(false)?;
+
+        if let Some(the_where) = &statement.options.the_where {
+            rows.retain(|row| matches!(the_where.filter(row, &table_ops.columns), Ok(true)));
+        }
 
         if let Some(order) = &statement.options.order_by {
             order.order(&mut rows, &table_ops.columns);
