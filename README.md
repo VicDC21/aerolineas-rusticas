@@ -216,7 +216,9 @@ $ cargo test --all-features
 # Docker
 
 Las instrucciones de cómo correr el proyecto usando [Docker](https://www.docker.com/)
-son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal para nuestro caso de uso sería:
+son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal para nuestro se explica igual a continuación.
+
+* Primero, hemos de asegurarnos de que cumplimos con los [prerequisitos](./docker_tutorial.md#prerequisitos) necesarios.
 
 
 # Cómo contribuir

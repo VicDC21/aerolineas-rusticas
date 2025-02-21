@@ -4,7 +4,7 @@
 y el proyecto soporta correr varios de sus componentes usando dichos contenedores.
 
 A continuación se explica todo lo relevante a descargar imágenes, así como construir, correr,
-detener y/o destruir contenedores para tanto los nodos como el cliente GUI.
+detener y/o destruir contenedores para los nodos.
 
 > **Nota:** Las imágenes de Docker a utilizar vienen con su propia instancia de Rust. Esto permite que todos utilizen la misma versión, además que no hace falta que el usuario realize pasos extra si sólo se quiere usar el proyecto por Docker.
 
@@ -32,6 +32,8 @@ detener y/o destruir contenedores para tanto los nodos como el cliente GUI.
     $ docker pull rust:1.84-slim
     ```
     _Nótese que este paso es opcional, ya que igual se descarga automáticamente la primera vez que se hace_ `build`.
+
+3. Configurar el Docker Desktop para [permitir networking](https://docs.docker.com/engine/network/drivers/host/#docker-desktop) con el host. <br/> Los ejemplos de este proyecto usan el `localhost` par simplicidad, por lo que es posible que haya que configurar esta parte primero.
 
 # Forma Manual
 
@@ -94,12 +96,12 @@ $ docker build -t <nombre> -f docker/nd/Dockerfile .
 donde `<nombre>` es el nombre de la "plantilla" o **imagen** que vamos crear.
 
 
-### `gui`
+### `full`
 
-Similarmente, existe otro manifiesto para crear el binario de la interfaz por separado:
+Similarmente, existe otro manifiesto para copiar el directorio tal cual y realizar pruebas dentro:
 
 ```console
-$ docker build -t <nombre> -f docker/gui/Dockerfile .
+$ docker build -t <nombre> -f docker/full/Dockerfile .
 ```
 
 ## Correr un contenedor
