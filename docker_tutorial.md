@@ -20,6 +20,8 @@ detener y/o destruir contenedores para los nodos.
     - [Remover el contenedor (`docker rm`/`docker prune`)](#remover-el-contenedor)
     - [Ejecutar comandos en el contenedor (`docker exec`)](#ejecutar-comandos-en-el-contenedor)
 * [Utilizando `compose`](#usando-docker-compose)
+    - [Levantando nodos](#levantando-nodos-iniciales)
+    - [Apagando nodos](#cerrando-nodos)
 
 <hr style="width:35%" />
 
@@ -205,3 +207,26 @@ $ docker container exec -it [-d] <contenedor> <comando> [args...]
 con `-d` para correrlo en el fondo en vez de abrirlo inmediatamente.
 
 # Usando `docker compose`
+
+Usar [Docker Compose](https://docs.docker.com/compose/) resulta mucho más sencillo a nuestros propósitos.
+
+El [script](./compose.yaml) relevante se encarga de crear la imagen de los nodos automáticamente,
+y luego los levanta 5 nodos en orden.
+
+## Levantando nodos iniciales
+
+Para construir y levantar los 5 contenedores iniciales, basta con hacer:
+
+```console
+$ docker compose up
+```
+
+## Cerrando nodos
+
+En cualquier momento, se puede hacer:
+
+```console
+$ docker compose down
+```
+
+para apagar todos los contenedores, **y luego eliminarlos,** todo de forma bonita.

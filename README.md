@@ -219,7 +219,17 @@ Las instrucciones de cómo correr el proyecto usando [Docker](https://www.docker
 son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal para nuestro se explica igual a continuación.
 
 * Primero, hemos de asegurarnos de que cumplimos con los [prerequisitos](./docker_tutorial.md#prerequisitos) necesarios.
+* Luego corremos
+  ```console
+  $ docker compose up
+  ```
+  para automáticamente correr los primeros nodos iniciales.
+* A este punto, todavía se puede conectar a los nodos con el cliente GUI, localmente:
+  ```console
+  $ cargo run -p interface --bin gui
+  ```
 
+Siempre se puede cerrar los nodos con el [comando](./docker_tutorial.md#cerrando-nodos) correspondiente.
 
 # Cómo contribuir
 
