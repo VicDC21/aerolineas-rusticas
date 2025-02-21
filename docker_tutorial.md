@@ -109,7 +109,7 @@ $ docker build -t <nombre> -f docker/full/Dockerfile .
 Aquí es cuando creamos los contenedores en base a la plantilla que ya hicimos.
 
 ```console
-$ docker run -it [-d] --rm --name <contenedor> <imagen> [args...]
+$ docker run -it [-d] --rm --network host --name <contenedor> <imagen> [args...]
 ```
 
 donde:
@@ -123,7 +123,7 @@ donde:
     ```
     ahora es
     ```console
-    $ docker run -it --rm --name <contenedor> <imagen> [new] <id> <ip> [echo]
+    $ docker run -it --rm --network host --name <contenedor> <imagen> [new] <id> <ip> [echo]
     ```
     suponiendo que `<imagen>` en este caso es una de tipo [`nd`](#nd).
 
