@@ -31,7 +31,7 @@ use {
         io::{BufRead, BufReader, Read, Write},
         net::{SocketAddr, TcpListener, TcpStream},
         sync::{
-            mpsc::{self, channel, Sender},
+            mpsc::{self, Receiver, Sender},
             Arc, Mutex,
         },
         thread::{self, sleep, Builder},
@@ -324,11 +324,10 @@ fn is_exit(bytes: &[Byte]) -> bool {
 /// Avanza a cada segundo el estado de _heartbeat_ de un nodo.
 ///
 /// Además, almacena la metadata del nodo en la carpeta `nodes_metadata`.
-pub fn beater(id: NodeId) -> Result<(NodeHandle, Sender<bool>)> {
-    let (sender, receiver) = channel::<bool>();
+pub fn beater(id: NodeId, receiver: Receiver<bool>) -> Result<NodeHandle> {
     let builder = Builder::new().name(format!("beater_node_{}", id));
     match builder.spawn(move || increase_heartbeat_and_store_metadata(receiver, id)) {
-        Ok(handler) => Ok((handler, sender.clone())),
+        Ok(handler) => Ok(handler),
         Err(_) => Err(Error::ServerError(format!(
             "Error procesando los beats del nodo {}.",
             id
@@ -344,6 +343,7 @@ fn increase_heartbeat_and_store_metadata(
         sleep(Duration::from_millis(HEARTBEAT_SLEEP_MILLIS));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
+                println!("Frenando hilo beater");
                 break;
             }
         }
@@ -364,12 +364,15 @@ fn increase_heartbeat_and_store_metadata(
 }
 
 /// Periódicamente da inicio al proceso de _gossip_ de un nodo aleatorio.
-pub fn gossiper(id: NodeId, nodes_weights: &[usize]) -> Result<(NodeHandle, Sender<bool>)> {
-    let (sender, receiver) = channel::<bool>();
+pub fn gossiper(
+    id: NodeId,
+    nodes_weights: &[usize],
+    receiver: Receiver<bool>,
+) -> Result<NodeHandle> {
     let builder = Builder::new().name(format!("gossiper_node_{}", id));
     let weights = nodes_weights.to_vec();
     match builder.spawn(move || exec_gossip(receiver, id, weights)) {
-        Ok(handler) => Ok((handler, sender.clone())),
+        Ok(handler) => Ok(handler),
         Err(_) => Err(Error::ServerError(format!(
             "Error procesando la ronda de gossip del nodo {}.",
             id
@@ -386,6 +389,7 @@ fn exec_gossip(
         sleep(Duration::from_millis(GOSSIP_SLEEP_MILLIS));
         if let Ok(stop) = receiver.try_recv() {
             if stop {
+                println!("Frenando hilo gossiper");
                 break;
             }
         }

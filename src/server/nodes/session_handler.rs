@@ -272,8 +272,13 @@ impl SessionHandler {
                 };
             }
             SvAction::DeleteNode => {
-                self.read()?.notify_update_replicas(true)?;
-                self.write()?.node_to_deletion();
+                let mut node_writer = self.write()?;
+                node_writer.notify_update_replicas(true)?;
+                node_writer.node_to_deletion()?;
+                node_writer.stop_gossiper_and_beater();
+            }
+            SvAction::NodeIsLeaving(node_id) => {
+                self.write()?.node_leaving(node_id)?;
             }
         };
         Ok(stop)
@@ -1707,7 +1712,7 @@ impl SessionHandler {
     }
 
     /// TODO
-    fn node_is_leaving(&self) -> Result<()> {
+    /*fn node_is_leaving(&self) -> Result<()> {
         let node_reader = self.read()?;
         let mut id_to_delete: Vec<NodeId> = Vec::new();
         for (id, endpoint_state) in &node_reader.neighbours_states {
@@ -1727,6 +1732,7 @@ impl SessionHandler {
                     .set_appstate_status(AppStatus::RelocationIsNeeded);
                 println!("Borro a nodo {} de los vecinos del nodo {}", id, self.id);
                 node_writer.neighbours_states.remove(&id);
+                println!("Los nuevos nodos vecinos son {:?}", node_writer.neighbours_states.keys());
             } else {
                 node_writer.relocate_rows()?;
                 node_writer
@@ -1736,7 +1742,7 @@ impl SessionHandler {
         }
 
         Ok(())
-    }
+    }*/
 
     /// Consigue la información de _gossip_ que contiene este nodo.
     fn get_gossip_info(&self) -> Result<GossipInfo> {
@@ -1751,7 +1757,7 @@ impl SessionHandler {
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     pub fn gossip(&self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done()?;
-        self.node_is_leaving()?;
+        //self.node_is_leaving()?;
         self.is_relocation_needed()?;
         self.is_relocation_done()?;
 

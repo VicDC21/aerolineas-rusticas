@@ -116,6 +116,9 @@ pub enum SvAction {
 
     /// Aviso al nodo receptor que debe ser dado de baja del clúster.
     DeleteNode,
+
+    /// TODO
+    NodeIsLeaving(NodeId),
 }
 
 impl SvAction {
@@ -296,6 +299,7 @@ impl Byteable for SvAction {
             }
             Self::GetAllTablesOfReplica(node_id) => vec![0xE3, *node_id],
             Self::DeleteNode => vec![0xE4],
+            Self::NodeIsLeaving(node_id) => vec![0xE5, *node_id],
         }
     }
 }
@@ -422,6 +426,7 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xE3 => Ok(Self::GetAllTablesOfReplica(bytes[1])),
             0xE4 => Ok(Self::DeleteNode),
+            0xE5 => Ok(Self::NodeIsLeaving(bytes[1])),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

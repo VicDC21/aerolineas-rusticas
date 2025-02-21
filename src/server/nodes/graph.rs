@@ -203,10 +203,10 @@ impl NodesGraph {
         self.node_weights[0] *= 3; // El primer nodo tiene el triple de probabilidades de ser elegido.
 
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
-        for i in 0..n {
+        for _i in 0..n {
             let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
-            let current_id = self.add_node_id();
-            let node = Node::new(current_id, self.preferred_mode.clone(), false)?;
+            let _current_id = self.add_node_id();
+            /*let node = Node::new(current_id, self.preferred_mode.clone(), false)?;
 
             let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
             let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
@@ -218,7 +218,7 @@ impl NodesGraph {
                 i,
                 priv_socket,
                 node,
-            )?;
+            )?;*/
 
             handlers.append(&mut node_listeners);
         }
@@ -236,8 +236,8 @@ impl NodesGraph {
             let node_path = DiskHandler::get_node_metadata_path(current_id);
             let path = Path::new(&node_path);
             if path.exists() {
-                let mut node: Node = load_json(&node_path)?;
-                node.set_default_fields(current_id, self.preferred_mode.clone(), false)?;
+                let node: Node = load_json(&node_path)?;
+                //node.set_default_fields(current_id, self.preferred_mode.clone(), false)?;
 
                 if current_id == START_ID {
                     // El primer nodo tiene el triple de probabilidades de ser elegido.

@@ -434,13 +434,12 @@ impl DiskHandler {
             node_number,
         );
         let table_ops = TableOperations::new(path)?;
-        for new_row in rows_as_string{
+        for new_row in rows_as_string {
             let rows = table_ops.read_rows(false)?;
             Self::insert_new_row(rows, new_row, table, &table_ops)?;
         }
         Ok(())
     }
-
 
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
     pub fn do_insert(

@@ -61,6 +61,7 @@ use {
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
+        sync::mpsc::{channel, Sender},
         thread::JoinHandle,
     },
 };
@@ -136,11 +137,20 @@ pub struct Node {
     /// Indica si es un nodo distinto a los N_NODES originales.
     #[serde(skip)]
     pub is_new_node: bool,
+
+    /// Canales que sirven para enviar un booleano que frene los hilos _gossiper_ y _beater_ del nodo.
+    #[serde(skip)]
+    pub stoppers: Vec<Sender<bool>>,
 }
 
 impl Node {
     /// Crea un nodo.
-    pub fn new(id: NodeId, mode: ConnectionMode, is_new_node: bool) -> Result<Self> {
+    pub fn new(
+        id: NodeId,
+        mode: ConnectionMode,
+        is_new_node: bool,
+        stoppers: Vec<Sender<bool>>,
+    ) -> Result<Self> {
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
         neighbours_states.insert(id, endpoint_state.clone());
@@ -159,6 +169,7 @@ impl Node {
             open_connections: OpenConnectionsMap::new(),
             nodes_weights: Vec::new(),
             is_new_node,
+            stoppers,
         })
     }
 
@@ -170,6 +181,7 @@ impl Node {
         id: NodeId,
         mode: ConnectionMode,
         is_new: bool,
+        stoppers: Vec<Sender<bool>>,
     ) -> Result<()> {
         let mut neighbours_states = NodesMap::new();
         let endpoint_state = EndpointState::with_id_and_mode(id, mode);
@@ -181,6 +193,7 @@ impl Node {
         self.nodes_ranges = divide_range(0, NODES_RANGE_END, self.get_actual_n_nodes());
         self.open_connections = OpenConnectionsMap::new();
         self.is_new_node = is_new;
+        self.stoppers = stoppers;
 
         Ok(())
     }
@@ -231,17 +244,22 @@ impl Node {
     /// Crea un nodo con un ID específico.
     fn init(id: NodeId, mode: ConnectionMode, is_new: bool) -> Result<()> {
         let mut nodes_weights: Vec<usize> = Vec::new();
-        let handlers = Self::bootstrap(id, mode, &mut nodes_weights, is_new)?;
+        let (gossiper_stopper, gossiper_receiver) = channel::<bool>();
+        let (beater_stopper, beater_receiver) = channel::<bool>();
 
-        let (_beater, _beat_stopper) = beater(id)?;
-        let (_gossiper, _gossip_stopper) = gossiper(id, &nodes_weights)?;
+        let handlers = Self::bootstrap(
+            id,
+            mode,
+            &mut nodes_weights,
+            is_new,
+            vec![gossiper_stopper, beater_stopper],
+        )?;
 
-        /*Paramos los handlers especiales primero
-        let _ = beat_stopper.send(true);
-        let _ = beater.join();
+        let gossiper_handle = gossiper(id, &nodes_weights, gossiper_receiver)?;
+        let beater_handle = beater(id, beater_receiver)?;
 
-        let _ = gossip_stopper.send(true);
-        let _ = gossiper.join();*/
+        let _ = gossiper_handle.join();
+        let _ = beater_handle.join();
 
         Self::wait(handlers);
         Ok(())
@@ -253,6 +271,7 @@ impl Node {
         mode: ConnectionMode,
         nodes_weights: &mut Vec<usize>,
         is_new: bool,
+        stoppers: Vec<Sender<bool>>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_all_nodes_ids();
         if nodes_ids.len() < N_NODES as usize {
@@ -274,10 +293,10 @@ impl Node {
         let node_metadata_path = Path::new(&metadata_path);
         let mut node = if node_metadata_path.exists() {
             let mut node: Node = load_json(&metadata_path)?;
-            node.set_default_fields(id, mode, is_new)?;
+            node.set_default_fields(id, mode, is_new, stoppers)?;
             node
         } else {
-            Self::new(id, mode, is_new)?
+            Self::new(id, mode, is_new, stoppers)?
         };
         node.inicialize_nodes_weights(Self::get_all_n_nodes());
         *nodes_weights = node.nodes_weights.clone();
@@ -363,8 +382,16 @@ impl Node {
     }
 
     /// TODO
-    pub fn node_to_deletion(&mut self) {
+    pub fn node_to_deletion(&mut self) -> Result<()> {
+        for node in self.get_nodes_ids() {
+            send_to_node(
+                node,
+                SvAction::NodeIsLeaving(self.id).as_bytes(),
+                PortType::Priv,
+            )?;
+        }
         self.endpoint_state.set_appstate_status(AppStatus::Left);
+        Ok(())
     }
 
     fn add_table(&mut self, table: Table) {
@@ -615,7 +642,10 @@ impl Node {
         // Esto es para el caso en el que el nodo se encuentra en otra computadora y no tiene
         // la informacion en su archivo csv, entonces se agrega a su archivo correspondiente.
         // Se asume que esta info es válida.
-        if !Self::id_exists(&id) && *state.get_appstate().get_status() != AppStatus::Left {
+        if !Self::id_exists(&id)
+            && *state.get_appstate().get_status() != AppStatus::Left
+            && *state.get_appstate().get_status() != AppStatus::Remove
+        {
             println!(
                 "El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.",
                 id,
@@ -626,6 +656,7 @@ impl Node {
         }
         if !self.has_endpoint_state_by_id(&id)
             && *state.get_appstate().get_status() != AppStatus::Left
+            && *state.get_appstate().get_status() != AppStatus::Remove
         {
             println!("Nodo {} presentado.", id);
             if actual_n_nodes > N_NODES as usize {
@@ -650,6 +681,7 @@ impl Node {
             // Se asume que esta info es válida.
             if !Self::id_exists(&node_id)
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Left
+                && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
             {
                 println!("El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.", node_id, *endpoint_state.get_appstate().get_status());
                 DiskHandler::store_new_node_id_and_ip(
@@ -660,6 +692,7 @@ impl Node {
             }
             if !self.has_endpoint_state_by_id(&node_id)
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Left
+                && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
             {
                 println!("Nodo {} presentado.", node_id);
                 if actual_n_nodes > N_NODES as usize {
@@ -1609,6 +1642,33 @@ impl Node {
         println!("El nodo {} finalizó la relocalización.", self.id);
 
         Ok(())
+    }
+
+    /// TODO
+    pub fn node_leaving(&mut self, node_id: NodeId) -> Result<()> {
+        println!("Se borra al nodo {} de la lista de ips", node_id);
+        DiskHandler::delete_node_id_and_ip(node_id)?;
+        if node_id != self.id {
+            self.endpoint_state
+                .set_appstate_status(AppStatus::RelocationIsNeeded);
+            println!(
+                "Borro a nodo {} de los vecinos del nodo {}",
+                node_id, self.id
+            );
+            self.neighbours_states.remove(&node_id);
+        } else {
+            println!("Empiezo la relocacion siendo el nodo que se va");
+            self.relocate_rows()?;
+            self.endpoint_state.set_appstate_status(AppStatus::Remove);
+        }
+        Ok(())
+    }
+
+    /// TODO
+    pub fn stop_gossiper_and_beater(&self) {
+        for stopper in &self.stoppers {
+            let _ = stopper.send(true);
+        }
     }
 
     /// Espera a que terminen todos los handlers.
