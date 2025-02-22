@@ -18,14 +18,25 @@ fn main() {
                         println!("Nodo nuevo con id {} y dirección IP {}.", id, argv[3]);
                         if argv.len() == 5 && argv[4].to_ascii_lowercase() == "echo" {
                             // "target/debug/nd.exe" new <id> <ip> echo
-                            print_err(Node::init_new_in_echo_mode(id, &argv[4]))
+                            print_err(Node::init_new_in_echo_mode(id, &argv[3]))
                         } else {
                             // "target/debug/nd.exe" new <id> <ip>
-                            print_err(Node::init_new_in_parsing_mode(id, &argv[4]))
+                            print_err(Node::init_new_in_parsing_mode(id, &argv[3]))
                         }
                     } else {
                         println!("La IP no es válida.");
                     }
+                }
+                Err(_) => {
+                    println!("El id debe ser un número entero entre 0 y 255.");
+                }
+            }
+        } else if argv[1] == "delete" && argv.len() == 3 {
+            // "target/debug/nd.exe" delete <id>
+            match argv[2].parse::<Byte>() {
+                Ok(id) => {
+                    println!("Nodo a eliminar: {}", argv[2]);
+                    print_err(Node::delete_node(id));
                 }
                 Err(_) => {
                     println!("El id debe ser un número entero entre 0 y 255.");
@@ -49,7 +60,7 @@ fn main() {
             }
         }
     } else {
-        println!("Uso:\n\ncargo run -p server --bin nd [new] <id> <ip> [echo]\n");
+        println!("Uso:\n\ncargo run -p server --bin nd [new]/[delete] <id> [<ip>] [echo]\n");
     };
 }
 
