@@ -70,7 +70,7 @@ pub struct NodesGraph {
     prox_id: NodeId,
 
     /// El modo con el que generar los siguientes nodos.
-    preferred_mode: ConnectionMode,
+    _preferred_mode: ConnectionMode,
 
     /// Todos los hilos bajo este grafo.
     ///
@@ -80,11 +80,11 @@ pub struct NodesGraph {
 
 impl NodesGraph {
     /// Crea un nuevo grafo.
-    pub fn new(node_ids: Vec<NodeId>, prox_id: NodeId, preferred_mode: ConnectionMode) -> Self {
+    pub fn new(node_ids: Vec<NodeId>, prox_id: NodeId, _preferred_mode: ConnectionMode) -> Self {
         Self {
             node_ids,
             prox_id,
-            preferred_mode,
+            _preferred_mode,
             node_weights: Vec::new(),
             handlers: Vec::new(),
         }
