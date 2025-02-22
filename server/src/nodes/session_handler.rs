@@ -181,8 +181,8 @@ impl SessionHandler {
             SvAction::NewNeighbour(id, state) => {
                 self.write()?.add_neighbour_state(id, state)?;
             }
-            SvAction::SendEndpointState(id) => {
-                self.read()?.send_endpoint_state(id);
+            SvAction::SendEndpointState(id, ip) => {
+                self.read()?.send_endpoint_state(id, ip);
             }
             SvAction::InternalQuery(bytes) => {
                 let response = self.handle_request(&bytes, true, true);

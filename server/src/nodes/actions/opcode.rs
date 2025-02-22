@@ -67,7 +67,7 @@ pub enum SvAction {
     NewNeighbour(NodeId, EndpointState),
 
     /// Pedirle a este nodo que envie su endpoint state a otro nodo, dado el ID de este último.
-    SendEndpointState(NodeId),
+    SendEndpointState(NodeId, String),
 
     /// Query enviada internamente por otro nodo.
     InternalQuery(Vec<Byte>),
@@ -246,7 +246,12 @@ impl Byteable for SvAction {
                 bytes.extend(state.as_bytes());
                 bytes
             }
-            Self::SendEndpointState(id) => vec![0xF7, *id],
+            Self::SendEndpointState(id, string) => {
+                let str_as_bytes = encode_string_to_bytes(string);
+                let mut bytes = vec![0xF7, *id];
+                bytes.extend(str_as_bytes);
+                bytes
+            },
             Self::InternalQuery(query_bytes) => {
                 let mut bytes = vec![0xF8];
                 bytes.extend(query_bytes);
@@ -384,7 +389,8 @@ impl TryFrom<&[Byte]> for SvAction {
                         "Conjunto de bytes demasiado chico para `SendEndpointState`.".to_string(),
                     ));
                 }
-                Ok(Self::SendEndpointState(bytes[1]))
+                let string_ip = parse_bytes_to_string(&bytes[2..], &mut i)?;
+                Ok(Self::SendEndpointState(bytes[1], string_ip))
             }
             0xF8 => Ok(Self::InternalQuery(bytes[1..].to_vec())),
             0xF9 => Ok(Self::StoreMetadata),

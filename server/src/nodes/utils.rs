@@ -102,10 +102,10 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
-        Err(_) => {
+        Err(err) => {
             return Err(Error::ServerError(format!(
-                "No se pudo conectar al nodo con ID {}",
-                id
+                "No se pudo conectar al nodo con ID {} el error fue {:?}",
+                id, err
             )));
         }
     };

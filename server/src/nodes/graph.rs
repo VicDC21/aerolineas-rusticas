@@ -312,16 +312,16 @@ impl NodesGraph {
             if id == node_id {
                 continue;
             }
-            if let Err(err) = send_to_node(
-                node_id,
-                SvAction::SendEndpointState(id).as_bytes(),
-                PortType::Priv,
-            ) {
-                println!(
-                    "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
-                    err
-                );
-            }
+            // if let Err(err) = send_to_node(
+            //     node_id,
+            //     SvAction::SendEndpointState(id).as_bytes(),
+            //     PortType::Priv,
+            // ) {
+            //     println!(
+            //         "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
+            //         err
+            //     );
+            // }
         }
     }
 

@@ -196,12 +196,12 @@ impl Node {
 
     /// Inicia un nodo con un ID específico en modo de conexión _parsing_.
     pub fn init_in_parsing_mode(id: NodeId) -> Result<()> {
-        Self::init(id, ConnectionMode::Parsing, false)
+        Self::init(id, ConnectionMode::Parsing, false, None)
     }
 
     /// Inicia un nodo con un ID específico en modo de conexión _echo_.
     pub fn init_in_echo_mode(id: NodeId) -> Result<()> {
-        Self::init(id, ConnectionMode::Echo, false)
+        Self::init(id, ConnectionMode::Echo, false, None)
     }
 
     /// Inicia un nuevo nodo con un ID específico en modo de conexión _parsing_.
@@ -234,11 +234,11 @@ impl Node {
         println!("Se inicia el nodo {} y se agrega a la lista de ids", id);
         DiskHandler::store_new_node_id_and_ip(id, ip)?;
 
-        Self::init(id, mode, true)
+        Self::init(id, mode, true, Some(ip))
     }
 
     /// Crea un nodo con un ID específico.
-    fn init(id: NodeId, mode: ConnectionMode, is_new: bool) -> Result<()> {
+    fn init(id: NodeId, mode: ConnectionMode, is_new: bool, ip: Option<&str>) -> Result<()> {
         let mut nodes_weights: Vec<usize> = Vec::new();
         let (gossiper_stopper, gossiper_receiver) = channel::<bool>();
         let (beater_stopper, beater_receiver) = channel::<bool>();
@@ -249,6 +249,7 @@ impl Node {
             &mut nodes_weights,
             is_new,
             vec![gossiper_stopper, beater_stopper],
+            ip
         )?;
 
         let gossiper_handle = gossiper(id, &nodes_weights, gossiper_receiver)?;
@@ -268,6 +269,7 @@ impl Node {
         nodes_weights: &mut Vec<usize>,
         is_new: bool,
         stoppers: Vec<Sender<bool>>,
+        ip: Option<&str>
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_all_nodes_ids();
         if nodes_ids.len() < N_NODES as usize {
@@ -309,14 +311,40 @@ impl Node {
         // Cuando fue iniciado el último nodo (el de mayor ID), hacemos el envío de la información,
         // pues asumimos que todos los demás ya fueron iniciados.
         if id == nodes_ids[(N_NODES - 1) as usize] {
-            Self::send_states_to_node(max_weight_id);
+            // Self::send_states_to_node(max_weight_id);
+            Self::notify_new_node(id, ip)
         } else if is_new {
             // Si es un nodo nuevo, debemos hacer que conozca al resto del clúster, para poder
             // enviar su información a los demás mediante gossip, así sabrán de su existencia.
-            Self::send_states_to_node(id);
+            // Self::send_states_to_node(id);
+            Self::notify_new_node(id, ip)
         }
 
         Ok(handlers)
+    }
+
+    fn notify_new_node(id: NodeId, ip: Option<&str>) {
+        println!("Les indica a los demas nodos que existe.");
+        for node_id in Self::get_all_nodes_ids() {
+            if id == node_id {
+                continue;
+            }
+            if let Some(ip) = ip{
+                if send_to_node(
+                    node_id,
+                    SvAction::SendEndpointState(id, ip.to_string()).as_bytes(),
+                    PortType::Priv,
+                )
+                .is_err()
+                {
+                    println!(
+                        "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+                        id, node_id,
+                    );
+                }
+            }
+
+        }
     }
 
     fn inicialize_nodes_weights(&mut self, actual_n_nodes: usize) {
@@ -325,25 +353,25 @@ impl Node {
     }
 
     /// Se le ordena a todos los nodos existentes que envien su _endpoint state_ al nodo con el ID dado.
-    fn send_states_to_node(id: NodeId) {
-        for node_id in Self::get_all_nodes_ids() {
-            if id == node_id {
-                continue;
-            }
-            if send_to_node(
-                node_id,
-                SvAction::SendEndpointState(id).as_bytes(),
-                PortType::Priv,
-            )
-            .is_err()
-            {
-                println!(
-                    "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
-                    id, node_id,
-                );
-            }
-        }
-    }
+    // fn send_states_to_node(id: NodeId) {
+    //     for node_id in Self::get_all_nodes_ids() {
+    //         if id == node_id {
+    //             continue;
+    //         }
+    //         if send_to_node(
+    //             node_id,
+    //             SvAction::SendEndpointState(id).as_bytes(),
+    //             PortType::Priv,
+    //         )
+    //         .is_err()
+    //         {
+    //             println!(
+    //                 "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+    //                 id, node_id,
+    //             );
+    //         }
+    //     }
+    // }
 
     /// Decide cuál es el nodo con el mayor "peso". Es decir, el que tiene más probabilidades
     /// de ser elegido cuando se los elige "al azar".
@@ -576,19 +604,23 @@ impl Node {
     }
 
     /// Envia su endpoint state al nodo del ID correspondiente.
-    pub fn send_endpoint_state(&self, id: NodeId) {
-        if send_to_node(
+    pub fn send_endpoint_state(&self, id: NodeId, ip: String) {
+        println!("Voy a agregar al nodo {} de ip {} a la lista de nodos", id, ip);
+        let _ = DiskHandler::store_new_node_id_and_ip(id, &ip);
+        println!("Agregue al nodo {} de ip {} a la lista de nodos", id, ip); 
+        let _ = send_to_node(
             id,
             SvAction::NewNeighbour(self.id, self.get_endpoint_state().clone()).as_bytes(),
             PortType::Priv,
-        )
-        .is_err()
-        {
-            println!(
-                "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
-                id, self.id,
-            );
-        }
+        ).inspect_err(|e| eprintln!("El nodo {} se encontró apagado cuando el nodo {} intentó presentarse. Error: {e}",id, self.id ));
+        // }
+        // .is_err()
+        // {
+        //     println!(
+        //         "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
+        //         id, self.id,
+        //     );
+        // }
     }
 
     /// Consulta si ya se tiene un [EndpointState].
