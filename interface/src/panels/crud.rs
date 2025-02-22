@@ -1,0 +1,70 @@
+//! Módulo para operaciones CRUD en los paneles.
+
+use {
+    crate::{utils::distances::distance_eta, utils::util::send_client_query},
+    client::conn_holder::ConnectionHolder,
+    data::{airports::airp::Airport, flights::states::FlightState},
+    protocol::aliases::{
+        results::Result,
+        types::{Int, Long, Ulong},
+    },
+    std::time::Instant,
+    walkers::Position,
+};
+
+/// Inserta un nuevo vuelo.
+///
+/// Se asume que en la conexión, uno ya se encuentra logueado.
+pub fn insert_flight(
+    con_info: &mut ConnectionHolder,
+    timestamp: Long,
+    cur_airport: &Airport,
+    ex_airport: &Airport,
+) -> Result<()> {
+    let flight_id = cur_airport.id
+        + ex_airport.id
+        + timestamp as usize
+        + Instant::now().elapsed().as_secs() as usize;
+
+    let (cur_lat, cur_lon) = cur_airport.position;
+    let (ex_lat, ex_lon) = ex_airport.position;
+    let flight_duration = distance_eta(
+        &Position::from_lat_lon(cur_lat, cur_lon),
+        &Position::from_lat_lon(ex_lat, ex_lon),
+        None,
+        None,
+    );
+    let eta = (timestamp as Ulong + flight_duration.as_secs()) as Long;
+    let (cur_iata_code, ex_iata_code) = match (&cur_airport.iata_code, &ex_airport.iata_code) {
+        (Some(cur_code), Some(ex_code)) => (cur_code.to_string(), ex_code.to_string()),
+        _ => ("N/A".to_string(), "N/A".to_string()),
+    };
+
+    let inc_fl_query = format!(
+        "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES ({}, '{}', '{}', {}, '{}');",
+        flight_id as Int, cur_iata_code, ex_iata_code, eta, FlightState::Preparing
+    );
+
+    let dep_fl_query = format!(
+        "INSERT INTO vuelos_salientes (id, orig, dest, salida, estado) VALUES ({}, '{}', '{}', {}, '{}');",
+        flight_id as Int, cur_iata_code, ex_iata_code, timestamp, FlightState::Preparing
+    );
+
+    send_client_query(con_info, inc_fl_query.as_str())?;
+    send_client_query(con_info, dep_fl_query.as_str())?;
+
+    Ok(())
+}
+
+/// Manda una _query_ para borrar el vuelo por su ID.
+///
+/// Se asume que en la conexión, uno ya se encuentra logueado.
+pub fn delete_flight_by_id(con_info: &mut ConnectionHolder, flight_id: Int) -> Result<()> {
+    let inc_delete = format!("DELETE FROM vuelos_entrantes WHERE id = {};", flight_id);
+    let dep_delete = format!("DELETE FROM vuelos_salientes WHERE id = {};", flight_id);
+
+    send_client_query(con_info, inc_delete.as_str())?;
+    send_client_query(con_info, dep_delete.as_str())?;
+
+    Ok(())
+}

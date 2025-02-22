@@ -1,66 +1,28 @@
-[package]
-name = "aerolineas_rusticas"
-version = "0.1.0"
+[workspace]
+members = [
+    # librerías
+    "client",
+    "data",
+    "interface",
+    "parser",
+    "protocol",
+    "server",
+    "simulator",
+    "tokenizer",
+
+    # tests de integración
+    "tests"
+]
+# Necesario para que bien compatible con la edición 2021.
+# Por defecto es el "1", que confunde a Rust después.
+resolver = "2"
+
+
+[workspace.package]
+authors = [
+    "Franco Lighterman Reismann",
+    "Matias Mendiola",
+    "Francisco Antonio Pereyra",
+    "Victor Cipriano"
+]
 edition = "2021"
-# Para que funcione el `cargo run` por sí solo, y llame al binario principal.
-default-run = "aerolineas_rusticas"
-
-[features]
-# La interfaz incorpora muchísimas dependencias. De ser posible, evitar compilarlo salvo
-# que invoquemos esa parte específica del proyecto.
-gui = ["dep:eframe", "dep:egui_extras", "dep:image", "dep:walkers"]
-
-[dependencies]
-chrono = { version = "0.4.38" }
-eframe = { version = "=0.29.1", optional = true }
-egui_extras = { version = "0.29.1", features = ["image", "datepicker"], optional = true }
-image = { version = "0.25.4", features = ["png"], optional = true }
-rand = { version = "0.8.5" }
-walkers = { version = "=0.25.0", optional = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-rustls = { version = "0.22.4" }
-
-
-[[bin]]
-name = "cli"
-path = "./src/bin/cli.rs"
-test = true
-doctest = true
-doc = true
-
-[[bin]]
-name = "gui"
-path = "./src/bin/gui.rs"
-test = true
-doctest = true
-doc = true
-required-features = ["gui"]
-
-[[bin]]
-name = "sim"
-path = "./src/bin/sim.rs"
-test = true
-doctest = true
-doc = true
-
-[[bin]]
-name = "sv"
-path = "./src/bin/sv.rs"
-test = true
-doctest = true
-doc = true
-
-[[bin]]
-name = "nd"
-path = "./src/bin/nd.rs"
-test = true
-doctest = true
-doc = true
-
-[[bin]]
-name = "demo"
-path = "./src/bin/demo.rs"
-test = true
-doctest = true
-doc = true

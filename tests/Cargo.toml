@@ -1,0 +1,25 @@
+[package]
+name = "tests"
+version = "0.5.0"
+authors.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+client = { path = "../client" }
+data = { path = "../data" }
+protocol = { path = "../protocol" }
+server = { path = "../server" }
+simulator = { path = "../simulator" }
+
+[[test]]
+name = "client_nodes_connection"
+path = "./client_nodes_connection.rs"
+
+[[test]]
+name = "insert_and_select"
+path = "./insert_and_select.rs"
+
+[[test]]
+name = "simulator_runs"
+path = "./simulator_runs.rs"
