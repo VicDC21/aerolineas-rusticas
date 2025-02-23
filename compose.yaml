@@ -1,0 +1,70 @@
+name: aerolineas_rusticas
+
+services:
+  # Al ser el primero, tiene la responsabilidad de crear la imagen
+  # si no existe todavía
+  nodo_10:
+    container_name: nodo-10
+    # Para que use la imagen si ya fue construida antes
+    image: nodos-slim
+    build:
+      context: .
+      # -f
+      dockerfile: ./docker/nd-slim/Dockerfile
+      # las tags, como el nombre de la imagen
+      tags:
+        - "nodos-slim"
+    # -i
+    stdin_open: true
+    # -t
+    tty: true
+    # --network=host
+    network_mode: "host"
+    # Los argumentos que vienen después de invocar al binario
+    command: "10"
+
+  nodo_11:
+    container_name: nodo-11
+    depends_on:
+      - nodo_10
+    image: nodos-slim
+    stdin_open: true
+    tty: true
+    network_mode: "host"
+    command: "11"
+
+  nodo_12:
+    container_name: nodo-12
+    depends_on:
+      - nodo_10
+      - nodo_11
+    image: nodos-slim
+    stdin_open: true
+    tty: true
+    network_mode: "host"
+    command: "12"
+
+  nodo_13:
+    container_name: nodo-13
+    depends_on:
+      - nodo_10
+      - nodo_11
+      - nodo_12
+    image: nodos-slim
+    stdin_open: true
+    tty: true
+    network_mode: "host"
+    command: "13"
+
+  nodo_14:
+    container_name: nodo-14
+    depends_on:
+      - nodo_10
+      - nodo_11
+      - nodo_12
+      - nodo_13
+    image: nodos-slim
+    stdin_open: true
+    tty: true
+    network_mode: "host"
+    command: "14"

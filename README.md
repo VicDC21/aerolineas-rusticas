@@ -13,6 +13,7 @@
         * [Interfaz Gráfica](#interfaz-de-usuario)
         * [Simulador de Vuelos](#simulador-de-vuelos)
 * [Cómo Testear](#cómo-testear)
+* [Tutorial de Docker](#docker)
 * [Cómo Contribuir](#cómo-contribuir)
 
 <hr style="width:35%" />
@@ -147,14 +148,14 @@ node_id,ip
 <u><i>Además, el nodo con mayor ID debe ser levantado último.</i></u>
 
 ```console
-$ cargo run -p server --bin nd [new] <id> <ip> [echo]
+$ cargo run -p server --bin nd [new] <id> [<ip>] [echo]
 ```
 
 donde:
 
 * `new` es una opción para agregar dinámicamente un nuevo nodo.
 * `id` es el ID interno a usar para el nodo.
-* `ip` es la IP a ser asignada al nodo.
+* `ip` es la IP a ser asignada al nodo. Sólo se usa si `new` también está presente.
 * `echo` es otra opción para iniciar este nodo particular en modo ECHO.
 
 ### Interfaz de Usuario
@@ -211,6 +212,24 @@ Los tests, siendo que se desee ejecutarlos manualmente, se puede con:
 ```console
 $ cargo test --all-features
 ```
+
+# Docker
+
+Las instrucciones de cómo correr el proyecto usando [Docker](https://www.docker.com/)
+son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal para nuestro se explica igual a continuación.
+
+* Primero, hemos de asegurarnos de que cumplimos con los [prerequisitos](./docker_tutorial.md#prerequisitos) necesarios.
+* Luego corremos
+  ```console
+  $ docker compose up
+  ```
+  para automáticamente correr los primeros nodos iniciales.
+* A este punto, todavía se puede conectar a los nodos con el cliente GUI, localmente:
+  ```console
+  $ cargo run -p interface --bin gui
+  ```
+
+Siempre se puede cerrar los nodos con el [comando](./docker_tutorial.md#cerrando-nodos) correspondiente.
 
 # Cómo contribuir
 

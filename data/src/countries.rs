@@ -18,7 +18,7 @@ use {
 pub type CountriesMap = HashMap<String, Country>;
 
 /// La dirección por defecto del dataset de países.
-const COUNTRIES_PATH: &str = "../datasets/airports/countries.csv";
+const COUNTRIES_PATH: &str = "./datasets/airports/countries.csv";
 
 /// La cantidad mínima de elementos que ha de haber en una línea del dataset de países.
 const MIN_COUNTRIES_ELEMS: usize = 6;

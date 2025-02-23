@@ -26,7 +26,7 @@ use {
 pub type AirportsMap = HashMap<String, Airport>;
 
 /// La dirección por defecto del dataset de aeropuertos.
-const AIRPORTS_PATH: &str = "../datasets/airports/cut_airports.csv";
+const AIRPORTS_PATH: &str = "./datasets/airports/cut_airports.csv";
 
 /// La cantidad mínima de elementos que ha de haber en una línea del dataset de aeropuertos.
 const MIN_AIRPORTS_ELEMS: usize = 17;
