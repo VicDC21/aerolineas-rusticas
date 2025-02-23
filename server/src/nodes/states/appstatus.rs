@@ -35,6 +35,12 @@ pub enum AppStatus {
 
     /// El nodo esta listo para pasarse a estado `Normal`.
     Ready,
+
+    /// El nodo es nuevo en el cluster.
+    NewNode,
+
+    /// El nodo está actualizando las tablas de sus réplicas.
+    UpdatingReplicas,
 }
 
 impl Byteable for AppStatus {
@@ -48,6 +54,8 @@ impl Byteable for AppStatus {
             Self::RelocatingData => vec![0x5],
             Self::Ready => vec![0x6],
             Self::RelocationIsNeeded => vec![0x7],
+            Self::NewNode => vec![0x8],
+            Self::UpdatingReplicas => vec![0x9]
         }
     }
 }
@@ -71,6 +79,8 @@ impl TryFrom<&[Byte]> for AppStatus {
             0x5 => Ok(Self::RelocatingData),
             0x6 => Ok(Self::Ready),
             0x7 => Ok(Self::RelocationIsNeeded),
+            0x8 => Ok(Self::NewNode),
+            0x9 => Ok(Self::UpdatingReplicas),
             _ => Err(Error::ServerError(format!(
                 "El ID '{}' no corresponde a ningún estado de aplicación.",
                 first

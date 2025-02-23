@@ -134,7 +134,7 @@ impl DiskHandler {
         Ok(())
     }
 
-    /// TODO
+    /// Borra el nodo según el ID dado del archivo de IPs de los nodos `node_ips.csv`.
     pub fn delete_node_id_and_ip(id: NodeId) -> Result<()> {
         let file = OpenOptions::new()
             .read(true)
@@ -414,7 +414,7 @@ impl DiskHandler {
         std::fs::remove_file(table_addr).map_err(|e| Error::ServerError(e.to_string()))
     }
 
-    /// Repara las filas de la tabla con las filas pasadas por parámetro.
+    /// Trunca las filas de la tabla con las filas pasadas por parámetro.
     ///
     /// **PRECAUCIÓN**: Esta función trunca todo el contenido previo de la tabla y este es irrecuperable luego de su uso, por lo que se debe
     /// tener cuidado al utilizarla.
@@ -445,7 +445,7 @@ impl DiskHandler {
         Ok(())
     }
 
-    /// TODO
+    /// Repara las filas de la tabla con las filas recibidas por parámetro.
     pub fn repair_rows(
         storage_addr: &str,
         table: &Table,

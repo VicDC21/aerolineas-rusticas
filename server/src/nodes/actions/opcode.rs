@@ -107,13 +107,16 @@ pub enum SvAction {
     AddRelocatedRows(NodeId, String),
 
     /// Pide todas las filas de todas las tablas al nodo receptor.
-    GetAllTablesOfReplica(NodeId),
+    GetAllTablesOfReplica(NodeId, bool),
 
     /// Aviso al nodo receptor que debe ser dado de baja del clúster.
     DeleteNode,
 
-    /// TODO
+    /// Avisa que el ID del nodo dado ya fue dado de baja.
     NodeIsLeaving(NodeId),
+
+    /// Le avisa a los demas nodos que ya se fue del cluster y que es seguro borrarlo.
+    NodeDeleted(NodeId)
 }
 
 impl SvAction {
@@ -297,9 +300,15 @@ impl Byteable for SvAction {
                 bytes.extend(encode_long_string_to_bytes(rows));
                 bytes
             }
-            Self::GetAllTablesOfReplica(node_id) => vec![0xE3, *node_id],
+            Self::GetAllTablesOfReplica(node_id, only_farthest_replica) => {
+                let bool_to_byte = if *only_farthest_replica { 1 } else { 0 };
+                vec![0xE3, *node_id, bool_to_byte]
+            }
+            ,
             Self::DeleteNode => vec![0xE4],
             Self::NodeIsLeaving(node_id) => vec![0xE5, *node_id],
+            Self::NodeDeleted(node_id) => vec![0xE6, *node_id]
+
         }
     }
 }
@@ -425,9 +434,16 @@ impl TryFrom<&[Byte]> for SvAction {
                 let rows = parse_bytes_to_long_string(&bytes[2..], &mut i)?;
                 Ok(Self::AddRelocatedRows(node_id, rows))
             }
-            0xE3 => Ok(Self::GetAllTablesOfReplica(bytes[1])),
+            0xE3 => {
+                let mut only_farthest_replica = true;
+                if bytes[2] == 0 {
+                    only_farthest_replica = false;
+                }
+                Ok(Self::GetAllTablesOfReplica(bytes[1], only_farthest_replica))
+            },
             0xE4 => Ok(Self::DeleteNode),
             0xE5 => Ok(Self::NodeIsLeaving(bytes[1])),
+            0xE6 => Ok(Self::NodeDeleted(bytes[1])),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

@@ -245,9 +245,7 @@ impl SessionHandler {
                 node_writer.receive_metadata(metadata)?;
                 // Además continuamos el proceso de adaptación del clúster.
                 node_writer.create_necessary_dirs_and_csvs()?;
-                node_writer.get_tables_of_replicas()?;
-
-                Node::notify_relocation_is_needed();
+                node_writer.notify_update_replicas(false)?;
             }
             SvAction::RelocationNeeded => self.write()?.relocation_needed(),
             SvAction::UpdateReplicas(node_id, is_deletion) => {
@@ -260,8 +258,8 @@ impl SessionHandler {
             SvAction::AddRelocatedRows(node_id, rows) => {
                 self.write()?.add_relocated_rows(node_id, rows)?
             }
-            SvAction::GetAllTablesOfReplica(node_id) => {
-                let res = self.read()?.copy_tables(node_id)?;
+            SvAction::GetAllTablesOfReplica(node_id, only_farthest_replica) => {
+                let res = self.read()?.copy_tables(node_id, only_farthest_replica)?;
                 let _ = tcp_stream.write_all(&res);
                 if let Err(err) = tcp_stream.flush() {
                     return Err(Error::ServerError(err.to_string()));
@@ -271,9 +269,11 @@ impl SessionHandler {
                 let mut node_writer = self.write()?;
                 node_writer.notify_update_replicas(true)?;
                 node_writer.node_to_deletion()?;
-                node_writer.stop_gossiper_and_beater();
             }
             SvAction::NodeIsLeaving(node_id) => {
+                self.write()?.node_leaving(node_id)?;
+            }
+            SvAction::NodeDeleted(node_id) => {
                 self.write()?.node_leaving(node_id)?;
             }
         };
@@ -1670,15 +1670,22 @@ impl SessionHandler {
     /// Consulta si la relocalización es necesaria, si es cierto, inicia el proceso de relocalización.
     fn is_relocation_needed(&self) -> Result<()> {
         let node_reader = self.read()?;
-        if *node_reader.endpoint_state.get_appstate_status() == AppStatus::RelocationIsNeeded {
-            drop(node_reader);
+        let n_nodes = node_reader.get_actual_n_nodes();
+        let mut waiting_relocate_nodes_counter = 0;
+        for endpoint_state in node_reader.neighbours_states.values() {
+            if *endpoint_state.get_appstate_status() == AppStatus::RelocationIsNeeded
+            {
+                waiting_relocate_nodes_counter += 1;
+            }
+        }
+        drop(node_reader);
 
+        if waiting_relocate_nodes_counter == n_nodes {
             let mut node_writer = self.write()?;
             node_writer
                 .endpoint_state
                 .set_appstate_status(AppStatus::RelocatingData);
             println!("Iniciando relocalización.");
-
             node_writer.run_relocation()?;
         }
         Ok(())
@@ -1690,55 +1697,65 @@ impl SessionHandler {
         if *node_reader.endpoint_state.get_appstate_status() != AppStatus::Ready {
             return Ok(());
         }
-        let n_nodes = node_reader.get_actual_n_nodes();
+        let n_nodes = Node::get_all_n_nodes();
         let mut ready_nodes_counter = 0;
-        for endpoint_state in node_reader.neighbours_states.values() {
+        let mut node_deleted = 0;
+        for (node_id, endpoint_state) in &node_reader.neighbours_states {
             if *endpoint_state.get_appstate_status() == AppStatus::Ready
                 || *endpoint_state.get_appstate_status() == AppStatus::Normal
             {
                 ready_nodes_counter += 1;
             }
+            if *endpoint_state.get_appstate_status() == AppStatus::Remove {
+                node_deleted = *node_id;
+            }
         }
         drop(node_reader);
-
         if ready_nodes_counter == n_nodes {
+            println!("Se borra al nodo {} de la lista de ips", node_deleted);
+            DiskHandler::delete_node_id_and_ip(node_deleted)?;
             self.write()?.finish_relocation()?;
         }
         Ok(())
     }
 
-    /// TODO
-    /*fn node_is_leaving(&self) -> Result<()> {
+    /// Consulta si el nodo es uno que debe darse de baja, si lo es, espera a que
+    /// el resto de nodos terminen de relocalizar sus datos, y termina con el proceso
+    /// de baja.
+    fn leaving_node_has_to_relocate(&self) -> Result<()> {
         let node_reader = self.read()?;
-        let mut id_to_delete: Vec<NodeId> = Vec::new();
-        for (id, endpoint_state) in &node_reader.neighbours_states {
-            if *endpoint_state.get_appstate_status() == AppStatus::Left {
-                println!("Se va a borrar al nodo {} de la lista de vecinos", id);
-                id_to_delete.push(*id);
+        if *node_reader.endpoint_state.get_appstate_status() != AppStatus::Left {
+            return Ok(());
+        }
+        let n_nodes = node_reader.get_actual_n_nodes();
+        let mut waiting_relocate_nodes_counter = 0;
+        for endpoint_state in node_reader.neighbours_states.values() {
+            if *endpoint_state.get_appstate_status() == AppStatus::RelocationIsNeeded
+            || *endpoint_state.get_appstate_status() == AppStatus::Ready
+            {
+                waiting_relocate_nodes_counter += 1;
             }
         }
         drop(node_reader);
-        for id in id_to_delete {
-            println!("Se borra al nodo {} de la lista de ips", id);
-            DiskHandler::delete_node_id_and_ip(id)?;
+
+        if waiting_relocate_nodes_counter == n_nodes {
             let mut node_writer = self.write()?;
-            if id != self.id {
-                node_writer
-                    .endpoint_state
-                    .set_appstate_status(AppStatus::RelocationIsNeeded);
-                println!("Borro a nodo {} de los vecinos del nodo {}", id, self.id);
-                node_writer.neighbours_states.remove(&id);
-                println!("Los nuevos nodos vecinos son {:?}", node_writer.neighbours_states.keys());
-            } else {
-                node_writer.relocate_rows()?;
-                node_writer
-                    .endpoint_state
-                    .set_appstate_status(AppStatus::Remove);
+            node_writer.relocate_rows()?;
+            node_writer.stop_gossiper_and_beater();
+            let neighbours = node_writer.get_nodes_ids();
+            for neighbour_id in neighbours {
+                if neighbour_id == self.id {
+                    continue;
+                }
+                send_to_node(
+                    neighbour_id,
+                    SvAction::NodeDeleted(self.id).as_bytes(),
+                    PortType::Priv,
+                )?;
             }
         }
-
         Ok(())
-    }*/
+    }
 
     /// Consigue la información de _gossip_ que contiene este nodo.
     fn get_gossip_info(&self) -> Result<GossipInfo> {
@@ -1753,7 +1770,7 @@ impl SessionHandler {
     /// Inicia un intercambio de _gossip_ con los vecinos dados.
     pub fn gossip(&self, neighbours: HashSet<NodeId>) -> Result<()> {
         self.is_bootstrap_done()?;
-        //self.node_is_leaving()?;
+        self.leaving_node_has_to_relocate()?;
         self.is_relocation_needed()?;
         self.is_relocation_done()?;
 

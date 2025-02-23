@@ -116,10 +116,6 @@ pub struct Node {
     /// (nombre, tabla)
     tables: HashMap<String, Table>,
 
-    /// Rangos asignados a cada nodo para determinar la partición de los datos.
-    #[serde(skip)]
-    nodes_ranges: Vec<(Ulong, Ulong)>,
-
     /// Nombre de la tabla y los valores de las _partitions keys_ que contiene
     pub tables_and_partitions_keys_values: HashMap<String, Vec<String>>,
 
@@ -160,7 +156,6 @@ impl Node {
             users_default_keyspace_name: HashMap::new(),
             keyspaces: HashMap::new(),
             tables: HashMap::new(),
-            nodes_ranges: divide_range(0, NODES_RANGE_END, Self::get_all_n_nodes()),
             tables_and_partitions_keys_values: HashMap::new(),
             open_connections: OpenConnectionsMap::new(),
             nodes_weights: Vec::new(),
@@ -186,7 +181,6 @@ impl Node {
         self.neighbours_states = neighbours_states;
         self.endpoint_state = endpoint_state;
         self.storage_addr = DiskHandler::get_node_storage(id);
-        self.nodes_ranges = divide_range(0, NODES_RANGE_END, self.get_actual_n_nodes());
         self.open_connections = OpenConnectionsMap::new();
         self.is_new_node = is_new;
         self.stoppers = stoppers;
@@ -298,7 +292,7 @@ impl Node {
         };
         node.inicialize_nodes_weights(Self::get_all_n_nodes());
         *nodes_weights = node.nodes_weights.clone();
-        let max_weight_id = node.max_weight();
+        // let max_weight_id = node.max_weight();
 
         let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
         let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
@@ -388,7 +382,7 @@ impl Node {
         nodes_ids[max_id]
     }
 
-    /// TODO
+    /// Le notifica al nodo del ID dado que debe ser dado de baja del clúster.
     pub fn delete_node(id_to_delete: NodeId) -> Result<()> {
         if !Self::id_exists(&id_to_delete) {
             return Err(Error::ServerError(format!(
@@ -405,7 +399,8 @@ impl Node {
         Ok(())
     }
 
-    /// TODO
+    /// Actualiza el estado del nodo a _Left_ y le notifica al resto de nodos que se
+    /// está dando de baja.
     pub fn node_to_deletion(&mut self) -> Result<()> {
         for node in self.get_nodes_ids() {
             send_to_node(
@@ -540,6 +535,7 @@ impl Node {
         for (id, state) in &self.neighbours_states {
             if *state.get_appstate().get_status() == AppStatus::Left
                 || *state.get_appstate().get_status() == AppStatus::Remove
+
             {
                 nodes_ids.retain(|id_to_retain| id_to_retain != id);
             }
@@ -588,9 +584,10 @@ impl Node {
         let nodes_ids = self.get_nodes_ids();
         let hash_val = hash_value(value);
 
+        let nodes_ranges = divide_range(0, NODES_RANGE_END, nodes_ids.len());
         let mut i = 0;
-        for (a, b) in &self.nodes_ranges {
-            if *a <= hash_val && hash_val < *b {
+        for (a, b) in nodes_ranges {
+            if a <= hash_val && hash_val < b {
                 return nodes_ids[i];
             }
             i += 1;
@@ -687,11 +684,8 @@ impl Node {
             && *state.get_appstate().get_status() != AppStatus::Remove
         {
             println!("Nodo {} presentado.", id);
-            if actual_n_nodes > N_NODES as usize {
-                self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
-                if self.nodes_weights.len() < actual_n_nodes {
-                    self.nodes_weights.push(1);
-                }
+            if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
+                self.nodes_weights.push(1);
             }
             self.neighbours_states.insert(id, state);
         }
@@ -723,11 +717,8 @@ impl Node {
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
             {
                 println!("Nodo {} presentado.", node_id);
-                if actual_n_nodes > N_NODES as usize {
-                    self.nodes_ranges = divide_range(0, NODES_RANGE_END, actual_n_nodes);
-                    if self.nodes_weights.len() < actual_n_nodes {
-                        self.nodes_weights.push(1);
-                    }
+                if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
+                    self.nodes_weights.push(1);
                 }
             }
             self.neighbours_states.insert(node_id, endpoint_state);
@@ -1330,7 +1321,6 @@ impl Node {
                 )?;
             }
         }
-        self.notify_update_replicas(false)?;
         Ok(())
     }
 
@@ -1338,12 +1328,10 @@ impl Node {
     pub fn notify_update_replicas(&self, is_deletion: bool) -> Result<()> {
         for node_id in self.get_nodes_ids() {
             if node_id != self.id {
-                let _ = send_to_node_and_wait_response_with_timeout(
+                send_to_node(
                     node_id,
                     SvAction::UpdateReplicas(self.id, is_deletion).as_bytes(),
-                    PortType::Priv,
-                    true,
-                    Some(TIMEOUT_SECS),
+                    PortType::Priv
                 )?;
             }
         }
@@ -1352,12 +1340,12 @@ impl Node {
 
     /// Consulta a los nodos vecinos si las replicas de las tablas de ellos le corresponden a este nodo
     /// y si le corresponden las agrega.
-    pub fn get_tables_of_replicas(&mut self) -> Result<()> {
+    pub fn get_tables_of_replicas(&mut self, only_farthest_replica: bool) -> Result<()> {
         for i in 1..self.get_actual_n_nodes() {
             let node_to_consult = n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), i, true);
             let rows: Vec<u8> = send_to_node_and_wait_response_with_timeout(
                 node_to_consult,
-                SvAction::GetAllTablesOfReplica(self.id).as_bytes(),
+                SvAction::GetAllTablesOfReplica(self.id, only_farthest_replica).as_bytes(),
                 PortType::Priv,
                 true,
                 Some(TIMEOUT_SECS * 10),
@@ -1391,7 +1379,7 @@ impl Node {
 
     /// Segun el node_id recibido, revisa si este deberia tener alguna de las replicas de las tablas que
     /// le pertenecen a este nodo. Si no le pertenece ninguna replica devuelve un vector vacio.
-    pub fn copy_tables(&self, node_id: NodeId) -> Result<Vec<Byte>> {
+    pub fn copy_tables(&self, node_id: NodeId, only_farthest_replica: bool) -> Result<Vec<Byte>> {
         let mut nodes_ids = self.get_nodes_ids();
         // Se necesita que el nodo pertenezca aunque todavía no se haya presentado, solo en
         // este caso excepcional.
@@ -1408,11 +1396,11 @@ impl Node {
         }
         let mut final_rows: Vec<String> = Vec::new();
         for table in self.tables.values() {
-            if (distance as Uint)
-                >= self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?
-            {
+            if (only_farthest_replica && (distance as Uint) != self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?)
+            || (distance as Uint) >= self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?  {
                 continue;
             }
+
             let rows = DiskHandler::get_all_rows(
                 table.get_name(),
                 &self.storage_addr,
@@ -1440,25 +1428,40 @@ impl Node {
     /// ya no le corresponden.
     pub fn update_node_replicas(
         &mut self,
-        node_id: NodeId,
+        node_id_changed: NodeId,
         is_deletion: bool,
     ) -> Result<Vec<Byte>> {
-        for table in self.tables.values() {
+        self.endpoint_state.set_appstate_status(AppStatus::UpdatingReplicas);
+        let tables = self.tables.values();
+        for table in tables {
             let quantity_of_replicas =
                 self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
             let mut update_table_replica = false;
             for pos in 1..quantity_of_replicas {
                 let replica_node_id =
                     n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), pos as usize, true);
-                if replica_node_id == node_id {
+                if replica_node_id == node_id_changed {
                     update_table_replica = true
                 }
             }
             if !update_table_replica {
                 continue;
             }
-            self.delete_and_create_replicas(quantity_of_replicas, is_deletion, node_id, table)?;
+            self.delete_and_create_replicas(quantity_of_replicas, is_deletion, node_id_changed, table)?;
         }
+        let mut im_new_node = false;
+        for (node_id, neighbour) in &self.neighbours_states{
+            if self.id == *node_id && neighbour.get_appstate_status() != &AppStatus::NewNode{
+                im_new_node = true;
+                // pedir tablas a los nodos replica
+            }
+        }
+        if im_new_node {
+            self.get_tables_of_replicas(false)?;
+        } else {
+            self.get_tables_of_replicas(true)?;
+        }
+        self.endpoint_state.set_appstate_status(AppStatus::RelocationIsNeeded);
         // Devolvemos un mensaje de éxito.
         Ok(vec![1])
     }
@@ -1495,27 +1498,63 @@ impl Node {
         Ok(())
     }
 
-    /// todo
-    pub fn update_node_replicas_2_delete(&mut self, node_id: NodeId) -> Result<Vec<Byte>> {
-        // let nodes_ids = self.get_nodes_ids();
-        for table in self.tables.values() {
-            let quantity_of_replicas =
-                self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
-            let mut update_table_replica = false;
-            for pos in 1..quantity_of_replicas {
-                let replica_node_id =
-                    n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), pos as usize, true);
-                if replica_node_id == node_id {
-                    update_table_replica = true
-                }
-            }
-            if !update_table_replica {
-                continue;
-            }
-        }
-        // Devolvemos un mensaje de éxito.
-        Ok(vec![1])
-    }
+    // /// TODO
+    // pub fn get_replicas_of_farthest_node(&mut self) -> Result<()> {
+    //     let mut nodes_ids = self.get_nodes_ids();
+    //     let mut distance = usize::MAX;
+    //     for i in 1..nodes_ids.len() {
+    //         if n_th_node_in_the_cluster(self.id, &nodes_ids, i, false) == self.id {
+    //             distance = i;
+    //         }
+    //     }
+    //     for table in self.tables.values() {
+    //         if (distance as Uint)
+    //             != self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?
+    //         {
+    //             continue;
+    //         }
+    //         let rows = DiskHandler::get_all_rows(
+    //             table.get_name(),
+    //             &self.storage_addr,
+    //             table.get_keyspace(),
+    //             table.get_keyspace(),
+    //             self.id,
+    //         )?;
+    //         if rows.is_empty() {
+    //             continue;
+    //         }
+    //         final_rows.insert(0, table.get_name().to_string());
+    //         final_rows.insert(0, table.get_keyspace().to_string());
+    //         for row in rows {
+    //             final_rows.push(row.join(","));
+    //         }
+    //         final_rows.push("\n".to_string());
+    //     }
+    //     Ok(())
+    // }
+
+
+    // /// TODO
+    // pub fn update_node_replicas_2_delete(&mut self, node_id: NodeId) -> Result<Vec<Byte>> {
+    //     // let nodes_ids = self.get_nodes_ids();
+    //     for table in self.tables.values() {
+    //         let quantity_of_replicas =
+    //             self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
+    //         let mut update_table_replica = false;
+    //         for pos in 1..quantity_of_replicas {
+    //             let replica_node_id =
+    //                 n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), pos as usize, true);
+    //             if replica_node_id == node_id {
+    //                 update_table_replica = true
+    //             }
+    //         }
+    //         if !update_table_replica {
+    //             continue;
+    //         }
+    //     }
+    //     // Devolvemos un mensaje de éxito.
+    //     Ok(vec![1])
+    // }
 
     /// Filtra las tablas que contiene para asegurarse de tener las filas que le
     /// corresponden luego de que el rango de particiones haya cambiado por el
@@ -1672,27 +1711,23 @@ impl Node {
         Ok(())
     }
 
-    /// TODO
-    pub fn node_leaving(&mut self, node_id: NodeId) -> Result<()> {
-        println!("Se borra al nodo {} de la lista de ips", node_id);
-        DiskHandler::delete_node_id_and_ip(node_id)?;
-        if node_id != self.id {
-            self.endpoint_state
-                .set_appstate_status(AppStatus::RelocationIsNeeded);
+    /// Actualiza el estado del nodo dado según su ID a _Remove_, notificando que fue
+    /// dado de baja.
+    pub fn node_leaving(&mut self, node_leaving_id: NodeId) -> Result<()> {
+        DiskHandler::delete_node_id_and_ip(node_leaving_id)?;
+        if node_leaving_id != self.id {
+            if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_leaving_id) {
+                endpoint_state.set_appstate_status(AppStatus::Remove);
+            }
             println!(
-                "Borro a nodo {} de los vecinos del nodo {}",
-                node_id, self.id
+                "Pongo al nodo {} en estado remove",
+                node_leaving_id
             );
-            self.neighbours_states.remove(&node_id);
-        } else {
-            println!("Empiezo la relocacion siendo el nodo que se va");
-            self.relocate_rows()?;
-            self.endpoint_state.set_appstate_status(AppStatus::Remove);
         }
         Ok(())
     }
 
-    /// TODO
+    /// Envia una señal para que los hilos _gossiper_ y _beater_ dejen de correr.
     pub fn stop_gossiper_and_beater(&self) {
         for stopper in &self.stoppers {
             let _ = stopper.send(true);
