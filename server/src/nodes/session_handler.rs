@@ -247,8 +247,9 @@ impl SessionHandler {
                 node_writer.create_necessary_dirs_and_csvs()?;
                 // node_writer.endpoint_state.set_appstate_status(AppStatus::NewNode);
                 node_writer.notify_update_replicas(false)?;
-                node_writer.endpoint_state.set_appstate_status(AppStatus::RelocationIsNeeded);
-
+                node_writer
+                    .endpoint_state
+                    .set_appstate_status(AppStatus::RelocationIsNeeded);
             }
             SvAction::RelocationNeeded => self.write()?.relocation_needed(),
             SvAction::UpdateReplicas(node_id, is_deletion) => {
@@ -1644,14 +1645,15 @@ impl SessionHandler {
         let node_status = node_reader.endpoint_state.get_appstate_status();
 
         if node_reader.neighbours_states.len() == node_reader.get_actual_n_nodes()
-            && *node_status != AppStatus::Normal
-            && *node_status != AppStatus::RelocationIsNeeded
-            && *node_status != AppStatus::RelocatingData
-            && *node_status != AppStatus::Ready
-            && *node_status != AppStatus::Left
-            && *node_status != AppStatus::Remove
-            && *node_status != AppStatus::NewNode
-            && *node_status != AppStatus::UpdatingReplicas
+            && (*node_status == AppStatus::Bootstrap || *node_status == AppStatus::Offline)
+        /*&& *node_status != AppStatus::Normal
+        && *node_status != AppStatus::RelocationIsNeeded
+        && *node_status != AppStatus::RelocatingData
+        && *node_status != AppStatus::Ready
+        && *node_status != AppStatus::Left
+        && *node_status != AppStatus::Remove
+        && *node_status != AppStatus::NewNode
+        && *node_status != AppStatus::UpdatingReplicas*/
         {
             drop(node_reader);
 
@@ -1671,21 +1673,24 @@ impl SessionHandler {
     /// Consulta si la relocalización es necesaria, si es cierto, inicia el proceso de relocalización.
     fn is_relocation_needed(&self) -> Result<()> {
         let node_reader = self.read()?;
-        if *node_reader.endpoint_state.get_appstate_status() != AppStatus::RelocationIsNeeded{
-            return Ok(())
+        if *node_reader.endpoint_state.get_appstate_status() != AppStatus::RelocationIsNeeded {
+            return Ok(());
         }
         let n_nodes = node_reader.get_actual_n_nodes();
         let mut waiting_relocate_nodes_counter = 0;
         for endpoint_state in node_reader.neighbours_states.values() {
             if *endpoint_state.get_appstate_status() == AppStatus::RelocationIsNeeded
-            || *endpoint_state.get_appstate_status() == AppStatus::RelocatingData
-            || *endpoint_state.get_appstate_status() == AppStatus::Ready
+                || *endpoint_state.get_appstate_status() == AppStatus::RelocatingData
+                || *endpoint_state.get_appstate_status() == AppStatus::Ready
             {
                 waiting_relocate_nodes_counter += 1;
             }
         }
         drop(node_reader);
-        println!("Los vecinos que van a realocar data son {}", waiting_relocate_nodes_counter);
+        println!(
+            "Los vecinos que van a realocar data son {}",
+            waiting_relocate_nodes_counter
+        );
         if waiting_relocate_nodes_counter == n_nodes {
             let mut node_writer = self.write()?;
             node_writer
@@ -1712,8 +1717,9 @@ impl SessionHandler {
             {
                 ready_nodes_counter += 1;
             }
-            if *endpoint_state.get_appstate_status() == AppStatus::Remove 
-            || *endpoint_state.get_appstate_status() == AppStatus::Offline{
+            if *endpoint_state.get_appstate_status() == AppStatus::Remove
+                || *endpoint_state.get_appstate_status() == AppStatus::Offline
+            {
                 ready_nodes_counter += 1;
                 node_deleted = *node_id as i32;
             }
@@ -1740,8 +1746,7 @@ impl SessionHandler {
         let n_nodes = node_reader.get_actual_n_nodes();
         let mut waiting_relocate_nodes_counter = 0;
         for endpoint_state in node_reader.neighbours_states.values() {
-            if *endpoint_state.get_appstate_status() == AppStatus::Ready
-            {
+            if *endpoint_state.get_appstate_status() == AppStatus::Ready {
                 waiting_relocate_nodes_counter += 1;
             }
         }
@@ -1752,6 +1757,10 @@ impl SessionHandler {
             node_writer.relocate_rows()?;
             println!("El nodo que se esta yendo apago el gossiper");
             node_writer.stop_gossiper_and_beater();
+            node_writer
+                .endpoint_state
+                .set_appstate_status(AppStatus::Remove);
+
             let neighbours = node_writer.get_nodes_ids();
             for neighbour_id in neighbours {
                 if neighbour_id == self.id {
@@ -1784,23 +1793,28 @@ impl SessionHandler {
         self.is_relocation_needed()?;
         self.is_relocation_done()?;
 
+        let node_reader = self.read()?;
+        if *node_reader.endpoint_state.get_appstate_status() == AppStatus::Left
+            || *node_reader.endpoint_state.get_appstate_status() == AppStatus::Remove
+        {
+            return Ok(());
+        }
         for neighbour_id in neighbours {
             // if *neighbour_state.get_appstate_status() != AppStatus::Left
             // && *neighbour_state.get_appstate_status() != AppStatus::Remove{
-                if send_to_node(
-                    neighbour_id,
-                    SvAction::Syn(self.id.to_owned(), self.get_gossip_info()?).as_bytes(),
-                    PortType::Priv,
-                )
-                .is_err()
-                {
-                    // No devolvemos error porque no se considera un error que un vecino
-                    // no responda en esta instancia, sino que esta apagado.
-                    self.write()?.acknowledge_offline_neighbour(neighbour_id);
-                    println!("Se pone al nodo {} en estado Offline", neighbour_id);
-                }
+            if send_to_node(
+                neighbour_id,
+                SvAction::Syn(self.id.to_owned(), self.get_gossip_info()?).as_bytes(),
+                PortType::Priv,
+            )
+            .is_err()
+            {
+                // No devolvemos error porque no se considera un error que un vecino
+                // no responda en esta instancia, sino que esta apagado.
+                self.write()?.acknowledge_offline_neighbour(neighbour_id);
+                println!("Se pone al nodo {} en estado Offline", neighbour_id);
+            }
             // }
-
         }
         Ok(())
     }
