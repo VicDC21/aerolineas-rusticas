@@ -252,3 +252,201 @@ impl From<std::io::Error> for LoggerError {
         LoggerError::IoError(err)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, std::sync::Arc, tempfile::TempDir};
+
+    // Función auxiliar para crear un directorio temporal y un logger para pruebas
+    fn setup_test_logger() -> (TempDir, Logger) {
+        let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
+        let logger = Logger::new(
+            temp_dir.path(),
+            "127.0.0.1:8080",
+            LogLevel::Trace,
+            None,
+            None,
+        )
+        .expect("Error al crear el logger");
+
+        (temp_dir, logger)
+    }
+
+    #[test]
+    fn test_logger_creation() {
+        let (temp_dir, _) = setup_test_logger();
+        let log_file = temp_dir.path().join("node_127.0.0.1_8080.log");
+        assert!(log_file.exists(), "El archivo de log no fue creado");
+    }
+
+    #[test]
+    fn test_log_levels() {
+        let (temp_dir, logger) = setup_test_logger();
+
+        logger
+            .debug("Mensaje debug")
+            .expect("Error en el log de mensaje de debug");
+        logger
+            .info("Mensaje info")
+            .expect("Error en el log de mensaje de info");
+        logger
+            .warning("Mensaje warning")
+            .expect("Error en el log de mensaje de warning");
+        logger
+            .error("Mensaje error")
+            .expect("Error en el log de mensaje de error");
+
+        let log_content = fs::read_to_string(temp_dir.path().join("node_127.0.0.1_8080.log"))
+            .expect("Error al leer el archivo de log");
+
+        assert!(log_content.contains("DEBUG"));
+        assert!(log_content.contains("INFO"));
+        assert!(log_content.contains("WARNING"));
+        assert!(log_content.contains("ERROR"));
+    }
+
+    #[test]
+    fn test_log_level_filtering() {
+        let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
+
+        let logger = Logger::new(
+            temp_dir.path(),
+            "127.0.0.1:8080",
+            LogLevel::Info,
+            None,
+            None,
+        )
+        .expect("Error al crear el logger");
+
+        logger
+            .debug("No debería aparecer")
+            .expect("Error en el log de mensaje de debug");
+        logger
+            .info("Debería aparecer")
+            .expect("Error en el log de mensaje de info");
+        logger
+            .warning("Debería aparecer")
+            .expect("Error en el log de mensaje de warning");
+
+        // Leemos el contenido del archivo
+        let log_content = fs::read_to_string(temp_dir.path().join("node_127.0.0.1_8080.log"))
+            .expect("Error al leer el archivo de log");
+
+        // Verificamos el filtrado
+        assert!(!log_content.contains("DEBUG"));
+        assert!(log_content.contains("INFO"));
+        assert!(log_content.contains("WARNING"));
+    }
+
+    #[test]
+    fn test_custom_formatter() {
+        let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
+
+        let formatter = LogFormatter {
+            timestamp_format: "%H:%M:%S".to_string(),
+            message_template: "TEST-{level}: {message}".to_string(),
+        };
+
+        let logger = Logger::new(
+            temp_dir.path(),
+            "127.0.0.1:8080",
+            LogLevel::Info,
+            None,
+            Some(formatter),
+        )
+        .expect("Error al crear el logger");
+
+        logger
+            .info("Mensaje de prueba")
+            .expect("Error al registrar mensaje");
+
+        let log_content = fs::read_to_string(temp_dir.path().join("node_127.0.0.1_8080.log"))
+            .expect("Error al leer el archivo de log");
+
+        assert!(log_content.contains("TEST-INFO"));
+        assert!(!log_content.contains("[INFO]"));
+    }
+
+    #[test]
+    fn test_rotation() {
+        let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
+
+        let rotation_config = RotationConfig {
+            max_size: 100,
+            max_files: 3,
+        };
+
+        let logger = Logger::new(
+            temp_dir.path(),
+            "127.0.0.1:8080",
+            LogLevel::Info,
+            Some(rotation_config),
+            None,
+        )
+        .expect("Error al crear el logger");
+
+        for i in 0..10 {
+            logger
+                .info(&format!("Mensaje largo de prueba número {}", i))
+                .expect("Error al registrar mensaje");
+        }
+
+        assert!(temp_dir.path().join("node_127.0.0.1_8080.log").exists());
+        assert!(temp_dir.path().join("node_127.0.0.1_8080.log.1").exists());
+        assert!(temp_dir.path().join("node_127.0.0.1_8080.log.2").exists());
+        assert!(!temp_dir.path().join("node_127.0.0.1_8080.log.4").exists());
+    }
+
+    #[test]
+    fn test_invalid_directory() {
+        let result = Logger::new(
+            Path::new("/path/that/definitely/does/not/exist"),
+            "127.0.0.1:8080",
+            LogLevel::Info,
+            None,
+            None,
+        );
+
+        assert!(result.is_err());
+        match result {
+            Err(LoggerError::IoError(_)) => (),
+            _ => panic!("Se esperaba un IoError"),
+        }
+    }
+
+    #[test]
+    fn test_concurrent_logging() {
+        let (temp_dir, logger) = setup_test_logger();
+        let logger = Arc::new(logger);
+        let mut handles = vec![];
+
+        // Creamos múltiples hilos que escriben logs simultáneamente
+        for i in 0..10 {
+            let logger_clone = Arc::clone(&logger);
+            let handle = std::thread::spawn(move || {
+                for j in 0..10 {
+                    logger_clone
+                        .info(&format!("Mensaje del hilo {} número {}", i, j))
+                        .expect("Error al registrar mensaje");
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Esperamos a que todos los hilos terminen
+        for handle in handles {
+            handle.join().expect("Thread panicked");
+        }
+
+        // Verificamos que se hayan escrito todos los mensajes
+        let log_content = fs::read_to_string(temp_dir.path().join("node_127.0.0.1_8080.log"))
+            .expect("Error al leer el archivo de log");
+
+        // Deberían haber 100 mensajes en total (10 hilos * 10 mensajes)
+        let message_count = log_content.lines().count();
+        assert_eq!(
+            message_count, 100,
+            "No se registraron todos los mensajes esperados"
+        );
+    }
+}
