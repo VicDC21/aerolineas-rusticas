@@ -22,6 +22,7 @@ detener y/o destruir contenedores para los nodos.
 * [Utilizando `compose`](#usando-docker-compose)
     - [Levantando nodos](#levantando-nodos-iniciales)
     - [Apagando nodos](#cerrando-nodos)
+    - [Modificar nodos de forma dinámica](#modificando-nodos-dinámicamente)
 
 <hr style="width:35%" />
 
@@ -221,7 +222,7 @@ Para construir y levantar los 5 contenedores iniciales, basta con hacer:
 $ docker compose up
 ```
 
-## Cerrando nodos
+## Cerrando nodos iniciales
 
 En cualquier momento, se puede hacer:
 
@@ -230,3 +231,25 @@ $ docker compose down
 ```
 
 para apagar todos los contenedores, **y luego eliminarlos,** todo de forma bonita.
+
+## Modificando Nodos dinámicamente
+
+Siempre se puede modificar la cantidad de nodos del clúster de forma dinámica, más allá de la
+cantidad inicial.
+
+### Agregando
+
+Se debe ir a una consola aparte y correr el comando para [correr](#correr-un-contenedor) un contenedor:
+
+```console
+$ docker run -it --rm --network host --name nodo-<id> nodos-slim new <id> <ip> 
+```
+
+donde:
+
+* `<id>` es el ID del nuevo nodo a agregar.
+* `<ip>` es la IP asignada a dicho nodo.
+
+> **Advertencia:** La imagen `nodos-slim` debe haber sido creada de antemano, ya sea con correr el [compose](#levantando-nodos-iniciales) al menos una vez, o [construyéndola](#construir-una-imagen) manualmente.
+
+### Borrando
