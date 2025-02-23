@@ -12,7 +12,6 @@ use {
         },
         utils::handle_pem_file_iter,
     },
-    logger::log::Color,
     protocol::{
         aliases::{
             results::Result,
@@ -107,11 +106,7 @@ pub fn create_client_and_private_conexion(
 pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
     session_handler
         .logger
-        .info(
-            &format!("Escuchando conexiones de cliente en {}", socket),
-            Color::Blue,
-            true,
-        )
+        .debug(&format!("Escuchando conexiones de cliente en {}", socket))
         .map_err(|e| Error::ServerError(e.to_string()))?;
     listen_cli_port(socket, session_handler)
 }
@@ -120,11 +115,7 @@ pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result
 pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
     session_handler
         .logger
-        .info(
-            &format!("Escuchando conexiones privadas en {}", socket),
-            Color::Blue,
-            true,
-        )
+        .debug(&format!("Escuchando conexiones privadas en {}", socket))
         .map_err(|e| Error::ServerError(e.to_string()))?;
     listen_priv_port(socket, session_handler)
 }
@@ -238,7 +229,7 @@ fn listen_single_client(
             Err(_err) => {
                 session_handler
                     .logger
-                    .error("Error leyendo el stream TLS", true)
+                    .error("Error leyendo el stream TLS")
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 return Err(Error::ServerError("No se pudo leer el stream".to_string()));
             }
@@ -247,16 +238,12 @@ fn listen_single_client(
         buffer.truncate(size);
         session_handler
             .logger
-            .info(
-                &format!("Mensaje recibido (CLI): {:?}", buffer),
-                Color::Green,
-                true,
-            )
+            .info(&format!("Mensaje recibido (CLI): {:?}", buffer))
             .map_err(|e| Error::ServerError(e.to_string()))?;
         if is_exit(&buffer[..]) {
             session_handler
                 .logger
-                .info("Recibido mensaje EXIT desde cliente", Color::Green, true)
+                .info("Recibido mensaje EXIT desde cliente")
                 .map_err(|e| Error::ServerError(e.to_string()))?;
             match arc_exit.lock() {
                 Ok(mut locked_in) => *locked_in = true,
@@ -277,7 +264,7 @@ fn listen_single_client(
             let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
             session_handler
                 .logger
-                .info(&format!("Respuesta enviada: {:?}", res), Color::Green, true)
+                .info(&format!("Respuesta enviada: {:?}", res))
                 .map_err(|e| Error::ServerError(e.to_string()))?;
             if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
                 is_logged = true;

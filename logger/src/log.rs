@@ -1,18 +1,12 @@
 use {
     chrono::Utc,
     std::{
-        fs::OpenOptions,
+        fmt,
+        fs::{self, OpenOptions},
         io::{self, Write},
         path::{Path, PathBuf},
     },
 };
-
-#[derive(Debug, Clone)]
-enum Level {
-    Info(Color),
-    Warning,
-    Error,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub enum Color {
@@ -33,84 +27,135 @@ impl Color {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LogLevel {
+    Trace,
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
+impl fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogLevel::Trace => write!(f, "TRACE"),
+            LogLevel::Debug => write!(f, "DEBUG"),
+            LogLevel::Info => write!(f, "INFO"),
+            LogLevel::Warning => write!(f, "WARNING"),
+            LogLevel::Error => write!(f, "ERROR"),
+        }
+    }
+}
+
+// Configuración para la rotación de archivos
+#[derive(Clone)]
+pub struct RotationConfig {
+    max_size: u64,  // Tamaño máximo del archivo en bytes
+    max_files: u32, // Número máximo de archivos de respaldo
+}
+
+impl Default for RotationConfig {
+    fn default() -> Self {
+        Self {
+            max_size: 10 * 1024 * 1024, // 10MB por defecto
+            max_files: 5,
+        }
+    }
+}
+
+// Configuración para el formato de los mensajes
+#[derive(Clone)]
+pub struct LogFormatter {
+    timestamp_format: String,
+    message_template: String,
+}
+
+impl Default for LogFormatter {
+    fn default() -> Self {
+        Self {
+            timestamp_format: "%Y-%m-%d %H:%M:%S".to_string(),
+            message_template: "[{level}] [{timestamp}]: {message}".to_string(),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Logger {
     log_file: PathBuf,
+    min_level: LogLevel,
+    rotation_config: RotationConfig,
+    formatter: LogFormatter,
 }
 
 impl Logger {
-    /// Crea una nueva instancia de `Logger` y un archivo de log en el directorio especificado.
-    ///
-    /// # Parametros
-    /// - `dir`: Ruta al directorio donde se creará el archivo de log.
-    /// - `ip`: La dirección IP del nodo que está creando el log.
-    ///
-    /// # Devuelve
-    /// Una nueva instancia de `Logger` si la operación fue exitosa.
-    pub fn new(dir: &Path, ip: &str) -> Result<Self, LoggerError> {
-        match dir.is_dir() {
-            true => std::fs::create_dir_all(dir).map_err(LoggerError::from)?,
-            false => {
-                return Err(LoggerError::InvalidPath(
-                    "La ruta proporcionada no es un directorio".into(),
-                ));
-            }
+    /// Crea una nueva instancia del logger con configuración personalizada
+    pub fn new(
+        dir: &Path,
+        ip: &str,
+        min_level: LogLevel,
+        rotation_config: Option<RotationConfig>,
+        formatter: Option<LogFormatter>,
+    ) -> Result<Self, LoggerError> {
+        // Nos aseguramos de que el directorio existe
+        if !dir.is_dir() {
+            fs::create_dir_all(dir).map_err(LoggerError::from)?;
         }
 
         let log_file = dir.join(format!("node_{}.log", ip.replace(":", "_")));
 
+        // Creamos el archivo si no existe
         OpenOptions::new()
             .create(true)
-            .write(true)
-            .truncate(true)
+            .append(true)
             .open(&log_file)
             .map_err(LoggerError::from)?;
 
-        Ok(Logger { log_file })
-    }
-
-    /// Registra un mensaje informativo.
-    ///
-    /// # Parametros
-    /// - `msg`: El mensaje informativo a registrar.
-    /// - `color`: El color del mensaje en la consola.
-    /// - `to_stdout`: Si se debe registrar el mensaje en la consola.
-    pub fn info(&self, msg: &str, color: Color, to_stdout: bool) -> Result<(), LoggerError> {
-        self.log(Level::Info(color), msg, to_stdout)
-    }
-
-    /// Registra un mensaje de advertencia.
-    ///
-    /// # Parametros
-    /// - `msg`: El mensaje de advertencia a registrar.
-    /// - `to_stdout`: Si se debe registrar el mensaje en la consola.
-    pub fn warn(&self, msg: &str, to_stdout: bool) -> Result<(), LoggerError> {
-        self.log(Level::Warning, msg, to_stdout)
-    }
-
-    /// Registra un mensaje de error.
-    ///
-    /// # Parametros
-    /// - `msg`: El mensaje de error a registrar.https://github.com/alendavies/rustic-airlines.githttps://github.com/alendavies/rustic-airlines.git
-    /// - `to_stdout`: Si se debe registrar el mensaje en la consola.
-    pub fn error(&self, msg: &str, to_stdout: bool) -> Result<(), LoggerError> {
-        self.log(Level::Error, msg, to_stdout)
-    }
-
-    fn log(&self, level: Level, msg: &str, to_stdout: bool) -> Result<(), LoggerError> {
-        let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        let log_msg = match &level {
-            Level::Info(_) => format!("[INFO] [{}]: {}\n", timestamp, msg),
-            Level::Warning => format!("[WARNING] [{}]: {}\n", timestamp, msg),
-            Level::Error => format!("[ERROR] [{}]: {}\n", timestamp, msg),
+        let rotation_config = match rotation_config {
+            Some(config) => {
+                if config.max_files == 0 {
+                    return Err(LoggerError::InvalidPath(
+                        "El número máximo de archivos debe ser mayor a cero".to_string(),
+                    ));
+                }
+                config
+            }
+            None => RotationConfig::default(),
         };
 
-        if to_stdout {
-            let colored_msg = match &level {
-                Level::Info(color) => format!("{}{}\x1b[0m", color.to_ansi(), log_msg),
-                Level::Warning => format!("\x1b[93m{}\x1b[0m", log_msg),
-                Level::Error => format!("\x1b[91m{}\x1b[0m", log_msg),
-            };
+        Ok(Self {
+            log_file,
+            min_level,
+            rotation_config,
+            formatter: formatter.unwrap_or_default(),
+        })
+    }
+
+    /// Registra un mensaje si su nivel es igual o superior al nivel mínimo configurado
+    pub fn log(&self, level: LogLevel, msg: &str, color: Option<Color>) -> Result<(), LoggerError> {
+        // Verificamos si debemos registrar este nivel
+        if level < self.min_level {
+            return Ok(());
+        }
+
+        // Verificamos si necesitamos rotar el archivo
+        self.rotate_if_needed()?;
+
+        // Formateamos el mensaje
+        let timestamp = Utc::now()
+            .format(&self.formatter.timestamp_format)
+            .to_string();
+        let log_msg = self
+            .formatter
+            .message_template
+            .replace("{level}", &level.to_string())
+            .replace("{timestamp}", &timestamp)
+            .replace("{message}", msg);
+        let log_msg = format!("{}\n", log_msg);
+
+        // Si hay color especificado, lo aplicamos para stdout
+        if let Some(color) = color {
+            let colored_msg = format!("{}{}\x1b[0m", color.to_ansi(), log_msg);
             print!("{}", colored_msg);
             io::stdout().flush().map_err(LoggerError::from)?;
         }
@@ -120,11 +165,59 @@ impl Logger {
             .append(true)
             .open(&self.log_file)
             .map_err(LoggerError::from)?;
+
         file.write_all(log_msg.as_bytes())
             .map_err(LoggerError::from)?;
         file.flush().map_err(LoggerError::from)?;
 
         Ok(())
+    }
+
+    /// Implementa la rotación de archivos cuando sea necesario
+    fn rotate_if_needed(&self) -> Result<(), LoggerError> {
+        let metadata = fs::metadata(&self.log_file)?;
+
+        if metadata.len() > self.rotation_config.max_size {
+            // Movemos los archivos existentes
+            for i in (1..self.rotation_config.max_files).rev() {
+                let current = self.log_file.with_extension(format!("log.{}", i));
+                let next = self.log_file.with_extension(format!("log.{}", i + 1));
+
+                if current.exists() {
+                    if i == self.rotation_config.max_files - 1 {
+                        fs::remove_file(current)?;
+                    } else {
+                        fs::rename(current, next)?;
+                    }
+                }
+            }
+
+            fs::rename(&self.log_file, self.log_file.with_extension("log.1"))?;
+
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&self.log_file)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn debug(&self, msg: &str) -> Result<(), LoggerError> {
+        self.log(LogLevel::Debug, msg, Some(Color::Blue))
+    }
+
+    pub fn info(&self, msg: &str) -> Result<(), LoggerError> {
+        self.log(LogLevel::Info, msg, Some(Color::Green))
+    }
+
+    pub fn warning(&self, msg: &str) -> Result<(), LoggerError> {
+        self.log(LogLevel::Warning, msg, Some(Color::Yellow))
+    }
+
+    pub fn error(&self, msg: &str) -> Result<(), LoggerError> {
+        self.log(LogLevel::Error, msg, Some(Color::Red))
     }
 }
 
@@ -132,6 +225,7 @@ impl Logger {
 pub enum LoggerError {
     IoError(std::io::Error),
     InvalidPath(String),
+    CompressionError(String),
 }
 
 impl std::fmt::Display for LoggerError {
@@ -139,6 +233,7 @@ impl std::fmt::Display for LoggerError {
         match self {
             LoggerError::IoError(e) => write!(f, "Error de E/S: {}", e),
             LoggerError::InvalidPath(msg) => write!(f, "Ruta inválida: {}", msg),
+            LoggerError::CompressionError(msg) => write!(f, "Error de compresión: {}", msg),
         }
     }
 }
@@ -147,7 +242,7 @@ impl std::error::Error for LoggerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             LoggerError::IoError(e) => Some(e),
-            LoggerError::InvalidPath(_) => None,
+            _ => None,
         }
     }
 }
@@ -155,13 +250,5 @@ impl std::error::Error for LoggerError {
 impl From<std::io::Error> for LoggerError {
     fn from(err: std::io::Error) -> Self {
         LoggerError::IoError(err)
-    }
-}
-
-impl Default for Logger {
-    fn default() -> Self {
-        Logger {
-            log_file: PathBuf::from("default.log"),
-        }
     }
 }
