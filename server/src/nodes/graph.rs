@@ -34,7 +34,7 @@ use {
         collections::HashSet,
         net::SocketAddr,
         path::Path,
-        sync::mpsc::{channel, Sender},
+        sync::mpsc::{channel, Sender, Receiver},
         thread::{sleep, Builder, JoinHandle},
         time::Duration,
     },
@@ -107,24 +107,23 @@ impl NodesGraph {
 
     /// Inicializa el grafo y levanta todos los handlers necesarios.
     pub fn init(&mut self) -> Result<()> {
-        let nodes = self.bootup_nodes(N_NODES)?;
+        let (gossiper_stopper, gossiper_receiver) = channel::<bool>();
+        let (beater_stopper, beater_receiver) = channel::<bool>();
 
-        let (_beater, _beat_stopper) = self.beater()?;
-        let (_gossiper, _gossip_stopper) = self.gossiper()?;
+        let nodes = self.bootup_nodes(N_NODES, vec![gossiper_stopper, beater_stopper])?;
+
+        let gossiper = self.gossiper(gossiper_receiver)?;
+        let beater = self.beater(beater_receiver)?;
 
         self.handlers.extend(nodes);
-
-        /*Paramos los handlers especiales primero
-        let _ = beat_stopper.send(true);
-        let _ = beater.join();
-
-        let _ = gossip_stopper.send(true);
-        let _ = gossiper.join();*/
 
         // Corremos los scripts iniciales
         if let Err(err) = self.send_init_queries() {
             println!("Error en las queries iniciales:\n{}", err);
         }
+
+        let _ = gossiper.join();
+        let _ = beater.join();
 
         self.wait();
         Ok(())
@@ -186,17 +185,17 @@ impl NodesGraph {
     /// "Inicia" los nodos del grafo en sus propios hilos.
     ///
     /// * `n` es la cantidad de nodos a crear en el proceso.
-    fn bootup_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
+    fn bootup_nodes(&mut self, n: Byte, stoppers: Vec<Sender<bool>>) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_folder = Path::new(&NODES_METADATA_PATH);
         if nodes_folder.exists() && nodes_folder.is_dir() {
-            self.bootup_existing_nodes(n)
+            self.bootup_existing_nodes(n, stoppers)
         } else {
-            self.bootup_new_nodes(n)
+            self.bootup_new_nodes(n, stoppers)
         }
     }
 
     /// Inicializa nodos nuevos.
-    fn bootup_new_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
+    fn bootup_new_nodes(&mut self, n: Byte, stoppers: Vec<Sender<bool>>) -> Result<Vec<Option<NodeHandle>>> {
         self.node_weights = vec![1; n as usize];
         self.node_weights[0] *= 3; // El primer nodo tiene el triple de probabilidades de ser elegido.
 
@@ -204,7 +203,7 @@ impl NodesGraph {
         for i in 0..n {
             let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
             let current_id = self.add_node_id();
-            let node = Node::new(current_id, self.preferred_mode.clone())?;
+            let node = Node::new(current_id, self.preferred_mode.clone(), false, stoppers.clone())?;
 
             let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
             let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
@@ -226,7 +225,7 @@ impl NodesGraph {
     }
 
     /// Inicializa nodos existentes.
-    fn bootup_existing_nodes(&mut self, n: Byte) -> Result<Vec<Option<NodeHandle>>> {
+    fn bootup_existing_nodes(&mut self, n: Byte, stoppers: Vec<Sender<bool>>) -> Result<Vec<Option<NodeHandle>>> {
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
 
         for i in 0..n {
@@ -235,7 +234,7 @@ impl NodesGraph {
             let path = Path::new(&node_path);
             if path.exists() {
                 let mut node: Node = load_json(&node_path)?;
-                node.set_default_fields(current_id, self.preferred_mode.clone())?;
+                node.set_default_fields(current_id, self.preferred_mode.clone(), false, stoppers.clone())?;
 
                 if current_id == START_ID {
                     // El primer nodo tiene el triple de probabilidades de ser elegido.
@@ -271,12 +270,11 @@ impl NodesGraph {
     }
 
     /// Realiza una ronda de _gossip_.
-    fn gossiper(&self) -> Result<(NodeHandle, Sender<bool>)> {
-        let (sender, receiver) = channel::<bool>();
+    fn gossiper(&self, receiver: Receiver<bool>) -> Result<NodeHandle> {
         let builder = Builder::new().name("gossip".to_string());
         let weights = self.get_weights();
         match builder.spawn(move || exec_gossip(receiver, weights)) {
-            Ok(handler) => Ok((handler, sender.clone())),
+            Ok(handler) => Ok(handler),
             Err(_) => Err(Error::ServerError(
                 "Error procesando la ronda de gossip de los nodos.".to_string(),
             )),
@@ -314,7 +312,7 @@ impl NodesGraph {
             }
             if let Err(err) = send_to_node(
                 node_id,
-                SvAction::SendEndpointState(id).as_bytes(),
+                SvAction::SendEndpointState(id, "".to_string()).as_bytes(),
                 PortType::Priv,
             ) {
                 println!(
@@ -326,12 +324,11 @@ impl NodesGraph {
     }
 
     /// Avanza a cada segundo el estado de _heartbeat_ de los nodos.
-    fn beater(&self) -> Result<(NodeHandle, Sender<bool>)> {
-        let (sender, receiver) = channel::<bool>();
+    fn beater(&self, receiver: Receiver<bool>) -> Result<NodeHandle> {
         let builder = Builder::new().name("beater".to_string());
         let ids = self.get_ids();
         match builder.spawn(move || increase_heartbeat_and_store_nodes(receiver, ids)) {
-            Ok(handler) => Ok((handler, sender.clone())),
+            Ok(handler) => Ok(handler),
             Err(_) => Err(Error::ServerError(
                 "Error procesando los beats de los nodos.".to_string(),
             )),

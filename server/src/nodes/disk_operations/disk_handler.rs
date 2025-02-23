@@ -52,11 +52,7 @@ use {
         utils::encode_string_to_bytes,
     },
     std::{
-        fs::{create_dir, File, OpenOptions},
-        io::{BufRead, BufReader, BufWriter, Write},
-        path::Path,
-        str::FromStr,
-        sync::RwLockWriteGuard,
+        collections::HashSet, fs::{create_dir, File, OpenOptions}, io::{BufRead, BufReader, BufWriter, Write}, path::Path, str::FromStr, sync::RwLockWriteGuard
     },
 };
 
@@ -121,7 +117,7 @@ impl DiskHandler {
     }
 
     /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.
-    pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) {
+    pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) -> Result<()> {
         let file = OpenOptions::new()
             .append(true)
             .open(NODES_IPS_PATH)
@@ -130,7 +126,102 @@ impl DiskHandler {
         let mut writer = BufWriter::new(&file);
         writer
             .write_all(format!("{},{}\n", id, ip).as_bytes())
-            .expect("No se pudo escribir en el archivo de IPs de nodos");
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Borra el nodo según el ID dado del archivo de IPs de los nodos `node_ips.csv`.
+    pub fn delete_node_id_and_ip(id: NodeId) -> Result<()> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open(NODES_IPS_PATH)
+            .expect("No se pudo abrir el archivo de IPs de nodos para lectura");
+        let reader = BufReader::new(&file);
+        let mut new_rows: Vec<String> = Vec::new();
+        for line in reader.lines() {
+            let line = line.map_err(|_| {
+                Error::ServerError(
+                    "No se pudo obtener una linea en el archivo de IPs de nodos".to_string(),
+                )
+            })?;
+            println!("linea leida: {}", line);
+            let current_id = line.split(',').next().ok_or_else(|| {
+                Error::ServerError(
+                    "No se pudo obtener el ID de un nodo en el archivo de IPs de nodos".to_string(),
+                )
+            })?;
+            if current_id != id.to_string() {
+                new_rows.push(line);
+            }
+        }
+        println!("Nuevo contenido: {:?}", new_rows);
+        let mut new_content = new_rows.join("\n");
+        new_content.push('\n');
+
+        let file = OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(NODES_IPS_PATH)
+            .expect("No se pudo abrir el archivo de IPs de nodos para escritura");
+        let mut writer = BufWriter::new(&file);
+        if writer.write_all(new_content.as_bytes()).is_err() {
+            return Err(Error::ServerError(
+                "No se pudo escribir en el archivo de IPs de nodos".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Escribe _new_rows_ al final de la tabla dada.
+    pub fn append_new_rows(
+        mut new_rows: String,
+        storage_addr: &str,
+        keyspace_name: &str,
+        table_name: &str,
+        node_number: NodeId,
+    ) -> Result<()> {
+        let table_addr = format!(
+            "{}/{}/{}_replica_node_{}.csv",
+            storage_addr, keyspace_name, table_name, node_number
+        );
+        let file = OpenOptions::new()
+            .append(true)
+            .open(&table_addr)
+            .map_err(|e| Error::ServerError(format!("La ruta {} no existe: {}", &table_addr, e)))?;
+
+        let mut writer = BufWriter::new(&file);
+        if !new_rows.is_empty(){
+            new_rows.push('\n');
+        }
+        writer.write_all(new_rows.as_bytes()).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo escribir en la ruta {}: {}",
+                &table_addr, e
+            ))
+        })?;
+        Ok(())
+    }
+
+    /// Ordena las filas que contiene la tabla dada.
+    pub fn sort_rows(table: &Table, storage_addr: &str, node_number: Byte) -> Result<()> {
+        let mut rows = Self::get_all_rows(
+            &table.name,
+            storage_addr,
+            &table.keyspace,
+            &table.keyspace,
+            node_number,
+        )?;
+        let path = TablePath::new(
+            storage_addr,
+            Some(table.keyspace.to_string()),
+            &table.name,
+            &table.keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+
+        Self::order_and_save_rows(&table_ops, &mut rows, table)
     }
 
     /// Crea un nuevo keyspace en el caso que corresponda.
@@ -281,15 +372,30 @@ impl DiskHandler {
             .write(true)
             .create_new(true)
             .open(&table_addr)
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo crear la tabla con dirección `{}` para escritura: {}",
+                    table_addr, e
+                ))
+            })?;
 
         let mut writer = BufWriter::new(&file);
         writer
             .write_all(columns_names.join(",").as_bytes())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo escribir las columnas en la tabla con dirección `{}`: {}",
+                    table_addr, e
+                ))
+            })?;
         writer
             .write_all((",row_timestamp\n").as_bytes())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo escribir las columnas en la tabla con dirección `{}`: {}",
+                    table_addr, e
+                ))
+            })?;
         Ok(())
     }
 
@@ -307,11 +413,11 @@ impl DiskHandler {
         std::fs::remove_file(table_addr).map_err(|e| Error::ServerError(e.to_string()))
     }
 
-    /// Repara las filas de la tabla con las filas pasadas por parámetro.
+    /// Trunca las filas de la tabla con las filas pasadas por parámetro.
     ///
     /// **PRECAUCIÓN**: Esta función trunca todo el contenido previo de la tabla y este es irrecuperable luego de su uso, por lo que se debe
     /// tener cuidado al utilizarla.
-    pub fn repair_rows(
+    pub fn truncate_rows(
         storage_addr: &str,
         table_name: &str,
         keyspace_name: &str,
@@ -338,6 +444,33 @@ impl DiskHandler {
         Ok(())
     }
 
+    /// Repara las filas de la tabla con las filas recibidas por parámetro.
+    pub fn repair_rows(
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+        node_number: Byte,
+        repaired_rows: &str,
+    ) -> Result<()> {
+        let rows_as_string: Vec<Vec<String>> = repaired_rows
+            .split('\n')
+            .map(|row| row.split(',').map(|s| s.to_string()).collect())
+            .collect();
+        let path = TablePath::new(
+            storage_addr,
+            Some(table.get_keyspace().to_string()),
+            table.get_name(),
+            default_keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+        for new_row in rows_as_string {
+            let rows = table_ops.read_rows(false)?;
+            Self::insert_new_row(rows, new_row, table, &table_ops)?;
+        }
+        Ok(())
+    }
+
     /// Inserta una nueva fila en una tabla en el caso que corresponda.
     pub fn do_insert(
         statement: &Insert,
@@ -361,6 +494,42 @@ impl DiskHandler {
         let new_row = Self::generate_row_values(statement, &table_ops, &values, timestamp);
 
         Self::insert_new_row(rows, new_row, table, &table_ops)
+    }
+
+    /// Filtra las filas repetidas de la tabla indicada y la deja ordenada
+    pub fn remove_repeated_rows(
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+        node_number: Byte,
+    ) -> Result<()> {
+        let path = TablePath::new(
+            storage_addr,
+            Some(table.get_keyspace().to_string()),
+            table.get_name(),
+            default_keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+        let rows = table_ops.read_rows(false)?;
+        let mut seen: HashSet<Vec<String>> = HashSet::new();
+        let mut filtered_rows = Vec::new();
+        let partition_key_positions = table.get_position_of_primary_key()?;
+        for row in rows.iter() {
+            let mut unique_columns: Vec<String> = Vec::new();
+            for partition_key_pos in &partition_key_positions{
+                if let Some(unique_value) = row.get(*partition_key_pos)
+                 {
+                    unique_columns.push(unique_value.to_string());
+
+                }
+            }
+            if seen.insert(unique_columns) {
+                filtered_rows.push(row.to_vec());
+            }
+        }
+        Self::order_and_save_rows(&table_ops, &mut filtered_rows, table)?;
+        Ok(())
     }
 
     fn insert_new_row(
@@ -426,6 +595,10 @@ impl DiskHandler {
         let query_cols = vec!["*".to_string()];
         let mut rows = table_ops.read_rows(false)?;
 
+        if let Some(the_where) = &statement.options.the_where {
+            rows.retain(|row| matches!(the_where.filter(row, &table_ops.columns), Ok(true)));
+        }
+
         if let Some(order) = &statement.options.order_by {
             order.order(&mut rows, &table_ops.columns);
         }
@@ -440,6 +613,26 @@ impl DiskHandler {
             .collect::<Vec<String>>()
             .join("\n");
         Ok(rows_as_string)
+    }
+
+    /// Obtiene todas las filas de la tabla dada.
+    pub fn get_all_rows(
+        table_name: &str,
+        storage_addr: &str,
+        default_keyspace: &str,
+        keyspace: &str,
+        node_number: Byte,
+    ) -> Result<Vec<Vec<String>>> {
+        let path = TablePath::new(
+            storage_addr,
+            Some(keyspace.to_string()),
+            table_name,
+            default_keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+        let rows = table_ops.read_rows(false)?;
+        Ok(rows)
     }
 
     /// Selecciona filas en una tabla en el caso que corresponda.
