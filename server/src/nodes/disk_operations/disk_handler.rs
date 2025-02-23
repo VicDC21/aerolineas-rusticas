@@ -512,14 +512,20 @@ impl DiskHandler {
         );
         let table_ops = TableOperations::new(path)?;
         let rows = table_ops.read_rows(false)?;
-        let mut seen = HashSet::new(); // HashSet para almacenar valores únicos
+        let mut seen: HashSet<Vec<String>> = HashSet::new();
         let mut filtered_rows = Vec::new();
-        let partition_key_pos = table.get_position_of_partition_key()?;
-        for row in rows {
-            if let Some(unique_value) = row.get(partition_key_pos) {
-                if seen.insert(unique_value.to_string()) {
-                    filtered_rows.push(row);
+        let partition_key_positions = table.get_position_of_primary_key()?;
+        for row in rows.iter() {
+            let mut unique_columns: Vec<String> = Vec::new();
+            for partition_key_pos in &partition_key_positions{
+                if let Some(unique_value) = row.get(*partition_key_pos)
+                 {
+                    unique_columns.push(unique_value.to_string());
+
                 }
+            }
+            if seen.insert(unique_columns) {
+                filtered_rows.push(row.to_vec());
             }
         }
         Self::order_and_save_rows(&table_ops, &mut filtered_rows, table)?;
