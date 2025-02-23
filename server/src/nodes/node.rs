@@ -23,8 +23,7 @@ use {
             },
         },
         utils::load_json,
-    },
-    parser::{
+    }, parser::{
         data_types::keyspace_name::KeyspaceName,
         statements::{
             ddl_statement::{
@@ -40,8 +39,7 @@ use {
                 },
             },
         },
-    },
-    protocol::{
+    }, protocol::{
         aliases::{
             results::Result,
             types::{Byte, Int, Long, Short, Uint, Ulong},
@@ -50,16 +48,13 @@ use {
         headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         messages::responses::result_kinds::ResultKind,
         traits::Byteable,
-    },
-    serde::{Deserialize, Serialize},
-    serde_json::{json, Value},
-    std::{
+    }, serde::{Deserialize, Serialize}, serde_json::{json, Value}, std::{
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
         sync::mpsc::{channel, Sender},
         thread::JoinHandle,
-    },
+    }
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -1431,6 +1426,10 @@ impl Node {
         node_id_changed: NodeId,
         is_deletion: bool,
     ) -> Result<Vec<Byte>> {
+        // let mut im_new_node = false;
+        // if self.endpoint_state.get_appstate_status() == &AppStatus::NewNode {
+        //     im_new_node = true;
+        // }
         self.endpoint_state.set_appstate_status(AppStatus::UpdatingReplicas);
         let tables = self.tables.values();
         for table in tables {
@@ -1439,7 +1438,7 @@ impl Node {
             let mut update_table_replica = false;
             for pos in 1..quantity_of_replicas {
                 let replica_node_id =
-                    n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), pos as usize, true);
+                    n_th_node_in_the_cluster(self.id, &Node::get_all_nodes_ids(), pos as usize, true);
                 if replica_node_id == node_id_changed {
                     update_table_replica = true
                 }
@@ -1449,18 +1448,21 @@ impl Node {
             }
             self.delete_and_create_replicas(quantity_of_replicas, is_deletion, node_id_changed, table)?;
         }
-        let mut im_new_node = false;
-        for (node_id, neighbour) in &self.neighbours_states{
-            if self.id == *node_id && neighbour.get_appstate_status() != &AppStatus::NewNode{
-                im_new_node = true;
-                // pedir tablas a los nodos replica
+        for table in self.tables.values(){
+            let keyspace_name = table.get_keyspace();
+            let replicas_quantity = self.get_quantity_of_replicas_from_keyspace_name(keyspace_name)?;
+            for replica in 1..replicas_quantity{
+                let node_number = n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), replica as usize, true);
+                DiskHandler::truncate_rows(&self.storage_addr, &table.name, keyspace_name, keyspace_name, node_number, "")?;
             }
         }
-        if im_new_node {
-            self.get_tables_of_replicas(false)?;
-        } else {
-            self.get_tables_of_replicas(true)?;
-        }
+
+        // if im_new_node {
+        //     self.get_tables_of_replicas(false)?;
+        // } else {
+        //     self.get_tables_of_replicas(true)?;
+        // }
+        println!("Me pongo en estado RelocationIsNeeded");
         self.endpoint_state.set_appstate_status(AppStatus::RelocationIsNeeded);
         // Devolvemos un mensaje de éxito.
         Ok(vec![1])
@@ -1475,7 +1477,7 @@ impl Node {
     ) -> Result<()> {
         let replica_pos = quantity_of_replicas as usize;
         let mut id_of_replica =
-            n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), replica_pos, true);
+            n_th_node_in_the_cluster(self.id, &Node::get_all_nodes_ids(), replica_pos, true);
         if is_deletion {
             let aux1 = node_id;
             let aux2 = id_of_replica;
@@ -1569,7 +1571,7 @@ impl Node {
             let nodes_ids = self.get_nodes_ids();
 
             self.filter_and_repair_rows(&mut nodes_rows, &nodes_ids, table)?;
-            self.filter_replicas_rows_and_repair(&mut nodes_rows, &nodes_ids, table)?;
+            // self.filter_replicas_rows_and_repair(&mut nodes_rows, &nodes_ids, table)?;
         }
         Ok(())
     }
@@ -1623,7 +1625,7 @@ impl Node {
                             *node_id,
                             &rows[2..].join("\n"),
                         )?;
-                    } else if *node_id != self.id {
+                    } else {
                         send_to_node(
                             next_node_id,
                             SvAction::AddRelocatedRows(*node_id, rows.join("\n")).as_bytes(),
@@ -1701,7 +1703,8 @@ impl Node {
                 self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as usize;
             for position in 0..replicas_quantity {
                 let id_of_replica = n_th_node_in_the_cluster(self.id, &nodes_ids, position, true);
-                DiskHandler::sort_rows(table, &self.storage_addr, id_of_replica)?;
+                DiskHandler::remove_repeated_rows(&self.storage_addr, table, &table.keyspace, id_of_replica)?;
+                // DiskHandler::sort_rows(table, &self.storage_addr, id_of_replica)?;
             }
         }
         // Una vez todo finalizado, el estado del nodo vuelve a ser normal.
@@ -1711,17 +1714,15 @@ impl Node {
         Ok(())
     }
 
-    /// Actualiza el estado del nodo dado según su ID a _Remove_, notificando que fue
-    /// dado de baja.
-    pub fn node_leaving(&mut self, node_leaving_id: NodeId) -> Result<()> {
-        DiskHandler::delete_node_id_and_ip(node_leaving_id)?;
+    /// Actualiza el estado del nodo dado según su ID a _status_.
+    pub fn node_leaving(&mut self, node_leaving_id: NodeId, status: AppStatus) -> Result<()> {
         if node_leaving_id != self.id {
             if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_leaving_id) {
-                endpoint_state.set_appstate_status(AppStatus::Remove);
+                endpoint_state.set_appstate_status(status.clone());
             }
             println!(
-                "Pongo al nodo {} en estado remove",
-                node_leaving_id
+                "Pongo al nodo {} en estado {:?}",
+                node_leaving_id, status
             );
         }
         Ok(())

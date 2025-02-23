@@ -52,11 +52,7 @@ use {
         utils::encode_string_to_bytes,
     },
     std::{
-        fs::{create_dir, File, OpenOptions},
-        io::{BufRead, BufReader, BufWriter, Write},
-        path::Path,
-        str::FromStr,
-        sync::RwLockWriteGuard,
+        collections::HashSet, fs::{create_dir, File, OpenOptions}, io::{BufRead, BufReader, BufWriter, Write}, path::Path, str::FromStr, sync::RwLockWriteGuard
     },
 };
 
@@ -179,7 +175,7 @@ impl DiskHandler {
 
     /// Escribe _new_rows_ al final de la tabla dada.
     pub fn append_new_rows(
-        new_rows: String,
+        mut new_rows: String,
         storage_addr: &str,
         keyspace_name: &str,
         table_name: &str,
@@ -195,6 +191,9 @@ impl DiskHandler {
             .map_err(|e| Error::ServerError(format!("La ruta {} no existe: {}", &table_addr, e)))?;
 
         let mut writer = BufWriter::new(&file);
+        if !new_rows.is_empty(){
+            new_rows.push('\n');
+        }
         writer.write_all(new_rows.as_bytes()).map_err(|e| {
             Error::ServerError(format!(
                 "No se pudo escribir en la ruta {}: {}",
@@ -495,6 +494,36 @@ impl DiskHandler {
         let new_row = Self::generate_row_values(statement, &table_ops, &values, timestamp);
 
         Self::insert_new_row(rows, new_row, table, &table_ops)
+    }
+
+    /// Filtra las filas repetidas de la tabla indicada y la deja ordenada
+    pub fn remove_repeated_rows(
+        storage_addr: &str,
+        table: &Table,
+        default_keyspace: &str,
+        node_number: Byte,
+    ) -> Result<()> {
+        let path = TablePath::new(
+            storage_addr,
+            Some(table.get_keyspace().to_string()),
+            table.get_name(),
+            default_keyspace,
+            node_number,
+        );
+        let table_ops = TableOperations::new(path)?;
+        let rows = table_ops.read_rows(false)?;
+        let mut seen = HashSet::new(); // HashSet para almacenar valores únicos
+        let mut filtered_rows = Vec::new();
+        let partition_key_pos = table.get_position_of_partition_key()?;
+        for row in rows {
+            if let Some(unique_value) = row.get(partition_key_pos) {
+                if seen.insert(unique_value.to_string()) {
+                    filtered_rows.push(row);
+                }
+            }
+        }
+        Self::order_and_save_rows(&table_ops, &mut filtered_rows, table)?;
+        Ok(())
     }
 
     fn insert_new_row(
