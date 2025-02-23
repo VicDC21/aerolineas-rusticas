@@ -52,7 +52,12 @@ use {
         utils::encode_string_to_bytes,
     },
     std::{
-        collections::HashSet, fs::{create_dir, File, OpenOptions}, io::{BufRead, BufReader, BufWriter, Write}, path::Path, str::FromStr, sync::RwLockWriteGuard
+        collections::HashSet,
+        fs::{create_dir, File, OpenOptions},
+        io::{BufRead, BufReader, BufWriter, Write},
+        path::Path,
+        str::FromStr,
+        sync::RwLockWriteGuard,
     },
 };
 
@@ -191,7 +196,7 @@ impl DiskHandler {
             .map_err(|e| Error::ServerError(format!("La ruta {} no existe: {}", &table_addr, e)))?;
 
         let mut writer = BufWriter::new(&file);
-        if !new_rows.is_empty(){
+        if !new_rows.is_empty() {
             new_rows.push('\n');
         }
         writer.write_all(new_rows.as_bytes()).map_err(|e| {
@@ -517,11 +522,9 @@ impl DiskHandler {
         let partition_key_positions = table.get_position_of_primary_key()?;
         for row in rows.iter() {
             let mut unique_columns: Vec<String> = Vec::new();
-            for partition_key_pos in &partition_key_positions{
-                if let Some(unique_value) = row.get(*partition_key_pos)
-                 {
+            for partition_key_pos in &partition_key_positions {
+                if let Some(unique_value) = row.get(*partition_key_pos) {
                     unique_columns.push(unique_value.to_string());
-
                 }
             }
             if seen.insert(unique_columns) {

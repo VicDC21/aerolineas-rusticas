@@ -55,7 +55,7 @@ impl Byteable for AppStatus {
             Self::Ready => vec![0x6],
             Self::RelocationIsNeeded => vec![0x7],
             Self::NewNode => vec![0x8],
-            Self::UpdatingReplicas => vec![0x9]
+            Self::UpdatingReplicas => vec![0x9],
         }
     }
 }
