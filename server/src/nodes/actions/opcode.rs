@@ -32,6 +32,7 @@ const ACTION_MASK: Byte = 0xE0;
 /// Una "acción" de servidor es un mensaje especial que no entra en ninguna especificaión
 /// del protocolo de Cassandra, y en su lugar es usado para acciones especiales fuera
 /// del parseo de _queries_.
+#[derive(Debug)]
 pub enum SvAction {
     /// Finalizar la conexión actual.
     Exit,
@@ -389,6 +390,51 @@ impl TryFrom<&[Byte]> for SvAction {
                 "'{:#b}' no es un id de acción válida.",
                 first
             ))),
+        }
+    }
+}
+
+impl std::fmt::Display for SvAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Exit => write!(f, "Exit"),
+            Self::Beat => write!(f, "Beat"),
+            Self::Gossip(neighbours) => write!(f, "Gossip({:?})", neighbours),
+            Self::Syn(emissor_id, gossip_info) => {
+                write!(f, "Syn({}, {:?})", emissor_id, gossip_info)
+            }
+            Self::Ack(receptor_id, gossip_info, nodes_map) => {
+                write!(
+                    f,
+                    "Ack({}, {:?}, {:?})",
+                    receptor_id, gossip_info, nodes_map
+                )
+            }
+            Self::Ack2(nodes_map) => write!(f, "Ack2({:?})", nodes_map),
+            Self::NewNeighbour(id, state) => write!(f, "NewNeighbour({}, {:?})", id, state),
+            Self::SendEndpointState(id) => write!(f, "SendEndpointState({})", id),
+            Self::InternalQuery(query_bytes) => write!(f, "InternalQuery({:?})", query_bytes),
+            Self::StoreMetadata => write!(f, "StoreMetadata"),
+            Self::DirectReadRequest(query_bytes) => {
+                write!(f, "DirectReadRequest({:?})", query_bytes)
+            }
+            Self::DigestReadRequest(query_bytes) => {
+                write!(f, "DigestReadRequest({:?})", query_bytes)
+            }
+            Self::RepairRows(table_name, node_id, rows) => {
+                write!(f, "RepairRows({}, {}, {:?})", table_name, node_id, rows)
+            }
+            Self::AddPartitionValueToMetadata(table_name, partition_value) => {
+                write!(
+                    f,
+                    "AddPartitionValueToMetadata({}, {})",
+                    table_name, partition_value
+                )
+            }
+            Self::SendMetadata(node_id) => write!(f, "SendMetadata({})", node_id),
+            Self::ReceiveMetadata(metadata) => write!(f, "ReceiveMetadata({:?})", metadata),
+            Self::ReallocationNeeded => write!(f, "ReallocationNeeded"),
+            Self::UpdateReplicas(new_node_id) => write!(f, "UpdateReplicas({})", new_node_id),
         }
     }
 }
