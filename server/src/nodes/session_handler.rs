@@ -1725,7 +1725,9 @@ impl SessionHandler {
         drop(node_reader);
         if ready_nodes_counter == n_nodes {
             if node_deleted != -1 {
+                println!("Se borra al nodo {}", node_deleted);
                 DiskHandler::delete_node_id_and_ip(node_deleted as u8)?;
+                self.write()?.neighbours_states.remove(&(node_deleted as u8));
             }
             self.write()?.finish_relocation()?;
         }
@@ -1803,6 +1805,7 @@ impl SessionHandler {
                 // no responda en esta instancia, sino que esta apagado.
                 self.write()?.acknowledge_offline_neighbour(neighbour_id);
                 println!("Se pone al nodo {} en estado Offline", neighbour_id);
+                
             }
             // }
         }

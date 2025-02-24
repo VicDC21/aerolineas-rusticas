@@ -759,6 +759,10 @@ impl Node {
         if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
             endpoint_state.set_appstate_status(AppStatus::Offline);
         }
+        println!("El estado de los nodos cuando se intenta poner al nodo {} Offline es: \n", node_id);
+        for (id, state) in &self.neighbours_states{
+            println!("nodo: {:?} estado: {:?}", id, state.get_appstate_status());
+        }
     }
 
     /// Consulta el estado de _heartbeat_.
