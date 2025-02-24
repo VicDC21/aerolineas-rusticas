@@ -340,27 +340,6 @@ impl Node {
         self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo original tiene el triple de probabilidades de ser elegido.
     }
 
-    /// Se le ordena a todos los nodos existentes que envien su _endpoint state_ al nodo con el ID dado.
-    // fn send_states_to_node(id: NodeId) {
-    //     for node_id in Self::get_all_nodes_ids() {
-    //         if id == node_id {
-    //             continue;
-    //         }
-    //         if send_to_node(
-    //             node_id,
-    //             SvAction::SendEndpointState(id).as_bytes(),
-    //             PortType::Priv,
-    //         )
-    //         .is_err()
-    //         {
-    //             println!(
-    //                 "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
-    //                 id, node_id,
-    //             );
-    //         }
-    //     }
-    // }
-
     /// Decide cuál es el nodo con el mayor "peso". Es decir, el que tiene más probabilidades
     /// de ser elegido cuando se los elige "al azar".
     ///

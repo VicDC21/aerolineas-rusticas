@@ -477,7 +477,7 @@ impl std::fmt::Display for SvAction {
             }
             Self::Ack2(nodes_map) => write!(f, "Ack2({:?})", nodes_map),
             Self::NewNeighbour(id, state) => write!(f, "NewNeighbour({}, {:?})", id, state),
-            Self::SendEndpointState(id) => write!(f, "SendEndpointState({})", id),
+            Self::SendEndpointState(id, ip) => write!(f, "SendEndpointState({}, {})", id, ip),
             Self::InternalQuery(query_bytes) => write!(f, "InternalQuery({:?})", query_bytes),
             Self::StoreMetadata => write!(f, "StoreMetadata"),
             Self::DirectReadRequest(query_bytes) => {
@@ -498,8 +498,14 @@ impl std::fmt::Display for SvAction {
             }
             Self::SendMetadata(node_id) => write!(f, "SendMetadata({})", node_id),
             Self::ReceiveMetadata(metadata) => write!(f, "ReceiveMetadata({:?})", metadata),
-            Self::ReallocationNeeded => write!(f, "ReallocationNeeded"),
-            Self::UpdateReplicas(new_node_id) => write!(f, "UpdateReplicas({})", new_node_id),
+            Self::RelocationNeeded => write!(f, "ReallocationNeeded"),
+            Self::UpdateReplicas(new_node_id, is_deletion) => write!(f, "UpdateReplicas({}, {})", new_node_id, is_deletion),
+            Self::AddRelocatedRows(node_id, rows) => write!(f, "AddRelocatedRows({}, {:?})", node_id, rows),
+            Self::GetAllTablesOfReplica(node_id, only_farthest_replica) => write!(f, "GetAllTablesOfReplica({}, {})", node_id, only_farthest_replica),
+            Self::DeleteNode => write!(f, "DeleteNode"),
+            Self::NodeIsLeaving(node_id) => write!(f, "NodeIsLeaving({})", node_id),
+            Self::NodeDeleted(node_id) => write!(f, "NodeDeleted({})", node_id),
+            Self::NodeToDelete(node_id) => write!(f, "NodeToDelete({})", node_id),
         }
     }
 }
