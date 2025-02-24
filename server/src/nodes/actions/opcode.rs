@@ -12,7 +12,10 @@ use {
         },
         errors::error::Error,
         traits::Byteable,
-        utils::{encode_iter_to_bytes, encode_string_to_bytes, parse_bytes_to_string, encode_long_string_to_bytes, parse_bytes_to_long_string},
+        utils::{
+            encode_iter_to_bytes, encode_long_string_to_bytes, encode_string_to_bytes,
+            parse_bytes_to_long_string, parse_bytes_to_string,
+        },
     },
     std::{
         collections::{HashMap, HashSet},
@@ -116,7 +119,10 @@ pub enum SvAction {
     NodeIsLeaving(NodeId),
 
     /// Le avisa a los demas nodos que ya se fue del cluster y que es seguro borrarlo.
-    NodeDeleted(NodeId)
+    NodeDeleted(NodeId),
+
+    /// Le reenvia el mensaje al nodo correspondiente que tenga que ser borrado.
+    NodeToDelete(NodeId)
 }
 
 impl SvAction {
@@ -254,7 +260,7 @@ impl Byteable for SvAction {
                 let mut bytes = vec![0xF7, *id];
                 bytes.extend(str_as_bytes);
                 bytes
-            },
+            }
             Self::InternalQuery(query_bytes) => {
                 let mut bytes = vec![0xF8];
                 bytes.extend(query_bytes);
@@ -304,11 +310,10 @@ impl Byteable for SvAction {
                 let bool_to_byte = if *only_farthest_replica { 1 } else { 0 };
                 vec![0xE3, *node_id, bool_to_byte]
             }
-            ,
             Self::DeleteNode => vec![0xE4],
             Self::NodeIsLeaving(node_id) => vec![0xE5, *node_id],
-            Self::NodeDeleted(node_id) => vec![0xE6, *node_id]
-
+            Self::NodeDeleted(node_id) => vec![0xE6, *node_id],
+            Self::NodeToDelete(node_id) => vec![0xE7, *node_id],
         }
     }
 }
@@ -440,10 +445,11 @@ impl TryFrom<&[Byte]> for SvAction {
                     only_farthest_replica = false;
                 }
                 Ok(Self::GetAllTablesOfReplica(bytes[1], only_farthest_replica))
-            },
+            }
             0xE4 => Ok(Self::DeleteNode),
             0xE5 => Ok(Self::NodeIsLeaving(bytes[1])),
             0xE6 => Ok(Self::NodeDeleted(bytes[1])),
+            0xE7 => Ok(Self::NodeToDelete(bytes[1])),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

@@ -364,7 +364,11 @@ fn increase_heartbeat_and_store_metadata(
 }
 
 /// Periódicamente da inicio al proceso de _gossip_ de un nodo aleatorio.
-pub fn gossiper(id: NodeId, nodes_weights: &[usize], receiver: Receiver<bool>,) -> Result<NodeHandle> {
+pub fn gossiper(
+    id: NodeId,
+    nodes_weights: &[usize],
+    receiver: Receiver<bool>,
+) -> Result<NodeHandle> {
     let builder = Builder::new().name(format!("gossiper_node_{}", id));
     let weights = nodes_weights.to_vec();
     match builder.spawn(move || exec_gossip(receiver, id, weights)) {

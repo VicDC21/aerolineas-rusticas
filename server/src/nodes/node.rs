@@ -48,7 +48,7 @@ use {
         headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         messages::responses::result_kinds::ResultKind,
         traits::Byteable,
-    }, serde::{Deserialize, Serialize}, serde_json::{json, Value}, std::{
+    }, rand::{seq::SliceRandom, thread_rng}, serde::{Deserialize, Serialize}, serde_json::{json, Value}, std::{
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
@@ -238,7 +238,7 @@ impl Node {
             &mut nodes_weights,
             is_new,
             vec![gossiper_stopper, beater_stopper],
-            ip
+            ip,
         )?;
 
         let gossiper_handle = gossiper(id, &nodes_weights, gossiper_receiver)?;
@@ -258,7 +258,7 @@ impl Node {
         nodes_weights: &mut Vec<usize>,
         is_new: bool,
         stoppers: Vec<Sender<bool>>,
-        ip: Option<&str>
+        ip: Option<&str>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_all_nodes_ids();
         if nodes_ids.len() < N_NODES as usize {
@@ -318,7 +318,7 @@ impl Node {
             if id == node_id {
                 continue;
             }
-            if let Some(ip) = ip{
+            if let Some(ip) = ip {
                 if send_to_node(
                     node_id,
                     SvAction::SendEndpointState(id, ip.to_string()).as_bytes(),
@@ -332,7 +332,6 @@ impl Node {
                     );
                 }
             }
-
         }
     }
 
@@ -379,6 +378,19 @@ impl Node {
 
     /// Le notifica al nodo del ID dado que debe ser dado de baja del clúster.
     pub fn delete_node(id_to_delete: NodeId) -> Result<()> {
+        let nodes = Self::get_all_nodes_ids();
+        let mut rng = thread_rng();
+        if let Some(&node_selected) = nodes.choose(&mut rng) {
+            send_to_node(
+                node_selected,
+                SvAction::NodeToDelete(id_to_delete).as_bytes(),
+                PortType::Priv,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn notify_node_is_gonna_be_deleted(&self, id_to_delete: NodeId) -> Result<()>{
         if !Self::id_exists(&id_to_delete) {
             return Err(Error::ServerError(format!(
                 "El ID {} no está en el archivo de IPs de los nodos.",
@@ -390,7 +402,6 @@ impl Node {
             SvAction::DeleteNode.as_bytes(),
             PortType::Priv,
         )?;
-
         Ok(())
     }
 
@@ -530,7 +541,6 @@ impl Node {
         for (id, state) in &self.neighbours_states {
             if *state.get_appstate().get_status() == AppStatus::Left
                 || *state.get_appstate().get_status() == AppStatus::Remove
-
             {
                 nodes_ids.retain(|id_to_retain| id_to_retain != id);
             }
@@ -597,14 +607,23 @@ impl Node {
 
     /// Envia su endpoint state al nodo del ID correspondiente.
     pub fn send_endpoint_state(&self, id: NodeId, ip: String) {
-        println!("Voy a agregar al nodo {} de ip {} a la lista de nodos", id, ip);
+        println!(
+            "Voy a agregar al nodo {} de ip {} a la lista de nodos",
+            id, ip
+        );
         let _ = DiskHandler::store_new_node_id_and_ip(id, &ip);
-        println!("Agregue al nodo {} de ip {} a la lista de nodos", id, ip); 
+        println!("Agregue al nodo {} de ip {} a la lista de nodos", id, ip);
         let _ = send_to_node(
             id,
             SvAction::NewNeighbour(self.id, self.get_endpoint_state().clone()).as_bytes(),
             PortType::Priv,
-        ).inspect_err(|e| eprintln!("El nodo {} se encontró apagado cuando el nodo {} intentó presentarse. Error: {e}",id, self.id ));
+        )
+        .inspect_err(|e| {
+            eprintln!(
+                "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse. Error: {e}",
+                id, self.id
+            )
+        });
         // }
         // .is_err()
         // {
@@ -665,6 +684,7 @@ impl Node {
         if !Self::id_exists(&id)
             && *state.get_appstate().get_status() != AppStatus::Left
             && *state.get_appstate().get_status() != AppStatus::Remove
+            && *state.get_appstate().get_status() != AppStatus::Offline
         {
             println!(
                 "El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.",
@@ -699,6 +719,7 @@ impl Node {
             if !Self::id_exists(&node_id)
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Left
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
+                && *endpoint_state.get_appstate().get_status() != AppStatus::Offline
             {
                 println!("El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.", node_id, *endpoint_state.get_appstate().get_status());
                 DiskHandler::store_new_node_id_and_ip(
@@ -714,6 +735,11 @@ impl Node {
                 println!("Nodo {} presentado.", node_id);
                 if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
                     self.nodes_weights.push(1);
+                }
+            }
+            if let Some(old_state) = self.neighbours_states.get(&node_id){
+                if *old_state.get_appstate_status() == AppStatus::Remove{
+                    continue
                 }
             }
             self.neighbours_states.insert(node_id, endpoint_state);
@@ -1326,7 +1352,7 @@ impl Node {
                 send_to_node(
                     node_id,
                     SvAction::UpdateReplicas(self.id, is_deletion).as_bytes(),
-                    PortType::Priv
+                    PortType::Priv,
                 )?;
             }
         }
@@ -1391,8 +1417,12 @@ impl Node {
         }
         let mut final_rows: Vec<String> = Vec::new();
         for table in self.tables.values() {
-            if (only_farthest_replica && (distance as Uint) != self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?)
-            || (distance as Uint) >= self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?  {
+            if (only_farthest_replica
+                && (distance as Uint)
+                    != self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?)
+                || (distance as Uint)
+                    >= self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?
+            {
                 continue;
             }
 
@@ -1430,15 +1460,20 @@ impl Node {
         // if self.endpoint_state.get_appstate_status() == &AppStatus::NewNode {
         //     im_new_node = true;
         // }
-        self.endpoint_state.set_appstate_status(AppStatus::UpdatingReplicas);
+        self.endpoint_state
+            .set_appstate_status(AppStatus::UpdatingReplicas);
         let tables = self.tables.values();
         for table in tables {
             let quantity_of_replicas =
                 self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
             let mut update_table_replica = false;
             for pos in 1..quantity_of_replicas {
-                let replica_node_id =
-                    n_th_node_in_the_cluster(self.id, &Node::get_all_nodes_ids(), pos as usize, true);
+                let replica_node_id = n_th_node_in_the_cluster(
+                    self.id,
+                    &Node::get_all_nodes_ids(),
+                    pos as usize,
+                    true,
+                );
                 if replica_node_id == node_id_changed {
                     update_table_replica = true
                 }
@@ -1446,24 +1481,36 @@ impl Node {
             if !update_table_replica {
                 continue;
             }
-            self.delete_and_create_replicas(quantity_of_replicas, is_deletion, node_id_changed, table)?;
+            self.delete_and_create_replicas(
+                quantity_of_replicas,
+                is_deletion,
+                node_id_changed,
+                table,
+            )?;
         }
-        for table in self.tables.values(){
+        for table in self.tables.values() {
             let keyspace_name = table.get_keyspace();
-            let replicas_quantity = self.get_quantity_of_replicas_from_keyspace_name(keyspace_name)?;
-            for replica in 1..replicas_quantity{
-                let node_number = n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), replica as usize, true);
-                DiskHandler::truncate_rows(&self.storage_addr, &table.name, keyspace_name, keyspace_name, node_number, "")?;
+            let replicas_quantity =
+                self.get_quantity_of_replicas_from_keyspace_name(keyspace_name)?;
+            for replica in 1..replicas_quantity {
+                let node_number = n_th_node_in_the_cluster(
+                    self.id,
+                    &self.get_nodes_ids(),
+                    replica as usize,
+                    true,
+                );
+                DiskHandler::truncate_rows(
+                    &self.storage_addr,
+                    &table.name,
+                    keyspace_name,
+                    keyspace_name,
+                    node_number,
+                    "",
+                )?;
             }
         }
-
-        // if im_new_node {
-        //     self.get_tables_of_replicas(false)?;
-        // } else {
-        //     self.get_tables_of_replicas(true)?;
-        // }
-        println!("Me pongo en estado RelocationIsNeeded");
-        self.endpoint_state.set_appstate_status(AppStatus::RelocationIsNeeded);
+        self.endpoint_state
+            .set_appstate_status(AppStatus::RelocationIsNeeded);
         // Devolvemos un mensaje de éxito.
         Ok(vec![1])
     }
@@ -1534,7 +1581,6 @@ impl Node {
     //     }
     //     Ok(())
     // }
-
 
     // /// TODO
     // pub fn update_node_replicas_2_delete(&mut self, node_id: NodeId) -> Result<Vec<Byte>> {
@@ -1703,7 +1749,12 @@ impl Node {
                 self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as usize;
             for position in 0..replicas_quantity {
                 let id_of_replica = n_th_node_in_the_cluster(self.id, &nodes_ids, position, true);
-                DiskHandler::remove_repeated_rows(&self.storage_addr, table, &table.keyspace, id_of_replica)?;
+                DiskHandler::remove_repeated_rows(
+                    &self.storage_addr,
+                    table,
+                    &table.keyspace,
+                    id_of_replica,
+                )?;
                 // DiskHandler::sort_rows(table, &self.storage_addr, id_of_replica)?;
             }
         }
@@ -1720,10 +1771,6 @@ impl Node {
             if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_leaving_id) {
                 endpoint_state.set_appstate_status(status.clone());
             }
-            println!(
-                "Pongo al nodo {} en estado {:?}",
-                node_leaving_id, status
-            );
         }
         Ok(())
     }

@@ -66,9 +66,10 @@ pub fn handle_pem_file_iter() -> Result<Vec<CertificateDer<'static>>> {
                 cert_res.map_err(|_| Error::Invalid("No se pudo leer un certificado".to_string()))
             })
             .collect(),
-        Err(err) => Err(Error::Invalid(
-            format!("No se pudo leer el archivo de certificados: {}", err),
-        )),
+        Err(err) => Err(Error::Invalid(format!(
+            "No se pudo leer el archivo de certificados: {}",
+            err
+        ))),
     }?;
     Ok(certs)
 }
