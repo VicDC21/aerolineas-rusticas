@@ -242,7 +242,7 @@ cantidad inicial.
 Se debe ir a una consola aparte y correr el comando para [correr](#correr-un-contenedor) un contenedor:
 
 ```console
-$ docker run -it --rm --network host --name nodo-<id> nodos-slim new <id> <ip> 
+$ docker run -dit --rm --network host --name nodo-<id> nodos-slim new <id> <ip> 
 ```
 
 donde:
