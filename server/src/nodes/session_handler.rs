@@ -420,31 +420,17 @@ impl SessionHandler {
             SvAction::UpdateReplicas(node_id, is_deletion) => {
                 self.logger
                     .info(
-                        format!(
-                            "Iniciando actualización de réplicas para nodo {}",
-                            node_id
-                        )
-                        .as_str(),
+                        format!("Iniciando actualización de réplicas para nodo {}", node_id)
+                            .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.update_node_replicas(node_id, is_deletion)?;
                 self.logger
-                .info("Actualización de réplicas completada exitosamente")
-                .map_err(|e| Error::ServerError(e.to_string()))?;
+                    .info("Actualización de réplicas completada exitosamente")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::AddRelocatedRows(node_id, rows) => {
                 self.write()?.add_relocated_rows(node_id, rows)?
-            }
-            SvAction::GetAllTablesOfReplica(node_id, only_farthest_replica) => {
-                let res = self.read()?.copy_tables(node_id, only_farthest_replica)?;
-                let _ = tcp_stream.write_all(&res);
-                if let Err(err) = tcp_stream.flush() {
-                    self.logger
-                        .error(format!("Error al actualizar réplicas: {}", err).as_str())
-                        .map_err(|e| Error::ServerError(e.to_string()))?;
-                    return Err(Error::ServerError(err.to_string()));
-                };
-
             }
             SvAction::DeleteNode => {
                 let mut node_writer = self.write()?;
@@ -1909,7 +1895,9 @@ impl SessionHandler {
             if node_deleted != -1 {
                 println!("Se borra al nodo {}", node_deleted);
                 DiskHandler::delete_node_id_and_ip(node_deleted as u8)?;
-                self.write()?.neighbours_states.remove(&(node_deleted as u8));
+                self.write()?
+                    .neighbours_states
+                    .remove(&(node_deleted as u8));
             }
             self.write()?.finish_relocation()?;
         }
@@ -1988,7 +1976,7 @@ impl SessionHandler {
                 // Pero para el logger si generamos un log de advertencia/aviso
                 self.write()?.acknowledge_offline_neighbour(neighbour_id);
                 println!("Se pone al nodo {} en estado Offline", neighbour_id);
-                
+
                 self.logger
                     .warning(format!("El nodo {} se encuentra apagado", neighbour_id).as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;

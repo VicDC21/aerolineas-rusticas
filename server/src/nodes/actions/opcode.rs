@@ -110,9 +110,6 @@ pub enum SvAction {
     /// Agrega las filas dadas al nodo receptor, que fueron relocalizadas.
     AddRelocatedRows(NodeId, String),
 
-    /// Pide todas las filas de todas las tablas al nodo receptor.
-    GetAllTablesOfReplica(NodeId, bool),
-
     /// Aviso al nodo receptor que debe ser dado de baja del clúster.
     DeleteNode,
 
@@ -307,14 +304,10 @@ impl Byteable for SvAction {
                 bytes.extend(encode_long_string_to_bytes(rows));
                 bytes
             }
-            Self::GetAllTablesOfReplica(node_id, only_farthest_replica) => {
-                let bool_to_byte = if *only_farthest_replica { 1 } else { 0 };
-                vec![0xE3, *node_id, bool_to_byte]
-            }
-            Self::DeleteNode => vec![0xE4],
-            Self::NodeIsLeaving(node_id) => vec![0xE5, *node_id],
-            Self::NodeDeleted(node_id) => vec![0xE6, *node_id],
-            Self::NodeToDelete(node_id) => vec![0xE7, *node_id],
+            Self::DeleteNode => vec![0xE3],
+            Self::NodeIsLeaving(node_id) => vec![0xE4, *node_id],
+            Self::NodeDeleted(node_id) => vec![0xE5, *node_id],
+            Self::NodeToDelete(node_id) => vec![0xE6, *node_id],
         }
     }
 }
@@ -440,17 +433,10 @@ impl TryFrom<&[Byte]> for SvAction {
                 let rows = parse_bytes_to_long_string(&bytes[2..], &mut i)?;
                 Ok(Self::AddRelocatedRows(node_id, rows))
             }
-            0xE3 => {
-                let mut only_farthest_replica = true;
-                if bytes[2] == 0 {
-                    only_farthest_replica = false;
-                }
-                Ok(Self::GetAllTablesOfReplica(bytes[1], only_farthest_replica))
-            }
-            0xE4 => Ok(Self::DeleteNode),
-            0xE5 => Ok(Self::NodeIsLeaving(bytes[1])),
-            0xE6 => Ok(Self::NodeDeleted(bytes[1])),
-            0xE7 => Ok(Self::NodeToDelete(bytes[1])),
+            0xE3 => Ok(Self::DeleteNode),
+            0xE4 => Ok(Self::NodeIsLeaving(bytes[1])),
+            0xE5 => Ok(Self::NodeDeleted(bytes[1])),
+            0xE6 => Ok(Self::NodeToDelete(bytes[1])),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first
@@ -477,7 +463,7 @@ impl std::fmt::Display for SvAction {
             }
             Self::Ack2(nodes_map) => write!(f, "Ack2({:?})", nodes_map),
             Self::NewNeighbour(id, state) => write!(f, "NewNeighbour({}, {:?})", id, state),
-            Self::SendEndpointState(id) => write!(f, "SendEndpointState({})", id),
+            Self::SendEndpointState(id, _string_ip) => write!(f, "SendEndpointState({})", id),
             Self::InternalQuery(query_bytes) => write!(f, "InternalQuery({:?})", query_bytes),
             Self::StoreMetadata => write!(f, "StoreMetadata"),
             Self::DirectReadRequest(query_bytes) => {
@@ -498,8 +484,15 @@ impl std::fmt::Display for SvAction {
             }
             Self::SendMetadata(node_id) => write!(f, "SendMetadata({})", node_id),
             Self::ReceiveMetadata(metadata) => write!(f, "ReceiveMetadata({:?})", metadata),
-            Self::ReallocationNeeded => write!(f, "ReallocationNeeded"),
-            Self::UpdateReplicas(new_node_id) => write!(f, "UpdateReplicas({})", new_node_id),
+            Self::RelocationNeeded => write!(f, "RelocationNeeded"),
+            Self::UpdateReplicas(new_node_id, _is_deletion) => {
+                write!(f, "UpdateReplicas({})", new_node_id)
+            }
+            Self::AddRelocatedRows(_node_id, _rows) => todo!(),
+            Self::DeleteNode => todo!(),
+            Self::NodeIsLeaving(_node_id) => todo!(),
+            Self::NodeToDelete(_node_id) => todo!(),
+            Self::NodeDeleted(_node_id) => todo!(),
         }
     }
 }

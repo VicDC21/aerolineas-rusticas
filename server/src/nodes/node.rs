@@ -1,6 +1,7 @@
 //! Módulo de nodos.
 
 use {
+    super::session_handler::get_partition_value_from_insert,
     crate::{
         modes::ConnectionMode,
         nodes::{
@@ -10,17 +11,13 @@ use {
             internal_threads::{beater, create_client_and_private_conexion, gossiper},
             keyspace_metadata::keyspace::Keyspace,
             port_type::PortType,
-            session_handler::{get_partition_value_from_insert, TIMEOUT_SECS},
             states::{
                 appstatus::AppStatus,
                 endpoints::EndpointState,
                 heartbeat::{GenType, VerType},
             },
             table_metadata::table::Table,
-            utils::{
-                divide_range, hash_value, n_th_node_in_the_cluster, send_to_node,
-                send_to_node_and_wait_response_with_timeout,
-            },
+            utils::{divide_range, hash_value, n_th_node_in_the_cluster, send_to_node},
         },
         utils::load_json,
     },
@@ -759,8 +756,11 @@ impl Node {
         if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
             endpoint_state.set_appstate_status(AppStatus::Offline);
         }
-        println!("El estado de los nodos cuando se intenta poner al nodo {} Offline es: \n", node_id);
-        for (id, state) in &self.neighbours_states{
+        println!(
+            "El estado de los nodos cuando se intenta poner al nodo {} Offline es: \n",
+            node_id
+        );
+        for (id, state) in &self.neighbours_states {
             println!("nodo: {:?} estado: {:?}", id, state.get_appstate_status());
         }
     }
@@ -1363,45 +1363,6 @@ impl Node {
                     node_id,
                     SvAction::UpdateReplicas(self.id, is_deletion).as_bytes(),
                     PortType::Priv,
-                )?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Consulta a los nodos vecinos si las replicas de las tablas de ellos le corresponden a este nodo
-    /// y si le corresponden las agrega.
-    pub fn get_tables_of_replicas(&mut self, only_farthest_replica: bool) -> Result<()> {
-        for i in 1..self.get_actual_n_nodes() {
-            let node_to_consult = n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), i, true);
-            let rows: Vec<u8> = send_to_node_and_wait_response_with_timeout(
-                node_to_consult,
-                SvAction::GetAllTablesOfReplica(self.id, only_farthest_replica).as_bytes(),
-                PortType::Priv,
-                true,
-                Some(TIMEOUT_SECS * 10),
-            )?;
-            if rows.len() < 2 {
-                continue;
-            }
-            let rows_string = match String::from_utf8(rows) {
-                Ok(value) => value,
-                Err(_e) => {
-                    return Err(Error::ServerError(
-                        "Error al tranformar bytes a string".to_string(),
-                    ))
-                }
-            };
-            let tables_data: Vec<&str> = rows_string.split("\n\n\n").collect();
-            for table_data in tables_data {
-                let rows_of_table: Vec<&str> = table_data.split("\n").collect();
-                DiskHandler::truncate_rows(
-                    &self.storage_addr,
-                    rows_of_table[1],
-                    rows_of_table[0],
-                    rows_of_table[0],
-                    node_to_consult,
-                    &rows_of_table[2..].join("\n"),
                 )?;
             }
         }
