@@ -232,6 +232,8 @@ $ docker compose down
 
 para apagar todos los contenedores, **y luego eliminarlos,** todo de forma bonita.
 
+> **Nota:** Todavía se necesita [cerrar](#borrando) los nodos extra, si los hay, de manera manual.
+
 ## Modificando Nodos dinámicamente
 
 Siempre se puede modificar la cantidad de nodos del clúster de forma dinámica, más allá de la
@@ -250,6 +252,30 @@ donde:
 * `<id>` es el ID del nuevo nodo a agregar.
 * `<ip>` es la IP asignada a dicho nodo.
 
+***Alternativamente,*** se puede usar el _script_ auxiliar:
+
+```console
+$ ./docker/add.sh <id>
+```
+
 > **Advertencia:** La imagen `nodos-slim` debe haber sido creada de antemano, ya sea con correr el [compose](#levantando-nodos-iniciales) al menos una vez, o [construyéndola](#construir-una-imagen) manualmente.
 
 ### Borrando
+
+Para borrar un nodo se ha de eliminar el nodo del clúster:
+
+```console
+$ cargo run -p server --bin nd delete <id>
+```
+
+y luego eliminar el contenedor:
+
+```console
+$ docker container rm -f nodo-<id>
+```
+
+***De nuevo,*** se puede usar el _script_ auxiliar:
+
+```console
+$ ./docker/remove.sh <id>
+```
