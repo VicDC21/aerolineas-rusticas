@@ -1,6 +1,7 @@
 //! Módulo de nodos.
 
 use {
+    super::session_handler::get_partition_value_from_insert,
     crate::{
         modes::ConnectionMode,
         nodes::{
@@ -10,20 +11,17 @@ use {
             internal_threads::{beater, create_client_and_private_conexion, gossiper},
             keyspace_metadata::keyspace::Keyspace,
             port_type::PortType,
-            session_handler::{get_partition_value_from_insert, TIMEOUT_SECS},
             states::{
                 appstatus::AppStatus,
                 endpoints::EndpointState,
                 heartbeat::{GenType, VerType},
             },
             table_metadata::table::Table,
-            utils::{
-                divide_range, hash_value, n_th_node_in_the_cluster, send_to_node,
-                send_to_node_and_wait_response_with_timeout,
-            },
+            utils::{divide_range, hash_value, n_th_node_in_the_cluster, send_to_node},
         },
         utils::load_json,
-    }, parser::{
+    },
+    parser::{
         data_types::keyspace_name::KeyspaceName,
         statements::{
             ddl_statement::{
@@ -39,7 +37,8 @@ use {
                 },
             },
         },
-    }, protocol::{
+    },
+    protocol::{
         aliases::{
             results::Result,
             types::{Byte, Int, Long, Short, Uint, Ulong},
@@ -48,13 +47,17 @@ use {
         headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         messages::responses::result_kinds::ResultKind,
         traits::Byteable,
-    }, rand::{seq::SliceRandom, thread_rng}, serde::{Deserialize, Serialize}, serde_json::{json, Value}, std::{
+    },
+    rand::{seq::SliceRandom, thread_rng},
+    serde::{Deserialize, Serialize},
+    serde_json::{json, Value},
+    std::{
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
         sync::mpsc::{channel, Sender},
         thread::JoinHandle,
-    }
+    },
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -369,7 +372,7 @@ impl Node {
         Ok(())
     }
 
-    pub fn notify_node_is_gonna_be_deleted(&self, id_to_delete: NodeId) -> Result<()>{
+    pub fn notify_node_is_gonna_be_deleted(&self, id_to_delete: NodeId) -> Result<()> {
         if !Self::id_exists(&id_to_delete) {
             return Err(Error::ServerError(format!(
                 "El ID {} no está en el archivo de IPs de los nodos.",
@@ -716,9 +719,9 @@ impl Node {
                     self.nodes_weights.push(1);
                 }
             }
-            if let Some(old_state) = self.neighbours_states.get(&node_id){
-                if *old_state.get_appstate_status() == AppStatus::Remove{
-                    continue
+            if let Some(old_state) = self.neighbours_states.get(&node_id) {
+                if *old_state.get_appstate_status() == AppStatus::Remove {
+                    continue;
                 }
             }
             self.neighbours_states.insert(node_id, endpoint_state);
@@ -731,6 +734,13 @@ impl Node {
     pub fn acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
         if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
             endpoint_state.set_appstate_status(AppStatus::Offline);
+        }
+        println!(
+            "El estado de los nodos cuando se intenta poner al nodo {} Offline es: \n",
+            node_id
+        );
+        for (id, state) in &self.neighbours_states {
+            println!("nodo: {:?} estado: {:?}", id, state.get_appstate_status());
         }
     }
 
@@ -1338,45 +1348,6 @@ impl Node {
         Ok(())
     }
 
-    /// Consulta a los nodos vecinos si las replicas de las tablas de ellos le corresponden a este nodo
-    /// y si le corresponden las agrega.
-    pub fn get_tables_of_replicas(&mut self, only_farthest_replica: bool) -> Result<()> {
-        for i in 1..self.get_actual_n_nodes() {
-            let node_to_consult = n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), i, true);
-            let rows: Vec<u8> = send_to_node_and_wait_response_with_timeout(
-                node_to_consult,
-                SvAction::GetAllTablesOfReplica(self.id, only_farthest_replica).as_bytes(),
-                PortType::Priv,
-                true,
-                Some(TIMEOUT_SECS * 10),
-            )?;
-            if rows.len() < 2 {
-                continue;
-            }
-            let rows_string = match String::from_utf8(rows) {
-                Ok(value) => value,
-                Err(_e) => {
-                    return Err(Error::ServerError(
-                        "Error al tranformar bytes a string".to_string(),
-                    ))
-                }
-            };
-            let tables_data: Vec<&str> = rows_string.split("\n\n\n").collect();
-            for table_data in tables_data {
-                let rows_of_table: Vec<&str> = table_data.split("\n").collect();
-                DiskHandler::truncate_rows(
-                    &self.storage_addr,
-                    rows_of_table[1],
-                    rows_of_table[0],
-                    rows_of_table[0],
-                    node_to_consult,
-                    &rows_of_table[2..].join("\n"),
-                )?;
-            }
-        }
-        Ok(())
-    }
-
     /// Segun el node_id recibido, revisa si este deberia tener alguna de las replicas de las tablas que
     /// le pertenecen a este nodo. Si no le pertenece ninguna replica devuelve un vector vacio.
     pub fn copy_tables(&self, node_id: NodeId, only_farthest_replica: bool) -> Result<Vec<Byte>> {
@@ -1641,7 +1612,7 @@ impl Node {
                 for position in 0..replicas_quantity {
                     let next_node_id =
                         n_th_node_in_the_cluster(*node_id, &self.get_nodes_ids(), position, false);
-                    if next_node_id == self.id {
+                    if next_node_id == self.id && *node_id == self.id {
                         DiskHandler::truncate_rows(
                             &self.storage_addr,
                             table.get_name(),
@@ -1649,6 +1620,14 @@ impl Node {
                             &self.get_default_keyspace_name()?,
                             *node_id,
                             &rows[2..].join("\n"),
+                        )?;
+                    } else if next_node_id == self.id {
+                        DiskHandler::append_new_rows(
+                            rows[2..].join("\n"),
+                            &self.storage_addr,
+                            table.get_keyspace(),
+                            table.get_name(),
+                            *node_id,
                         )?;
                     } else {
                         send_to_node(

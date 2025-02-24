@@ -38,7 +38,8 @@ use {
             },
             statement::Statement,
         },
-    }, protocol::{
+    },
+    protocol::{
         aliases::{
             results::Result,
             types::{Byte, Long, Uint, Ulong},
@@ -51,12 +52,14 @@ use {
         notations::consistency::Consistency,
         traits::Byteable,
         utils::{parse_bytes_to_string, parse_bytes_to_string_map},
-    }, std::{
+    },
+    std::{
         collections::{HashMap, HashSet},
         io::{Read, Write},
         path::Path,
         sync::{Arc, RwLock},
-    }, tokenizer::tok::tokenize_query
+    },
+    tokenizer::tok::tokenize_query,
 };
 
 /// El tiempo de espera _(en segundos)_ por una respuesta.
@@ -414,27 +417,14 @@ impl SessionHandler {
             SvAction::UpdateReplicas(node_id, is_deletion) => {
                 self.logger
                     .info(
-                        format!(
-                            "Iniciando actualización de réplicas para nodo {}",
-                            node_id
-                        )
-                        .as_str(),
+                        format!("Iniciando actualización de réplicas para nodo {}", node_id)
+                            .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.update_node_replicas(node_id, is_deletion)?;
             }
             SvAction::AddRelocatedRows(node_id, rows) => {
                 self.write()?.add_relocated_rows(node_id, rows)?
-            }
-            SvAction::GetAllTablesOfReplica(node_id, only_farthest_replica) => {
-                let res = self.read()?.copy_tables(node_id, only_farthest_replica)?;
-                let _ = tcp_stream.write_all(&res);
-                if let Err(err) = tcp_stream.flush() {
-                    self.logger
-                        .error(format!("Error al actualizar réplicas: {}", err).as_str())
-                        .map_err(|e| Error::ServerError(e.to_string()))?;
-                    return Err(Error::ServerError(err.to_string()));
-                };
             }
             SvAction::DeleteNode => {
                 let mut node_writer = self.write()?;
@@ -1897,8 +1887,11 @@ impl SessionHandler {
         drop(node_reader);
         if ready_nodes_counter == n_nodes {
             if node_deleted != -1 {
-                println!("Se borra al nodo {} de la lista de ips", node_deleted);
+                println!("Se borra al nodo {}", node_deleted);
                 DiskHandler::delete_node_id_and_ip(node_deleted as u8)?;
+                self.write()?
+                    .neighbours_states
+                    .remove(&(node_deleted as u8));
             }
             self.write()?.finish_relocation()?;
         }
@@ -1925,7 +1918,6 @@ impl SessionHandler {
         if waiting_relocate_nodes_counter == n_nodes {
             let mut node_writer = self.write()?;
             node_writer.relocate_rows()?;
-            println!("El nodo que se esta yendo apago el gossiper");
             node_writer.stop_gossiper_and_beater();
             node_writer
                 .endpoint_state
