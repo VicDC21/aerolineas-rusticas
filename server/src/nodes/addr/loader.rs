@@ -202,12 +202,12 @@ impl AddrLoader {
         )))
     }
 
-    /// Carga los _sockets_ con un tipo de purto de [cliente](PortType::Cli).
+    /// Carga los _sockets_ con un tipo de puerto de [cliente](PortType::Cli).
     pub fn get_sockets_cli(&self) -> Vec<SocketAddr> {
         self.get_sockets(&PortType::Cli)
     }
 
-    /// Carga los _sockets_ con un tipo de purto [privado](PortType::Priv).
+    /// Carga los _sockets_ con un tipo de puerto [privado](PortType::Priv).
     pub fn get_sockets_priv(&self) -> Vec<SocketAddr> {
         self.get_sockets(&PortType::Priv)
     }

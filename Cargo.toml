@@ -4,6 +4,7 @@ members = [
     "client",
     "data",
     "interface",
+    "logger",
     "parser",
     "protocol",
     "server",

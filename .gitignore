@@ -21,3 +21,6 @@ Cargo.lock
 # Storage in nodes
 storage/
 nodes_metadata/
+
+# Logs
+logs/

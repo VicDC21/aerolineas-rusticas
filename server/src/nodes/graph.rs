@@ -389,7 +389,15 @@ fn create_client_and_private_conexion(
     priv_socket: SocketAddr,
     node: Node,
 ) -> Result<()> {
-    let sendable_node = SessionHandler::new(current_id, node);
+    let sendable_node = match SessionHandler::new(current_id, node) {
+        Ok(handler) => handler,
+        Err(err) => {
+            return Err(Error::ServerError(format!(
+                "Error creando un SessionHandler para el nodo: [{}]:\n\n{}",
+                current_id, err
+            )));
+        }
+    };
     let cli_node = sendable_node.clone();
     let priv_node = sendable_node.clone();
 

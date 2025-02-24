@@ -90,7 +90,8 @@ impl DiskHandler {
         format!("{}/{}_{}", STORAGE_PATH, STORAGE_NODE_PATH, id)
     }
 
-    fn create_directory(path: &str) -> Result<()> {
+    /// Crea un directorio a partir de una ruta.
+    pub fn create_directory(path: &str) -> Result<()> {
         let path_folder = Path::new(path);
         if !path_folder.exists() && !path_folder.is_dir() {
             create_dir(path_folder).map_err(|e| {
