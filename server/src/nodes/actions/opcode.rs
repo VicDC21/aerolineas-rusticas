@@ -487,14 +487,16 @@ impl std::fmt::Display for SvAction {
             Self::SendMetadata(node_id) => write!(f, "SendMetadata({})", node_id),
             Self::ReceiveMetadata(metadata) => write!(f, "ReceiveMetadata({:?})", metadata),
             Self::RelocationNeeded => write!(f, "RelocationNeeded"),
-            Self::UpdateReplicas(new_node_id, _is_deletion) => {
-                write!(f, "UpdateReplicas({})", new_node_id)
+            Self::UpdateReplicas(new_node_id, is_deletion) => {
+                write!(f, "UpdateReplicas({}, {})", new_node_id, is_deletion)
             }
-            Self::AddRelocatedRows(_node_id, _rows) => todo!(),
-            Self::DeleteNode => todo!(),
-            Self::NodeIsLeaving(_node_id) => todo!(),
-            Self::NodeToDelete(_node_id) => todo!(),
-            Self::NodeDeleted(_node_id) => todo!(),
+            Self::AddRelocatedRows(node_id, rows) => {
+                write!(f, "AddRelocatedRows({}, {:?})", node_id, rows)
+            }
+            Self::DeleteNode => write!(f, "DeleteNode"),
+            Self::NodeIsLeaving(node_id) => write!(f, "NodeIsLeaving({})", node_id),
+            Self::NodeDeleted(node_id) => write!(f, "NodeDeleted({})", node_id),
+            Self::NodeToDelete(node_id) => write!(f, "NodeToDelete({})", node_id),
         }
     }
 }
