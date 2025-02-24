@@ -12,7 +12,10 @@ use {
         },
         errors::error::Error,
         traits::Byteable,
-        utils::{encode_iter_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
+        utils::{
+            encode_iter_to_bytes, encode_long_string_to_bytes, encode_string_to_bytes,
+            parse_bytes_to_long_string, parse_bytes_to_string,
+        },
     },
     std::{
         collections::{HashMap, HashSet},
@@ -42,7 +45,7 @@ pub enum SvAction {
 
     /// Iniciar ronda de _Gossip_.
     ///
-    /// Contiene un set de [ID](crate::nodes::node::NodeId)s que son los vecinos con los
+    /// Contiene un set de [ID](crate::server::nodes::node::NodeId)s que son los vecinos con los
     /// que este nodo debe interactuar.
     Gossip(HashSet<NodeId>),
 
@@ -68,7 +71,7 @@ pub enum SvAction {
     NewNeighbour(NodeId, EndpointState),
 
     /// Pedirle a este nodo que envie su endpoint state a otro nodo, dado el ID de este último.
-    SendEndpointState(NodeId),
+    SendEndpointState(NodeId, String),
 
     /// Query enviada internamente por otro nodo.
     InternalQuery(Vec<Byte>),
@@ -99,10 +102,28 @@ pub enum SvAction {
     ReceiveMetadata(Vec<Byte>),
 
     /// Aviso de que se reacomodará el clúster, para no seguir realizando operaciones cliente-servidor.
-    ReallocationNeeded,
+    RelocationNeeded,
 
-    /// Actualiza las réplicas para adaptarse al nuevo nodo.
-    UpdateReplicas(NodeId),
+    /// Actualiza las réplicas para adaptarse al nodo nuevo o borrado.
+    UpdateReplicas(NodeId, bool),
+
+    /// Agrega las filas dadas al nodo receptor, que fueron relocalizadas.
+    AddRelocatedRows(NodeId, String),
+
+    /// Pide todas las filas de todas las tablas al nodo receptor.
+    GetAllTablesOfReplica(NodeId, bool),
+
+    /// Aviso al nodo receptor que debe ser dado de baja del clúster.
+    DeleteNode,
+
+    /// Avisa que el ID del nodo dado ya fue dado de baja.
+    NodeIsLeaving(NodeId),
+
+    /// Le avisa a los demas nodos que ya se fue del cluster y que es seguro borrarlo.
+    NodeDeleted(NodeId),
+
+    /// Le reenvia el mensaje al nodo correspondiente que tenga que ser borrado.
+    NodeToDelete(NodeId)
 }
 
 impl SvAction {
@@ -235,7 +256,12 @@ impl Byteable for SvAction {
                 bytes.extend(state.as_bytes());
                 bytes
             }
-            Self::SendEndpointState(id) => vec![0xF7, *id],
+            Self::SendEndpointState(id, string) => {
+                let str_as_bytes = encode_string_to_bytes(string);
+                let mut bytes = vec![0xF7, *id];
+                bytes.extend(str_as_bytes);
+                bytes
+            }
             Self::InternalQuery(query_bytes) => {
                 let mut bytes = vec![0xF8];
                 bytes.extend(query_bytes);
@@ -271,8 +297,24 @@ impl Byteable for SvAction {
                 bytes.extend(metadata);
                 bytes
             }
-            Self::ReallocationNeeded => vec![0xE0],
-            Self::UpdateReplicas(new_node_id) => vec![0xE1, *new_node_id],
+            Self::RelocationNeeded => vec![0xE0],
+            Self::UpdateReplicas(new_node_id, is_deletion) => {
+                let bool_to_byte = if *is_deletion { 1 } else { 0 };
+                vec![0xE1, *new_node_id, bool_to_byte]
+            }
+            Self::AddRelocatedRows(node_id, rows) => {
+                let mut bytes = vec![0xE2, *node_id];
+                bytes.extend(encode_long_string_to_bytes(rows));
+                bytes
+            }
+            Self::GetAllTablesOfReplica(node_id, only_farthest_replica) => {
+                let bool_to_byte = if *only_farthest_replica { 1 } else { 0 };
+                vec![0xE3, *node_id, bool_to_byte]
+            }
+            Self::DeleteNode => vec![0xE4],
+            Self::NodeIsLeaving(node_id) => vec![0xE5, *node_id],
+            Self::NodeDeleted(node_id) => vec![0xE6, *node_id],
+            Self::NodeToDelete(node_id) => vec![0xE7, *node_id],
         }
     }
 }
@@ -362,7 +404,8 @@ impl TryFrom<&[Byte]> for SvAction {
                         "Conjunto de bytes demasiado chico para `SendEndpointState`.".to_string(),
                     ));
                 }
-                Ok(Self::SendEndpointState(bytes[1]))
+                let string_ip = parse_bytes_to_string(&bytes[2..], &mut i)?;
+                Ok(Self::SendEndpointState(bytes[1], string_ip))
             }
             0xF8 => Ok(Self::InternalQuery(bytes[1..].to_vec())),
             0xF9 => Ok(Self::StoreMetadata),
@@ -384,8 +427,30 @@ impl TryFrom<&[Byte]> for SvAction {
             }
             0xFE => Ok(Self::SendMetadata(bytes[1])),
             0xFF => Ok(Self::ReceiveMetadata(bytes[1..].to_vec())),
-            0xE0 => Ok(Self::ReallocationNeeded),
-            0xE1 => Ok(Self::UpdateReplicas(bytes[1])),
+            0xE0 => Ok(Self::RelocationNeeded),
+            0xE1 => {
+                let mut is_deletion = true;
+                if bytes[2] == 0 {
+                    is_deletion = false;
+                }
+                Ok(Self::UpdateReplicas(bytes[1], is_deletion))
+            }
+            0xE2 => {
+                let node_id = bytes[1];
+                let rows = parse_bytes_to_long_string(&bytes[2..], &mut i)?;
+                Ok(Self::AddRelocatedRows(node_id, rows))
+            }
+            0xE3 => {
+                let mut only_farthest_replica = true;
+                if bytes[2] == 0 {
+                    only_farthest_replica = false;
+                }
+                Ok(Self::GetAllTablesOfReplica(bytes[1], only_farthest_replica))
+            }
+            0xE4 => Ok(Self::DeleteNode),
+            0xE5 => Ok(Self::NodeIsLeaving(bytes[1])),
+            0xE6 => Ok(Self::NodeDeleted(bytes[1])),
+            0xE7 => Ok(Self::NodeToDelete(bytes[1])),
             _ => Err(Error::ServerError(format!(
                 "'{:#b}' no es un id de acción válida.",
                 first

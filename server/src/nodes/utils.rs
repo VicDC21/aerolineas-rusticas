@@ -36,6 +36,21 @@ pub fn hash_value<T: Hash>(value: T) -> Ulong {
     hasher.finish()
 }
 
+/// Divide un rango en `n` partes iguales.
+pub fn divide_range(start: Ulong, end: Ulong, n: usize) -> Vec<(Ulong, Ulong)> {
+    let range_length = end - start;
+    let part_length = range_length / n as Ulong;
+    let remainder = range_length % n as Ulong;
+
+    (0..n)
+        .map(|i| {
+            let part_start = start + i as Ulong * part_length + remainder.min(i as Ulong);
+            let part_end = part_start + part_length + if i < remainder as usize { 1 } else { 0 };
+            (part_start, part_end)
+        })
+        .collect()
+}
+
 /// Devuelve el ID del siguiente nodo del cluster.
 ///
 /// Se asume que el vector de IDs de los nodos está ordenado de menor a mayor.
@@ -87,10 +102,10 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
     let addr = AddrLoader::default_loaded().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
-        Err(_) => {
+        Err(err) => {
             return Err(Error::ServerError(format!(
-                "No se pudo conectar al nodo con ID {}",
-                id
+                "No se pudo conectar al nodo con ID {} el error fue {:?}",
+                id, err
             )));
         }
     };
@@ -167,21 +182,6 @@ pub fn send_to_node_and_wait_response_with_timeout(
     }
 
     Ok(buf)
-}
-
-/// Divide un rango en `n` partes iguales.
-pub fn divide_range(start: Ulong, end: Ulong, n: usize) -> Vec<(Ulong, Ulong)> {
-    let range_length = end - start;
-    let part_length = range_length / n as Ulong;
-    let remainder = range_length % n as Ulong;
-
-    (0..n)
-        .map(|i| {
-            let part_start = start + i as Ulong * part_length + remainder.min(i as Ulong);
-            let part_end = part_start + part_length + if i < remainder as usize { 1 } else { 0 };
-            (part_start, part_end)
-        })
-        .collect()
 }
 
 /// Detecta _queries_ desde un archivo.

@@ -229,7 +229,7 @@ son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal pa
   $ cargo run -p interface --bin gui
   ```
 
-Siempre se puede cerrar los nodos con el [comando](./docker_tutorial.md#cerrando-nodos) correspondiente.
+Siempre se puede cerrar los nodos con el [comando](./docker_tutorial.md#cerrando-nodos) correspondiente. Lo mismo con [modificar](./docker_tutorial.md#modificando-nodos-dinámicamente) dicha cantidad.
 
 # Cómo contribuir
 
