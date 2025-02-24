@@ -1702,49 +1702,6 @@ impl Node {
         Ok(())
     }
 
-    /// Filtra las replicas locales del nodo, de acuerdo al nuevo _hashing_.
-    fn filter_replicas_rows_and_repair(
-        &self,
-        nodes_rows: &mut HashMap<NodeId, Vec<String>>,
-        nodes_ids: &[NodeId],
-        table: &Table,
-    ) -> Result<()> {
-        let replicas_quantity =
-            self.get_quantity_of_replicas_from_keyspace_name(table.get_keyspace())?;
-        for position in 0..replicas_quantity {
-            let actual_replica_node =
-                n_th_node_in_the_cluster(self.id, nodes_ids, position as usize, true);
-            let mut node_rows: Vec<String> = Vec::new();
-            if actual_replica_node != self.id {
-                let rows = DiskHandler::get_all_rows(
-                    table.get_name(),
-                    &self.storage_addr,
-                    &self.get_default_keyspace_name()?,
-                    table.get_keyspace(),
-                    actual_replica_node,
-                )?;
-                for row in rows {
-                    let partition_key_value = &row[table.get_position_of_partition_key()?];
-                    let node_id = self.select_node(partition_key_value);
-                    if node_id == (actual_replica_node as u8) {
-                        node_rows.push(row.join(","))
-                    }
-                }
-            } else if let Some(rows) = nodes_rows.remove(&self.id) {
-                node_rows.extend(rows[2..].to_vec());
-            }
-            DiskHandler::truncate_rows(
-                &self.storage_addr,
-                table.get_name(),
-                table.get_keyspace(),
-                &self.get_default_keyspace_name()?,
-                actual_replica_node,
-                &node_rows.join("\n"),
-            )?;
-        }
-        Ok(())
-    }
-
     /// Agrega al nodo las filas reasignadas, se asume que corresponden al nodo receptor.
     ///
     /// _node_id_ se usa para diferenciar entre las réplicas de los nodos vecinos.
