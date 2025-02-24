@@ -19,7 +19,7 @@ use {
         utils::printable_bytes,
     },
     chrono::Utc,
-    logger::log::{LogLevel, Logger},
+    logger::log::{LogFormatter, LogLevel, Logger, RotationConfig},
     parser::{
         data_types::keyspace_name::KeyspaceName,
         main_parser::make_parse,
@@ -88,8 +88,8 @@ impl SessionHandler {
             Path::new(NODES_LOGS_PATH),
             &node.endpoint_state.get_addr().to_string(),
             LogLevel::Info,
-            None,
-            None,
+            Some(RotationConfig::default()),
+            Some(LogFormatter::default()),
         )
         .map_err(|e| Error::ServerError(e.to_string()))?;
 
