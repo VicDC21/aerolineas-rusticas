@@ -1,0 +1,15 @@
+target
+debug
+
+.vscode
+.cache
+templates
+
+.git
+.github
+
+storage
+nodes_metadata
+
+**.md
+**.pdf

@@ -3,7 +3,7 @@
 mod common;
 
 use {
-    aerolineas_rusticas::client::{cli::Client, conn_holder::ConnectionHolder},
+    client::{cli::Client, conn_holder::ConnectionHolder},
     common::{clean_nodes, create_echo_nodes},
     std::{io::Write, thread::sleep, time::Duration},
 };

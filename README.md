@@ -10,10 +10,10 @@
     - [Ejecución](#cómo-correr)
         * [Cliente](#cliente)
         * [Servidor](#servidor)
-        * [Nodos](#nodos)
         * [Interfaz Gráfica](#interfaz-de-usuario)
         * [Simulador de Vuelos](#simulador-de-vuelos)
 * [Cómo Testear](#cómo-testear)
+* [Tutorial de Docker](#docker)
 * [Cómo Contribuir](#cómo-contribuir)
 
 <hr style="width:35%" />
@@ -29,7 +29,8 @@
 
 # Como usar 
 
-A continuación se detallan los pasos para compilar y ejecutar el programa.
+A continuación se detallan los pasos para compilar y ejecutar el programa.<br/>
+El proyecto se divide en 8 _crates_ que se comunican entre sí.
 
 En general, se usa la herramienta [`cargo`](https://doc.rust-lang.org/cargo/) para generar, correr y administrar el proyecto;
 además de _lintear_ y formatear el mismo.
@@ -38,166 +39,171 @@ además de _lintear_ y formatear el mismo.
 
 ## Compilación
 
-El proyecto se compila dependiendo de la _feature_ que [sea necesaria](#cómo-correr), pero una
-compilación general alcanza con:
+El proyecto se puede compilar completo con
 
 ```console
-$ cargo build --all-features
+$ cargo build
 ```
+
+o, si se desea compilar una _crate_ en concreto, se puede usar:
+
+```console
+$ cargo build -p <crate>
+```
+
+donde `<crate>` puede tomar uno de los siguientes valores:
+
+* `client`
+* `data`
+* `interface`
+* `parser`
+* `protocol`
+* `server`
+* `simulator`
+* `tokenizer`
 
 ## Cómo correr
 
-El proyecto tiene soporte para correr sus diferentes partes.
-Si se desea correr una sóla parte a la vez, basta con correr la sintaxis simple:
+El proyecto tiene soporte para correr los binarios de una _crate_ relevante.
+
+No todas las _crates_ tienen un binario, y algunas tienen más de uno; en cuyo caso, todas las
+_crates_ con binarios tienen una opción de elegir explícitamente cual binario correr, o en caso
+de no especificar, cuentan con una configuración por defecto.
+
+La sintaxis simple para correr el binario por defecto es:
 
 ```console
-$ cargo run [cli | --features "gui" gui | sim | sv [echo]]
+$ cargo run -p <crate>
 ```
 
-o, si se desea correr por ejemplo `sv` _y luego_ `gui`, el proyecto puede ejecutar sus partes
-en binarios separados:
+y para correr un binario específico de esta:
 
 ```console
-$ cargo run --bin [cli | gui | sim | sv]
+$ cargo run -p <crate> --bin <bin>
 ```
 
-ya que sino, se tratará de construir dos veces el mismo ejecutable, lo cual no siempre es posible.
+donde `<bin>` es un nombre del binario según la _crate_ que corresponda, y `<crate>` es, de nuevo,
+un valor de los siguientes:
+
+* `client`
+* `data`
+* `interface`
+* `parser`
+* `protocol`
+* `server`
+* `simulator`
+* `tokenizer`
+
+<br/>
+
+<u><i><b>Detalles de los binarios por cada _crate_ se explican más abajo.</b></i></u>
+
+<hr style="width:20%" />
 
 ### Cliente
 
-Se puede invocar un cliente simple por consola.
+#### `cli` ***(Default)***
 
-<details>
-    <summary>
-        <b>Forma simple</b>
-    </summary>
+Se puede invocar un [cliente simple](./client/src/bin/cli.rs) por consola.
 
 ```console
-$ cargo run cli
+$ cargo run -p client --bin cli
 ```
 
-</details>
-
-<details>
-    <summary>
-        <b>Binario Separado</b>
-    </summary>
+**o, como es la opción por defecto,** esto también vale:
 
 ```console
-$ cargo run --bin cli
+$ cargo run -p client
 ```
-
-</details>
 
 ### Servidor
 
-También conocido como los "nodos".
+#### `sv` ***(Default)***
 
-<details>
-    <summary>
-        <b>Forma simple</b>
-    </summary>
+Se da la opción de levantar todos los nodos de una, en una [sóla consola](./server/src/bin/sv.rs).
 
 ```console
-$ cargo run sv
+$ cargo run -p server --bin sv [echo]
 ```
 
-</details>
+donde `echo` es opcional y se utiliza para inciar el servidor en modo ECHO.
 
-<details>
-    <summary>
-        <b>Binario Separado</b>
-    </summary>
+**Adicionalmente, como es la opción por defecto,** esto también vale:
 
 ```console
-$ cargo run --bin sv
+$ cargo run -p server [echo]
 ```
 
-</details>
+#### `nd`
 
-### Nodos
+También hay soporte para levantar un [nodo aislado](./server/src/bin/nd.rs) por consola.
+Para poder levantarse deben existir su ID e IP correspondientes en un archivo
+llamado [`node_ips.csv`](./node_ips.csv) cuyas columnas son del estilo:
 
-Se debe decidir entre correr el _Servidor_, que levanta todos los nodos en una sola consola, o los nodos indivualmente, los cuales se deben levantar de a uno por consola.
-Para poder levantarse deben existir su ID e IP correspondientes en un archivo llamado `node_ips.csv` cuyas columnas son `node_id,ip`. Además, el nodo con mayor ID debe ser levantado último.
+```csv
+node_id,ip
+...
+```
 
-<details>
-    <summary>
-        <b>Forma simple</b>
-    </summary>
+<u><i>Además, el nodo con mayor ID debe ser levantado último.</i></u>
 
 ```console
-$ cargo run nd <id>
+$ cargo run -p server --bin nd [new] <id> [<ip>] [echo]
 ```
 
-</details>
+donde:
 
-<details>
-    <summary>
-        <b>Binario Separado</b>
-    </summary>
-
-```console
-$ cargo run --bin nd <id>
-```
-
-</details>
+* `new` es una opción para agregar dinámicamente un nuevo nodo.
+* `id` es el ID interno a usar para el nodo.
+* `ip` es la IP a ser asignada al nodo. Sólo se usa si `new` también está presente.
+* `echo` es otra opción para iniciar este nodo particular en modo ECHO.
 
 ### Interfaz de Usuario
 
-La interfaz de usuario incluye muchas dependencias y por lo tanto, se compila
-con una _feature_ aparte con la forma `--features "gui"` o `--features gui`.
+Esta _crate_ es la que más dependencias utiliza, ya que se encarga de correr el
+_FrontEnd_ de la aplicación.
 
-<details>
-    <summary>
-        <b>Forma simple</b>
-    </summary>
+#### `gui` ***(Default)***
 
-```console
-$ cargo run --features "gui" gui
-```
-
-</details>
-
-<details>
-    <summary>
-        <b>Binario Separado</b>
-    </summary>
+El binario para correr la app en [modo gráfico](./interface/src/bin/gui.rs).
 
 ```console
-$ cargo run --features "gui" --bin gui
+$ cargo run -p interface --bin gui
 ```
 
-</details>
+**o, al ser la opción por defecto,** esto también vale:
 
-> **Nota:** Como `gui` es la única _feature_ que tiene el proyecto, `--features "gui"` se puede
-> reemplazar por `--all-features`
+```console
+$ cargo run -p interface
+```
 
 ### Simulador de Vuelos
 
 El simulador cada tanto va insertando datos en los lugares relevantes para simular la creación
 de vuelos en curso.
 
-<details>
-    <summary>
-        <b>Forma simple</b>
-    </summary>
+#### `sim` ***(Default)***
+
+Un [menú interactivo](./simulator/src/bin/sim.rs) por consola para controlar la simulación.
 
 ```console
-$ cargo run sim
+$ cargo run -p simulator --bin sim
 ```
 
-</details>
-
-<details>
-    <summary>
-        <b>Binario Separado</b>
-    </summary>
+**o, como es la opción por defecto,** lo siguiente también es válido:
 
 ```console
-$ cargo run --bin sim
+$ cargo run -p simulator
 ```
 
-</details>
+#### `demo`
+
+Una [demostración](./simulator/src/bin/demo.rs) pre-hecha para correr en el simulador.
+Culmina también en el menú.
+
+```console
+$ cargo run -p simulator --bin demo
+```
 
 # Cómo Testear
 
@@ -206,6 +212,24 @@ Los tests, siendo que se desee ejecutarlos manualmente, se puede con:
 ```console
 $ cargo test --all-features
 ```
+
+# Docker
+
+Las instrucciones de cómo correr el proyecto usando [Docker](https://www.docker.com/)
+son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal para nuestro se explica igual a continuación.
+
+* Primero, hemos de asegurarnos de que cumplimos con los [prerequisitos](./docker_tutorial.md#prerequisitos) necesarios.
+* Luego corremos
+  ```console
+  $ docker compose up
+  ```
+  para automáticamente correr los primeros nodos iniciales.
+* A este punto, todavía se puede conectar a los nodos con el cliente GUI, localmente:
+  ```console
+  $ cargo run -p interface --bin gui
+  ```
+
+Siempre se puede cerrar los nodos con el [comando](./docker_tutorial.md#cerrando-nodos) correspondiente. Lo mismo con [modificar](./docker_tutorial.md#modificando-nodos-dinámicamente) dicha cantidad.
 
 # Cómo contribuir
 
