@@ -1662,7 +1662,7 @@ impl Node {
                 for position in 0..replicas_quantity {
                     let next_node_id =
                         n_th_node_in_the_cluster(*node_id, &self.get_nodes_ids(), position, false);
-                    if next_node_id == self.id {
+                    if next_node_id == self.id && *node_id == self.id {
                         DiskHandler::truncate_rows(
                             &self.storage_addr,
                             table.get_name(),
@@ -1671,6 +1671,13 @@ impl Node {
                             *node_id,
                             &rows[2..].join("\n"),
                         )?;
+                    } else if next_node_id == self.id {
+                        DiskHandler::append_new_rows(
+                            rows[2..].join("\n"),
+                            &self.storage_addr, 
+                            table.get_keyspace(), 
+                            table.get_name(), 
+                            *node_id)?;
                     } else {
                         send_to_node(
                             next_node_id,

@@ -1720,7 +1720,6 @@ impl SessionHandler {
         drop(node_reader);
         if ready_nodes_counter == n_nodes {
             if node_deleted != -1 {
-                println!("Se borra al nodo {} de la lista de ips", node_deleted);
                 DiskHandler::delete_node_id_and_ip(node_deleted as u8)?;
             }
             self.write()?.finish_relocation()?;
@@ -1748,7 +1747,6 @@ impl SessionHandler {
         if waiting_relocate_nodes_counter == n_nodes {
             let mut node_writer = self.write()?;
             node_writer.relocate_rows()?;
-            println!("El nodo que se esta yendo apago el gossiper");
             node_writer.stop_gossiper_and_beater();
             node_writer
                 .endpoint_state
