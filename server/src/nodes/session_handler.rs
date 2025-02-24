@@ -17,7 +17,9 @@ use {
             },
         },
         utils::printable_bytes,
-    }, chrono::Utc, parser::{
+    },
+    chrono::Utc,
+    parser::{
         data_types::keyspace_name::KeyspaceName,
         main_parser::make_parse,
         statements::{
@@ -35,7 +37,8 @@ use {
             },
             statement::Statement,
         },
-    }, protocol::{
+    },
+    protocol::{
         aliases::{
             results::Result,
             types::{Byte, Long, Uint, Ulong},
@@ -48,11 +51,13 @@ use {
         notations::consistency::Consistency,
         traits::Byteable,
         utils::{parse_bytes_to_string, parse_bytes_to_string_map},
-    }, std::{
+    },
+    std::{
         collections::{HashMap, HashSet},
         io::{Read, Write},
         sync::{Arc, RwLock},
-    }, tokenizer::tok::tokenize_query
+    },
+    tokenizer::tok::tokenize_query,
 };
 
 /// El tiempo de espera _(en segundos)_ por una respuesta.

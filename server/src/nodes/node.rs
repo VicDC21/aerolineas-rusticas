@@ -23,7 +23,8 @@ use {
             },
         },
         utils::load_json,
-    }, parser::{
+    },
+    parser::{
         data_types::keyspace_name::KeyspaceName,
         statements::{
             ddl_statement::{
@@ -39,7 +40,8 @@ use {
                 },
             },
         },
-    }, protocol::{
+    },
+    protocol::{
         aliases::{
             results::Result,
             types::{Byte, Int, Long, Short, Uint, Ulong},
@@ -48,13 +50,17 @@ use {
         headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         messages::responses::result_kinds::ResultKind,
         traits::Byteable,
-    }, rand::{seq::SliceRandom, thread_rng}, serde::{Deserialize, Serialize}, serde_json::{json, Value}, std::{
+    },
+    rand::{seq::SliceRandom, thread_rng},
+    serde::{Deserialize, Serialize},
+    serde_json::{json, Value},
+    std::{
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
         sync::mpsc::{channel, Sender},
         thread::JoinHandle,
-    }
+    },
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -390,7 +396,7 @@ impl Node {
         Ok(())
     }
 
-    pub fn notify_node_is_gonna_be_deleted(&self, id_to_delete: NodeId) -> Result<()>{
+    pub fn notify_node_is_gonna_be_deleted(&self, id_to_delete: NodeId) -> Result<()> {
         if !Self::id_exists(&id_to_delete) {
             return Err(Error::ServerError(format!(
                 "El ID {} no está en el archivo de IPs de los nodos.",
@@ -737,9 +743,9 @@ impl Node {
                     self.nodes_weights.push(1);
                 }
             }
-            if let Some(old_state) = self.neighbours_states.get(&node_id){
-                if *old_state.get_appstate_status() == AppStatus::Remove{
-                    continue
+            if let Some(old_state) = self.neighbours_states.get(&node_id) {
+                if *old_state.get_appstate_status() == AppStatus::Remove {
+                    continue;
                 }
             }
             self.neighbours_states.insert(node_id, endpoint_state);
@@ -1674,10 +1680,11 @@ impl Node {
                     } else if next_node_id == self.id {
                         DiskHandler::append_new_rows(
                             rows[2..].join("\n"),
-                            &self.storage_addr, 
-                            table.get_keyspace(), 
-                            table.get_name(), 
-                            *node_id)?;
+                            &self.storage_addr,
+                            table.get_keyspace(),
+                            table.get_name(),
+                            *node_id,
+                        )?;
                     } else {
                         send_to_node(
                             next_node_id,

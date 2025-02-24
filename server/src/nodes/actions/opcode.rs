@@ -122,7 +122,7 @@ pub enum SvAction {
     NodeDeleted(NodeId),
 
     /// Le reenvia el mensaje al nodo correspondiente que tenga que ser borrado.
-    NodeToDelete(NodeId)
+    NodeToDelete(NodeId),
 }
 
 impl SvAction {
