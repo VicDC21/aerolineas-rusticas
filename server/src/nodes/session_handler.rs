@@ -177,7 +177,7 @@ impl SessionHandler {
         self.logger
             .debug(format!("Iniciando manejo de acción: {:?}", action).as_str())
             .map_err(|e| Error::ServerError(e.to_string()))?;
-    
+
         let mut stop = false;
         match action {
             SvAction::Exit => {
@@ -255,7 +255,9 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.read()?.send_endpoint_state(id, ip);
                 self.logger
-                    .debug(format!("Estado del endpoint enviado al nodo {} exitosamente", id).as_str())
+                    .debug(
+                        format!("Estado del endpoint enviado al nodo {} exitosamente", id).as_str(),
+                    )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::InternalQuery(bytes) => {
@@ -358,7 +360,7 @@ impl SessionHandler {
                         .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
-    
+
                 let node_reader = self.read()?;
                 let table = node_reader.get_table(&table_name)?;
                 let has_partition_value = node_reader.check_if_has_new_partition_value(
@@ -366,7 +368,7 @@ impl SessionHandler {
                     &table.get_name().to_string(),
                 )?;
                 drop(node_reader);
-    
+
                 match has_partition_value {
                     Some(new_partition_values) => {
                         self.logger
@@ -450,23 +452,28 @@ impl SessionHandler {
                 self.write()?.update_node_replicas(node_id, is_deletion)?;
                 self.logger
                     .info(
-                        format!("Réplicas actualizadas exitosamente para el nodo {}", node_id)
-                            .as_str(),
+                        format!(
+                            "Réplicas actualizadas exitosamente para el nodo {}",
+                            node_id
+                        )
+                        .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::AddRelocatedRows(node_id, rows) => {
                 self.logger
                     .info(
-                        format!("Agregando filas relocalizadas desde el nodo {}", node_id)
-                            .as_str(),
+                        format!("Agregando filas relocalizadas desde el nodo {}", node_id).as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.add_relocated_rows(node_id, rows)?;
                 self.logger
                     .info(
-                        format!("Filas relocalizadas del nodo {} agregadas exitosamente", node_id)
-                            .as_str(),
+                        format!(
+                            "Filas relocalizadas del nodo {} agregadas exitosamente",
+                            node_id
+                        )
+                        .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
@@ -487,7 +494,10 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.node_leaving(node_id, AppStatus::Left)?;
                 self.logger
-                    .info(format!("Nodo {} marcado como saliente (AppStatus::Left)", node_id).as_str())
+                    .info(
+                        format!("Nodo {} marcado como saliente (AppStatus::Left)", node_id)
+                            .as_str(),
+                    )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::NodeDeleted(node_id) => {
@@ -496,7 +506,13 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.node_leaving(node_id, AppStatus::Remove)?;
                 self.logger
-                    .info(format!("Nodo {} marcado como eliminado (AppStatus::Remove)", node_id).as_str())
+                    .info(
+                        format!(
+                            "Nodo {} marcado como eliminado (AppStatus::Remove)",
+                            node_id
+                        )
+                        .as_str(),
+                    )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::NodeToDelete(node_id) => {
@@ -505,11 +521,13 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.read()?.notify_node_is_gonna_be_deleted(node_id)?;
                 self.logger
-                    .warning(format!("Notificación de eliminación enviada al nodo {}", node_id).as_str())
+                    .warning(
+                        format!("Notificación de eliminación enviada al nodo {}", node_id).as_str(),
+                    )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
         };
-    
+
         Ok(stop)
     }
 
