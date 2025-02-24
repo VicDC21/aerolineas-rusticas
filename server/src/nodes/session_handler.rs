@@ -177,7 +177,7 @@ impl SessionHandler {
         self.logger
             .debug(format!("Iniciando manejo de acción: {:?}", action).as_str())
             .map_err(|e| Error::ServerError(e.to_string()))?;
-
+    
         let mut stop = false;
         match action {
             SvAction::Exit => {
@@ -191,6 +191,9 @@ impl SessionHandler {
                     .debug("Procesando heartbeat")
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.beat();
+                self.logger
+                    .debug("Heartbeat procesado exitosamente")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::Gossip(neighbours) => {
                 self.logger
@@ -242,12 +245,18 @@ impl SessionHandler {
                     .info(format!("Nuevo vecino detectado: Nodo {}", id).as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.add_neighbour_state(id, state)?;
+                self.logger
+                    .info(format!("Estado del vecino (Nodo {}) agregado exitosamente", id).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::SendEndpointState(id, ip) => {
                 self.logger
                     .debug(format!("Enviando estado del endpoint al nodo {}", id).as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.read()?.send_endpoint_state(id, ip);
+                self.logger
+                    .debug(format!("Estado del endpoint enviado al nodo {} exitosamente", id).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::InternalQuery(bytes) => {
                 self.logger
@@ -264,6 +273,9 @@ impl SessionHandler {
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                     return Err(Error::ServerError(err.to_string()));
                 };
+                self.logger
+                    .debug("Respuesta a query interna enviada exitosamente")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::StoreMetadata => {
                 self.logger
@@ -297,6 +309,9 @@ impl SessionHandler {
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                     return Err(Error::ServerError(err.to_string()));
                 };
+                self.logger
+                    .debug("Respuesta de lectura directa enviada exitosamente")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::DigestReadRequest(bytes) => {
                 self.logger
@@ -313,6 +328,9 @@ impl SessionHandler {
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                     return Err(Error::ServerError(err.to_string()));
                 };
+                self.logger
+                    .debug("Respuesta de lectura digest enviada exitosamente")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::RepairRows(table_name, node_id, rows_bytes) => {
                 self.logger
@@ -340,7 +358,7 @@ impl SessionHandler {
                         .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
-
+    
                 let node_reader = self.read()?;
                 let table = node_reader.get_table(&table_name)?;
                 let has_partition_value = node_reader.check_if_has_new_partition_value(
@@ -348,7 +366,7 @@ impl SessionHandler {
                     &table.get_name().to_string(),
                 )?;
                 drop(node_reader);
-
+    
                 match has_partition_value {
                     Some(new_partition_values) => {
                         self.logger
@@ -362,7 +380,10 @@ impl SessionHandler {
                             .map_err(|e| Error::ServerError(e.to_string()))?;
                         self.write()?
                             .tables_and_partitions_keys_values
-                            .insert(table_name, new_partition_values)
+                            .insert(table_name, new_partition_values);
+                        self.logger
+                            .info("Valores de partición agregados exitosamente")
+                            .map_err(|e| Error::ServerError(e.to_string()))?;
                     }
                     None => {
                         self.logger
@@ -374,7 +395,6 @@ impl SessionHandler {
                                 .as_str(),
                             )
                             .map_err(|e| Error::ServerError(e.to_string()))?;
-                        None
                     }
                 };
             }
@@ -407,12 +427,18 @@ impl SessionHandler {
                 node_writer
                     .endpoint_state
                     .set_appstate_status(AppStatus::RelocationIsNeeded);
+                self.logger
+                    .info("Estado del endpoint actualizado a RelocationIsNeeded")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::RelocationNeeded => {
                 self.logger
                     .info("Marcando necesidad de relocación")
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.relocation_needed();
+                self.logger
+                    .info("Marcado de relocación completado exitosamente")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::UpdateReplicas(node_id, is_deletion) => {
                 self.logger
@@ -422,26 +448,68 @@ impl SessionHandler {
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.update_node_replicas(node_id, is_deletion)?;
+                self.logger
+                    .info(
+                        format!("Réplicas actualizadas exitosamente para el nodo {}", node_id)
+                            .as_str(),
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::AddRelocatedRows(node_id, rows) => {
-                self.write()?.add_relocated_rows(node_id, rows)?
+                self.logger
+                    .info(
+                        format!("Agregando filas relocalizadas desde el nodo {}", node_id)
+                            .as_str(),
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
+                self.write()?.add_relocated_rows(node_id, rows)?;
+                self.logger
+                    .info(
+                        format!("Filas relocalizadas del nodo {} agregadas exitosamente", node_id)
+                            .as_str(),
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::DeleteNode => {
+                self.logger
+                    .warning("Iniciando proceso de eliminación del nodo")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 let mut node_writer = self.write()?;
                 node_writer.node_to_deletion()?;
                 node_writer.notify_update_replicas(true)?;
+                self.logger
+                    .warning("Proceso de eliminación del nodo completado, notificación enviada a réplicas")
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::NodeIsLeaving(node_id) => {
+                self.logger
+                    .info(format!("Registrando salida del nodo {}", node_id).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.node_leaving(node_id, AppStatus::Left)?;
+                self.logger
+                    .info(format!("Nodo {} marcado como saliente (AppStatus::Left)", node_id).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::NodeDeleted(node_id) => {
+                self.logger
+                    .info(format!("Registrando eliminación del nodo {}", node_id).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.node_leaving(node_id, AppStatus::Remove)?;
+                self.logger
+                    .info(format!("Nodo {} marcado como eliminado (AppStatus::Remove)", node_id).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::NodeToDelete(node_id) => {
+                self.logger
+                    .warning(format!("Preparando nodo {} para su eliminación", node_id).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.read()?.notify_node_is_gonna_be_deleted(node_id)?;
+                self.logger
+                    .warning(format!("Notificación de eliminación enviada al nodo {}", node_id).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
             }
         };
-
+    
         Ok(stop)
     }
 
@@ -1856,7 +1924,9 @@ impl SessionHandler {
             node_writer
                 .endpoint_state
                 .set_appstate_status(AppStatus::RelocatingData);
-            println!("Iniciando relocalización.");
+            self.logger
+                .info("Se inicia el proceso de relocalización.")
+                .map_err(|e| Error::ServerError(e.to_string()))?;
             node_writer.run_relocation()?;
         }
         Ok(())
@@ -1887,7 +1957,9 @@ impl SessionHandler {
         drop(node_reader);
         if ready_nodes_counter == n_nodes {
             if node_deleted != -1 {
-                println!("Se borra al nodo {}", node_deleted);
+                self.logger
+                    .info(format!("Se borra al nodo {}", node_deleted).as_str())
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 DiskHandler::delete_node_id_and_ip(node_deleted as u8)?;
                 self.write()?
                     .neighbours_states
