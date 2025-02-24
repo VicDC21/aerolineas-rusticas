@@ -594,7 +594,6 @@ impl Node {
             id, ip
         );
         let _ = DiskHandler::store_new_node_id_and_ip(id, &ip);
-        println!("Agregue al nodo {} de ip {} a la lista de nodos", id, ip);
         let _ = send_to_node(
             id,
             SvAction::NewNeighbour(self.id, self.get_endpoint_state().clone()).as_bytes(),
@@ -668,11 +667,6 @@ impl Node {
             && *state.get_appstate().get_status() != AppStatus::Remove
             && *state.get_appstate().get_status() != AppStatus::Offline
         {
-            println!(
-                "El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.",
-                id,
-                *state.get_appstate().get_status()
-            );
             DiskHandler::store_new_node_id_and_ip(id, state.get_addr().to_string().as_str())?;
             actual_n_nodes = self.get_actual_n_nodes();
         }
@@ -703,7 +697,6 @@ impl Node {
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Offline
             {
-                println!("El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.", node_id, *endpoint_state.get_appstate().get_status());
                 DiskHandler::store_new_node_id_and_ip(
                     node_id,
                     endpoint_state.get_addr().to_string().as_str(),
@@ -726,7 +719,6 @@ impl Node {
             }
             self.neighbours_states.insert(node_id, endpoint_state);
         }
-
         Ok(())
     }
 
@@ -734,13 +726,6 @@ impl Node {
     pub fn acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
         if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
             endpoint_state.set_appstate_status(AppStatus::Offline);
-        }
-        println!(
-            "El estado de los nodos cuando se intenta poner al nodo {} Offline es: \n",
-            node_id
-        );
-        for (id, state) in &self.neighbours_states {
-            println!("nodo: {:?} estado: {:?}", id, state.get_appstate_status());
         }
     }
 
@@ -1565,9 +1550,7 @@ impl Node {
         for table in self.tables.values() {
             let mut nodes_rows: HashMap<NodeId, Vec<String>> = HashMap::new();
             let nodes_ids = self.get_nodes_ids();
-
             self.filter_and_repair_rows(&mut nodes_rows, &nodes_ids, table)?;
-            // self.filter_replicas_rows_and_repair(&mut nodes_rows, &nodes_ids, table)?;
         }
         Ok(())
     }
@@ -1611,7 +1594,7 @@ impl Node {
                     as usize;
                 for position in 0..replicas_quantity {
                     let next_node_id =
-                        n_th_node_in_the_cluster(*node_id, &self.get_nodes_ids(), position, false);
+                        n_th_node_in_the_cluster(*node_id, nodes_ids, position, false);
                     if next_node_id == self.id && *node_id == self.id {
                         DiskHandler::truncate_rows(
                             &self.storage_addr,
@@ -1637,6 +1620,15 @@ impl Node {
                         )?;
                     }
                 }
+            } else if *node_id == self.id {
+                DiskHandler::truncate_rows(
+                    &self.storage_addr,
+                    table.get_name(),
+                    table.get_keyspace(),
+                    &self.get_default_keyspace_name()?,
+                    *node_id,
+                    &rows[2..].join("\n"),
+                )?;
             }
         }
         Ok(())

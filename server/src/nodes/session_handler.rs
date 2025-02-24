@@ -1906,7 +1906,6 @@ impl SessionHandler {
         && *node_status != AppStatus::UpdatingReplicas
         {
             drop(node_reader);
-
             let mut node_writer = self.write()?;
             node_writer
                 .endpoint_state
@@ -2046,8 +2045,6 @@ impl SessionHandler {
         self.is_relocation_done()?;
 
         for neighbour_id in neighbours {
-            // if *neighbour_state.get_appstate_status() != AppStatus::Left
-            // && *neighbour_state.get_appstate_status() != AppStatus::Remove{
             if send_to_node(
                 neighbour_id,
                 SvAction::Syn(self.id.to_owned(), self.get_gossip_info()?).as_bytes(),
