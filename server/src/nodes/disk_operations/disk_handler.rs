@@ -149,7 +149,7 @@ impl DiskHandler {
                     "No se pudo obtener una linea en el archivo de IPs de nodos".to_string(),
                 )
             })?;
-            println!("linea leida: {}", line);
+            // println!("linea leida: {}", line);
             let current_id = line.split(',').next().ok_or_else(|| {
                 Error::ServerError(
                     "No se pudo obtener el ID de un nodo en el archivo de IPs de nodos".to_string(),
@@ -159,7 +159,7 @@ impl DiskHandler {
                 new_rows.push(line);
             }
         }
-        println!("Nuevo contenido: {:?}", new_rows);
+        // println!("Nuevo contenido: {:?}", new_rows);
         let mut new_content = new_rows.join("\n");
         new_content.push('\n');
 

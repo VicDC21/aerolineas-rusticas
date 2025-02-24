@@ -17,9 +17,7 @@ use {
             },
         },
         utils::printable_bytes,
-    },
-    chrono::Utc,
-    parser::{
+    }, chrono::Utc, parser::{
         data_types::keyspace_name::KeyspaceName,
         main_parser::make_parse,
         statements::{
@@ -37,8 +35,7 @@ use {
             },
             statement::Statement,
         },
-    },
-    protocol::{
+    }, protocol::{
         aliases::{
             results::Result,
             types::{Byte, Long, Uint, Ulong},
@@ -51,13 +48,11 @@ use {
         notations::consistency::Consistency,
         traits::Byteable,
         utils::{parse_bytes_to_string, parse_bytes_to_string_map},
-    },
-    std::{
+    }, std::{
         collections::{HashMap, HashSet},
         io::{Read, Write},
         sync::{Arc, RwLock},
-    },
-    tokenizer::tok::tokenize_query,
+    }, tokenizer::tok::tokenize_query
 };
 
 /// El tiempo de espera _(en segundos)_ por una respuesta.
@@ -275,6 +270,9 @@ impl SessionHandler {
             }
             SvAction::NodeDeleted(node_id) => {
                 self.write()?.node_leaving(node_id, AppStatus::Remove)?;
+            }
+            SvAction::NodeToDelete(node_id) => {
+                self.read()?.notify_node_is_gonna_be_deleted(node_id)?;
             }
         };
         Ok(stop)
@@ -1643,17 +1641,16 @@ impl SessionHandler {
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
         let node_status = node_reader.endpoint_state.get_appstate_status();
-
         if node_reader.neighbours_states.len() == node_reader.get_actual_n_nodes()
-            && (*node_status == AppStatus::Bootstrap || *node_status == AppStatus::Offline)
-        /*&& *node_status != AppStatus::Normal
+            // && (*node_status == AppStatus::Bootstrap || *node_status == AppStatus::Offline)
+        && *node_status != AppStatus::Normal
         && *node_status != AppStatus::RelocationIsNeeded
         && *node_status != AppStatus::RelocatingData
         && *node_status != AppStatus::Ready
         && *node_status != AppStatus::Left
         && *node_status != AppStatus::Remove
         && *node_status != AppStatus::NewNode
-        && *node_status != AppStatus::UpdatingReplicas*/
+        && *node_status != AppStatus::UpdatingReplicas
         {
             drop(node_reader);
 
@@ -1687,10 +1684,6 @@ impl SessionHandler {
             }
         }
         drop(node_reader);
-        println!(
-            "Los vecinos que van a realocar data son {}",
-            waiting_relocate_nodes_counter
-        );
         if waiting_relocate_nodes_counter == n_nodes {
             let mut node_writer = self.write()?;
             node_writer
@@ -1793,12 +1786,6 @@ impl SessionHandler {
         self.is_relocation_needed()?;
         self.is_relocation_done()?;
 
-        let node_reader = self.read()?;
-        if *node_reader.endpoint_state.get_appstate_status() == AppStatus::Left
-            || *node_reader.endpoint_state.get_appstate_status() == AppStatus::Remove
-        {
-            return Ok(());
-        }
         for neighbour_id in neighbours {
             // if *neighbour_state.get_appstate_status() != AppStatus::Left
             // && *neighbour_state.get_appstate_status() != AppStatus::Remove{

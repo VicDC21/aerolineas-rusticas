@@ -23,8 +23,7 @@ use {
             },
         },
         utils::load_json,
-    },
-    parser::{
+    }, parser::{
         data_types::keyspace_name::KeyspaceName,
         statements::{
             ddl_statement::{
@@ -40,8 +39,7 @@ use {
                 },
             },
         },
-    },
-    protocol::{
+    }, protocol::{
         aliases::{
             results::Result,
             types::{Byte, Int, Long, Short, Uint, Ulong},
@@ -50,16 +48,13 @@ use {
         headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         messages::responses::result_kinds::ResultKind,
         traits::Byteable,
-    },
-    serde::{Deserialize, Serialize},
-    serde_json::{json, Value},
-    std::{
+    }, rand::{seq::SliceRandom, thread_rng}, serde::{Deserialize, Serialize}, serde_json::{json, Value}, std::{
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
         sync::mpsc::{channel, Sender},
         thread::JoinHandle,
-    },
+    }
 };
 
 /// El ID de un nodo. No se tienen en cuenta casos de cientos de nodos simultáneos,
@@ -383,6 +378,19 @@ impl Node {
 
     /// Le notifica al nodo del ID dado que debe ser dado de baja del clúster.
     pub fn delete_node(id_to_delete: NodeId) -> Result<()> {
+        let nodes = Self::get_all_nodes_ids();
+        let mut rng = thread_rng();
+        if let Some(&node_selected) = nodes.choose(&mut rng) {
+            send_to_node(
+                node_selected,
+                SvAction::NodeToDelete(id_to_delete).as_bytes(),
+                PortType::Priv,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn notify_node_is_gonna_be_deleted(&self, id_to_delete: NodeId) -> Result<()>{
         if !Self::id_exists(&id_to_delete) {
             return Err(Error::ServerError(format!(
                 "El ID {} no está en el archivo de IPs de los nodos.",
@@ -394,7 +402,6 @@ impl Node {
             SvAction::DeleteNode.as_bytes(),
             PortType::Priv,
         )?;
-
         Ok(())
     }
 
@@ -677,6 +684,7 @@ impl Node {
         if !Self::id_exists(&id)
             && *state.get_appstate().get_status() != AppStatus::Left
             && *state.get_appstate().get_status() != AppStatus::Remove
+            && *state.get_appstate().get_status() != AppStatus::Offline
         {
             println!(
                 "El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.",
@@ -711,6 +719,7 @@ impl Node {
             if !Self::id_exists(&node_id)
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Left
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
+                && *endpoint_state.get_appstate().get_status() != AppStatus::Offline
             {
                 println!("El nodo {} se presento y se va a escribir a la tabla de ips y su estado es {:?}.", node_id, *endpoint_state.get_appstate().get_status());
                 DiskHandler::store_new_node_id_and_ip(
@@ -726,6 +735,11 @@ impl Node {
                 println!("Nodo {} presentado.", node_id);
                 if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
                     self.nodes_weights.push(1);
+                }
+            }
+            if let Some(old_state) = self.neighbours_states.get(&node_id){
+                if *old_state.get_appstate_status() == AppStatus::Remove{
+                    continue
                 }
             }
             self.neighbours_states.insert(node_id, endpoint_state);
@@ -1495,13 +1509,6 @@ impl Node {
                 )?;
             }
         }
-
-        // if im_new_node {
-        //     self.get_tables_of_replicas(false)?;
-        // } else {
-        //     self.get_tables_of_replicas(true)?;
-        // }
-        println!("Me pongo en estado RelocationIsNeeded");
         self.endpoint_state
             .set_appstate_status(AppStatus::RelocationIsNeeded);
         // Devolvemos un mensaje de éxito.
@@ -1764,7 +1771,6 @@ impl Node {
             if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_leaving_id) {
                 endpoint_state.set_appstate_status(status.clone());
             }
-            println!("Pongo al nodo {} en estado {:?}", node_leaving_id, status);
         }
         Ok(())
     }
