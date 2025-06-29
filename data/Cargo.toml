@@ -7,3 +7,4 @@ edition.workspace = true
 [dependencies]
 chrono = { version = "0.4.38" }
 protocol = { path = "../protocol" }
+utils = { path = "../utils" }

@@ -59,6 +59,7 @@ use {
         str::FromStr,
         sync::RwLockWriteGuard,
     },
+    utils::get_root_path::get_root_path,
 };
 
 /// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
@@ -126,7 +127,7 @@ impl DiskHandler {
     pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) -> Result<()> {
         let file = OpenOptions::new()
             .append(true)
-            .open(NODES_IPS_PATH)
+            .open(get_root_path(NODES_IPS_PATH).as_str())
             .expect("No se pudo abrir el archivo de IPs de nodos");
 
         let mut writer = BufWriter::new(&file);
@@ -140,7 +141,7 @@ impl DiskHandler {
     pub fn delete_node_id_and_ip(id: NodeId) -> Result<()> {
         let file = OpenOptions::new()
             .read(true)
-            .open(NODES_IPS_PATH)
+            .open(get_root_path(NODES_IPS_PATH).as_str())
             .expect("No se pudo abrir el archivo de IPs de nodos para lectura");
         let reader = BufReader::new(&file);
         let mut new_rows: Vec<String> = Vec::new();
@@ -167,7 +168,7 @@ impl DiskHandler {
         let file = OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(NODES_IPS_PATH)
+            .open(get_root_path(NODES_IPS_PATH).as_str())
             .expect("No se pudo abrir el archivo de IPs de nodos para escritura");
         let mut writer = BufWriter::new(&file);
         if writer.write_all(new_content.as_bytes()).is_err() {
@@ -1263,7 +1264,7 @@ impl DiskHandler {
 
     /// Lee la tabla de usuarios y contraseñas, y los devuelve como vector de tuplas.
     pub fn read_admitted_users(_storage_addr: &str) -> Result<Vec<(String, String)>> {
-        let file = match File::open("users.csv") {
+        let file = match File::open(get_root_path("users.csv")) {
             Ok(value) => value,
             Err(_err) => {
                 return Err(Error::ServerError(

@@ -19,6 +19,7 @@ use {
         net::TcpStream,
         path::PathBuf,
     },
+    utils::get_root_path::get_root_path,
 };
 
 /// La ruta de _queries_ iniciales.
@@ -211,7 +212,7 @@ pub fn load_init_queries() -> Vec<String> {
     let mut queries = Vec::<String>::new();
     let mut queries_paths = Vec::<PathBuf>::new();
 
-    match read_dir(INIT_QUERIES_PATH) {
+    match read_dir(get_root_path(INIT_QUERIES_PATH)) {
         Err(err) => {
             println!("Ocurrió un error al buscar las queries iniciales:\n\n{}\nSe utilizará un vector vacío.", err);
         }

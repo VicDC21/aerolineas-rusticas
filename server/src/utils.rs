@@ -11,6 +11,7 @@ use {
         fs::{self, File},
         io::{Read, Write},
     },
+    utils::get_root_path::get_root_path,
 };
 
 /// Toma un elemento serializable y lo convierte a JSON, escribiendo el contenido en un archivo en la ruta recibida.
@@ -59,7 +60,7 @@ pub fn printable_bytes<'a>(bytes: impl IntoIterator<Item = &'a Byte>) -> String 
 
 /// Handelea los results que se devuelven al cargar el certificado
 pub fn handle_pem_file_iter() -> Result<Vec<CertificateDer<'static>>> {
-    let cert_file = "cert.pem";
+    let cert_file = get_root_path("cert.pem");
     let certs: Vec<CertificateDer<'_>> = match CertificateDer::pem_file_iter(cert_file) {
         Ok(certs_iter) => certs_iter
             .map(|cert_res| {

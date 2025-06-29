@@ -9,6 +9,7 @@ use {
         io::{BufRead, BufReader, BufWriter, Result as IOResult, Write},
         net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
     },
+    utils::get_root_path::get_root_path
 };
 
 /// El mapa de los IDs de nodos y sus IPs asociadas.
@@ -49,7 +50,7 @@ impl AddrLoader {
     ///
     /// Utiliza la ruta predeterminada.
     pub fn default_loaded() -> Self {
-        Self::loaded(ADDR_FILE)
+        Self::loaded(get_root_path(ADDR_FILE).as_str())
     }
 
     /// Carga el mapa de IDs de nodos más las IPs.
@@ -255,6 +256,6 @@ impl AddrLoader {
 
 impl Default for AddrLoader {
     fn default() -> Self {
-        Self::new(ADDR_FILE, None)
+        Self::new(get_root_path(ADDR_FILE).as_str(), None)
     }
 }

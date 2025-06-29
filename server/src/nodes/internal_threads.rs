@@ -37,6 +37,7 @@ use {
         thread::{sleep, spawn, Builder},
         time::Duration,
     },
+    utils::get_root_path::get_root_path,
 };
 
 /// Un stream TLS.
@@ -275,7 +276,7 @@ fn listen_single_client(
 }
 
 fn configure_tls() -> Result<Arc<ServerConfig>> {
-    let private_key_file = "custom.key";
+    let private_key_file = get_root_path("custom.key");
     let certs: Vec<CertificateDer<'_>> = handle_pem_file_iter()?;
     let private_key = match PrivateKeyDer::from_pem_file(private_key_file) {
         Ok(value) => value,
