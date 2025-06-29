@@ -75,8 +75,7 @@ impl TryFrom<&str> for ContinentType {
             "OC" => Ok(Self::Oceania),
             "SA" => Ok(Self::SouthAmerica),
             _ => Err(Error::ServerError(format!(
-                "'{}' no es un código de continente válido.",
-                continent
+                "'{continent}' no es un código de continente válido."
             ))),
         }
     }

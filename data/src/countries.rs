@@ -107,8 +107,7 @@ impl Country {
         }
 
         Err(Error::ServerError(format!(
-            "No hay un país con código '{}' entre los datos.",
-            country_code
+            "No hay un país con código '{country_code}' entre los datos."
         )))
     }
 

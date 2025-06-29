@@ -147,8 +147,7 @@ impl Airport {
             Ok(lat) => lat,
             Err(_) => {
                 return Err(Error::ServerError(format!(
-                    "'{}' no es un formato de latitud válido.",
-                    lat_str
+                    "'{lat_str}' no es un formato de latitud válido."
                 )))
             }
         };
@@ -156,8 +155,7 @@ impl Airport {
             Ok(lon) => lon,
             Err(_) => {
                 return Err(Error::ServerError(format!(
-                    "'{}' no es un formato de longitud válido.",
-                    lon_str
+                    "'{lon_str}' no es un formato de longitud válido."
                 )))
             }
         };
