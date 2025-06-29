@@ -66,7 +66,7 @@ impl CollectionType {
 /// Verifica si el token actual es el esperado. Si no es el esperado, retorna un error.
 pub fn expect_token(tokens: &mut Vec<String>, expected: &str) -> Result<()> {
     if tokens.is_empty() || tokens[0] != expected {
-        Err(Error::SyntaxError(format!("Expected token: {}", expected)))
+        Err(Error::SyntaxError(format!("Expected token: {expected}")))
     } else {
         tokens.remove(0);
         Ok(())
