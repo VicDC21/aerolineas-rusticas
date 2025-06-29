@@ -449,10 +449,7 @@ impl std::fmt::Display for SvAction {
                 write!(f, "Syn({emissor_id}, {gossip_info:?})")
             }
             Self::Ack(receptor_id, gossip_info, nodes_map) => {
-                write!(
-                    f,
-                    "Ack({receptor_id}, {gossip_info:?}, {nodes_map:?})"
-                )
+                write!(f, "Ack({receptor_id}, {gossip_info:?}, {nodes_map:?})")
             }
             Self::Ack2(nodes_map) => write!(f, "Ack2({nodes_map:?})"),
             Self::NewNeighbour(id, state) => write!(f, "NewNeighbour({id}, {state:?})"),

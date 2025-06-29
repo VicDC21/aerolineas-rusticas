@@ -224,8 +224,7 @@ impl SessionHandler {
                 self.syn(emissor_id, gossip_info)?;
                 self.logger
                     .info(
-                        format!("Procesamiento de SYN desde nodo {emissor_id} completado")
-                            .as_str(),
+                        format!("Procesamiento de SYN desde nodo {emissor_id} completado").as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
@@ -236,8 +235,7 @@ impl SessionHandler {
                 self.ack(receptor_id, gossip_info, nodes_map)?;
                 self.logger
                     .info(
-                        format!("Procesamiento de ACK para nodo {receptor_id} completado")
-                            .as_str(),
+                        format!("Procesamiento de ACK para nodo {receptor_id} completado").as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
@@ -265,9 +263,7 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.read()?.send_endpoint_state(id, ip);
                 self.logger
-                    .info(
-                        format!("Estado del endpoint enviado al nodo {id} exitosamente").as_str(),
-                    )
+                    .info(format!("Estado del endpoint enviado al nodo {id} exitosamente").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::InternalQuery(bytes) => {
@@ -315,8 +311,7 @@ impl SessionHandler {
                 if let Err(err) = tcp_stream.flush() {
                     self.logger
                         .error(
-                            format!("Error al enviar respuesta de lectura directa: {err}")
-                                .as_str(),
+                            format!("Error al enviar respuesta de lectura directa: {err}").as_str(),
                         )
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                     return Err(Error::ServerError(err.to_string()));
@@ -334,8 +329,7 @@ impl SessionHandler {
                 if let Err(err) = tcp_stream.flush() {
                     self.logger
                         .error(
-                            format!("Error al enviar respuesta de lectura digest: {err}")
-                                .as_str(),
+                            format!("Error al enviar respuesta de lectura digest: {err}").as_str(),
                         )
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                     return Err(Error::ServerError(err.to_string()));
@@ -452,17 +446,14 @@ impl SessionHandler {
             SvAction::UpdateReplicas(node_id, is_deletion) => {
                 self.logger
                     .debug(
-                        format!("Iniciando actualización de réplicas para nodo {node_id}")
-                            .as_str(),
+                        format!("Iniciando actualización de réplicas para nodo {node_id}").as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.update_node_replicas(node_id, is_deletion)?;
                 self.logger
                     .info(
-                        format!(
-                            "Réplicas actualizadas exitosamente para el nodo {node_id}"
-                        )
-                        .as_str(),
+                        format!("Réplicas actualizadas exitosamente para el nodo {node_id}")
+                            .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
@@ -475,10 +466,8 @@ impl SessionHandler {
                 self.write()?.add_relocated_rows(node_id, rows)?;
                 self.logger
                     .info(
-                        format!(
-                            "Filas relocalizadas del nodo {node_id} agregadas exitosamente"
-                        )
-                        .as_str(),
+                        format!("Filas relocalizadas del nodo {node_id} agregadas exitosamente")
+                            .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
@@ -500,8 +489,7 @@ impl SessionHandler {
                 self.write()?.node_leaving(node_id, AppStatus::Left)?;
                 self.logger
                     .info(
-                        format!("Nodo {node_id} marcado como saliente (AppStatus::Left)")
-                            .as_str(),
+                        format!("Nodo {node_id} marcado como saliente (AppStatus::Left)").as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
@@ -512,10 +500,8 @@ impl SessionHandler {
                 self.write()?.node_leaving(node_id, AppStatus::Remove)?;
                 self.logger
                     .info(
-                        format!(
-                            "Nodo {node_id} marcado como eliminado (AppStatus::Remove)"
-                        )
-                        .as_str(),
+                        format!("Nodo {node_id} marcado como eliminado (AppStatus::Remove)")
+                            .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
@@ -525,9 +511,7 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.read()?.notify_node_is_gonna_be_deleted(node_id)?;
                 self.logger
-                    .info(
-                        format!("Notificación de eliminación enviada al nodo {node_id}").as_str(),
-                    )
+                    .info(format!("Notificación de eliminación enviada al nodo {node_id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
         };
@@ -2469,12 +2453,16 @@ fn read_metadata_from_internal_request(
     internal_metadata: Vec<Byte>,
 ) -> (Option<Long>, Option<Byte>) {
     if internal_metadata.len() == 9 {
-        let bytes: [Byte; 8] = internal_metadata[0..8].try_into().unwrap_or([5, 5, 5, 5, 5, 5, 5, 5]);
+        let bytes: [Byte; 8] = internal_metadata[0..8]
+            .try_into()
+            .unwrap_or([5, 5, 5, 5, 5, 5, 5, 5]);
         let timestamp = Long::from_be_bytes(bytes);
         let node_id = internal_metadata[8];
         return (Some(timestamp), Some(node_id));
     } else if internal_metadata.len() == 8 {
-        let bytes: [Byte; 8] = internal_metadata[0..8].try_into().unwrap_or([5, 5, 5, 5, 5, 5, 5, 5]);
+        let bytes: [Byte; 8] = internal_metadata[0..8]
+            .try_into()
+            .unwrap_or([5, 5, 5, 5, 5, 5, 5, 5]);
         let timestamp = Long::from_be_bytes(bytes);
         return (Some(timestamp), None);
     } else if internal_metadata.len() == 1 {

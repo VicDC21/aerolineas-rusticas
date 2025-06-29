@@ -241,9 +241,7 @@ pub fn load_init_queries() -> Vec<String> {
         let mut cur_queries = match queries_from_source(path_str) {
             Ok(valid_ones) => valid_ones,
             Err(err) => {
-                println!(
-                    "No se pudo agregar las queries en '{path_str}':\n\n{err}"
-                );
+                println!("No se pudo agregar las queries en '{path_str}':\n\n{err}");
                 continue;
             }
         };

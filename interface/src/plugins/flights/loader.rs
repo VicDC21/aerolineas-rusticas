@@ -171,9 +171,7 @@ impl FlightsLoader {
 
                         if let Some(login_info) = login_info_opt {
                             if let Err(login_err) = con_info.login(&login_info) {
-                                println!(
-                                    "Error al loguearse en el hilo cargador:\n\n{login_err}"
-                                );
+                                println!("Error al loguearse en el hilo cargador:\n\n{login_err}");
                             }
                         }
 
@@ -194,9 +192,9 @@ impl FlightsLoader {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{err}");
                         }
                     }
-                    Err(err) => println!(
-                        "Ocurrió un error esperando mensajes del hilo principal:\n\n{err}"
-                    ),
+                    Err(err) => {
+                        println!("Ocurrió un error esperando mensajes del hilo principal:\n\n{err}")
+                    }
                 }
             }
 
@@ -238,9 +236,7 @@ impl FlightsLoader {
 
                         if let Some(login_info) = login_info_opt {
                             if let Err(login_err) = con_info.login(&login_info) {
-                                println!(
-                                    "Error al loguearse en el hilo cargador:\n\n{login_err}"
-                                );
+                                println!("Error al loguearse en el hilo cargador:\n\n{login_err}");
                             }
                         }
 
@@ -260,9 +256,9 @@ impl FlightsLoader {
                             println!("Error al mandar a hilo principal los vuelos:\n\n{err}");
                         }
                     }
-                    Err(err) => println!(
-                        "Ocurrió un error esperando mensajes del hilo principal:\n\n{err}"
-                    ),
+                    Err(err) => {
+                        println!("Ocurrió un error esperando mensajes del hilo principal:\n\n{err}")
+                    }
                 }
             }
 
@@ -443,12 +439,12 @@ impl FlightsLoader {
         };
 
         let query = match flight_type {
-            FlightType::Incoming => format!(
-                "SELECT * FROM vuelos_entrantes_en_vivo WHERE dest = '{iata_code}';"
-            ),
-            FlightType::Departing => format!(
-                "SELECT * FROM vuelos_salientes_en_vivo WHERE orig = '{iata_code}';"
-            ),
+            FlightType::Incoming => {
+                format!("SELECT * FROM vuelos_entrantes_en_vivo WHERE dest = '{iata_code}';")
+            }
+            FlightType::Departing => {
+                format!("SELECT * FROM vuelos_salientes_en_vivo WHERE orig = '{iata_code}';")
+            }
         };
 
         let mut flights_by_id = LiveDataMap::new();
@@ -559,9 +555,7 @@ impl Plugin for &mut FlightsLoader {
                 self.date.timestamp(),
                 cloned_login_info(relogin_fl),
             )) {
-                println!(
-                    "Error al enviar timestamp al cargador de vuelos entrantes:\n\n{err}"
-                );
+                println!("Error al enviar timestamp al cargador de vuelos entrantes:\n\n{err}");
             }
 
             let ((_, dep_fl_sender), _) = &mut self.departing_fl_child;
@@ -570,9 +564,7 @@ impl Plugin for &mut FlightsLoader {
                 self.date.timestamp(),
                 cloned_login_info(relogin_fl),
             )) {
-                println!(
-                    "Error al enviar timestamp al cargador de vuelos salientes:\n\n{err}"
-                );
+                println!("Error al enviar timestamp al cargador de vuelos salientes:\n\n{err}");
             }
         }
 

@@ -187,9 +187,8 @@ impl DiskHandler {
         table_name: &str,
         node_number: NodeId,
     ) -> Result<()> {
-        let table_addr = format!(
-            "{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv"
-        );
+        let table_addr =
+            format!("{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv");
         let file = OpenOptions::new()
             .append(true)
             .open(&table_addr)
@@ -365,9 +364,8 @@ impl DiskHandler {
         columns_names: &[String],
         node_number: Byte,
     ) -> Result<()> {
-        let table_addr = format!(
-            "{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv"
-        );
+        let table_addr =
+            format!("{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv");
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -403,9 +401,8 @@ impl DiskHandler {
         table_name: &str,
         node_number: Byte,
     ) -> Result<()> {
-        let table_addr = format!(
-            "{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv"
-        );
+        let table_addr =
+            format!("{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv");
         std::fs::remove_file(table_addr).map_err(|e| Error::ServerError(e.to_string()))
     }
 

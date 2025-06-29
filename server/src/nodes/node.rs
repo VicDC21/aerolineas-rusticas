@@ -580,9 +580,7 @@ impl Node {
 
     /// Envia su endpoint state al nodo del ID correspondiente.
     pub fn send_endpoint_state(&self, id: NodeId, ip: String) {
-        println!(
-            "Voy a agregar al nodo {id} de ip {ip} a la lista de nodos"
-        );
+        println!("Voy a agregar al nodo {id} de ip {ip} a la lista de nodos");
         let _ = DiskHandler::store_new_node_id_and_ip(id, &ip);
         let _ = send_to_node(
             id,

@@ -335,9 +335,7 @@ impl NodesGraph {
                 SvAction::SendEndpointState(id, "".to_string()).as_bytes(),
                 PortType::Priv,
             ) {
-                println!(
-                    "Ocurrió un error presentando vecinos de un nodo:\n\n{err}"
-                );
+                println!("Ocurrió un error presentando vecinos de un nodo:\n\n{err}");
             }
         }
     }

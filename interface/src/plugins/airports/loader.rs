@@ -101,14 +101,12 @@ impl AirportsLoader {
                         );
 
                         if let Err(err) = to_parent.send((airports, cache.len())) {
-                            println!(
-                                "Error al mandar a hilo principal los aeropuertos:\n\n{err}"
-                            );
+                            println!("Error al mandar a hilo principal los aeropuertos:\n\n{err}");
                         }
                     }
-                    Err(err) => println!(
-                        "Ocurrió un error esperando mensajes del hilo principal:\n\n{err}"
-                    ),
+                    Err(err) => {
+                        println!("Ocurrió un error esperando mensajes del hilo principal:\n\n{err}")
+                    }
                 }
             }
 
