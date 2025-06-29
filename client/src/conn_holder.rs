@@ -41,8 +41,7 @@ impl ConnectionHolder {
             Err(poison_err) => {
                 self.client.clear_poison();
                 Err(Error::ServerError(format!(
-                    "Error de lock envenenado:\n\n{}",
-                    poison_err
+                    "Error de lock envenenado:\n\n{poison_err}"
                 )))
             }
             Ok(mut client) => {
