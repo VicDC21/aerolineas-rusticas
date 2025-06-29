@@ -105,15 +105,13 @@ pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result
         Ok(tcpstream) => tcpstream,
         Err(err) => {
             return Err(Error::ServerError(format!(
-                "No se pudo conectar al nodo con ID {} el error fue {:?}",
-                id, err
+                "No se pudo conectar al nodo con ID {id} el error fue {err:?}"
             )));
         }
     };
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
-            "No se pudo escribir el contenido en {}",
-            addr
+            "No se pudo escribir el contenido en {addr}"
         )));
     }
     Ok(())
@@ -135,8 +133,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
         Ok(tcpstream) => tcpstream,
         Err(_) => {
             return Err(Error::ServerError(format!(
-                "No se pudo conectar al nodo con ID {}",
-                id
+                "No se pudo conectar al nodo con ID {id}"
             )));
         }
     };
@@ -148,13 +145,12 @@ pub fn send_to_node_and_wait_response_with_timeout(
 
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
-            "No se pudo escribir el contenido en {}",
-            addr
+            "No se pudo escribir el contenido en {addr}"
         )));
     }
     // para asegurarse de que se vacía el stream antes de escuchar de nuevo.
     if let Err(err) = stream.flush() {
-        println!("Error haciendo flush desde el servidor:\n\n{}", err);
+        println!("Error haciendo flush desde el servidor:\n\n{err}");
     }
     let mut buf = Vec::<Byte>::new();
 
@@ -163,14 +159,14 @@ pub fn send_to_node_and_wait_response_with_timeout(
             if let Err(err) =
                 stream.set_read_timeout(Some(std::time::Duration::from_secs(timeout_secs)))
             {
-                println!("Error estableciendo timeout en el nodo:\n\n{}", err)
+                println!("Error estableciendo timeout en el nodo:\n\n{err}")
             }
         }
         match stream.read_to_end(&mut buf) {
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                println!("Timeout alcanzado al esperar respuesta del nodo {}", id);
+                println!("Timeout alcanzado al esperar respuesta del nodo {id}");
             }
-            Err(err) => println!("Error recibiendo response del nodo {}:\n\n{}", id, err),
+            Err(err) => println!("Error recibiendo response del nodo {id}:\n\n{err}"),
             Ok(i) => {
                 println!(
                     "Se recibió del nodo [{}] {} bytes: {}",
@@ -192,8 +188,7 @@ pub fn queries_from_source(path: &str) -> Result<Vec<String>> {
         Ok(f) => f,
         Err(file_err) => {
             return Err(Error::ServerError(format!(
-                "Error abriendo el archivo:\n\n{}",
-                file_err
+                "Error abriendo el archivo:\n\n{file_err}"
             )));
         }
     };
@@ -214,7 +209,7 @@ pub fn load_init_queries() -> Vec<String> {
 
     match read_dir(get_root_path(INIT_QUERIES_PATH)) {
         Err(err) => {
-            println!("Ocurrió un error al buscar las queries iniciales:\n\n{}\nSe utilizará un vector vacío.", err);
+            println!("Ocurrió un error al buscar las queries iniciales:\n\n{err}\nSe utilizará un vector vacío.");
         }
         Ok(paths) => {
             for dir_entry in paths.map_while(IOResult::ok) {
@@ -247,8 +242,7 @@ pub fn load_init_queries() -> Vec<String> {
             Ok(valid_ones) => valid_ones,
             Err(err) => {
                 println!(
-                    "No se pudo agregar las queries en '{}':\n\n{}",
-                    path_str, err
+                    "No se pudo agregar las queries en '{path_str}':\n\n{err}"
                 );
                 continue;
             }

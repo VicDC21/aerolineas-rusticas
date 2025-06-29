@@ -76,16 +76,12 @@ impl AddrLoader {
             let node_id_str = splitted[0];
             let ip_str = splitted[1];
 
-            let node_id = match node_id_str.parse::<NodeId>() {
-                Ok(valid) => Some(valid),
-                Err(_) => None,
-            };
+            let node_id = node_id_str.parse::<NodeId>().ok();
             let ip = match ip_str.parse::<IpAddr>() {
                 Ok(valid) => valid,
                 Err(parse_err) => {
                     return Err(Error::ServerError(format!(
-                        "IP de nodo malformada. '{}' no es un valor válido:\n\n{}",
-                        ip_str, parse_err
+                        "IP de nodo malformada. '{ip_str}' no es un valor válido:\n\n{parse_err}"
                     )));
                 }
             };
@@ -134,7 +130,7 @@ impl AddrLoader {
                     Some(id) => id.to_string(),
                     None => "".to_string(),
                 };
-                let _ = bufwriter.write_all(format!("\n{},{}", node_id_str, ip).as_bytes());
+                let _ = bufwriter.write_all(format!("\n{node_id_str},{ip}").as_bytes());
             }
         }
 
@@ -167,8 +163,7 @@ impl AddrLoader {
         }
 
         Err(Error::ServerError(format!(
-            "No se encontró una dirección IP que coincida con el ID {}.",
-            asked_id,
+            "No se encontró una dirección IP que coincida con el ID {asked_id}.",
         )))
     }
 
@@ -198,8 +193,7 @@ impl AddrLoader {
         }
 
         Err(Error::ServerError(format!(
-            "No se encontró un ID de nodo que coincida con la IP {}.",
-            ip_addr
+            "No se encontró un ID de nodo que coincida con la IP {ip_addr}."
         )))
     }
 
@@ -240,8 +234,7 @@ impl AddrLoader {
         }
 
         Err(Error::ServerError(format!(
-            "No se encontró un socket de nodo que coincida con el ID de nodo {}.",
-            node_id
+            "No se encontró un socket de nodo que coincida con el ID de nodo {node_id}."
         )))
     }
 

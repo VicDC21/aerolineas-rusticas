@@ -30,8 +30,7 @@ impl ThreadPool {
         if n_threads == 0 {
             // Un usize no puede ser negativo
             return Err(Error::ServerError(format!(
-                "{} no es un número de hilos válidos para el ThreadPool.",
-                n_threads
+                "{n_threads} no es un número de hilos válidos para el ThreadPool."
             )));
         }
 
@@ -54,8 +53,7 @@ impl ThreadPool {
         let job = Box::new(f);
         if let Err(send_err) = self.sender.send(JobType::NewTask(job)) {
             return Err(Error::ServerError(format!(
-                "Error mandando código a worker:\n\n{}",
-                send_err
+                "Error mandando código a worker:\n\n{send_err}"
             )));
         }
         Ok(())

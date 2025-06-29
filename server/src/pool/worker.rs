@@ -31,7 +31,7 @@ impl Worker {
 
     /// Intenta crear una nueva instancia del _worker_.
     pub fn build(id: usize, receiver: JobReceiver) -> Result<Self> {
-        let builder = Builder::new().name(format!("worker_{}", id));
+        let builder = Builder::new().name(format!("worker_{id}"));
 
         // Extraemos el closure en una variable let
         let worker_closure = move || -> Result<()> {
@@ -40,8 +40,7 @@ impl Worker {
                     Err(poison_err) => {
                         receiver.clear_poison();
                         return Err(Error::ServerError(format!(
-                            "Se detectó un lock envenenado en el worker ({}):\n\n{}",
-                            id, poison_err
+                            "Se detectó un lock envenenado en el worker ({id}):\n\n{poison_err}"
                         )));
                     }
                     Ok(lock) => lock,
@@ -50,8 +49,7 @@ impl Worker {
                 match lock.recv() {
                     Err(recv_err) => {
                         return Err(Error::ServerError(format!(
-                            "Ocurrió un error al recibir una tarea en el worker ({}):\n\n{}",
-                            id, recv_err
+                            "Ocurrió un error al recibir una tarea en el worker ({id}):\n\n{recv_err}"
                         )));
                     }
                     Ok(job_type) => match job_type {
@@ -73,8 +71,7 @@ impl Worker {
             Ok(created) => created,
             Err(thread_err) => {
                 return Err(Error::ServerError(format!(
-                    "Error creando hilo para worker ({}):\n\n{}",
-                    id, thread_err
+                    "Error creando hilo para worker ({id}):\n\n{thread_err}"
                 )));
             }
         };

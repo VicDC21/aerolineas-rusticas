@@ -119,7 +119,7 @@ impl NodesGraph {
 
         // Corremos los scripts iniciales
         if let Err(err) = self.send_init_queries() {
-            println!("Error en las queries iniciales:\n{}", err);
+            println!("Error en las queries iniciales:\n{err}");
         }
 
         let _ = gossiper.join();
@@ -137,7 +137,7 @@ impl NodesGraph {
         let queries = load_init_queries();
 
         for (i, query) in queries.iter().enumerate() {
-            let stream_id = match format!("{}{}", node_id, i).parse::<ShortInt>() {
+            let stream_id = match format!("{node_id}{i}").parse::<ShortInt>() {
                 Ok(stream_id) => stream_id,
                 Err(_) => node_id as ShortInt + i as ShortInt,
             };
@@ -162,8 +162,7 @@ impl NodesGraph {
                 }
                 Err(err) => {
                     println!(
-                        "Ocurrió un error al crear el frame para una request inicial:\n\n{}",
-                        err
+                        "Ocurrió un error al crear el frame para una request inicial:\n\n{err}"
                     );
                 }
             }
@@ -281,8 +280,7 @@ impl NodesGraph {
                 handlers.append(&mut node_listeners);
             } else {
                 return Err(Error::ServerError(format!(
-                    "No se encontró el archivo de metadata del nodo {}",
-                    current_id
+                    "No se encontró el archivo de metadata del nodo {current_id}"
                 )));
             }
         }
@@ -338,8 +336,7 @@ impl NodesGraph {
                 PortType::Priv,
             ) {
                 println!(
-                    "Ocurrió un error presentando vecinos de un nodo:\n\n{}",
-                    err
+                    "Ocurrió un error presentando vecinos de un nodo:\n\n{err}"
                 );
             }
         }
@@ -393,33 +390,30 @@ fn create_client_and_private_conexion(
         Ok(handler) => handler,
         Err(err) => {
             return Err(Error::ServerError(format!(
-                "Error creando un SessionHandler para el nodo: [{}]:\n\n{}",
-                current_id, err
+                "Error creando un SessionHandler para el nodo: [{current_id}]:\n\n{err}"
             )));
         }
     };
     let cli_node = sendable_node.clone();
     let priv_node = sendable_node.clone();
 
-    let cli_builder = Builder::new().name(format!("{}_cli", current_id));
+    let cli_builder = Builder::new().name(format!("{current_id}_cli"));
     let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));
     match cli_res {
         Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
         Err(err) => {
             return Err(Error::ServerError(format!(
-                "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
-                i, err
+                "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{i}]:\n\n{err}"
             )));
         }
     }
-    let priv_builder = Builder::new().name(format!("{}_priv", current_id));
+    let priv_builder = Builder::new().name(format!("{current_id}_priv"));
     let priv_res = priv_builder.spawn(move || priv_listen(priv_socket, priv_node));
     match priv_res {
         Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
         Err(err) => {
             return Err(Error::ServerError(format!(
-                "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
-                i, err
+                "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{i}]:\n\n{err}"
             )));
         }
     }
@@ -440,14 +434,12 @@ fn increase_heartbeat_and_store_nodes(
         for node_id in &ids {
             if send_to_node(*node_id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
                 return Err(Error::ServerError(format!(
-                    "Error enviando mensaje de heartbeat a nodo {}",
-                    node_id
+                    "Error enviando mensaje de heartbeat a nodo {node_id}"
                 )));
             }
             if send_to_node(*node_id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
                 return Err(Error::ServerError(format!(
-                    "Error enviando mensaje de almacenamiento de metadata a nodo {}",
-                    node_id
+                    "Error enviando mensaje de almacenamiento de metadata a nodo {node_id}"
                 )));
             }
         }
@@ -502,7 +494,7 @@ fn exec_gossip(
                 SvAction::Gossip(neighbours).as_bytes(),
                 PortType::Priv,
             ) {
-                println!("Ocurrió un error enviando mensaje de gossip:\n\n{}", err);
+                println!("Ocurrió un error enviando mensaje de gossip:\n\n{err}");
             }
         }
     }

@@ -93,7 +93,7 @@ impl SessionHandler {
         .map_err(|e| Error::ServerError(e.to_string()))?;
 
         logger
-            .info(format!("Creando un nuevo SessionHandler para el nodo con ID {}", id).as_str())
+            .info(format!("Creando un nuevo SessionHandler para el nodo con ID {id}").as_str())
             .map_err(|e| Error::ServerError(e.to_string()))?;
 
         Ok(SessionHandler {
@@ -170,7 +170,7 @@ impl SessionHandler {
             Some(action) => {
                 if let Err(err) = self.handle_sv_action(action, stream) {
                     self.logger
-                        .error(format!("Error en la acción del servidor: {}", err).as_str())
+                        .error(format!("Error en la acción del servidor: {err}").as_str())
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                 }
                 Ok(vec![])
@@ -185,7 +185,7 @@ impl SessionHandler {
         S: Read + Write,
     {
         self.logger
-            .info(format!("Iniciando manejo de acción: {:?}", action).as_str())
+            .info(format!("Iniciando manejo de acción: {action:?}").as_str())
             .map_err(|e| Error::ServerError(e.to_string()))?;
 
         let mut stop = false;
@@ -219,24 +219,24 @@ impl SessionHandler {
             }
             SvAction::Syn(emissor_id, gossip_info) => {
                 self.logger
-                    .debug(format!("Recibido SYN desde nodo {}", emissor_id).as_str())
+                    .debug(format!("Recibido SYN desde nodo {emissor_id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.syn(emissor_id, gossip_info)?;
                 self.logger
                     .info(
-                        format!("Procesamiento de SYN desde nodo {} completado", emissor_id)
+                        format!("Procesamiento de SYN desde nodo {emissor_id} completado")
                             .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::Ack(receptor_id, gossip_info, nodes_map) => {
                 self.logger
-                    .debug(format!("Recibido ACK para nodo {}", receptor_id).as_str())
+                    .debug(format!("Recibido ACK para nodo {receptor_id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.ack(receptor_id, gossip_info, nodes_map)?;
                 self.logger
                     .info(
-                        format!("Procesamiento de ACK para nodo {} completado", receptor_id)
+                        format!("Procesamiento de ACK para nodo {receptor_id} completado")
                             .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
@@ -252,36 +252,36 @@ impl SessionHandler {
             }
             SvAction::NewNeighbour(id, state) => {
                 self.logger
-                    .info(format!("Nuevo vecino detectado: Nodo {}", id).as_str())
+                    .info(format!("Nuevo vecino detectado: Nodo {id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.add_neighbour_state(id, state)?;
                 self.logger
-                    .info(format!("Estado del vecino (Nodo {}) agregado exitosamente", id).as_str())
+                    .info(format!("Estado del vecino (Nodo {id}) agregado exitosamente").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::SendEndpointState(id, ip) => {
                 self.logger
-                    .debug(format!("Enviando estado del endpoint al nodo {}", id).as_str())
+                    .debug(format!("Enviando estado del endpoint al nodo {id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.read()?.send_endpoint_state(id, ip);
                 self.logger
                     .info(
-                        format!("Estado del endpoint enviado al nodo {} exitosamente", id).as_str(),
+                        format!("Estado del endpoint enviado al nodo {id} exitosamente").as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::InternalQuery(bytes) => {
                 self.logger
-                    .debug(format!("Recibida query interna: {:?}", bytes).as_str())
+                    .debug(format!("Recibida query interna: {bytes:?}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 let response = self.handle_request(&bytes, true, true);
                 self.logger
-                    .debug(format!("Enviando respuesta a query interna: {:?}", response).as_str())
+                    .debug(format!("Enviando respuesta a query interna: {response:?}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
                     self.logger
-                        .error(format!("Error al enviar respuesta: {}", err).as_str())
+                        .error(format!("Error al enviar respuesta: {err}").as_str())
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                     return Err(Error::ServerError(err.to_string()));
                 };
@@ -295,7 +295,7 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 if let Err(err) = DiskHandler::store_node_metadata(self.write()?) {
                     self.logger
-                        .error(format!("Error al guardar metadata: {}", err).as_str())
+                        .error(format!("Error al guardar metadata: {err}").as_str())
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                     return Err(Error::ServerError(format!(
                         "Error guardando metadata del nodo {}: {}",
@@ -315,7 +315,7 @@ impl SessionHandler {
                 if let Err(err) = tcp_stream.flush() {
                     self.logger
                         .error(
-                            format!("Error al enviar respuesta de lectura directa: {}", err)
+                            format!("Error al enviar respuesta de lectura directa: {err}")
                                 .as_str(),
                         )
                         .map_err(|e| Error::ServerError(e.to_string()))?;
@@ -334,7 +334,7 @@ impl SessionHandler {
                 if let Err(err) = tcp_stream.flush() {
                     self.logger
                         .error(
-                            format!("Error al enviar respuesta de lectura digest: {}", err)
+                            format!("Error al enviar respuesta de lectura digest: {err}")
                                 .as_str(),
                         )
                         .map_err(|e| Error::ServerError(e.to_string()))?;
@@ -364,8 +364,7 @@ impl SessionHandler {
                 self.logger
                     .debug(
                         format!(
-                            "Verificando valor de partición {} para la tabla {}",
-                            partition_value, table_name
+                            "Verificando valor de partición {partition_value} para la tabla {table_name}"
                         )
                         .as_str(),
                     )
@@ -384,8 +383,7 @@ impl SessionHandler {
                         self.logger
                             .debug(
                                 format!(
-                                    "Agregando nuevos valores de partición para la tabla {}",
-                                    table_name
+                                    "Agregando nuevos valores de partición para la tabla {table_name}"
                                 )
                                 .as_str(),
                             )
@@ -401,8 +399,7 @@ impl SessionHandler {
                         self.logger
                             .warning(
                                 format!(
-                                    "No se encontraron nuevos valores de partición para la tabla {}",
-                                    table_name
+                                    "No se encontraron nuevos valores de partición para la tabla {table_name}"
                                 )
                                 .as_str(),
                             )
@@ -412,7 +409,7 @@ impl SessionHandler {
             }
             SvAction::SendMetadata(node_id) => {
                 self.logger
-                    .debug(format!("Iniciando envío de metadatos al nodo {}", node_id).as_str())
+                    .debug(format!("Iniciando envío de metadatos al nodo {node_id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 let response = self.read()?.get_metadata_to_new_node_as_bytes()?;
                 send_to_node(
@@ -421,7 +418,7 @@ impl SessionHandler {
                     PortType::Priv,
                 )?;
                 self.logger
-                    .info(format!("Metadatos enviados exitosamente al nodo {}", node_id).as_str())
+                    .info(format!("Metadatos enviados exitosamente al nodo {node_id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::ReceiveMetadata(metadata) => {
@@ -455,7 +452,7 @@ impl SessionHandler {
             SvAction::UpdateReplicas(node_id, is_deletion) => {
                 self.logger
                     .debug(
-                        format!("Iniciando actualización de réplicas para nodo {}", node_id)
+                        format!("Iniciando actualización de réplicas para nodo {node_id}")
                             .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
@@ -463,8 +460,7 @@ impl SessionHandler {
                 self.logger
                     .info(
                         format!(
-                            "Réplicas actualizadas exitosamente para el nodo {}",
-                            node_id
+                            "Réplicas actualizadas exitosamente para el nodo {node_id}"
                         )
                         .as_str(),
                     )
@@ -473,15 +469,14 @@ impl SessionHandler {
             SvAction::AddRelocatedRows(node_id, rows) => {
                 self.logger
                     .warning(
-                        format!("Agregando filas relocalizadas desde el nodo {}", node_id).as_str(),
+                        format!("Agregando filas relocalizadas desde el nodo {node_id}").as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.add_relocated_rows(node_id, rows)?;
                 self.logger
                     .info(
                         format!(
-                            "Filas relocalizadas del nodo {} agregadas exitosamente",
-                            node_id
+                            "Filas relocalizadas del nodo {node_id} agregadas exitosamente"
                         )
                         .as_str(),
                     )
@@ -500,26 +495,25 @@ impl SessionHandler {
             }
             SvAction::NodeIsLeaving(node_id) => {
                 self.logger
-                    .warning(format!("Registrando salida del nodo {}", node_id).as_str())
+                    .warning(format!("Registrando salida del nodo {node_id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.node_leaving(node_id, AppStatus::Left)?;
                 self.logger
                     .info(
-                        format!("Nodo {} marcado como saliente (AppStatus::Left)", node_id)
+                        format!("Nodo {node_id} marcado como saliente (AppStatus::Left)")
                             .as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::NodeDeleted(node_id) => {
                 self.logger
-                    .warning(format!("Registrando eliminación del nodo {}", node_id).as_str())
+                    .warning(format!("Registrando eliminación del nodo {node_id}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.write()?.node_leaving(node_id, AppStatus::Remove)?;
                 self.logger
                     .info(
                         format!(
-                            "Nodo {} marcado como eliminado (AppStatus::Remove)",
-                            node_id
+                            "Nodo {node_id} marcado como eliminado (AppStatus::Remove)"
                         )
                         .as_str(),
                     )
@@ -527,12 +521,12 @@ impl SessionHandler {
             }
             SvAction::NodeToDelete(node_id) => {
                 self.logger
-                    .warning(format!("Preparando nodo {} para su eliminación", node_id).as_str())
+                    .warning(format!("Preparando nodo {node_id} para su eliminación").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 self.read()?.notify_node_is_gonna_be_deleted(node_id)?;
                 self.logger
                     .info(
-                        format!("Notificación de eliminación enviada al nodo {}", node_id).as_str(),
+                        format!("Notificación de eliminación enviada al nodo {node_id}").as_str(),
                     )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
@@ -561,12 +555,12 @@ impl SessionHandler {
 
                 if let Err(err) = stream.write_all(&bytes) {
                     self.logger
-                        .error(&format!("Error al escribir en el TCPStream:\n\n{}", err))
+                        .error(&format!("Error al escribir en el TCPStream:\n\n{err}"))
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                 }
                 if let Err(err) = stream.flush() {
                     self.logger
-                        .error(&format!("Error haciendo flush desde el nodo:\n\n{}", err))
+                        .error(&format!("Error haciendo flush desde el nodo:\n\n{err}"))
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                 }
             }
@@ -575,7 +569,7 @@ impl SessionHandler {
                 let _ = stream.write_all(&res[..]);
                 if let Err(err) = stream.flush() {
                     self.logger
-                        .error(&format!("Error haciendo flush desde el nodo:\n\n{}", err))
+                        .error(&format!("Error haciendo flush desde el nodo:\n\n{err}"))
                         .map_err(|e| Error::ServerError(e.to_string()))?;
                 }
                 return Ok(res);
@@ -881,8 +875,7 @@ impl SessionHandler {
         let node_reader = self.read()?;
         if !node_reader.keyspaces.contains_key(keyspace_name) && !alter_keyspace.if_exists {
             return Err(Error::ServerError(format!(
-                "El keyspace {} no existe",
-                keyspace_name
+                "El keyspace {keyspace_name} no existe"
             )));
         }
         let nodes_quantity = node_reader.get_actual_n_nodes();
@@ -918,8 +911,7 @@ impl SessionHandler {
         let node_reader = self.read()?;
         if !node_reader.keyspaces.contains_key(keyspace_name) && !drop_keyspace.if_exists {
             return Err(Error::ServerError(format!(
-                "El keyspace {} no existe",
-                keyspace_name
+                "El keyspace {keyspace_name} no existe"
             )));
         }
         let nodes_ids = node_reader.get_nodes_ids();
@@ -1068,8 +1060,7 @@ impl SessionHandler {
                         }
                     }
                     Err(err) => return Err(Error::ServerError(format!(
-                        "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}: {}",
-                        consistency_level, consistency_counter, consistency_number, err,
+                        "No se pudo cumplir con el nivel de consistencia {consistency_level}, solo se logró con {consistency_counter} de {consistency_number}: {err}",
                     ))),
                 }
                 // Una vez que todo fue reparado, queremos reenviar la query para obtener el resultado
@@ -1128,8 +1119,7 @@ impl SessionHandler {
                     Ok(res) => res,
                     Err(err) => {
                         return Err(Error::ServerError(format!(
-                            "Error al enviar la query al nodo {}: {}",
-                            node_id, err
+                            "Error al enviar la query al nodo {node_id}: {err}"
                         )));
                     }
                 }
@@ -1307,8 +1297,7 @@ impl SessionHandler {
                 Ok(res) => res,
                 Err(err) => {
                     return Err(Error::ServerError(format!(
-                        "Error al enviar la query al nodo {}: {}",
-                        node_to_consult, err
+                        "Error al enviar la query al nodo {node_to_consult}: {err}"
                     )));
                 }
             };
@@ -1516,8 +1505,7 @@ impl SessionHandler {
 
         if consistency_counter < consistency_number {
             Err(Error::ServerError(format!(
-                "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
-                consistency_level, consistency_counter, consistency_number,
+                "No se pudo cumplir con el nivel de consistencia {consistency_level}, solo se logró con {consistency_counter} de {consistency_number}",
             )))
         } else {
             Ok(response)
@@ -1667,8 +1655,7 @@ impl SessionHandler {
 
                 if consistency_counter < consistency_number {
                     return Err(Error::ServerError(format!(
-                        "No se pudo cumplir con el nivel de consistencia {}, solo se logró con {} de {}",
-                        consistency_level, consistency_counter, consistency_number,
+                        "No se pudo cumplir con el nivel de consistencia {consistency_level}, solo se logró con {consistency_counter} de {consistency_number}",
                     )));
                 }
             }
@@ -1836,8 +1823,7 @@ impl SessionHandler {
         }
         if consistency_counter < consistency_number {
             return Err(Error::ServerError(format!(
-                "No se pudo cumplir con el nivel de consistencia, solo se logró con {} de {}",
-                consistency_counter, consistency_number,
+                "No se pudo cumplir con el nivel de consistencia, solo se logró con {consistency_counter} de {consistency_number}",
             )));
         };
         Ok(())
@@ -1997,7 +1983,7 @@ impl SessionHandler {
         if ready_nodes_counter == n_nodes {
             if node_deleted != -1 {
                 self.logger
-                    .info(format!("Se borra al nodo {}", node_deleted).as_str())
+                    .info(format!("Se borra al nodo {node_deleted}").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
                 DiskHandler::delete_node_id_and_ip(node_deleted as u8)?;
                 self.write()?
@@ -2079,7 +2065,7 @@ impl SessionHandler {
                 // Pero para el logger si generamos un log de advertencia/aviso
                 self.write()?.acknowledge_offline_neighbour(neighbour_id);
                 self.logger
-                    .warning(format!("Se pone al nodo {} en estado Offline", neighbour_id).as_str())
+                    .warning(format!("Se pone al nodo {neighbour_id} en estado Offline").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             // }
@@ -2112,12 +2098,11 @@ impl SessionHandler {
         ) {
             if let Err(log_err) = self.logger.error(
                 format!(
-                    "Ocurrió un error al mandar un mensaje ACK al nodo [{}]:\n\n{}",
-                    emissor_id, err
+                    "Ocurrió un error al mandar un mensaje ACK al nodo [{emissor_id}]:\n\n{err}"
                 )
                 .as_str(),
             ) {
-                println!("Error logging message: {}", log_err);
+                println!("Error logging message: {log_err}");
             }
         }
         Ok(())
@@ -2187,12 +2172,11 @@ impl SessionHandler {
         ) {
             if let Err(log_err) = self.logger.error(
                 format!(
-                    "Ocurrió un error al mandar un mensaje ACK2 al nodo [{}]:\n\n{}",
-                    receptor_id, err
+                    "Ocurrió un error al mandar un mensaje ACK2 al nodo [{receptor_id}]:\n\n{err}"
                 )
                 .as_str(),
             ) {
-                println!("Error logging message: {}", log_err);
+                println!("Error logging message: {log_err}");
             }
         }
         Ok(())
@@ -2248,8 +2232,7 @@ impl SessionHandler {
         let node_writer = self.write()?;
         if !node_writer.table_exists(&table_name) {
             return Err(Error::ServerError(format!(
-                "La tabla `{}` no existe",
-                table_name
+                "La tabla `{table_name}` no existe"
             )));
         }
 
@@ -2257,8 +2240,7 @@ impl SessionHandler {
         let keyspace_name = table.get_keyspace();
         if !node_writer.keyspace_exists(keyspace_name) {
             return Err(Error::ServerError(format!(
-                "El keyspace `{}` asociado a la tabla `{}` no existe",
-                keyspace_name, table_name
+                "El keyspace `{keyspace_name}` asociado a la tabla `{table_name}` no existe"
             )));
         }
         let rows = String::from_utf8(rows_bytes)
@@ -2487,18 +2469,12 @@ fn read_metadata_from_internal_request(
     internal_metadata: Vec<Byte>,
 ) -> (Option<Long>, Option<Byte>) {
     if internal_metadata.len() == 9 {
-        let bytes: [Byte; 8] = match internal_metadata[0..8].try_into() {
-            Ok(value) => value,
-            Err(_err) => [5, 5, 5, 5, 5, 5, 5, 5], // nunca pasa
-        };
+        let bytes: [Byte; 8] = internal_metadata[0..8].try_into().unwrap_or([5, 5, 5, 5, 5, 5, 5, 5]);
         let timestamp = Long::from_be_bytes(bytes);
         let node_id = internal_metadata[8];
         return (Some(timestamp), Some(node_id));
     } else if internal_metadata.len() == 8 {
-        let bytes: [Byte; 8] = match internal_metadata[0..8].try_into() {
-            Ok(value) => value,
-            Err(_err) => [5, 5, 5, 5, 5, 5, 5, 5], // nunca pasa
-        };
+        let bytes: [Byte; 8] = internal_metadata[0..8].try_into().unwrap_or([5, 5, 5, 5, 5, 5, 5, 5]);
         let timestamp = Long::from_be_bytes(bytes);
         return (Some(timestamp), None);
     } else if internal_metadata.len() == 1 {

@@ -98,8 +98,7 @@ impl TryFrom<&[Byte]> for HeartbeatState {
         let bytes_len = bytes.len();
         if bytes_len < 16 {
             return Err(Error::ServerError(format!(
-                "Se esperaba al menos 16 bytes para el estado de heartbeat, no {}.",
-                bytes_len
+                "Se esperaba al menos 16 bytes para el estado de heartbeat, no {bytes_len}."
             )));
         }
 

@@ -88,7 +88,7 @@ impl DiskHandler {
 
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
     pub fn get_node_storage(id: NodeId) -> String {
-        format!("{}/{}_{}", STORAGE_PATH, STORAGE_NODE_PATH, id)
+        format!("{STORAGE_PATH}/{STORAGE_NODE_PATH}_{id}")
     }
 
     /// Crea un directorio a partir de una ruta.
@@ -97,8 +97,7 @@ impl DiskHandler {
         if !path_folder.exists() && !path_folder.is_dir() {
             create_dir(path_folder).map_err(|e| {
                 Error::ServerError(format!(
-                    "No se pudo crear la carpeta de almacenamiento {}: {}",
-                    path, e
+                    "No se pudo crear la carpeta de almacenamiento {path}: {e}"
                 ))
             })?;
         }
@@ -107,7 +106,7 @@ impl DiskHandler {
 
     /// Obtiene la ruta de almacenamiento de los metadatos de un nodo dado su ID.
     pub fn get_node_metadata_path(id: NodeId) -> String {
-        format!("{}/{}_{}.json", NODES_METADATA_PATH, NODE_METADATA_PATH, id)
+        format!("{NODES_METADATA_PATH}/{NODE_METADATA_PATH}_{id}.json")
     }
 
     /// Almacena los metadatos de un nodo en un archivo JSON.
@@ -132,7 +131,7 @@ impl DiskHandler {
 
         let mut writer = BufWriter::new(&file);
         writer
-            .write_all(format!("{},{}\n", id, ip).as_bytes())
+            .write_all(format!("{id},{ip}\n").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
         Ok(())
     }
@@ -189,8 +188,7 @@ impl DiskHandler {
         node_number: NodeId,
     ) -> Result<()> {
         let table_addr = format!(
-            "{}/{}/{}_replica_node_{}.csv",
-            storage_addr, keyspace_name, table_name, node_number
+            "{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv"
         );
         let file = OpenOptions::new()
             .append(true)
@@ -237,15 +235,14 @@ impl DiskHandler {
         storage_addr: &str,
     ) -> Result<Option<Keyspace>> {
         let keyspace_name = statement.keyspace_name.get_name();
-        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let keyspace_addr = format!("{storage_addr}/{keyspace_name}");
         let path_folder = Path::new(&keyspace_addr);
         if path_folder.exists() && path_folder.is_dir() {
             if statement.if_not_exist {
                 return Ok(None);
             } else {
                 return Err(Error::ServerError(format!(
-                    "El keyspace {} ya existe",
-                    keyspace_name
+                    "El keyspace {keyspace_name} ya existe"
                 )));
             }
         } else {
@@ -264,12 +261,11 @@ impl DiskHandler {
 
     /// Crea el directorio de un keyspace.
     pub fn create_keyspace_dir(keyspace_name: &str, storage_addr: &str) -> Result<()> {
-        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let keyspace_addr = format!("{storage_addr}/{keyspace_name}");
         let path_folder = Path::new(&keyspace_addr);
         if path_folder.exists() && path_folder.is_dir() {
             return Err(Error::ServerError(format!(
-                "El directorio del keyspace {} ya existe",
-                keyspace_name
+                "El directorio del keyspace {keyspace_name} ya existe"
             )));
         } else {
             create_dir(path_folder).map_err(|e| Error::ServerError(e.to_string()))?;
@@ -279,21 +275,19 @@ impl DiskHandler {
 
     /// Elimina un keyspace en el caso que corresponda.
     pub fn drop_keyspace(keyspace_name: &str, storage_addr: &str) -> Result<()> {
-        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let keyspace_addr = format!("{storage_addr}/{keyspace_name}");
         let path_folder = Path::new(&keyspace_addr);
 
         if path_folder.exists() && path_folder.is_dir() {
             std::fs::remove_dir_all(path_folder).map_err(|e| {
                 Error::ServerError(format!(
-                    "Error al eliminar el keyspace {}: {}",
-                    keyspace_name, e
+                    "Error al eliminar el keyspace {keyspace_name}: {e}"
                 ))
             })?;
             Ok(())
         } else {
             Err(Error::ServerError(format!(
-                "El directorio del keyspace {} no existe",
-                keyspace_name
+                "El directorio del keyspace {keyspace_name} no existe"
             )))
         }
     }
@@ -372,8 +366,7 @@ impl DiskHandler {
         node_number: Byte,
     ) -> Result<()> {
         let table_addr = format!(
-            "{}/{}/{}_replica_node_{}.csv",
-            storage_addr, keyspace_name, table_name, node_number
+            "{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv"
         );
         let file = OpenOptions::new()
             .write(true)
@@ -381,8 +374,7 @@ impl DiskHandler {
             .open(&table_addr)
             .map_err(|e| {
                 Error::ServerError(format!(
-                    "No se pudo crear la tabla con dirección `{}` para escritura: {}",
-                    table_addr, e
+                    "No se pudo crear la tabla con dirección `{table_addr}` para escritura: {e}"
                 ))
             })?;
 
@@ -391,16 +383,14 @@ impl DiskHandler {
             .write_all(columns_names.join(",").as_bytes())
             .map_err(|e| {
                 Error::ServerError(format!(
-                    "No se pudo escribir las columnas en la tabla con dirección `{}`: {}",
-                    table_addr, e
+                    "No se pudo escribir las columnas en la tabla con dirección `{table_addr}`: {e}"
                 ))
             })?;
         writer
             .write_all((",row_timestamp\n").as_bytes())
             .map_err(|e| {
                 Error::ServerError(format!(
-                    "No se pudo escribir las columnas en la tabla con dirección `{}`: {}",
-                    table_addr, e
+                    "No se pudo escribir las columnas en la tabla con dirección `{table_addr}`: {e}"
                 ))
             })?;
         Ok(())
@@ -414,8 +404,7 @@ impl DiskHandler {
         node_number: Byte,
     ) -> Result<()> {
         let table_addr = format!(
-            "{}/{}/{}_replica_node_{}.csv",
-            storage_addr, keyspace_name, table_name, node_number
+            "{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv"
         );
         std::fs::remove_file(table_addr).map_err(|e| Error::ServerError(e.to_string()))
     }
@@ -1013,13 +1002,12 @@ impl DiskHandler {
             Some(keyspace) => keyspace,
             None => default_keyspace.to_string(),
         };
-        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let keyspace_addr = format!("{storage_addr}/{keyspace_name}");
         let path_folder = Path::new(&keyspace_addr);
 
         if !path_folder.exists() && !path_folder.is_dir() {
             return Err(Error::ServerError(format!(
-                "El keyspace {} no existe",
-                keyspace_name
+                "El keyspace {keyspace_name} no existe"
             )));
         }
 
@@ -1041,7 +1029,7 @@ impl DiskHandler {
         if statement
             .primary_key
             .as_ref()
-            .map_or(true, |pk| pk.clustering_columns.is_empty())
+            .is_none_or(|pk| pk.clustering_columns.is_empty())
         {
             return Ok(None);
         }
@@ -1077,16 +1065,14 @@ impl DiskHandler {
                     Ok(order) => order,
                     Err(_) => {
                         return Err(Error::Invalid(format!(
-                            "La dirección de ordenación {} no es válida",
-                            order
+                            "La dirección de ordenación {order} no es válida"
                         )))
                     }
                 };
                 clustering_keys_and_order[j] = (key.to_string(), order);
             } else {
                 return Err(Error::Invalid(format!(
-                    "La columna {} no es parte de la clave de clustering",
-                    key
+                    "La columna {key} no es parte de la clave de clustering"
                 )));
             }
         }

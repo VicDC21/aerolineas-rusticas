@@ -42,8 +42,7 @@ impl TryFrom<&[Byte]> for ConnectionMode {
             0x0 => Ok(Self::Echo),
             0x1 => Ok(Self::Parsing),
             _ => Err(Error::ServerError(format!(
-                "El ID '{}' no corresponde a ningún modo de conexión.",
-                first
+                "El ID '{first}' no corresponde a ningún modo de conexión."
             ))),
         }
     }

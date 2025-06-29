@@ -13,6 +13,6 @@ fn main() {
         NodesGraph::parsing_mode()
     };
     if let Err(err) = graph.init() {
-        println!("{}", err);
+        println!("{err}");
     }
 }
