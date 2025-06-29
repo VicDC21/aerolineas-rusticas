@@ -87,8 +87,7 @@ impl TryFrom<&[Byte]> for EventType {
                         Ok(Self::TopologyChange(change_type, ipaddr))
                     }
                     _ => Err(Error::ConfigError(format!(
-                        "'{}' no es un tipo de cambio válido para {}.",
-                        change_type, event_type
+                        "'{change_type}' no es un tipo de cambio válido para {event_type}."
                     ))),
                 }
             }
@@ -100,8 +99,7 @@ impl TryFrom<&[Byte]> for EventType {
                         Ok(Self::StatusChange(change_type, ipaddr))
                     }
                     _ => Err(Error::ConfigError(format!(
-                        "'{}' no es un tipo de cambio válido para {}.",
-                        change_type, event_type
+                        "'{change_type}' no es un tipo de cambio válido para {event_type}."
                     ))),
                 }
             }
@@ -121,8 +119,7 @@ impl TryFrom<&[Byte]> for EventType {
                 ))
             }
             _ => Err(Error::ConfigError(format!(
-                "'{}' no parece ser un tipo de evento válido.",
-                event_type
+                "'{event_type}' no parece ser un tipo de evento válido."
             ))),
         }
     }
