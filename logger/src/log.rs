@@ -48,22 +48,6 @@ impl fmt::Display for LogLevel {
     }
 }
 
-// Configuración para la rotación de archivos
-#[derive(Clone)]
-pub struct RotationConfig {
-    max_size: u64,  // Tamaño máximo del archivo en bytes
-    max_files: u32, // Número máximo de archivos de respaldo
-}
-
-impl Default for RotationConfig {
-    fn default() -> Self {
-        Self {
-            max_size: 10 * 1024 * 1024, // 10MB por defecto
-            max_files: 5,
-        }
-    }
-}
-
 // Configuración para el formato de los mensajes
 #[derive(Clone)]
 pub struct LogFormatter {
@@ -84,7 +68,6 @@ impl Default for LogFormatter {
 pub struct Logger {
     log_file: PathBuf,
     min_level: LogLevel,
-    rotation_config: RotationConfig,
     formatter: LogFormatter,
 }
 
@@ -94,7 +77,6 @@ impl Logger {
         dir: &Path,
         ip: &str,
         min_level: LogLevel,
-        rotation_config: Option<RotationConfig>,
         formatter: Option<LogFormatter>,
     ) -> Result<Self, LoggerError> {
         // Nos aseguramos de que el directorio existe
@@ -111,22 +93,9 @@ impl Logger {
             .open(&log_file)
             .map_err(LoggerError::from)?;
 
-        let rotation_config = match rotation_config {
-            Some(config) => {
-                if config.max_files == 0 {
-                    return Err(LoggerError::InvalidPath(
-                        "El número máximo de archivos debe ser mayor a cero".to_string(),
-                    ));
-                }
-                config
-            }
-            None => RotationConfig::default(),
-        };
-
         Ok(Self {
             log_file,
             min_level,
-            rotation_config,
             formatter: formatter.unwrap_or_default(),
         })
     }
@@ -137,9 +106,6 @@ impl Logger {
         if level < self.min_level {
             return Ok(());
         }
-
-        // Verificamos si necesitamos rotar el archivo
-        self.rotate_if_needed()?;
 
         // Formateamos el mensaje
         let timestamp = Utc::now()
@@ -169,37 +135,6 @@ impl Logger {
         file.write_all(log_msg.as_bytes())
             .map_err(LoggerError::from)?;
         file.flush().map_err(LoggerError::from)?;
-
-        Ok(())
-    }
-
-    /// Implementa la rotación de archivos cuando sea necesario
-    fn rotate_if_needed(&self) -> Result<(), LoggerError> {
-        let metadata = fs::metadata(&self.log_file)?;
-
-        if metadata.len() > self.rotation_config.max_size {
-            // Movemos los archivos existentes
-            for i in (1..self.rotation_config.max_files).rev() {
-                let current = self.log_file.with_extension(format!("log.{}", i));
-                let next = self.log_file.with_extension(format!("log.{}", i + 1));
-
-                if current.exists() {
-                    if i == self.rotation_config.max_files - 1 {
-                        fs::remove_file(current)?;
-                    } else {
-                        fs::rename(current, next)?;
-                    }
-                }
-            }
-
-            fs::rename(&self.log_file, self.log_file.with_extension("log.1"))?;
-
-            OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&self.log_file)?;
-        }
 
         Ok(())
     }
@@ -265,7 +200,6 @@ mod tests {
             "127.0.0.1:8080",
             LogLevel::Trace,
             None,
-            None,
         )
         .expect("Error al crear el logger");
 
@@ -314,7 +248,6 @@ mod tests {
             "127.0.0.1:8080",
             LogLevel::Info,
             None,
-            None,
         )
         .expect("Error al crear el logger");
 
@@ -351,7 +284,6 @@ mod tests {
             temp_dir.path(),
             "127.0.0.1:8080",
             LogLevel::Info,
-            None,
             Some(formatter),
         )
         .expect("Error al crear el logger");
@@ -368,42 +300,11 @@ mod tests {
     }
 
     #[test]
-    fn test_rotation() {
-        let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
-
-        let rotation_config = RotationConfig {
-            max_size: 100,
-            max_files: 3,
-        };
-
-        let logger = Logger::new(
-            temp_dir.path(),
-            "127.0.0.1:8080",
-            LogLevel::Info,
-            Some(rotation_config),
-            None,
-        )
-        .expect("Error al crear el logger");
-
-        for i in 0..10 {
-            logger
-                .info(&format!("Mensaje largo de prueba número {}", i))
-                .expect("Error al registrar mensaje");
-        }
-
-        assert!(temp_dir.path().join("node_127.0.0.1_8080.log").exists());
-        assert!(temp_dir.path().join("node_127.0.0.1_8080.log.1").exists());
-        assert!(temp_dir.path().join("node_127.0.0.1_8080.log.2").exists());
-        assert!(!temp_dir.path().join("node_127.0.0.1_8080.log.4").exists());
-    }
-
-    #[test]
     fn test_invalid_directory() {
         let result = Logger::new(
             Path::new("/path/that/definitely/does/not/exist"),
             "127.0.0.1:8080",
             LogLevel::Info,
-            None,
             None,
         );
 
