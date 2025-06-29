@@ -19,7 +19,7 @@ use {
         utils::printable_bytes,
     },
     chrono::Utc,
-    logger::log::{LogFormatter, LogLevel, Logger},
+    logger::log::{LogLevel, Logger},
     parser::{
         data_types::keyspace_name::KeyspaceName,
         main_parser::make_parse,
@@ -88,7 +88,6 @@ impl SessionHandler {
             Path::new(NODES_LOGS_PATH),
             &node.endpoint_state.get_addr().to_string(),
             LogLevel::Info,
-            Some(LogFormatter::default()),
         )
         .map_err(|e| Error::ServerError(e.to_string()))?;
 
@@ -2452,24 +2451,22 @@ fn verify_succesful_response(response: &[Byte]) -> bool {
 fn read_metadata_from_internal_request(
     internal_metadata: Vec<Byte>,
 ) -> (Option<Long>, Option<Byte>) {
-    if internal_metadata.len() == 9 {
-        let bytes: [Byte; 8] = internal_metadata[0..8]
-            .try_into()
-            .unwrap_or([5, 5, 5, 5, 5, 5, 5, 5]);
-        let timestamp = Long::from_be_bytes(bytes);
-        let node_id = internal_metadata[8];
-        return (Some(timestamp), Some(node_id));
-    } else if internal_metadata.len() == 8 {
-        let bytes: [Byte; 8] = internal_metadata[0..8]
-            .try_into()
-            .unwrap_or([5, 5, 5, 5, 5, 5, 5, 5]);
-        let timestamp = Long::from_be_bytes(bytes);
-        return (Some(timestamp), None);
-    } else if internal_metadata.len() == 1 {
-        let node_id = internal_metadata[0];
-        return (None, Some(node_id));
+    match internal_metadata.as_slice() {
+        [ts @ .., node_id] if ts.len() == 8 => {
+            let mut bytes = [0u8; 8];
+            bytes.copy_from_slice(ts);
+            let timestamp = Long::from_be_bytes(bytes);
+            (Some(timestamp), Some(*node_id))
+        }
+        ts if ts.len() == 8 => {
+            let mut bytes = [0u8; 8];
+            bytes.copy_from_slice(ts);
+            let timestamp = Long::from_be_bytes(bytes);
+            (Some(timestamp), None)
+        }
+        [node_id] => (None, Some(*node_id)),
+        _ => (None, None),
     }
-    (None, None)
 }
 
 /// Agrega metadata, como el timestamp o el node_id si es necesario, sino no agrega estos campos.

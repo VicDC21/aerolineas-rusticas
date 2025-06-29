@@ -273,9 +273,13 @@ fn listen_single_client(
 }
 
 fn configure_tls() -> Result<Arc<ServerConfig>> {
-    let private_key_file = get_root_path("custom.key");
+    let private_key_file = get_root_path("custom.key").map_err(|e| {
+        Error::ServerError(format!(
+            "No se pudo obtener la ruta del archivo de clave privada: {e}"
+        ))
+    })?;
     let certs: Vec<CertificateDer<'_>> = handle_pem_file_iter()?;
-    let private_key = match PrivateKeyDer::from_pem_file(private_key_file) {
+    let private_key = match PrivateKeyDer::from_pem_file(private_key_file.as_str()) {
         Ok(value) => value,
         Err(_) => {
             return Err(Error::ServerError(

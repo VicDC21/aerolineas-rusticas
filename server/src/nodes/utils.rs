@@ -207,7 +207,14 @@ pub fn load_init_queries() -> Vec<String> {
     let mut queries = Vec::<String>::new();
     let mut queries_paths = Vec::<PathBuf>::new();
 
-    match read_dir(get_root_path(INIT_QUERIES_PATH)) {
+    let init_queries_path = match get_root_path(INIT_QUERIES_PATH) {
+        Ok(path) => path,
+        Err(e) => {
+            println!("No se pudo obtener la ruta de las queries iniciales: {e}\nSe utilizará un vector vacío.");
+            return queries;
+        }
+    };
+    match read_dir(init_queries_path.as_str()) {
         Err(err) => {
             println!("Ocurrió un error al buscar las queries iniciales:\n\n{err}\nSe utilizará un vector vacío.");
         }

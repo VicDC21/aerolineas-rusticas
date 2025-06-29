@@ -95,7 +95,12 @@ impl Country {
 
     /// Crea una nueva instancia a partir del código de país.
     pub fn try_from_code(country_code: &str) -> Result<Self> {
-        let reader = reader_from(get_root_path(COUNTRIES_PATH).as_str(), true)?;
+        let path = get_root_path(COUNTRIES_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de países: {e}"
+            ))
+        })?;
+        let reader = reader_from(path.as_str(), true)?;
 
         for line in reader.lines().map_while(IOResult::ok) {
             let tokens = get_tokens(&line, ',', MIN_COUNTRIES_ELEMS)?;
@@ -120,7 +125,12 @@ impl Country {
     ///
     /// </div>
     pub fn get_all() -> Result<CountriesMap> {
-        let reader = reader_from(get_root_path(COUNTRIES_PATH).as_str(), true)?;
+        let path = get_root_path(COUNTRIES_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de países: {e}"
+            ))
+        })?;
+        let reader = reader_from(path.as_str(), true)?;
         let mut countries = CountriesMap::new();
 
         for line in reader.lines().map_while(IOResult::ok) {

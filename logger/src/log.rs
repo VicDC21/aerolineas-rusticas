@@ -73,12 +73,7 @@ pub struct Logger {
 
 impl Logger {
     /// Crea una nueva instancia del logger con configuración personalizada
-    pub fn new(
-        dir: &Path,
-        ip: &str,
-        min_level: LogLevel,
-        formatter: Option<LogFormatter>,
-    ) -> Result<Self, LoggerError> {
+    pub fn new(dir: &Path, ip: &str, min_level: LogLevel) -> Result<Self, LoggerError> {
         // Nos aseguramos de que el directorio existe
         if !dir.is_dir() {
             fs::create_dir_all(dir).map_err(LoggerError::from)?;
@@ -96,7 +91,7 @@ impl Logger {
         Ok(Self {
             log_file,
             min_level,
-            formatter: formatter.unwrap_or_default(),
+            formatter: LogFormatter::default(),
         })
     }
 
@@ -195,7 +190,7 @@ mod tests {
     // Función auxiliar para crear un directorio temporal y un logger para pruebas
     fn setup_test_logger() -> (TempDir, Logger) {
         let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
-        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Trace, None)
+        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Trace)
             .expect("Error al crear el logger");
 
         (temp_dir, logger)
@@ -238,7 +233,7 @@ mod tests {
     fn test_log_level_filtering() {
         let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
 
-        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Info, None)
+        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Info)
             .expect("Error al crear el logger");
 
         logger
@@ -262,40 +257,11 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_formatter() {
-        let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
-
-        let formatter = LogFormatter {
-            timestamp_format: "%H:%M:%S".to_string(),
-            message_template: "TEST-{level}: {message}".to_string(),
-        };
-
-        let logger = Logger::new(
-            temp_dir.path(),
-            "127.0.0.1:8080",
-            LogLevel::Info,
-            Some(formatter),
-        )
-        .expect("Error al crear el logger");
-
-        logger
-            .info("Mensaje de prueba")
-            .expect("Error al registrar mensaje");
-
-        let log_content = fs::read_to_string(temp_dir.path().join("node_127.0.0.1_8080.log"))
-            .expect("Error al leer el archivo de log");
-
-        assert!(log_content.contains("TEST-INFO"));
-        assert!(!log_content.contains("[INFO]"));
-    }
-
-    #[test]
     fn test_invalid_directory() {
         let result = Logger::new(
             Path::new("/path/that/definitely/does/not/exist"),
             "127.0.0.1:8080",
             LogLevel::Info,
-            None,
         );
 
         assert!(result.is_err());

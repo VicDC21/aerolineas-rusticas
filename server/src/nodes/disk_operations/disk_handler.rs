@@ -124,10 +124,20 @@ impl DiskHandler {
 
     /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.
     pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) -> Result<()> {
-        let file = OpenOptions::new()
-            .append(true)
-            .open(get_root_path(NODES_IPS_PATH).as_str())
-            .expect("No se pudo abrir el archivo de IPs de nodos");
+        let file = match get_root_path(NODES_IPS_PATH) {
+            Ok(path) => OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path.as_str())
+                .map_err(|e| {
+                    Error::ServerError(format!("No se pudo abrir el archivo de IPs de nodos: {e}"))
+                })?,
+            Err(e) => {
+                return Err(Error::ServerError(format!(
+                    "No se pudo obtener la ruta del archivo de IPs de nodos: {e}"
+                )));
+            }
+        };
 
         let mut writer = BufWriter::new(&file);
         writer
@@ -138,10 +148,19 @@ impl DiskHandler {
 
     /// Borra el nodo según el ID dado del archivo de IPs de los nodos `node_ips.csv`.
     pub fn delete_node_id_and_ip(id: NodeId) -> Result<()> {
+        let path = get_root_path(NODES_IPS_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de IPs de nodos: {e}"
+            ))
+        })?;
         let file = OpenOptions::new()
             .read(true)
-            .open(get_root_path(NODES_IPS_PATH).as_str())
-            .expect("No se pudo abrir el archivo de IPs de nodos para lectura");
+            .open(path.as_str())
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo abrir el archivo de IPs de nodos para lectura: {e}"
+                ))
+            })?;
         let reader = BufReader::new(&file);
         let mut new_rows: Vec<String> = Vec::new();
         for line in reader.lines() {
@@ -164,11 +183,20 @@ impl DiskHandler {
         let mut new_content = new_rows.join("\n");
         new_content.push('\n');
 
+        let path = get_root_path(NODES_IPS_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de IPs de nodos: {e}"
+            ))
+        })?;
         let file = OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(get_root_path(NODES_IPS_PATH).as_str())
-            .expect("No se pudo abrir el archivo de IPs de nodos para escritura");
+            .open(path.as_str())
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo abrir el archivo de IPs de nodos para escritura: {e}"
+                ))
+            })?;
         let mut writer = BufWriter::new(&file);
         if writer.write_all(new_content.as_bytes()).is_err() {
             return Err(Error::ServerError(
@@ -1247,7 +1275,12 @@ impl DiskHandler {
 
     /// Lee la tabla de usuarios y contraseñas, y los devuelve como vector de tuplas.
     pub fn read_admitted_users(_storage_addr: &str) -> Result<Vec<(String, String)>> {
-        let file = match File::open(get_root_path("users.csv")) {
+        let path = get_root_path("users.csv").map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de usuarios: {e}"
+            ))
+        })?;
+        let file = match File::open(path.as_str()) {
             Ok(value) => value,
             Err(_err) => {
                 return Err(Error::ServerError(

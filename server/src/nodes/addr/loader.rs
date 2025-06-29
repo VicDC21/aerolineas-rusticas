@@ -50,7 +50,10 @@ impl AddrLoader {
     ///
     /// Utiliza la ruta predeterminada.
     pub fn default_loaded() -> Self {
-        Self::loaded(get_root_path(ADDR_FILE).as_str())
+        match get_root_path(ADDR_FILE) {
+            Ok(path) => Self::loaded(&path),
+            Err(_) => Self::default(),
+        }
     }
 
     /// Carga el mapa de IDs de nodos más las IPs.
@@ -249,6 +252,6 @@ impl AddrLoader {
 
 impl Default for AddrLoader {
     fn default() -> Self {
-        Self::new(get_root_path(ADDR_FILE).as_str(), None)
+        Self::new(ADDR_FILE, None)
     }
 }

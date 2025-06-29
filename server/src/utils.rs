@@ -58,8 +58,12 @@ pub fn printable_bytes<'a>(bytes: impl IntoIterator<Item = &'a Byte>) -> String 
 
 /// Maneja los results que se devuelven al cargar el certificado
 pub fn handle_pem_file_iter() -> Result<Vec<CertificateDer<'static>>> {
-    let cert_file = get_root_path("cert.pem");
-    let certs: Vec<CertificateDer<'_>> = match CertificateDer::pem_file_iter(cert_file) {
+    let cert_file = get_root_path("cert.pem").map_err(|e| {
+        Error::Invalid(format!(
+            "No se pudo obtener la ruta del archivo de certificados: {e}"
+        ))
+    })?;
+    let certs: Vec<CertificateDer<'_>> = match CertificateDer::pem_file_iter(cert_file.as_str()) {
         Ok(certs_iter) => certs_iter
             .map(|cert_res| {
                 cert_res.map_err(|_| Error::Invalid("No se pudo leer un certificado".to_string()))

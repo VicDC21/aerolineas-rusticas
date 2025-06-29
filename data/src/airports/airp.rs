@@ -240,7 +240,12 @@ impl Airport {
         tolerance: &Double,
         countries_cache: &CountriesMap,
     ) -> Result<Vec<Self>> {
-        let reader = reader_from(get_root_path(AIRPORTS_PATH).as_str(), true)?;
+        let path = get_root_path(AIRPORTS_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de aeropuertos: {e}"
+            ))
+        })?;
+        let reader = reader_from(path.as_str(), true)?;
         let mut airports = Vec::<Self>::new();
 
         for line in reader.lines().map_while(IOResult::ok) {
@@ -281,7 +286,12 @@ impl Airport {
         area: (Double, Double, Double, Double),
         countries_cache: &CountriesMap,
     ) -> Result<Vec<Self>> {
-        let reader = reader_from(get_root_path(AIRPORTS_PATH).as_str(), true)?;
+        let path = get_root_path(AIRPORTS_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de aeropuertos: {e}"
+            ))
+        })?;
+        let reader = reader_from(path.as_str(), true)?;
         let mut airports = Vec::<Self>::new();
 
         for line in reader.lines().map_while(IOResult::ok) {
@@ -322,7 +332,12 @@ impl Airport {
     pub fn get_all() -> Result<AirportsMap> {
         let mut airports = AirportsMap::new();
         let countries_cache = Country::get_all()?;
-        let reader = reader_from(get_root_path(AIRPORTS_PATH).as_str(), true)?;
+        let path = get_root_path(AIRPORTS_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de aeropuertos: {e}"
+            ))
+        })?;
+        let reader = reader_from(path.as_str(), true)?;
 
         for line in reader.lines().map_while(IOResult::ok) {
             let tokens = get_tokens(&line, ',', MIN_AIRPORTS_ELEMS)?;
@@ -346,7 +361,12 @@ impl Airport {
     pub fn get_all_channel(sender: Sender<AirportsMap>) -> Result<()> {
         let mut airports = AirportsMap::new();
         let countries_cache = Country::get_all()?;
-        let reader = reader_from(get_root_path(AIRPORTS_PATH).as_str(), true)?;
+        let path = get_root_path(AIRPORTS_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de aeropuertos: {e}"
+            ))
+        })?;
+        let reader = reader_from(path.as_str(), true)?;
         let sendable_step = 500; // mandar cada 100 iteraciones
 
         for (i, line) in reader.lines().map_while(IOResult::ok).enumerate() {
