@@ -97,13 +97,12 @@ fn validate_airports<'a>(
     destination: &str,
 ) -> Result<(&'a Airport, &'a Airport)> {
     let origin_airport = simulator.airports.get(origin).ok_or_else(|| {
-        Error::ServerError(format!("Aeropuerto de origen '{}' no encontrado", origin))
+        Error::ServerError(format!("Aeropuerto de origen '{origin}' no encontrado"))
     })?;
 
     let destination_airport = simulator.airports.get(destination).ok_or_else(|| {
         Error::ServerError(format!(
-            "Aeropuerto de destino '{}' no encontrado",
-            destination
+            "Aeropuerto de destino '{destination}' no encontrado"
         ))
     })?;
 

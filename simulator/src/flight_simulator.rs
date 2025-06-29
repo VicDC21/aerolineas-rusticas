@@ -139,8 +139,7 @@ impl FlightSimulator {
     ) -> Result<()> {
         if self.get_flight_data(flight_id).is_some() {
             return Err(Error::ServerError(format!(
-                "El vuelo con id {} ya existe",
-                flight_id
+                "El vuelo con id {flight_id} ya existe"
             )));
         }
 
@@ -209,7 +208,7 @@ impl Default for FlightSimulator {
         match Self::new(8, false) {
             Ok(simulator) => simulator,
             Err(err) => {
-                eprintln!("{}", err);
+                eprintln!("{err}");
                 exit(1);
             }
         }
