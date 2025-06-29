@@ -7,7 +7,7 @@ use {
         {run_native, NativeOptions},
     },
     protocol::{aliases::results::Result, errors::error::Error::ServerError},
-    std::io::{Error as IoError, ErrorKind},
+    std::io::Error as IoError,
 };
 
 /// Corre la aplicación.
