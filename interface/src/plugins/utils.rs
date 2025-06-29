@@ -30,8 +30,7 @@ pub fn load_egui_img(path: &str) -> StdResult<ColorImage, ImageError> {
 pub fn load_airport_image(path: &str, airport: &Airport, context: &Context) -> Result<Image> {
     match load_egui_img(path) {
         Err(err) => Err(Error::ServerError(format!(
-            "No se pudo cargar la imagen:\n{}",
-            err
+            "No se pudo cargar la imagen:\n{err}"
         ))),
         Ok(img) => {
             let texture = Texture::from_color_image(img, context);

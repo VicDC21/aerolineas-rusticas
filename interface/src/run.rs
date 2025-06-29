@@ -21,14 +21,13 @@ pub fn run_app() -> Result<()> {
         Box::new(|cc| match AerolineasApp::new(cc.egui_ctx.clone()) {
             Ok(app) => Ok(Box::new(app)),
             Err(err) => {
-                let error = IoError::new(ErrorKind::Other, err.to_string());
+                let error = IoError::other(err.to_string());
                 Err(Box::new(error))
             }
         }),
     ) {
         return Err(ServerError(format!(
-            "Ha ocurrido un error al correr la aplicación:\n\n{}",
-            err
+            "Ha ocurrido un error al correr la aplicación:\n\n{err}"
         )));
     }
     Ok(())

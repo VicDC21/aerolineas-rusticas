@@ -254,10 +254,10 @@ fn show_flights(
             .max_height(250.0)
             .max_width(ctx.screen_rect().width() / 3.5)
             .animated(true)
-            .id_salt(format!("scroll_{}", flight_type))
+            .id_salt(format!("scroll_{flight_type}"))
             .show(ui, |scroll_ui| {
                 if flights.is_empty() {
-                    show_loading_spinner(scroll_ui, format!("Loading {} flights...", flight_type));
+                    show_loading_spinner(scroll_ui, format!("Loading {flight_type} flights..."));
                 }
 
                 for flight in flights.iter() {
@@ -288,7 +288,7 @@ fn show_flights(
                         FlightType::Departing => "Take Off:",
                     };
                     scroll_ui.label(
-                        RichText::new(format!("\t{:<15}{:>30}", tiemstamp_msg, potential_date))
+                        RichText::new(format!("\t{tiemstamp_msg:<15}{potential_date:>30}"))
                             .italics()
                             .color(text_color)
                             .font(font.clone()),

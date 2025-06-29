@@ -43,24 +43,24 @@ pub fn clock_selector(ui: &Ui, datetime: &mut DateTime<Local>) -> Option<DateTim
                 RichText::new(format!("{:0>2}:{:0>2}:{:0>2}", &hour, &minute, &second)),
                 |ui| {
                     ComboBox::from_label("Hour")
-                        .selected_text(format!("{}", hour))
+                        .selected_text(format!("{hour}"))
                         .show_ui(ui, |ui| {
                             for h in 0..24 {
-                                ui.selectable_value(&mut hour, h, format!("{:0>2}", h));
+                                ui.selectable_value(&mut hour, h, format!("{h:0>2}"));
                             }
                         });
                     ComboBox::from_label("Minutes")
-                        .selected_text(format!("{}", minute))
+                        .selected_text(format!("{minute}"))
                         .show_ui(ui, |ui| {
                             for m in 0..60 {
-                                ui.selectable_value(&mut minute, m, format!("{:0>2}", m));
+                                ui.selectable_value(&mut minute, m, format!("{m:0>2}"));
                             }
                         });
                     ComboBox::from_label("Seconds")
-                        .selected_text(format!("{}", second))
+                        .selected_text(format!("{second}"))
                         .show_ui(ui, |ui| {
                             for s in 0..60 {
-                                ui.selectable_value(&mut second, s, format!("{:0>2}", s));
+                                ui.selectable_value(&mut second, s, format!("{s:0>2}"));
                             }
                         });
                 },

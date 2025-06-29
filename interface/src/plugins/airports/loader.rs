@@ -102,14 +102,12 @@ impl AirportsLoader {
 
                         if let Err(err) = to_parent.send((airports, cache.len())) {
                             println!(
-                                "Error al mandar a hilo principal los aeropuertos:\n\n{}",
-                                err
+                                "Error al mandar a hilo principal los aeropuertos:\n\n{err}"
                             );
                         }
                     }
                     Err(err) => println!(
-                        "Ocurrió un error esperando mensajes del hilo principal:\n\n{}",
-                        err
+                        "Ocurrió un error esperando mensajes del hilo principal:\n\n{err}"
                     ),
                 }
             }
@@ -208,7 +206,7 @@ impl Plugin for &mut AirportsLoader {
             // primero le pedimos al cargador que vaya procesando el área
             let (_, area_sender) = &mut self.area_child;
             if let Err(err) = area_sender.send(area) {
-                println!("Error al enviar área al cargador:\n\n{}", err);
+                println!("Error al enviar área al cargador:\n\n{err}");
             }
         }
         // y luego le pedimos si terminó (puede no ser en este frame)
