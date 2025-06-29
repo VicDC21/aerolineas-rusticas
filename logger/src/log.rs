@@ -117,12 +117,12 @@ impl Logger {
             .replace("{level}", &level.to_string())
             .replace("{timestamp}", &timestamp)
             .replace("{message}", msg);
-        let log_msg = format!("{}\n", log_msg);
+        let log_msg = format!("{log_msg}\n");
 
         // Si hay color especificado, lo aplicamos para stdout
         if let Some(color) = color {
             let colored_msg = format!("{}{}\x1b[0m", color.to_ansi(), log_msg);
-            print!("{}", colored_msg);
+            print!("{colored_msg}");
             io::stdout().flush().map_err(LoggerError::from)?;
         }
 
@@ -166,9 +166,9 @@ pub enum LoggerError {
 impl std::fmt::Display for LoggerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LoggerError::IoError(e) => write!(f, "Error de E/S: {}", e),
-            LoggerError::InvalidPath(msg) => write!(f, "Ruta inválida: {}", msg),
-            LoggerError::CompressionError(msg) => write!(f, "Error de compresión: {}", msg),
+            LoggerError::IoError(e) => write!(f, "Error de E/S: {e}"),
+            LoggerError::InvalidPath(msg) => write!(f, "Ruta inválida: {msg}"),
+            LoggerError::CompressionError(msg) => write!(f, "Error de compresión: {msg}"),
         }
     }
 }
