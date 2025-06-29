@@ -20,7 +20,7 @@ use {
         io::{BufRead, Result as IOResult},
         sync::mpsc::Sender,
     },
-    utils::get_root_path::get_root_path
+    utils::get_root_path::get_root_path,
 };
 
 /// Un mapa de aeropuertos.

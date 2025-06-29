@@ -109,9 +109,15 @@ impl SessionHandler {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
                 self.logger
-                    .warning(format!("Lock envenenado detectado desde el nodo con ID {} para escritura: {}", self.id, &poisoned).as_str())
+                    .warning(
+                        format!(
+                            "Lock envenenado detectado desde el nodo con ID {} para escritura: {}",
+                            self.id, &poisoned
+                        )
+                        .as_str(),
+                    )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
-                
+
                 self.lock.clear_poison();
 
                 let unpoisoned_guard = poisoned.into_inner();
@@ -126,7 +132,13 @@ impl SessionHandler {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
                 self.logger
-                    .warning(format!("Lock envenenado detectado desde el nodo con ID {} para escritura: {}", self.id, &poisoned).as_str())
+                    .warning(
+                        format!(
+                            "Lock envenenado detectado desde el nodo con ID {} para escritura: {}",
+                            self.id, &poisoned
+                        )
+                        .as_str(),
+                    )
                     .map_err(|e| Error::ServerError(e.to_string()))?;
 
                 self.lock.clear_poison();
@@ -1917,7 +1929,7 @@ impl SessionHandler {
             node_writer
                 .endpoint_state
                 .set_appstate_status(AppStatus::Normal);
-            
+
             self.logger
                 .info(&format!("El nodo {} fue iniciado correctamente.", self.id))
                 .map_err(|e| Error::ServerError(e.to_string()))?;

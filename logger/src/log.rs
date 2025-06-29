@@ -195,13 +195,8 @@ mod tests {
     // Función auxiliar para crear un directorio temporal y un logger para pruebas
     fn setup_test_logger() -> (TempDir, Logger) {
         let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
-        let logger = Logger::new(
-            temp_dir.path(),
-            "127.0.0.1:8080",
-            LogLevel::Trace,
-            None,
-        )
-        .expect("Error al crear el logger");
+        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Trace, None)
+            .expect("Error al crear el logger");
 
         (temp_dir, logger)
     }
@@ -243,13 +238,8 @@ mod tests {
     fn test_log_level_filtering() {
         let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
 
-        let logger = Logger::new(
-            temp_dir.path(),
-            "127.0.0.1:8080",
-            LogLevel::Info,
-            None,
-        )
-        .expect("Error al crear el logger");
+        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Info, None)
+            .expect("Error al crear el logger");
 
         logger
             .debug("No debería aparecer")

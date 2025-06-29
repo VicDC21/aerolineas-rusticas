@@ -18,7 +18,10 @@ use {
         traits::Byteable,
         utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
     },
-    rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream, pki_types::{CertificateDer, pem::PemObject}},
+    rustls::{
+        pki_types::{pem::PemObject, CertificateDer},
+        ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream,
+    },
     server::{
         cql_frame::frame::Frame,
         nodes::{

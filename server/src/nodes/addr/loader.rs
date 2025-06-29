@@ -9,7 +9,7 @@ use {
         io::{BufRead, BufReader, BufWriter, Result as IOResult, Write},
         net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
     },
-    utils::get_root_path::get_root_path
+    utils::get_root_path::get_root_path,
 };
 
 /// El mapa de los IDs de nodos y sus IPs asociadas.

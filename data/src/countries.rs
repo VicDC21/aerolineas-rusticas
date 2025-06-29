@@ -12,7 +12,7 @@ use {
         collections::HashMap,
         io::{BufRead, Result as IOResult},
     },
-    utils::get_root_path::get_root_path
+    utils::get_root_path::get_root_path,
 };
 
 /// Un mapa de países.
