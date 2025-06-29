@@ -18,14 +18,13 @@ use {
         traits::Byteable,
         utils::{encode_string_map_to_bytes, encode_string_to_bytes, parse_bytes_to_string},
     },
-    rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream},
+    rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned as LsStream, pki_types::{CertificateDer, pem::PemObject}},
     server::{
         cql_frame::frame::Frame,
         nodes::{
             actions::opcode::SvAction, addr::loader::AddrLoader, port_type::PortType,
             table_metadata::column_data_type::ColumnDataType,
         },
-        utils::handle_pem_file_iter,
     },
     std::{
         collections::HashSet,
@@ -36,6 +35,7 @@ use {
         time::{Duration, Instant},
     },
     tokenizer::tok::tokenize_query,
+    utils::get_root_path::get_root_path,
 };
 
 /// Un stream TLS.
@@ -715,7 +715,7 @@ impl Default for Client {
 /// Realiza el seteo del cliente para luego usarse en un tls_stream
 pub fn get_client_connection() -> Result<rustls::ClientConnection> {
     let mut root_store = RootCertStore::empty();
-    let certs = handle_pem_file_iter()?;
+    let certs = handle_pem_file_iter_client()?;
     for cert in certs {
         match root_store.add(cert) {
             Ok(_) => (),
@@ -743,4 +743,21 @@ pub fn get_client_connection() -> Result<rustls::ClientConnection> {
             }
         };
     Ok(client_connection)
+}
+
+/// Maneja los resultados que se devuelven al cargar el certificado en el cliente
+fn handle_pem_file_iter_client() -> Result<Vec<CertificateDer<'static>>> {
+    let cert_file = get_root_path("cert.pem");
+    let certs: Vec<CertificateDer<'_>> = match CertificateDer::pem_file_iter(cert_file) {
+        Ok(certs_iter) => certs_iter
+            .map(|cert_res| {
+                cert_res.map_err(|_| Error::Invalid("No se pudo leer un certificado".to_string()))
+            })
+            .collect(),
+        Err(err) => Err(Error::Invalid(format!(
+            "No se pudo leer el archivo de certificados: {}",
+            err
+        ))),
+    }?;
+    Ok(certs)
 }

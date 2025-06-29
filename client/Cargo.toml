@@ -12,6 +12,7 @@ protocol = { path = "../protocol" }
 rustls = { version = "0.22.4" }
 server = { path = "../server" }
 tokenizer = { path = "../tokenizer" }
+utils = { path = "../utils" }
 
 [[bin]]
 name = "cli"
