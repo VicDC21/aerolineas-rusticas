@@ -3,6 +3,7 @@
 use {
     super::session_handler::get_partition_value_from_insert,
     crate::{
+        cql_frame::frame::Frame,
         modes::ConnectionMode,
         nodes::{
             actions::opcode::SvAction,
@@ -11,13 +12,16 @@ use {
             internal_threads::{beater, create_client_and_private_conexion, gossiper},
             keyspace_metadata::keyspace::Keyspace,
             port_type::PortType,
+            session_handler::add_metadata_to_internal_request_of_any_kind,
             states::{
                 appstatus::AppStatus,
                 endpoints::EndpointState,
                 heartbeat::{GenType, VerType},
             },
             table_metadata::table::Table,
-            utils::{divide_range, hash_value, n_th_node_in_the_cluster, send_to_node},
+            utils::{
+                divide_range, hash_value, load_init_queries, n_th_node_in_the_cluster, send_to_node,
+            },
         },
         utils::load_json,
     },
@@ -46,6 +50,7 @@ use {
         errors::error::Error,
         headers::{flags::Flag, length::Length, opcode::Opcode, stream::Stream, version::Version},
         messages::responses::result_kinds::ResultKind,
+        notations::consistency::Consistency,
         traits::Byteable,
     },
     rand::{seq::SliceRandom, thread_rng},
@@ -56,7 +61,8 @@ use {
         net::{IpAddr, TcpStream},
         path::Path,
         sync::mpsc::{channel, Sender},
-        thread::JoinHandle,
+        thread::{sleep, JoinHandle},
+        time::Duration,
     },
 };
 
@@ -178,7 +184,7 @@ impl Node {
 
         self.neighbours_states = neighbours_states;
         self.endpoint_state = endpoint_state;
-        self.storage_addr = DiskHandler::get_node_storage(id);
+        self.storage_addr = DiskHandler::get_node_storage(id)?;
         self.open_connections = OpenConnectionsMap::new();
         self.is_new_node = is_new;
         self.stoppers = stoppers;
@@ -276,7 +282,7 @@ impl Node {
 
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
-        let metadata_path = DiskHandler::get_node_metadata_path(id);
+        let metadata_path = DiskHandler::get_node_metadata_path(id)?;
         let node_metadata_path = Path::new(&metadata_path);
         let mut node = if node_metadata_path.exists() {
             let mut node: Node = load_json(&metadata_path)?;
@@ -295,6 +301,10 @@ impl Node {
         create_client_and_private_conexion(node, id, cli_socket, priv_socket, &mut node_listeners)?;
 
         handlers.append(&mut node_listeners);
+
+        if let Err(err) = Self::send_init_queries_to_node(id) {
+            println!("Error ejecutando queries de inicialización en nodo {id}:\n{err}");
+        }
 
         // Llenamos de información al nodo "seed". Arbitrariamente será el último.
         // Cuando fue iniciado el último nodo (el de mayor ID), hacemos el envío de la información,
@@ -332,6 +342,28 @@ impl Node {
                 }
             }
         }
+    }
+
+    fn send_init_queries_to_node(node_id: NodeId) -> Result<()> {
+        let queries = load_init_queries();
+
+        for (i, query) in queries.iter().enumerate() {
+            let stream_id = i as i16;
+            let frame = Frame::new(stream_id, query, Consistency::One);
+            let frame_bytes = frame.as_bytes();
+
+            let action = SvAction::InternalQuery(frame_bytes);
+            let action_with_metadata = add_metadata_to_internal_request_of_any_kind(
+                action.as_bytes(),
+                None,
+                Some(node_id),
+            );
+
+            send_to_node(node_id, action_with_metadata, PortType::Priv)?;
+            sleep(Duration::from_millis(200));
+        }
+
+        Ok(())
     }
 
     fn inicialize_nodes_weights(&mut self, actual_n_nodes: usize) {
@@ -888,6 +920,36 @@ impl Node {
             node_number,
         ) {
             Ok(Some(table)) => {
+                if node_number == self.id {
+                    let keyspace_name = table.get_keyspace();
+                    let table_name = table.get_name();
+                    let quantity_replicas =
+                        self.get_quantity_of_replicas_from_keyspace_name(keyspace_name)?;
+                    let nodes_ids = self.get_nodes_ids();
+                    let columns_names = table.get_columns_names();
+
+                    for replica_index in 0..quantity_replicas {
+                        let replica_node_id = n_th_node_in_the_cluster(
+                            self.id,
+                            &nodes_ids,
+                            replica_index as usize,
+                            false,
+                        );
+
+                        if replica_node_id != self.id {
+                            if let Err(err) = DiskHandler::create_table_csv_file(
+                                &self.storage_addr,
+                                keyspace_name,
+                                table_name,
+                                &columns_names,
+                                replica_node_id,
+                            ) {
+                                println!("Error creando archivo CSV para réplica en nodo {replica_node_id}: {err}");
+                            }
+                        }
+                    }
+                }
+
                 self.add_table(table);
             }
             Ok(None) => return Err(Error::ServerError("No se pudo crear la tabla".to_string())),
