@@ -287,24 +287,18 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::InternalQuery(bytes) => {
-                match &self.extract_query_text_from_bytes(&bytes) {
-                    Some(text) => {
-                        self.logger
-                            .info(format!("Recibida query interna: '{text}'").as_str())
-                            .map_err(|e| Error::ServerError(e.to_string()))?;
-                    }
-                    None => {}
+                if let Some(text) = &self.extract_query_text_from_bytes(&bytes) {
+                    self.logger
+                        .info(format!("Recibida query interna: '{text}'").as_str())
+                        .map_err(|e| Error::ServerError(e.to_string()))?;
                 }
 
                 let response = self.handle_request(&bytes, true, true);
 
-                match &self.extract_query_text_from_bytes(&bytes) {
-                    Some(text) => {
-                        self.logger
-                            .debug(format!("Enviando respuesta a query interna '{text}'").as_str())
-                            .map_err(|e| Error::ServerError(e.to_string()))?;
-                    }
-                    None => {}
+                if let Some(text) = &self.extract_query_text_from_bytes(&bytes) {
+                    self.logger
+                        .debug(format!("Enviando respuesta a query interna '{text}'").as_str())
+                        .map_err(|e| Error::ServerError(e.to_string()))?;
                 }
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
