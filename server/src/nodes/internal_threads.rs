@@ -102,19 +102,11 @@ pub fn create_client_and_private_conexion(
 
 /// Escucha por los eventos que recibe del cliente.
 pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
-    session_handler
-        .logger
-        .debug(&format!("Escuchando conexiones de cliente en {socket}"))
-        .map_err(|e| Error::ServerError(e.to_string()))?;
     listen_cli_port(socket, session_handler)
 }
 
 /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
 pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
-    session_handler
-        .logger
-        .debug(&format!("Escuchando conexiones privadas en {socket}"))
-        .map_err(|e| Error::ServerError(e.to_string()))?;
     listen_priv_port(socket, session_handler)
 }
 
@@ -225,24 +217,12 @@ fn listen_single_client(
         let size = match tls.read(&mut buffer) {
             Ok(value) => value,
             Err(_err) => {
-                session_handler
-                    .logger
-                    .error("Error leyendo el stream TLS")
-                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 return Err(Error::ServerError("No se pudo leer el stream".to_string()));
             }
         };
 
         buffer.truncate(size);
-        session_handler
-            .logger
-            .info(&format!("Mensaje recibido (CLI): {buffer:?}"))
-            .map_err(|e| Error::ServerError(e.to_string()))?;
         if is_exit(&buffer[..]) {
-            session_handler
-                .logger
-                .info("Recibido mensaje EXIT desde cliente")
-                .map_err(|e| Error::ServerError(e.to_string()))?;
             match arc_exit.lock() {
                 Ok(mut locked_in) => *locked_in = true,
                 Err(poison_err) => {
@@ -260,10 +240,6 @@ fn listen_single_client(
             let _ = tls.write_all(&error);
         } else {
             let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
-            session_handler
-                .logger
-                .info(&format!("Respuesta enviada: {res:?}"))
-                .map_err(|e| Error::ServerError(e.to_string()))?;
             if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
                 is_logged = true;
             }
