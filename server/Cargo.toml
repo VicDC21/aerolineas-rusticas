@@ -3,7 +3,6 @@ name = "server"
 version = "0.5.0"
 authors.workspace = true
 edition.workspace = true
-default-run = "sv"
 
 [dependencies]
 chrono = { version = "0.4.38" }
@@ -16,13 +15,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokenizer = { path = "../tokenizer" }
 utils = { path = "../utils" }
-
-[[bin]]
-name = "sv"
-path = "./src/bin/sv.rs"
-test = true
-doctest = true
-doc = true
 
 [[bin]]
 name = "nd"

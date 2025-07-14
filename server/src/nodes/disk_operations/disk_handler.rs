@@ -62,12 +62,12 @@ use {
     utils::get_root_path::get_root_path,
 };
 
-/// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
-pub const STORAGE_PATH: &str = "storage";
+/// El nombre del directorio para el almacenamiento de las keyspaces y tablas de los nodos.
+const STORAGE_DIR_NAME: &str = "storage";
 /// El nombre individual del directorio de un nodo.
 const STORAGE_NODE_PATH: &str = "storage_node";
-/// La ruta para el almacenamiento de los metadatos de los nodos.
-pub const NODES_METADATA_PATH: &str = "nodes_metadata";
+/// El nombre del directorio para el almacenamiento de los metadatos de los nodos.
+pub const NODES_METADATA_DIR_NAME: &str = "nodes_metadata";
 /// El nombre individual del directorio de metadatos de un nodo.
 const NODE_METADATA_PATH: &str = "metadata_node";
 /// La ruta para el almacenamiento de las IPs de los nodos.
@@ -80,15 +80,25 @@ impl DiskHandler {
     /// Crea una carpeta de almacenamiento para las keyspaces y tablas del nodo.
     /// Devuelve la ruta a dicho almacenamiento.
     pub fn new_node_storage(id: NodeId) -> Result<String> {
-        Self::create_directory(STORAGE_PATH)?;
-        let storage_addr: String = Self::get_node_storage(id);
+        let storage_path = get_root_path(STORAGE_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de almacenamiento: {e}"
+            ))
+        })?;
+        Self::create_directory(&storage_path)?;
+        let storage_addr: String = Self::get_node_storage(id)?;
         Self::create_directory(&storage_addr)?;
         Ok(storage_addr)
     }
 
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
-    pub fn get_node_storage(id: NodeId) -> String {
-        format!("{STORAGE_PATH}/{STORAGE_NODE_PATH}_{id}")
+    pub fn get_node_storage(id: NodeId) -> Result<String> {
+        let storage_path = get_root_path(STORAGE_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de almacenamiento: {e}"
+            ))
+        })?;
+        Ok(format!("{storage_path}/{STORAGE_NODE_PATH}_{id}"))
     }
 
     /// Crea un directorio a partir de una ruta.
@@ -105,13 +115,23 @@ impl DiskHandler {
     }
 
     /// Obtiene la ruta de almacenamiento de los metadatos de un nodo dado su ID.
-    pub fn get_node_metadata_path(id: NodeId) -> String {
-        format!("{NODES_METADATA_PATH}/{NODE_METADATA_PATH}_{id}.json")
+    pub fn get_node_metadata_path(id: NodeId) -> Result<String> {
+        let metadata_path = get_root_path(NODES_METADATA_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de metadatos: {e}"
+            ))
+        })?;
+        Ok(format!("{metadata_path}/{NODE_METADATA_PATH}_{id}.json"))
     }
 
     /// Almacena los metadatos de un nodo en un archivo JSON.
     pub fn store_node_metadata(node: RwLockWriteGuard<Node>) -> Result<()> {
-        let path_folder = Path::new(NODES_METADATA_PATH);
+        let metadata_path = get_root_path(NODES_METADATA_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de metadatos: {e}"
+            ))
+        })?;
+        let path_folder = Path::new(&metadata_path);
         if !path_folder.exists() {
             let _ = create_dir(path_folder);
         } else if !path_folder.is_dir() {
@@ -119,7 +139,7 @@ impl DiskHandler {
                 "El directorio de metadatos de nodos no es un directorio".to_string(),
             ));
         }
-        store_json(&*node, &Self::get_node_metadata_path(node.get_id()))
+        store_json(&*node, &Self::get_node_metadata_path(node.get_id())?)
     }
 
     /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.

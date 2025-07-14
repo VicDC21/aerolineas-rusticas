@@ -6,7 +6,7 @@
 
 use {
     protocol::aliases::results::Result,
-    server::nodes::{graph::NodesGraph, node::Node},
+    server::nodes::node::Node,
     std::{
         fs::remove_dir_all,
         io::{ErrorKind, Result as IOResult},
@@ -24,20 +24,6 @@ pub type HandlesVec = Vec<Option<JoinHandle<()>>>;
 pub const STORAGE_PATH: &str = "storage";
 /// La ruta para el almacenamiento de los metadatos de los nodos.
 pub const NODES_METADATA_PATH: &str = "nodes_metadata";
-
-/// Crea un [grafo](NodesGraph) en modo de [DEBUG](server::modes::ConnectionMode::Echo)
-/// y lo corre en un hilo aparte.
-pub fn init_graph_echo() -> ThreadHandle<()> {
-    let mut echo_graph = NodesGraph::echo_mode();
-    spawn(move || echo_graph.init())
-}
-
-/// Crea un [grafo](NodesGraph) en modo de [PARSING](server::modes::ConnectionMode::Parsing)
-/// y lo corre en un hilo aparte.
-pub fn init_graph_parsing() -> ThreadHandle<()> {
-    let mut parsing_graph = NodesGraph::parsing_mode();
-    spawn(move || parsing_graph.init())
-}
 
 /// Borra todos los archivos y directorios de metadatos relevantes,
 /// tal que quede limpio de corridas anteriores.

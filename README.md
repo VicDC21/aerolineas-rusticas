@@ -117,26 +117,9 @@ $ cargo run -p client
 ```
 
 ### Servidor
-
-#### `sv` ***(Default)***
-
-Se da la opción de levantar todos los nodos de una, en una [sóla consola](./server/src/bin/sv.rs).
-
-```console
-$ cargo run -p server --bin sv [echo]
-```
-
-donde `echo` es opcional y se utiliza para inciar el servidor en modo ECHO.
-
-**Adicionalmente, como es la opción por defecto,** esto también vale:
-
-```console
-$ cargo run -p server [echo]
-```
-
 #### `nd`
 
-También hay soporte para levantar un [nodo aislado](./server/src/bin/nd.rs) por consola.
+Se levanta un [nodo aislado](./server/src/bin/nd.rs) por consola.
 Para poder levantarse deben existir su ID e IP correspondientes en un archivo
 llamado [`node_ips.csv`](./node_ips.csv) cuyas columnas son del estilo:
 

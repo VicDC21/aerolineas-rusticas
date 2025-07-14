@@ -60,12 +60,13 @@ use {
         sync::{Arc, RwLock},
     },
     tokenizer::tok::tokenize_query,
+    utils::get_root_path::get_root_path,
 };
 
 /// El tiempo de espera _(en segundos)_ por una respuesta.
 pub const TIMEOUT_SECS: Ulong = 1;
-/// La ruta para el almacenamiento de los logs de mensajes de los nodos.
-const NODES_LOGS_PATH: &str = "logs";
+/// El nombre del directorio para el almacenamiento de los logs de mensajes de los nodos.
+const LOGS_DIR_NAME: &str = "logs";
 
 /// Se encarga de procesar todo lo relacionado a una sesión de un cliente.
 ///
@@ -83,9 +84,14 @@ pub struct SessionHandler {
 impl SessionHandler {
     /// Crea un nuevo `SessionHandler` con un nodo específico.
     pub fn new(id: NodeId, node: Node) -> Result<Self> {
-        DiskHandler::create_directory(NODES_LOGS_PATH)?;
+        let logs_path = get_root_path(LOGS_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de logs: {e}"
+            ))
+        })?;
+        DiskHandler::create_directory(&logs_path)?;
         let logger = Logger::new(
-            Path::new(NODES_LOGS_PATH),
+            Path::new(&logs_path),
             &node.endpoint_state.get_addr().to_string(),
             LogLevel::Info,
         )
@@ -204,10 +210,6 @@ impl SessionHandler {
     where
         S: Read + Write,
     {
-        self.logger
-            .info(format!("Iniciando manejo de acción: {action:?}").as_str())
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-
         let mut stop = false;
         match action {
             SvAction::Exit => {
@@ -2075,7 +2077,7 @@ impl SessionHandler {
                 // Pero para el logger si generamos un log de advertencia/aviso
                 self.write()?.acknowledge_offline_neighbour(neighbour_id);
                 self.logger
-                    .warning(format!("Se pone al nodo {neighbour_id} en estado Offline").as_str())
+                    .warning(format!("El nodo {neighbour_id} se encuentra offline").as_str())
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             // }
@@ -2497,7 +2499,7 @@ fn read_metadata_from_internal_request(
 }
 
 /// Agrega metadata, como el timestamp o el node_id si es necesario, sino no agrega estos campos.
-fn add_metadata_to_internal_request_of_any_kind(
+pub fn add_metadata_to_internal_request_of_any_kind(
     mut sv_action_with_request: Vec<Byte>,
     timestamp: Option<Long>,
     node_id: Option<Byte>,

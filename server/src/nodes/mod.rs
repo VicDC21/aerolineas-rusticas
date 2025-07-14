@@ -3,7 +3,6 @@
 pub mod actions;
 pub mod addr;
 pub mod disk_operations;
-pub mod graph;
 mod internal_threads;
 mod keyspace_metadata;
 pub mod node;
