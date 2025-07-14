@@ -151,6 +151,27 @@ impl SessionHandler {
     // ################################ PROCESAMIENTO DEL STREAM ################################
     // ##########################################################################################
 
+    fn extract_query_text_from_bytes(&self, bytes: &[Byte]) -> Option<String> {
+        if bytes.len() < 9 {
+            return None;
+        }
+
+        let header = match Headers::try_from(&bytes[..9]) {
+            Ok(header) => header,
+            Err(_) => return None,
+        };
+
+        if header.opcode != Opcode::Query {
+            return None;
+        }
+
+        if let Ok(query_body) = QueryBody::try_from(&bytes[9..(header.length.len as usize) + 9]) {
+            Some(query_body.get_query().to_string())
+        } else {
+            None
+        }
+    }
+
     /// Procesa una _request_ en forma de [Byte]s.
     /// También devuelve un [bool] indicando si se debe parar el hilo.
     pub fn process_stream<S>(
@@ -266,13 +287,25 @@ impl SessionHandler {
                     .map_err(|e| Error::ServerError(e.to_string()))?;
             }
             SvAction::InternalQuery(bytes) => {
-                self.logger
-                    .debug(format!("Recibida query interna: {bytes:?}").as_str())
-                    .map_err(|e| Error::ServerError(e.to_string()))?;
+                match &self.extract_query_text_from_bytes(&bytes) {
+                    Some(text) => {
+                        self.logger
+                            .info(format!("Recibida query interna: '{text}'").as_str())
+                            .map_err(|e| Error::ServerError(e.to_string()))?;
+                    }
+                    None => {}
+                }
+
                 let response = self.handle_request(&bytes, true, true);
-                self.logger
-                    .debug(format!("Enviando respuesta a query interna: {response:?}").as_str())
-                    .map_err(|e| Error::ServerError(e.to_string()))?;
+
+                match &self.extract_query_text_from_bytes(&bytes) {
+                    Some(text) => {
+                        self.logger
+                            .debug(format!("Enviando respuesta a query interna '{text}'").as_str())
+                            .map_err(|e| Error::ServerError(e.to_string()))?;
+                    }
+                    None => {}
+                }
                 let _ = tcp_stream.write_all(&response[..]);
                 if let Err(err) = tcp_stream.flush() {
                     self.logger
