@@ -20,3 +20,10 @@ path = "./src/bin/cli.rs"
 test = true
 doctest = true
 doc = true
+
+[[bin]]
+name = "setup_db"
+path = "./src/bin/setup_db.rs"
+test = true
+doctest = true
+doc = true

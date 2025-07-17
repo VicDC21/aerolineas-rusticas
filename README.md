@@ -116,10 +116,17 @@ $ cargo run -p client --bin cli
 $ cargo run -p client
 ```
 
+#### `setup_db` 
+Este es un script que usa igualmente un [cliente simple](./client/src/bin/cli.rs). Pero esta vez se logra automatizar las consultas CQL iniciales para, tras un loggeo previo, crear un keyspace, usarlo y crear todas las tablas donde se van a insertar los registros con otras consultas CQL.
+
+```console
+$ cargo run -p client --bin setup_db
+```
+
 ### Servidor
 #### `nd`
 
-Se levanta un [nodo aislado](./server/src/bin/nd.rs) por consola.
+El programa funciona levantando [nodos aislados](./server/src/bin/nd.rs) por consola.
 Para poder levantarse deben existir su ID e IP correspondientes en un archivo
 llamado [`node_ips.csv`](./node_ips.csv) cuyas columnas son del estilo:
 
