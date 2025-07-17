@@ -13,19 +13,11 @@ use {
         errors::error::Error,
     },
     std::{
-        fs::{read_dir, File},
         hash::{DefaultHasher, Hash, Hasher},
-        io::{BufRead, BufReader, Read, Result as IOResult, Write},
+        io::{Read, Write},
         net::TcpStream,
-        path::PathBuf,
     },
-    utils::get_root_path::get_root_path,
 };
-
-/// La ruta de _queries_ iniciales.
-const INIT_QUERIES_PATH: &str = "scripts/init";
-/// Extensión preferida para _queries_ de CQL, sin el punto de prefijo.
-const QUERY_EXT: &str = "cql";
 
 /// Hashea el valor recibido.
 ///
@@ -179,81 +171,4 @@ pub fn send_to_node_and_wait_response_with_timeout(
     }
 
     Ok(buf)
-}
-
-/// Detecta _queries_ desde un archivo.
-pub fn queries_from_source(path: &str) -> Result<Vec<String>> {
-    let mut queries = Vec::<String>::new();
-    let file = match File::open(path) {
-        Ok(f) => f,
-        Err(file_err) => {
-            return Err(Error::ServerError(format!(
-                "Error abriendo el archivo:\n\n{file_err}"
-            )));
-        }
-    };
-    let bufreader = BufReader::new(file);
-
-    // Asumimos que cada línea es una query completa
-    for line in bufreader.lines().map_while(IOResult::ok) {
-        queries.push(line);
-    }
-
-    Ok(queries)
-}
-
-/// Carga todas las _queries_ iniciales de la carpeta correspondiente.
-pub fn load_init_queries() -> Vec<String> {
-    let mut queries = Vec::<String>::new();
-    let mut queries_paths = Vec::<PathBuf>::new();
-
-    let init_queries_path = match get_root_path(INIT_QUERIES_PATH) {
-        Ok(path) => path,
-        Err(e) => {
-            println!("No se pudo obtener la ruta de las queries iniciales: {e}\nSe utilizará un vector vacío.");
-            return queries;
-        }
-    };
-    match read_dir(init_queries_path.as_str()) {
-        Err(err) => {
-            println!("Ocurrió un error al buscar las queries iniciales:\n\n{err}\nSe utilizará un vector vacío.");
-        }
-        Ok(paths) => {
-            for dir_entry in paths.map_while(IOResult::ok) {
-                let path = dir_entry.path();
-                if !path.exists() || path.is_dir() {
-                    continue;
-                }
-
-                if let Some(ext) = path.extension() {
-                    if ext.eq_ignore_ascii_case(QUERY_EXT) {
-                        queries_paths.push(path);
-                    }
-                }
-            }
-        }
-    };
-
-    // para asegurar el orden
-    queries_paths.sort();
-
-    for path in queries_paths {
-        let path_str = match path.to_str() {
-            Some(utf_8_valid) => utf_8_valid,
-            None => {
-                // El nombre contiene caracteres no encodificables en UTF-8
-                continue;
-            }
-        };
-        let mut cur_queries = match queries_from_source(path_str) {
-            Ok(valid_ones) => valid_ones,
-            Err(err) => {
-                println!("No se pudo agregar las queries en '{path_str}':\n\n{err}");
-                continue;
-            }
-        };
-        queries.append(&mut cur_queries);
-    }
-
-    queries
 }

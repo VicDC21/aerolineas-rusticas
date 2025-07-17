@@ -98,7 +98,7 @@ impl SessionHandler {
         .map_err(|e| Error::ServerError(e.to_string()))?;
 
         logger
-            .info(format!("Creando un nuevo SessionHandler para el nodo con ID {id}").as_str())
+            .debug(format!("Creando un nuevo SessionHandler para el nodo con ID {id}").as_str())
             .map_err(|e| Error::ServerError(e.to_string()))?;
 
         Ok(SessionHandler {

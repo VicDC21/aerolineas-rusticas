@@ -29,7 +29,6 @@ impl Color {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LogLevel {
-    Trace,
     Debug,
     Info,
     Warning,
@@ -39,7 +38,6 @@ pub enum LogLevel {
 impl fmt::Display for LogLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LogLevel::Trace => write!(f, "TRACE"),
             LogLevel::Debug => write!(f, "DEBUG"),
             LogLevel::Info => write!(f, "INFO"),
             LogLevel::Warning => write!(f, "WARNING"),
@@ -155,7 +153,6 @@ impl Logger {
 pub enum LoggerError {
     IoError(std::io::Error),
     InvalidPath(String),
-    CompressionError(String),
 }
 
 impl std::fmt::Display for LoggerError {
@@ -163,7 +160,6 @@ impl std::fmt::Display for LoggerError {
         match self {
             LoggerError::IoError(e) => write!(f, "Error de E/S: {e}"),
             LoggerError::InvalidPath(msg) => write!(f, "Ruta inválida: {msg}"),
-            LoggerError::CompressionError(msg) => write!(f, "Error de compresión: {msg}"),
         }
     }
 }
@@ -190,7 +186,7 @@ mod tests {
     // Función auxiliar para crear un directorio temporal y un logger para pruebas
     fn setup_test_logger() -> (TempDir, Logger) {
         let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
-        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Trace)
+        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Debug)
             .expect("Error al crear el logger");
 
         (temp_dir, logger)
