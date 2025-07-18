@@ -221,7 +221,6 @@ impl Node {
                 )));
             }
         }
-        println!("Se inicia el nodo {id} y se agrega a la lista de ids");
         DiskHandler::store_new_node_id_and_ip(id, ip)?;
 
         Self::init(id, mode, true, Some(ip))
@@ -313,7 +312,6 @@ impl Node {
     }
 
     fn notify_new_node(id: NodeId, ip: Option<&str>) {
-        println!("Les indica a los demas nodos que existe.");
         for node_id in Self::get_all_nodes_ids() {
             if id == node_id {
                 continue;
@@ -580,7 +578,6 @@ impl Node {
 
     /// Envia su endpoint state al nodo del ID correspondiente.
     pub fn send_endpoint_state(&self, id: NodeId, ip: String) {
-        println!("Voy a agregar al nodo {id} de ip {ip} a la lista de nodos");
         let _ = DiskHandler::store_new_node_id_and_ip(id, &ip);
         let _ = send_to_node(
             id,
@@ -593,14 +590,6 @@ impl Node {
                 id, self.id
             )
         });
-        // }
-        // .is_err()
-        // {
-        //     println!(
-        //         "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
-        //         id, self.id,
-        //     );
-        // }
     }
 
     /// Consulta si ya se tiene un [EndpointState].
@@ -662,7 +651,6 @@ impl Node {
             && *state.get_appstate().get_status() != AppStatus::Left
             && *state.get_appstate().get_status() != AppStatus::Remove
         {
-            println!("Nodo {id} presentado.");
             if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
                 self.nodes_weights.push(1);
             }
@@ -695,7 +683,6 @@ impl Node {
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Left
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
             {
-                println!("Nodo {node_id} presentado.");
                 if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
                     self.nodes_weights.push(1);
                 }
@@ -1270,7 +1257,6 @@ impl Node {
         self.tables_and_partitions_keys_values = tables_and_partitions_keys_values;
         self.default_keyspace_name = default_keyspace_name;
 
-        println!("Metadata del clúster recibida.");
         Ok(())
     }
 
@@ -1649,8 +1635,6 @@ impl Node {
         }
         // Una vez todo finalizado, el estado del nodo vuelve a ser normal.
         self.endpoint_state.set_appstate_status(AppStatus::Normal);
-        println!("El nodo {} finalizó la relocalización.", self.id);
-
         Ok(())
     }
 

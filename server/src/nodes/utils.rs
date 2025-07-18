@@ -129,11 +129,6 @@ pub fn send_to_node_and_wait_response_with_timeout(
             )));
         }
     };
-    println!(
-        "Le escribe al nodo: {} la data: {}",
-        id,
-        printable_bytes(&bytes)
-    );
 
     if stream.write_all(&bytes[..]).is_err() {
         return Err(Error::ServerError(format!(
