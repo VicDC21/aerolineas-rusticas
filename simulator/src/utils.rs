@@ -102,9 +102,7 @@ mod tests {
         let epsilon = 1e-6;
         assert!(
             (a - b).abs() < epsilon,
-            "Se espera que {} sea aproximadamente igual a {}",
-            a,
-            b
+            "Se espera que {a} sea aproximadamente igual a {b}"
         );
     }
 
@@ -163,8 +161,7 @@ mod tests {
 
         assert!(
             distance > 3900.0 && distance < 3970.0,
-            "Distancia inesperada: {}",
-            distance
+            "Distancia inesperada: {distance}"
         );
     }
 
