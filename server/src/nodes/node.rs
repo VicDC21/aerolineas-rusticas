@@ -682,10 +682,10 @@ impl Node {
             if !self.has_endpoint_state_by_id(&node_id)
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Left
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
+                && actual_n_nodes > N_NODES as usize
+                && self.nodes_weights.len() < actual_n_nodes
             {
-                if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
-                    self.nodes_weights.push(1);
-                }
+                self.nodes_weights.push(1);
             }
             if let Some(old_state) = self.neighbours_states.get(&node_id) {
                 if *old_state.get_appstate_status() == AppStatus::Remove {
