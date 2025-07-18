@@ -37,6 +37,7 @@ use {
         thread::{sleep, spawn, Builder},
         time::Duration,
     },
+    utils::get_root_path::get_root_path,
 };
 
 /// Un stream TLS.
@@ -69,33 +70,30 @@ pub fn create_client_and_private_conexion(
         Ok(handler) => handler,
         Err(err) => {
             return Err(Error::ServerError(format!(
-                "Error creando un SessionHandler para el nodo: [{}]:\n\n{}",
-                id, err
+                "Error creando un SessionHandler para el nodo: [{id}]:\n\n{err}"
             )));
         }
     };
     let cli_node = sendable_node.clone();
     let priv_node = sendable_node.clone();
 
-    let cli_builder = Builder::new().name(format!("{}_cli", id));
+    let cli_builder = Builder::new().name(format!("{id}_cli"));
     let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));
     match cli_res {
         Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
         Err(err) => {
             return Err(Error::ServerError(format!(
-                "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{}]:\n\n{}",
-                id, err
+                "Ocurrió un error tratando de crear el hilo listener de conexiones de cliente del nodo [{id}]:\n\n{err}"
             )));
         }
     }
-    let priv_builder = Builder::new().name(format!("{}_priv", id));
+    let priv_builder = Builder::new().name(format!("{id}_priv"));
     let priv_res = priv_builder.spawn(move || priv_listen(priv_socket, priv_node));
     match priv_res {
         Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
         Err(err) => {
             return Err(Error::ServerError(format!(
-                "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{}]:\n\n{}",
-                id, err
+                "Ocurrió un error tratando de crear el hilo listener de conexiones privadas del nodo [{id}]:\n\n{err}"
             )));
         }
     }
@@ -104,19 +102,11 @@ pub fn create_client_and_private_conexion(
 
 /// Escucha por los eventos que recibe del cliente.
 pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
-    session_handler
-        .logger
-        .debug(&format!("Escuchando conexiones de cliente en {}", socket))
-        .map_err(|e| Error::ServerError(e.to_string()))?;
     listen_cli_port(socket, session_handler)
 }
 
 /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
 pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
-    session_handler
-        .logger
-        .debug(&format!("Escuchando conexiones privadas en {}", socket))
-        .map_err(|e| Error::ServerError(e.to_string()))?;
     listen_priv_port(socket, session_handler)
 }
 
@@ -174,7 +164,7 @@ fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Resul
     drop(shutdown_tx);
     for handle in thread_handles {
         if let Err(err) = handle.join() {
-            eprintln!("Error en el join de los threads: {:?}", err);
+            eprintln!("Error en el join de los threads: {err:?}");
         }
     }
 
@@ -227,24 +217,12 @@ fn listen_single_client(
         let size = match tls.read(&mut buffer) {
             Ok(value) => value,
             Err(_err) => {
-                session_handler
-                    .logger
-                    .error("Error leyendo el stream TLS")
-                    .map_err(|e| Error::ServerError(e.to_string()))?;
                 return Err(Error::ServerError("No se pudo leer el stream".to_string()));
             }
         };
 
         buffer.truncate(size);
-        session_handler
-            .logger
-            .info(&format!("Mensaje recibido (CLI): {:?}", buffer))
-            .map_err(|e| Error::ServerError(e.to_string()))?;
         if is_exit(&buffer[..]) {
-            session_handler
-                .logger
-                .info("Recibido mensaje EXIT desde cliente")
-                .map_err(|e| Error::ServerError(e.to_string()))?;
             match arc_exit.lock() {
                 Ok(mut locked_in) => *locked_in = true,
                 Err(poison_err) => {
@@ -262,10 +240,6 @@ fn listen_single_client(
             let _ = tls.write_all(&error);
         } else {
             let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
-            session_handler
-                .logger
-                .info(&format!("Respuesta enviada: {:?}", res))
-                .map_err(|e| Error::ServerError(e.to_string()))?;
             if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
                 is_logged = true;
             }
@@ -275,9 +249,13 @@ fn listen_single_client(
 }
 
 fn configure_tls() -> Result<Arc<ServerConfig>> {
-    let private_key_file = "custom.key";
+    let private_key_file = get_root_path("custom.key").map_err(|e| {
+        Error::ServerError(format!(
+            "No se pudo obtener la ruta del archivo de clave privada: {e}"
+        ))
+    })?;
     let certs: Vec<CertificateDer<'_>> = handle_pem_file_iter()?;
-    let private_key = match PrivateKeyDer::from_pem_file(private_key_file) {
+    let private_key = match PrivateKeyDer::from_pem_file(private_key_file.as_str()) {
         Ok(value) => value,
         Err(_) => {
             return Err(Error::ServerError(
@@ -303,8 +281,7 @@ fn bind_with_socket(socket: SocketAddr) -> Result<TcpListener> {
     match TcpListener::bind(socket) {
         Ok(tcp_listener) => Ok(tcp_listener),
         Err(_) => Err(Error::ServerError(format!(
-            "No se pudo bindear a la dirección '{}'",
-            socket
+            "No se pudo bindear a la dirección '{socket}'"
         ))),
     }
 }
@@ -329,8 +306,7 @@ fn clone_tcp_stream(tcp_stream: &TcpStream) -> Result<TcpStream> {
     match tcp_stream.try_clone() {
         Ok(cloned) => Ok(cloned),
         Err(err) => Err(Error::ServerError(format!(
-            "No se pudo clonar el stream:\n\n{}",
-            err
+            "No se pudo clonar el stream:\n\n{err}"
         ))),
     }
 }
@@ -339,8 +315,7 @@ fn write_bytes_in_buffer(bufreader: &mut BufReader<TcpStream>) -> Result<Vec<Byt
     match bufreader.fill_buf() {
         Ok(recv) => Ok(recv.to_vec()),
         Err(err) => Err(Error::ServerError(format!(
-            "No se pudo escribir los bytes:\n\n{}",
-            err
+            "No se pudo escribir los bytes:\n\n{err}"
         ))),
     }
 }
@@ -359,12 +334,11 @@ fn is_exit(bytes: &[Byte]) -> bool {
 ///
 /// Además, almacena la metadata del nodo en la carpeta `nodes_metadata`.
 pub fn beater(id: NodeId, receiver: Receiver<bool>) -> Result<NodeHandle> {
-    let builder = Builder::new().name(format!("beater_node_{}", id));
+    let builder = Builder::new().name(format!("beater_node_{id}"));
     match builder.spawn(move || increase_heartbeat_and_store_metadata(receiver, id)) {
         Ok(handler) => Ok(handler),
         Err(_) => Err(Error::ServerError(format!(
-            "Error procesando los beats del nodo {}.",
-            id
+            "Error procesando los beats del nodo {id}."
         ))),
     }
 }
@@ -383,14 +357,12 @@ fn increase_heartbeat_and_store_metadata(
         }
         if send_to_node(id, SvAction::Beat.as_bytes(), PortType::Priv).is_err() {
             return Err(Error::ServerError(format!(
-                "Error enviando mensaje de heartbeat a nodo {}",
-                id
+                "Error enviando mensaje de heartbeat a nodo {id}"
             )));
         }
         if send_to_node(id, SvAction::StoreMetadata.as_bytes(), PortType::Priv).is_err() {
             return Err(Error::ServerError(format!(
-                "Error enviando mensaje de almacenamiento de metadata a nodo {}",
-                id
+                "Error enviando mensaje de almacenamiento de metadata a nodo {id}"
             )));
         }
     }
@@ -403,13 +375,12 @@ pub fn gossiper(
     nodes_weights: &[usize],
     receiver: Receiver<bool>,
 ) -> Result<NodeHandle> {
-    let builder = Builder::new().name(format!("gossiper_node_{}", id));
+    let builder = Builder::new().name(format!("gossiper_node_{id}"));
     let weights = nodes_weights.to_vec();
     match builder.spawn(move || exec_gossip(receiver, id, weights)) {
         Ok(handler) => Ok(handler),
         Err(_) => Err(Error::ServerError(format!(
-            "Error procesando la ronda de gossip del nodo {}.",
-            id
+            "Error procesando la ronda de gossip del nodo {id}."
         ))),
     }
 }
@@ -455,8 +426,7 @@ fn exec_gossip(receiver: Receiver<bool>, id: NodeId, weights: Vec<usize>) -> Res
             PortType::Priv,
         ) {
             return Err(Error::ServerError(format!(
-                "Ocurrió un error enviando mensaje de gossip desde el nodo {}:\n\n{}",
-                id, err
+                "Ocurrió un error enviando mensaje de gossip desde el nodo {id}:\n\n{err}"
             )));
         }
     }

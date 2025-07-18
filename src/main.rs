@@ -2,7 +2,7 @@ use {
     aerolineas_rusticas::{
         client::cli::Client,
         protocol::aliases::{results::Result, types::Byte},
-        server::nodes::{graph::NodesGraph, node::Node},
+        server::nodes::node::Node,
         simulator::cli::{run_sim, FlightConfigs},
     },
     std::{env::args, fs::File, io::BufReader, net::IpAddr, path::Path},
@@ -14,21 +14,13 @@ use aerolineas_rusticas::interface::run::run_app;
 fn main() {
     let argv = args().collect::<Vec<String>>();
     let how_to_use =
-        "Uso:\n\ncargo run [cli | --features \"gui\" gui | sim | sv | nd [echo] | demo]\n";
+        "Uso:\n\ncargo run [cli | --features \"gui\" gui | sim | nd [echo] | demo]\n";
     if argv.len() < 2 {
         println!("{}", how_to_use);
         return;
     }
 
     match argv[1].to_ascii_lowercase().as_str() {
-        "sv" => {
-            let mut graph = if argv.len() == 3 && argv[2].to_ascii_lowercase() == "echo" {
-                NodesGraph::echo_mode()
-            } else {
-                NodesGraph::parsing_mode()
-            };
-            print_err(graph.init());
-        }
         "nd" => {
             run_nd(argv);
         }

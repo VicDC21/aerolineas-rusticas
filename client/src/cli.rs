@@ -80,14 +80,14 @@ impl Client {
         let tcp_stream = Self::connect_to(&self.addr_loader.get_sockets_cli()[..])?;
         tcp_stream
             .set_nonblocking(true)
-            .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {}", e)))?;
+            .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {e}")))?;
         // Configurar timeouts explícitos
         tcp_stream
             .set_read_timeout(Some(Duration::from_secs(5)))
-            .map_err(|e| Error::ServerError(format!("Error al configurar read timeout: {}", e)))?;
+            .map_err(|e| Error::ServerError(format!("Error al configurar read timeout: {e}")))?;
         tcp_stream
             .set_write_timeout(Some(Duration::from_secs(5)))
-            .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
+            .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {e}")))?;
         Ok(tcp_stream)
     }
 
@@ -133,13 +133,13 @@ impl Client {
     ) -> Result<TlsStream> {
         tcp_stream
             .set_nonblocking(false)
-            .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {}", e)))?;
+            .map_err(|e| Error::ServerError(format!("Error al configurar non-blocking: {e}")))?;
         tcp_stream
             .set_read_timeout(Some(Duration::from_secs(5)))
-            .map_err(|e| Error::ServerError(format!("Error al configurar read timeout: {}", e)))?;
+            .map_err(|e| Error::ServerError(format!("Error al configurar read timeout: {e}")))?;
         tcp_stream
             .set_write_timeout(Some(Duration::from_secs(5)))
-            .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {}", e)))?;
+            .map_err(|e| Error::ServerError(format!("Error al configurar write timeout: {e}")))?;
         Ok(TlsStream::new(client_connection, tcp_stream))
     }
 
@@ -214,16 +214,16 @@ impl Client {
                     match self.send_query(&input, &mut tls_stream) {
                         Ok(res) => {
                             if let ProtocolResult::QueryError(err) = res.0 {
-                                println!("{}", err)
+                                println!("{err}")
                             }
                         }
                         Err(e) => {
-                            eprintln!("Error al enviar la query: {}", e);
+                            eprintln!("Error al enviar la query: {e}");
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error leyendo la entrada: {}", e);
+                    eprintln!("Error leyendo la entrada: {e}");
                     break;
                 }
             }
@@ -303,9 +303,9 @@ impl Client {
                         Ok(response) => Ok((response, tls_opt)),
                         Err(e) => Err(e),
                     },
-                    Err(e) => Err(Error::ServerError(format!("Error al flush: {}", e))),
+                    Err(e) => Err(Error::ServerError(format!("Error al flush: {e}"))),
                 },
-                Err(e) => Err(Error::ServerError(format!("Error al escribir: {}", e))),
+                Err(e) => Err(Error::ServerError(format!("Error al escribir: {e}"))),
             }
         } else {
             match tls_stream.write_all(frame) {
@@ -314,9 +314,9 @@ impl Client {
                         Ok(response) => Ok((response, None)),
                         Err(e) => Err(e),
                     },
-                    Err(e) => Err(Error::ServerError(format!("Error al flush: {}", e))),
+                    Err(e) => Err(Error::ServerError(format!("Error al flush: {e}"))),
                 },
-                Err(e) => Err(Error::ServerError(format!("Error al escribir: {}", e))),
+                Err(e) => Err(Error::ServerError(format!("Error al escribir: {e}"))),
             }
         }
     }
@@ -355,7 +355,7 @@ impl Client {
                     std::thread::sleep(Duration::from_millis(50));
                     continue;
                 }
-                Err(e) => return Err(Error::ServerError(format!("Error de lectura: {}", e))),
+                Err(e) => return Err(Error::ServerError(format!("Error de lectura: {e}"))),
             }
         }
 
@@ -389,7 +389,7 @@ impl Client {
                     std::thread::sleep(Duration::from_millis(50));
                     continue;
                 }
-                Err(e) => return Err(Error::ServerError(format!("Error de lectura: {}", e))),
+                Err(e) => return Err(Error::ServerError(format!("Error de lectura: {e}"))),
             }
         }
 
@@ -412,7 +412,7 @@ impl Client {
                         std::thread::sleep(Duration::from_millis(50));
                         continue;
                     }
-                    Err(e) => return Err(Error::ServerError(format!("Error de lectura: {}", e))),
+                    Err(e) => return Err(Error::ServerError(format!("Error de lectura: {e}"))),
                 }
             }
 
@@ -611,7 +611,7 @@ impl Client {
             .map_err(|_| Error::TruncateError("Error al transformar bytes a utf8".to_string()))?;
 
         str_value.parse::<T>().map_err(|e| {
-            Error::TruncateError(format!("Error al parsear string '{}': {}", str_value, e))
+            Error::TruncateError(format!("Error al parsear string '{str_value}': {e}"))
         })
     }
 
@@ -631,8 +631,7 @@ impl Client {
 
         if let Err(err) = tcp_stream.write_all(bytes) {
             return Err(Error::ServerError(format!(
-                "Error mandando mensaje aislado a {}:\n\n{}",
-                socket, err
+                "Error mandando mensaje aislado a {socket}:\n\n{err}"
             )));
         }
 
@@ -646,13 +645,13 @@ impl Client {
                 AddrLoader::ip_to_socket(&addr, &PortType::Cli),
                 &SvAction::Exit.as_bytes()[..],
             ) {
-                println!("{}", err);
+                println!("{err}");
             }
             if let Err(err) = Self::send_message(
                 AddrLoader::ip_to_socket(&addr, &PortType::Priv),
                 &SvAction::Exit.as_bytes()[..],
             ) {
-                println!("{}", err);
+                println!("{err}");
             }
         }
 

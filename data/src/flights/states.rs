@@ -59,8 +59,7 @@ impl TryFrom<&str> for FlightState {
             "finished" => Ok(Self::Finished),
             "preparing" => Ok(Self::Preparing),
             _ => Err(Error::ServerError(format!(
-                "'{}' no es un nombre válido de estado de vuelo.",
-                state
+                "'{state}' no es un nombre válido de estado de vuelo."
             ))),
         }
     }

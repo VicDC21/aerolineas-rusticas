@@ -12,13 +12,14 @@ use {
         collections::HashMap,
         io::{BufRead, Result as IOResult},
     },
+    utils::get_root_path::get_root_path,
 };
 
 /// Un mapa de países.
 pub type CountriesMap = HashMap<String, Country>;
 
 /// La dirección por defecto del dataset de países.
-const COUNTRIES_PATH: &str = "./datasets/airports/countries.csv";
+const COUNTRIES_PATH: &str = "datasets/airports/countries.csv";
 
 /// La cantidad mínima de elementos que ha de haber en una línea del dataset de países.
 const MIN_COUNTRIES_ELEMS: usize = 6;
@@ -94,7 +95,12 @@ impl Country {
 
     /// Crea una nueva instancia a partir del código de país.
     pub fn try_from_code(country_code: &str) -> Result<Self> {
-        let reader = reader_from(COUNTRIES_PATH, true)?;
+        let path = get_root_path(COUNTRIES_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de países: {e}"
+            ))
+        })?;
+        let reader = reader_from(path.as_str(), true)?;
 
         for line in reader.lines().map_while(IOResult::ok) {
             let tokens = get_tokens(&line, ',', MIN_COUNTRIES_ELEMS)?;
@@ -106,8 +112,7 @@ impl Country {
         }
 
         Err(Error::ServerError(format!(
-            "No hay un país con código '{}' entre los datos.",
-            country_code
+            "No hay un país con código '{country_code}' entre los datos."
         )))
     }
 
@@ -120,7 +125,12 @@ impl Country {
     ///
     /// </div>
     pub fn get_all() -> Result<CountriesMap> {
-        let reader = reader_from(COUNTRIES_PATH, true)?;
+        let path = get_root_path(COUNTRIES_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de países: {e}"
+            ))
+        })?;
+        let reader = reader_from(path.as_str(), true)?;
         let mut countries = CountriesMap::new();
 
         for line in reader.lines().map_while(IOResult::ok) {

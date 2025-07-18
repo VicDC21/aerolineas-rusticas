@@ -118,8 +118,7 @@ impl FlightEditorWindow {
                                 .as_str(),
                             ) {
                                 println!(
-                                    "Ocurrió un error actualizando el origen del vuelo:\n\n{}",
-                                    err
+                                    "Ocurrió un error actualizando el origen del vuelo:\n\n{err}"
                                 );
                             }
                         }
@@ -147,8 +146,7 @@ impl FlightEditorWindow {
                                 .as_str(),
                             ) {
                                 println!(
-                                    "Ocurrió un error actualizando el destino del vuelo:\n\n{}",
-                                    err
+                                    "Ocurrió un error actualizando el destino del vuelo:\n\n{err}"
                                 );
                             }
                         }
@@ -164,7 +162,7 @@ impl FlightEditorWindow {
                             None => "(Not Available)".to_string(),
                         };
                         hor_ui.label(
-                            RichText::new(format!("{:>20}", date_str))
+                            RichText::new(format!("{date_str:>20}"))
                                 .monospace()
                                 .color(text_color),
                         );
@@ -194,8 +192,7 @@ impl FlightEditorWindow {
                                 .as_str(),
                             ) {
                                 println!(
-                                    "Ocurrió un error actualizando la fecha del vuelo:\n\n{}",
-                                    err
+                                    "Ocurrió un error actualizando la fecha del vuelo:\n\n{err}"
                                 );
                             }
                             self.date = Some(local_date);
@@ -251,8 +248,7 @@ impl FlightEditorWindow {
                                 .as_str(),
                             ) {
                                 println!(
-                                    "Ocurrió un error actualizando el estado del vuelo:\n\n{}",
-                                    err
+                                    "Ocurrió un error actualizando el estado del vuelo:\n\n{err}"
                                 );
                             }
                         }

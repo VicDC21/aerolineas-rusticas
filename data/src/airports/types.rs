@@ -75,8 +75,7 @@ impl TryFrom<&str> for AirportType {
             "balloonport" => Ok(Self::BalloonBase),
             "closed" => Ok(Self::Closed),
             _ => Err(Error::ServerError(format!(
-                "'{}' no es un tipo válido de aeropuerto.",
-                airport_type
+                "'{airport_type}' no es un tipo válido de aeropuerto."
             ))),
         }
     }

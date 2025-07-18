@@ -77,8 +77,7 @@ impl TryFrom<&[Byte]> for WriteType {
             "VIEW" => Ok(Self::View),
             "CDC" => Ok(Self::Cdc),
             _ => Err(Error::ConfigError(format!(
-                "'{}' no corresponde a ninguna variante.",
-                inner_str
+                "'{inner_str}' no corresponde a ninguna variante."
             ))),
         }
     }

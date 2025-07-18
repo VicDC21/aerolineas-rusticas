@@ -42,7 +42,7 @@ fn send_insert_query(
                 let (new_client, new_tls_stream) = match set_client_and_connection(true) {
                     Ok((new_client, new_tls_stream)) => (new_client, new_tls_stream),
                     Err(reconnect_err) => {
-                        eprintln!("Error en la reconexión del cliente: {}", reconnect_err);
+                        eprintln!("Error en la reconexión del cliente: {reconnect_err}");
                         return Err(reconnect_err);
                     }
                 };

@@ -144,8 +144,7 @@ impl FromStr for Consistency {
             "LOCALSERIAL" => Ok(Consistency::LocalSerial),
             "LOCALONE" => Ok(Consistency::LocalOne),
             _ => Err(Error::ConfigError(format!(
-                "Consistency Level no reconocido: {}",
-                s
+                "Consistency Level no reconocido: {s}"
             ))),
         }
     }
@@ -167,7 +166,7 @@ impl fmt::Display for Consistency {
             Self::LocalOne => "LocalOne",
         };
 
-        write!(f, "{}", consistency)
+        write!(f, "{consistency}")
     }
 }
 

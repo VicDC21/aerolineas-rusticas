@@ -65,13 +65,13 @@ mod tests {
 
             for &(flight_id, _, _, _) in &flight_configs {
                 let flight_data = simulator.get_flight_data(flight_id);
-                assert!(flight_data.is_some(), "Vuelo {} no encontrado", flight_id);
+                assert!(flight_data.is_some(), "Vuelo {flight_id} no encontrado");
             }
         }
 
         for &(flight_id, _, _, _) in &flight_configs {
             let flight_data = simulator.get_flight_data(flight_id);
-            assert!(flight_data.is_some(), "Vuelo {} no encontrado", flight_id);
+            assert!(flight_data.is_some(), "Vuelo {flight_id} no encontrado");
 
             if let Some(data) = flight_data {
                 assert_eq!(

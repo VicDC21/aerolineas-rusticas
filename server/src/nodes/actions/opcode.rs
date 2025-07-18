@@ -138,10 +138,7 @@ impl SvAction {
 
     /// Potencialmente consigue una acción, ignorando un error de ser el caso.
     pub fn get_action(bytes: &[Byte]) -> Option<Self> {
-        match Self::try_from(bytes) {
-            Ok(action) => Some(action),
-            Err(_) => None,
-        }
+        Self::try_from(bytes).ok()
     }
 
     /// Serializa la información de _gossip_.
@@ -325,8 +322,7 @@ impl TryFrom<&[Byte]> for SvAction {
         let first = bytes[i];
         if !Self::is_action(bytes) {
             return Err(Error::ServerError(format!(
-                "Conjunto de bytes no empieza por `111...`. En su lugar se recibió {:#b}",
-                first
+                "Conjunto de bytes no empieza por `111...`. En su lugar se recibió {first:#b}"
             )));
         }
 
@@ -345,8 +341,7 @@ impl TryFrom<&[Byte]> for SvAction {
                     i += 4;
                     if byte_len != 1 {
                         return Err(Error::ServerError(format!(
-                            "Se esperaba que el valor del set ocupara sólo un byte, no {}",
-                            byte_len
+                            "Se esperaba que el valor del set ocupara sólo un byte, no {byte_len}"
                         )));
                     }
 
@@ -438,8 +433,7 @@ impl TryFrom<&[Byte]> for SvAction {
             0xE5 => Ok(Self::NodeDeleted(bytes[1])),
             0xE6 => Ok(Self::NodeToDelete(bytes[1])),
             _ => Err(Error::ServerError(format!(
-                "'{:#b}' no es un id de acción válida.",
-                first
+                "'{first:#b}' no es un id de acción válida."
             ))),
         }
     }
@@ -450,53 +444,48 @@ impl std::fmt::Display for SvAction {
         match self {
             Self::Exit => write!(f, "Exit"),
             Self::Beat => write!(f, "Beat"),
-            Self::Gossip(neighbours) => write!(f, "Gossip({:?})", neighbours),
+            Self::Gossip(neighbours) => write!(f, "Gossip({neighbours:?})"),
             Self::Syn(emissor_id, gossip_info) => {
-                write!(f, "Syn({}, {:?})", emissor_id, gossip_info)
+                write!(f, "Syn({emissor_id}, {gossip_info:?})")
             }
             Self::Ack(receptor_id, gossip_info, nodes_map) => {
-                write!(
-                    f,
-                    "Ack({}, {:?}, {:?})",
-                    receptor_id, gossip_info, nodes_map
-                )
+                write!(f, "Ack({receptor_id}, {gossip_info:?}, {nodes_map:?})")
             }
-            Self::Ack2(nodes_map) => write!(f, "Ack2({:?})", nodes_map),
-            Self::NewNeighbour(id, state) => write!(f, "NewNeighbour({}, {:?})", id, state),
+            Self::Ack2(nodes_map) => write!(f, "Ack2({nodes_map:?})"),
+            Self::NewNeighbour(id, state) => write!(f, "NewNeighbour({id}, {state:?})"),
             Self::SendEndpointState(id, _string_ip) => {
-                write!(f, "SendEndpointState({}, {})", id, _string_ip)
+                write!(f, "SendEndpointState({id}, {_string_ip})")
             }
-            Self::InternalQuery(query_bytes) => write!(f, "InternalQuery({:?})", query_bytes),
+            Self::InternalQuery(query_bytes) => write!(f, "InternalQuery({query_bytes:?})"),
             Self::StoreMetadata => write!(f, "StoreMetadata"),
             Self::DirectReadRequest(query_bytes) => {
-                write!(f, "DirectReadRequest({:?})", query_bytes)
+                write!(f, "DirectReadRequest({query_bytes:?})")
             }
             Self::DigestReadRequest(query_bytes) => {
-                write!(f, "DigestReadRequest({:?})", query_bytes)
+                write!(f, "DigestReadRequest({query_bytes:?})")
             }
             Self::RepairRows(table_name, node_id, rows) => {
-                write!(f, "RepairRows({}, {}, {:?})", table_name, node_id, rows)
+                write!(f, "RepairRows({table_name}, {node_id}, {rows:?})")
             }
             Self::AddPartitionValueToMetadata(table_name, partition_value) => {
                 write!(
                     f,
-                    "AddPartitionValueToMetadata({}, {})",
-                    table_name, partition_value
+                    "AddPartitionValueToMetadata({table_name}, {partition_value})"
                 )
             }
-            Self::SendMetadata(node_id) => write!(f, "SendMetadata({})", node_id),
-            Self::ReceiveMetadata(metadata) => write!(f, "ReceiveMetadata({:?})", metadata),
+            Self::SendMetadata(node_id) => write!(f, "SendMetadata({node_id})"),
+            Self::ReceiveMetadata(metadata) => write!(f, "ReceiveMetadata({metadata:?})"),
             Self::RelocationNeeded => write!(f, "RelocationNeeded"),
             Self::UpdateReplicas(new_node_id, is_deletion) => {
-                write!(f, "UpdateReplicas({}, {})", new_node_id, is_deletion)
+                write!(f, "UpdateReplicas({new_node_id}, {is_deletion})")
             }
             Self::AddRelocatedRows(node_id, rows) => {
-                write!(f, "AddRelocatedRows({}, {:?})", node_id, rows)
+                write!(f, "AddRelocatedRows({node_id}, {rows:?})")
             }
             Self::DeleteNode => write!(f, "DeleteNode"),
-            Self::NodeIsLeaving(node_id) => write!(f, "NodeIsLeaving({})", node_id),
-            Self::NodeDeleted(node_id) => write!(f, "NodeDeleted({})", node_id),
-            Self::NodeToDelete(node_id) => write!(f, "NodeToDelete({})", node_id),
+            Self::NodeIsLeaving(node_id) => write!(f, "NodeIsLeaving({node_id})"),
+            Self::NodeDeleted(node_id) => write!(f, "NodeDeleted({node_id})"),
+            Self::NodeToDelete(node_id) => write!(f, "NodeToDelete({node_id})"),
         }
     }
 }

@@ -4,6 +4,6 @@ use simulator::cli::run_sim;
 
 fn main() {
     if let Err(err) = run_sim(&[]) {
-        println!("{}", err);
+        println!("{err}");
     }
 }

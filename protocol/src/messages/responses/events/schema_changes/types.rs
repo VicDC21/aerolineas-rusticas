@@ -40,8 +40,7 @@ impl TryFrom<&[Byte]> for SchemaChangeType {
             "UPDATED" => Ok(Self::Updated),
             "DROPPED" => Ok(Self::Dropped),
             _ => Err(Error::ConfigError(format!(
-                "'{}' no es un valor válido para un tipo de cambio de schema.",
-                string
+                "'{string}' no es un valor válido para un tipo de cambio de schema."
             ))),
         }
     }

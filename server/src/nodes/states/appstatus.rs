@@ -82,8 +82,7 @@ impl TryFrom<&[Byte]> for AppStatus {
             0x8 => Ok(Self::NewNode),
             0x9 => Ok(Self::UpdatingReplicas),
             _ => Err(Error::ServerError(format!(
-                "El ID '{}' no corresponde a ningún estado de aplicación.",
-                first
+                "El ID '{first}' no corresponde a ningún estado de aplicación."
             ))),
         }
     }

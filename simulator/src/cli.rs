@@ -48,8 +48,7 @@ fn read_line() -> Result<String> {
     let mut input = String::new();
     if let Err(err) = std::io::stdin().read_line(&mut input) {
         return Err(Error::ServerError(format!(
-            "Error al leer la entrada: {}",
-            err
+            "Error al leer la entrada: {err}"
         )));
     }
     Ok(input)
@@ -135,14 +134,13 @@ fn handle_add_flight(simulator: &FlightSimulator) -> Result<()> {
                         Ok(speed) => speed,
                         Err(err) => {
                             return Err(Error::ServerError(format!(
-                                "Error al parsear la velocidad: {}",
-                                err
+                                "Error al parsear la velocidad: {err}"
                             )))
                         }
                     },
                 ) {
                     Ok(_) => println!("Vuelo añadido exitosamente"),
-                    Err(e) => println!("Error al añadir vuelo: {}", e),
+                    Err(e) => println!("Error al añadir vuelo: {e}"),
                 }
             }
             Err(_) => println!("Error: El ID de vuelo debe ser un entero válido"),
@@ -224,7 +222,7 @@ fn handle_termination(simulator: &FlightSimulator) -> Option<()> {
     if active_flights == 0 {
         return None;
     }
-    println!("AVISO: Hay {} vuelo(s) aún en curso.", active_flights);
+    println!("AVISO: Hay {active_flights} vuelo(s) aún en curso.");
     println!("El programa esperará a que todos los vuelos finalicen antes de cerrar.");
     Some(())
 }

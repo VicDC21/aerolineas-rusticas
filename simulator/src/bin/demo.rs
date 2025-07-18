@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let flight_configs: FlightConfigs = serde_json::from_reader(reader)?;
 
     if let Err(err) = run_sim(&flight_configs.flight_configs) {
-        println!("{}", err);
+        println!("{err}");
     }
 
     Ok(())

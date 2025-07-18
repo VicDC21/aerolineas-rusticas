@@ -66,7 +66,7 @@ fn main() {
 
 fn print_err(res: Result<()>) {
     if let Err(err) = res {
-        println!("{}", err);
+        println!("{err}");
     }
 }
 

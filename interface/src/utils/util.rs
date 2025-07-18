@@ -18,8 +18,7 @@ pub fn send_client_query(con_info: &mut ConnectionHolder, query: &str) -> Result
         Err(poison_err) => {
             client_lock.clear_poison();
             return Err(Error::ServerError(format!(
-                "Error de lock envenenado tratando de leer un cliente:\n\n{}",
-                poison_err
+                "Error de lock envenenado tratando de leer un cliente:\n\n{poison_err}"
             )));
         }
     };
@@ -30,7 +29,7 @@ pub fn send_client_query(con_info: &mut ConnectionHolder, query: &str) -> Result
     }
 
     if let ProtocolResult::QueryError(err) = protocol_result {
-        println!("{}", err);
+        println!("{err}");
     }
 
     Ok(())

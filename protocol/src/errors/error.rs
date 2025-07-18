@@ -580,44 +580,44 @@ impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let backtrace = Backtrace::force_capture();
         match self {
-            Self::ServerError(msg) => write!(f, "{}\nServerError: {}\n", backtrace, msg),
-            Self::ProtocolError(msg) => write!(f, "{}\nProtocolError: {}\n", backtrace, msg),
+            Self::ServerError(msg) => write!(f, "{backtrace}\nServerError: {msg}\n"),
+            Self::ProtocolError(msg) => write!(f, "{backtrace}\nProtocolError: {msg}\n"),
             Self::AuthenticationError(msg) => {
-                write!(f, "{}\nAuthenticationError: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nAuthenticationError: {msg}\n")
             }
             Self::UnavailableException(msg, _, _, _) => {
-                write!(f, "{}\nUnavailableException: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nUnavailableException: {msg}\n")
             }
-            Self::Overloaded(msg) => write!(f, "{}\nOverloaded: {}\n", backtrace, msg),
-            Self::IsBootstrapping(msg) => write!(f, "{}\nIsBootstrapping: {}\n", backtrace, msg),
-            Self::TruncateError(msg) => write!(f, "{}\nTruncateError: {}\n", backtrace, msg),
+            Self::Overloaded(msg) => write!(f, "{backtrace}\nOverloaded: {msg}\n"),
+            Self::IsBootstrapping(msg) => write!(f, "{backtrace}\nIsBootstrapping: {msg}\n"),
+            Self::TruncateError(msg) => write!(f, "{backtrace}\nTruncateError: {msg}\n"),
             Self::WriteTimeout(msg, _, _, _, _, _) => {
-                write!(f, "{}\nWriteTimeout: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nWriteTimeout: {msg}\n")
             }
             Self::ReadTimeout(msg, _, _, _, _) => {
-                write!(f, "{}\nReadTimeout: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nReadTimeout: {msg}\n")
             }
             Self::ReadFailure(msg, _, _, _, _, _) => {
-                write!(f, "{}\nReadFailure: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nReadFailure: {msg}\n")
             }
             Self::FunctionFailure(msg, _, _, _) => {
-                write!(f, "{}\nFunctionFailure: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nFunctionFailure: {msg}\n")
             }
             Self::WriteFailure(msg, _, _, _, _, _) => {
-                write!(f, "{}\nWriteFailure: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nWriteFailure: {msg}\n")
             }
-            Self::CDCWriteFailure(msg) => write!(f, "{}\nCDCWriteFailure: {}\n", backtrace, msg),
+            Self::CDCWriteFailure(msg) => write!(f, "{backtrace}\nCDCWriteFailure: {msg}\n"),
             Self::CASWriteUnknown(msg, _, _, _) => {
-                write!(f, "{}\nCASWriteUnknown: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nCASWriteUnknown: {msg}\n")
             }
-            Self::SyntaxError(msg) => write!(f, "{}\nSyntaxError: {}\n", backtrace, msg),
-            Self::Unauthorized(msg) => write!(f, "{}\nUnauthorized: {}\n", backtrace, msg),
-            Self::Invalid(msg) => write!(f, "{}\nInvalid: {}\n", backtrace, msg),
-            Self::ConfigError(msg) => write!(f, "{}\nConfigError: {}\n", backtrace, msg),
+            Self::SyntaxError(msg) => write!(f, "{backtrace}\nSyntaxError: {msg}\n"),
+            Self::Unauthorized(msg) => write!(f, "{backtrace}\nUnauthorized: {msg}\n"),
+            Self::Invalid(msg) => write!(f, "{backtrace}\nInvalid: {msg}\n"),
+            Self::ConfigError(msg) => write!(f, "{backtrace}\nConfigError: {msg}\n"),
             Self::AlreadyExists(msg, _, _) => {
-                write!(f, "{}\nAlreadyExists: {}\n", backtrace, msg)
+                write!(f, "{backtrace}\nAlreadyExists: {msg}\n")
             }
-            Self::Unprepared(msg, _) => write!(f, "{}\nUnprepared: {}\n", backtrace, msg),
+            Self::Unprepared(msg, _) => write!(f, "{backtrace}\nUnprepared: {msg}\n"),
         }
     }
 }

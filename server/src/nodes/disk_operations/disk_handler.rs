@@ -59,14 +59,15 @@ use {
         str::FromStr,
         sync::RwLockWriteGuard,
     },
+    utils::get_root_path::get_root_path,
 };
 
-/// La ruta para el almacenamiento de las keyspaces y tablas de los nodos.
-pub const STORAGE_PATH: &str = "storage";
+/// El nombre del directorio para el almacenamiento de las keyspaces y tablas de los nodos.
+const STORAGE_DIR_NAME: &str = "storage";
 /// El nombre individual del directorio de un nodo.
 const STORAGE_NODE_PATH: &str = "storage_node";
-/// La ruta para el almacenamiento de los metadatos de los nodos.
-pub const NODES_METADATA_PATH: &str = "nodes_metadata";
+/// El nombre del directorio para el almacenamiento de los metadatos de los nodos.
+pub const NODES_METADATA_DIR_NAME: &str = "nodes_metadata";
 /// El nombre individual del directorio de metadatos de un nodo.
 const NODE_METADATA_PATH: &str = "metadata_node";
 /// La ruta para el almacenamiento de las IPs de los nodos.
@@ -79,15 +80,25 @@ impl DiskHandler {
     /// Crea una carpeta de almacenamiento para las keyspaces y tablas del nodo.
     /// Devuelve la ruta a dicho almacenamiento.
     pub fn new_node_storage(id: NodeId) -> Result<String> {
-        Self::create_directory(STORAGE_PATH)?;
-        let storage_addr: String = Self::get_node_storage(id);
+        let storage_path = get_root_path(STORAGE_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de almacenamiento: {e}"
+            ))
+        })?;
+        Self::create_directory(&storage_path)?;
+        let storage_addr: String = Self::get_node_storage(id)?;
         Self::create_directory(&storage_addr)?;
         Ok(storage_addr)
     }
 
     /// Obtiene la ruta de almacenamiento de un nodo dado su ID.
-    pub fn get_node_storage(id: NodeId) -> String {
-        format!("{}/{}_{}", STORAGE_PATH, STORAGE_NODE_PATH, id)
+    pub fn get_node_storage(id: NodeId) -> Result<String> {
+        let storage_path = get_root_path(STORAGE_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de almacenamiento: {e}"
+            ))
+        })?;
+        Ok(format!("{storage_path}/{STORAGE_NODE_PATH}_{id}"))
     }
 
     /// Crea un directorio a partir de una ruta.
@@ -96,8 +107,7 @@ impl DiskHandler {
         if !path_folder.exists() && !path_folder.is_dir() {
             create_dir(path_folder).map_err(|e| {
                 Error::ServerError(format!(
-                    "No se pudo crear la carpeta de almacenamiento {}: {}",
-                    path, e
+                    "No se pudo crear la carpeta de almacenamiento {path}: {e}"
                 ))
             })?;
         }
@@ -105,13 +115,23 @@ impl DiskHandler {
     }
 
     /// Obtiene la ruta de almacenamiento de los metadatos de un nodo dado su ID.
-    pub fn get_node_metadata_path(id: NodeId) -> String {
-        format!("{}/{}_{}.json", NODES_METADATA_PATH, NODE_METADATA_PATH, id)
+    pub fn get_node_metadata_path(id: NodeId) -> Result<String> {
+        let metadata_path = get_root_path(NODES_METADATA_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de metadatos: {e}"
+            ))
+        })?;
+        Ok(format!("{metadata_path}/{NODE_METADATA_PATH}_{id}.json"))
     }
 
     /// Almacena los metadatos de un nodo en un archivo JSON.
     pub fn store_node_metadata(node: RwLockWriteGuard<Node>) -> Result<()> {
-        let path_folder = Path::new(NODES_METADATA_PATH);
+        let metadata_path = get_root_path(NODES_METADATA_DIR_NAME).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del directorio de metadatos: {e}"
+            ))
+        })?;
+        let path_folder = Path::new(&metadata_path);
         if !path_folder.exists() {
             let _ = create_dir(path_folder);
         } else if !path_folder.is_dir() {
@@ -119,29 +139,48 @@ impl DiskHandler {
                 "El directorio de metadatos de nodos no es un directorio".to_string(),
             ));
         }
-        store_json(&*node, &Self::get_node_metadata_path(node.get_id()))
+        store_json(&*node, &Self::get_node_metadata_path(node.get_id())?)
     }
 
     /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.
     pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) -> Result<()> {
-        let file = OpenOptions::new()
-            .append(true)
-            .open(NODES_IPS_PATH)
-            .expect("No se pudo abrir el archivo de IPs de nodos");
+        let file = match get_root_path(NODES_IPS_PATH) {
+            Ok(path) => OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path.as_str())
+                .map_err(|e| {
+                    Error::ServerError(format!("No se pudo abrir el archivo de IPs de nodos: {e}"))
+                })?,
+            Err(e) => {
+                return Err(Error::ServerError(format!(
+                    "No se pudo obtener la ruta del archivo de IPs de nodos: {e}"
+                )));
+            }
+        };
 
         let mut writer = BufWriter::new(&file);
         writer
-            .write_all(format!("{},{}\n", id, ip).as_bytes())
+            .write_all(format!("{id},{ip}\n").as_bytes())
             .map_err(|e| Error::ServerError(e.to_string()))?;
         Ok(())
     }
 
     /// Borra el nodo según el ID dado del archivo de IPs de los nodos `node_ips.csv`.
     pub fn delete_node_id_and_ip(id: NodeId) -> Result<()> {
+        let path = get_root_path(NODES_IPS_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de IPs de nodos: {e}"
+            ))
+        })?;
         let file = OpenOptions::new()
             .read(true)
-            .open(NODES_IPS_PATH)
-            .expect("No se pudo abrir el archivo de IPs de nodos para lectura");
+            .open(path.as_str())
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo abrir el archivo de IPs de nodos para lectura: {e}"
+                ))
+            })?;
         let reader = BufReader::new(&file);
         let mut new_rows: Vec<String> = Vec::new();
         for line in reader.lines() {
@@ -150,7 +189,6 @@ impl DiskHandler {
                     "No se pudo obtener una linea en el archivo de IPs de nodos".to_string(),
                 )
             })?;
-            // println!("linea leida: {}", line);
             let current_id = line.split(',').next().ok_or_else(|| {
                 Error::ServerError(
                     "No se pudo obtener el ID de un nodo en el archivo de IPs de nodos".to_string(),
@@ -160,15 +198,23 @@ impl DiskHandler {
                 new_rows.push(line);
             }
         }
-        // println!("Nuevo contenido: {:?}", new_rows);
         let mut new_content = new_rows.join("\n");
         new_content.push('\n');
 
+        let path = get_root_path(NODES_IPS_PATH).map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de IPs de nodos: {e}"
+            ))
+        })?;
         let file = OpenOptions::new()
             .write(true)
             .truncate(true)
-            .open(NODES_IPS_PATH)
-            .expect("No se pudo abrir el archivo de IPs de nodos para escritura");
+            .open(path.as_str())
+            .map_err(|e| {
+                Error::ServerError(format!(
+                    "No se pudo abrir el archivo de IPs de nodos para escritura: {e}"
+                ))
+            })?;
         let mut writer = BufWriter::new(&file);
         if writer.write_all(new_content.as_bytes()).is_err() {
             return Err(Error::ServerError(
@@ -187,10 +233,8 @@ impl DiskHandler {
         table_name: &str,
         node_number: NodeId,
     ) -> Result<()> {
-        let table_addr = format!(
-            "{}/{}/{}_replica_node_{}.csv",
-            storage_addr, keyspace_name, table_name, node_number
-        );
+        let table_addr =
+            format!("{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv");
         let file = OpenOptions::new()
             .append(true)
             .open(&table_addr)
@@ -236,15 +280,14 @@ impl DiskHandler {
         storage_addr: &str,
     ) -> Result<Option<Keyspace>> {
         let keyspace_name = statement.keyspace_name.get_name();
-        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let keyspace_addr = format!("{storage_addr}/{keyspace_name}");
         let path_folder = Path::new(&keyspace_addr);
         if path_folder.exists() && path_folder.is_dir() {
             if statement.if_not_exist {
                 return Ok(None);
             } else {
                 return Err(Error::ServerError(format!(
-                    "El keyspace {} ya existe",
-                    keyspace_name
+                    "El keyspace {keyspace_name} ya existe"
                 )));
             }
         } else {
@@ -263,12 +306,11 @@ impl DiskHandler {
 
     /// Crea el directorio de un keyspace.
     pub fn create_keyspace_dir(keyspace_name: &str, storage_addr: &str) -> Result<()> {
-        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let keyspace_addr = format!("{storage_addr}/{keyspace_name}");
         let path_folder = Path::new(&keyspace_addr);
         if path_folder.exists() && path_folder.is_dir() {
             return Err(Error::ServerError(format!(
-                "El directorio del keyspace {} ya existe",
-                keyspace_name
+                "El directorio del keyspace {keyspace_name} ya existe"
             )));
         } else {
             create_dir(path_folder).map_err(|e| Error::ServerError(e.to_string()))?;
@@ -278,21 +320,19 @@ impl DiskHandler {
 
     /// Elimina un keyspace en el caso que corresponda.
     pub fn drop_keyspace(keyspace_name: &str, storage_addr: &str) -> Result<()> {
-        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let keyspace_addr = format!("{storage_addr}/{keyspace_name}");
         let path_folder = Path::new(&keyspace_addr);
 
         if path_folder.exists() && path_folder.is_dir() {
             std::fs::remove_dir_all(path_folder).map_err(|e| {
                 Error::ServerError(format!(
-                    "Error al eliminar el keyspace {}: {}",
-                    keyspace_name, e
+                    "Error al eliminar el keyspace {keyspace_name}: {e}"
                 ))
             })?;
             Ok(())
         } else {
             Err(Error::ServerError(format!(
-                "El directorio del keyspace {} no existe",
-                keyspace_name
+                "El directorio del keyspace {keyspace_name} no existe"
             )))
         }
     }
@@ -370,18 +410,15 @@ impl DiskHandler {
         columns_names: &[String],
         node_number: Byte,
     ) -> Result<()> {
-        let table_addr = format!(
-            "{}/{}/{}_replica_node_{}.csv",
-            storage_addr, keyspace_name, table_name, node_number
-        );
+        let table_addr =
+            format!("{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv");
         let file = OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&table_addr)
             .map_err(|e| {
                 Error::ServerError(format!(
-                    "No se pudo crear la tabla con dirección `{}` para escritura: {}",
-                    table_addr, e
+                    "No se pudo crear la tabla con dirección `{table_addr}` para escritura: {e}"
                 ))
             })?;
 
@@ -390,16 +427,14 @@ impl DiskHandler {
             .write_all(columns_names.join(",").as_bytes())
             .map_err(|e| {
                 Error::ServerError(format!(
-                    "No se pudo escribir las columnas en la tabla con dirección `{}`: {}",
-                    table_addr, e
+                    "No se pudo escribir las columnas en la tabla con dirección `{table_addr}`: {e}"
                 ))
             })?;
         writer
             .write_all((",row_timestamp\n").as_bytes())
             .map_err(|e| {
                 Error::ServerError(format!(
-                    "No se pudo escribir las columnas en la tabla con dirección `{}`: {}",
-                    table_addr, e
+                    "No se pudo escribir las columnas en la tabla con dirección `{table_addr}`: {e}"
                 ))
             })?;
         Ok(())
@@ -412,10 +447,8 @@ impl DiskHandler {
         table_name: &str,
         node_number: Byte,
     ) -> Result<()> {
-        let table_addr = format!(
-            "{}/{}/{}_replica_node_{}.csv",
-            storage_addr, keyspace_name, table_name, node_number
-        );
+        let table_addr =
+            format!("{storage_addr}/{keyspace_name}/{table_name}_replica_node_{node_number}.csv");
         std::fs::remove_file(table_addr).map_err(|e| Error::ServerError(e.to_string()))
     }
 
@@ -1012,13 +1045,12 @@ impl DiskHandler {
             Some(keyspace) => keyspace,
             None => default_keyspace.to_string(),
         };
-        let keyspace_addr = format!("{}/{}", storage_addr, keyspace_name);
+        let keyspace_addr = format!("{storage_addr}/{keyspace_name}");
         let path_folder = Path::new(&keyspace_addr);
 
         if !path_folder.exists() && !path_folder.is_dir() {
             return Err(Error::ServerError(format!(
-                "El keyspace {} no existe",
-                keyspace_name
+                "El keyspace {keyspace_name} no existe"
             )));
         }
 
@@ -1040,7 +1072,7 @@ impl DiskHandler {
         if statement
             .primary_key
             .as_ref()
-            .map_or(true, |pk| pk.clustering_columns.is_empty())
+            .is_none_or(|pk| pk.clustering_columns.is_empty())
         {
             return Ok(None);
         }
@@ -1076,16 +1108,14 @@ impl DiskHandler {
                     Ok(order) => order,
                     Err(_) => {
                         return Err(Error::Invalid(format!(
-                            "La dirección de ordenación {} no es válida",
-                            order
+                            "La dirección de ordenación {order} no es válida"
                         )))
                     }
                 };
                 clustering_keys_and_order[j] = (key.to_string(), order);
             } else {
                 return Err(Error::Invalid(format!(
-                    "La columna {} no es parte de la clave de clustering",
-                    key
+                    "La columna {key} no es parte de la clave de clustering"
                 )));
             }
         }
@@ -1263,7 +1293,12 @@ impl DiskHandler {
 
     /// Lee la tabla de usuarios y contraseñas, y los devuelve como vector de tuplas.
     pub fn read_admitted_users(_storage_addr: &str) -> Result<Vec<(String, String)>> {
-        let file = match File::open("users.csv") {
+        let path = get_root_path("users.csv").map_err(|e| {
+            Error::ServerError(format!(
+                "No se pudo obtener la ruta del archivo de usuarios: {e}"
+            ))
+        })?;
+        let file = match File::open(path.as_str()) {
             Ok(value) => value,
             Err(_err) => {
                 return Err(Error::ServerError(

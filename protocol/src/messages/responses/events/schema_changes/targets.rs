@@ -48,8 +48,7 @@ impl TryFrom<&[Byte]> for SchemaChangeTarget {
             "FUNCTION" => Ok(Self::Function),
             "AGGREGATE" => Ok(Self::Aggregate),
             _ => Err(Error::ConfigError(format!(
-                "'{}' no parece ser un tipo válido de target de cambio de schema.",
-                string
+                "'{string}' no parece ser un tipo válido de target de cambio de schema."
             ))),
         }
     }

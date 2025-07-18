@@ -28,7 +28,7 @@ impl TablePath {
         Self {
             storage_addr: storage_addr.to_string(),
             keyspace,
-            table_name: format!("{}_replica_node_{}", table_name, node_number),
+            table_name: format!("{table_name}_replica_node_{node_number}"),
         }
     }
 

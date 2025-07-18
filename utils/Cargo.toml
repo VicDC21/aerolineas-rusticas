@@ -1,5 +1,5 @@
 [package]
-name = "protocol"
+name = "utils"
 version = "1.0.0"
 authors.workspace = true
 edition.workspace = true

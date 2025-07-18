@@ -39,7 +39,7 @@ pub fn simulate_flight(
     let (mut client, mut tls_stream) = match set_client_and_connection(has_to_connect) {
         Ok((client, tls_stream)) => (client, tls_stream),
         Err(err) => {
-            eprintln!("Error en la conexión del cliente: {}", err);
+            eprintln!("Error en la conexión del cliente: {err}");
             return;
         }
     };

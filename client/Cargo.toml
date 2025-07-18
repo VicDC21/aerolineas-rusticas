@@ -1,6 +1,6 @@
 [package]
 name = "client"
-version = "0.5.0"
+version = "1.0.0"
 authors.workspace = true
 edition.workspace = true
 default-run = "cli"
@@ -12,10 +12,18 @@ protocol = { path = "../protocol" }
 rustls = { version = "0.22.4" }
 server = { path = "../server" }
 tokenizer = { path = "../tokenizer" }
+utils = { path = "../utils" }
 
 [[bin]]
 name = "cli"
 path = "./src/bin/cli.rs"
+test = true
+doctest = true
+doc = true
+
+[[bin]]
+name = "setup_db"
+path = "./src/bin/setup_db.rs"
 test = true
 doctest = true
 doc = true

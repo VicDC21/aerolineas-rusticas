@@ -88,7 +88,7 @@ pub struct Node {
 
     /// Los estados de los nodos vecinos, incluyendo este mismo.
     ///
-    /// No necesariamente serán todos los otros nodos del grafo, sólo los que este nodo conoce.
+    /// No necesariamente serán todos los otros nodos del cluster, sólo los que este nodo conoce.
     #[serde(skip)]
     pub neighbours_states: NodesMap,
 
@@ -178,7 +178,7 @@ impl Node {
 
         self.neighbours_states = neighbours_states;
         self.endpoint_state = endpoint_state;
-        self.storage_addr = DiskHandler::get_node_storage(id);
+        self.storage_addr = DiskHandler::get_node_storage(id)?;
         self.open_connections = OpenConnectionsMap::new();
         self.is_new_node = is_new;
         self.stoppers = stoppers;
@@ -210,20 +210,17 @@ impl Node {
     fn init_new(id: NodeId, ip: &str, mode: ConnectionMode) -> Result<()> {
         if Self::id_exists(&id) {
             return Err(Error::ServerError(format!(
-                "El ID {} ya está en uso por otro nodo.",
-                id
+                "El ID {id} ya está en uso por otro nodo."
             )));
         }
         // Aca ya sabemos que la IP es válida, entonces no hace falta un else
         if let Ok(ip) = ip.parse::<IpAddr>() {
             if Self::ip_exists(&ip) {
                 return Err(Error::ServerError(format!(
-                    "La IP {} ya está en uso por otro nodo.",
-                    ip
+                    "La IP {ip} ya está en uso por otro nodo."
                 )));
             }
         }
-        println!("Se inicia el nodo {} y se agrega a la lista de ids", id);
         DiskHandler::store_new_node_id_and_ip(id, ip)?;
 
         Self::init(id, mode, true, Some(ip))
@@ -272,14 +269,13 @@ impl Node {
         }
         if !nodes_ids.contains(&id) {
             return Err(Error::ServerError(format!(
-                "El ID {} no está en el archivo de IPs de los nodos.",
-                id
+                "El ID {id} no está en el archivo de IPs de los nodos."
             )));
         }
 
         let mut handlers: Vec<Option<NodeHandle>> = Vec::new();
         let mut node_listeners: Vec<Option<NodeHandle>> = Vec::new();
-        let metadata_path = DiskHandler::get_node_metadata_path(id);
+        let metadata_path = DiskHandler::get_node_metadata_path(id)?;
         let node_metadata_path = Path::new(&metadata_path);
         let mut node = if node_metadata_path.exists() {
             let mut node: Node = load_json(&metadata_path)?;
@@ -316,7 +312,6 @@ impl Node {
     }
 
     fn notify_new_node(id: NodeId, ip: Option<&str>) {
-        println!("Les indica a los demas nodos que existe.");
         for node_id in Self::get_all_nodes_ids() {
             if id == node_id {
                 continue;
@@ -330,8 +325,7 @@ impl Node {
                 .is_err()
                 {
                     println!(
-                        "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
-                        id, node_id,
+                        "El nodo {id} se encontró apagado cuando el nodo {node_id} intentó presentarse.",
                     );
                 }
             }
@@ -375,8 +369,7 @@ impl Node {
     pub fn notify_node_is_gonna_be_deleted(&self, id_to_delete: NodeId) -> Result<()> {
         if !Self::id_exists(&id_to_delete) {
             return Err(Error::ServerError(format!(
-                "El ID {} no está en el archivo de IPs de los nodos.",
-                id_to_delete
+                "El ID {id_to_delete} no está en el archivo de IPs de los nodos."
             )));
         }
         send_to_node(
@@ -414,8 +407,7 @@ impl Node {
         match self.tables.get(table_name) {
             Some(table) => Ok(table),
             None => Err(Error::ServerError(format!(
-                "La tabla llamada {} no existe",
-                table_name
+                "La tabla llamada {table_name} no existe"
             ))),
         }
     }
@@ -448,8 +440,7 @@ impl Node {
         match self.keyspaces.get(keyspace_name) {
             Some(keyspace) => Ok(keyspace),
             None => Err(Error::ServerError(format!(
-                "El keyspace `{}` no existe",
-                keyspace_name
+                "El keyspace `{keyspace_name}` no existe"
             ))),
         }
     }
@@ -465,8 +456,7 @@ impl Node {
             Ok(())
         } else {
             Err(Error::ServerError(format!(
-                "El keyspace `{}` no existe",
-                keyspace_name
+                "El keyspace `{keyspace_name}` no existe"
             )))
         }
     }
@@ -498,8 +488,7 @@ impl Node {
                     Ok(preferred_keyspace_name.to_string())
                 } else {
                     Err(Error::ServerError(format!(
-                        "El keyspace llamado {} no existe",
-                        preferred_keyspace_name
+                        "El keyspace llamado {preferred_keyspace_name} no existe"
                     )))
                 }
             }
@@ -589,10 +578,6 @@ impl Node {
 
     /// Envia su endpoint state al nodo del ID correspondiente.
     pub fn send_endpoint_state(&self, id: NodeId, ip: String) {
-        println!(
-            "Voy a agregar al nodo {} de ip {} a la lista de nodos",
-            id, ip
-        );
         let _ = DiskHandler::store_new_node_id_and_ip(id, &ip);
         let _ = send_to_node(
             id,
@@ -605,14 +590,6 @@ impl Node {
                 id, self.id
             )
         });
-        // }
-        // .is_err()
-        // {
-        //     println!(
-        //         "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
-        //         id, self.id,
-        //     );
-        // }
     }
 
     /// Consulta si ya se tiene un [EndpointState].
@@ -674,7 +651,6 @@ impl Node {
             && *state.get_appstate().get_status() != AppStatus::Left
             && *state.get_appstate().get_status() != AppStatus::Remove
         {
-            println!("Nodo {} presentado.", id);
             if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
                 self.nodes_weights.push(1);
             }
@@ -706,11 +682,10 @@ impl Node {
             if !self.has_endpoint_state_by_id(&node_id)
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Left
                 && *endpoint_state.get_appstate().get_status() != AppStatus::Remove
+                && actual_n_nodes > N_NODES as usize
+                && self.nodes_weights.len() < actual_n_nodes
             {
-                println!("Nodo {} presentado.", node_id);
-                if actual_n_nodes > N_NODES as usize && self.nodes_weights.len() < actual_n_nodes {
-                    self.nodes_weights.push(1);
-                }
+                self.nodes_weights.push(1);
             }
             if let Some(old_state) = self.neighbours_states.get(&node_id) {
                 if *old_state.get_appstate_status() == AppStatus::Remove {
@@ -857,8 +832,7 @@ impl Node {
                     Ok(Self::create_result_void())
                 } else {
                     Err(Error::ServerError(format!(
-                        "El keyspace {} no existe",
-                        keyspace_name
+                        "El keyspace {keyspace_name} no existe"
                     )))
                 }
             }
@@ -881,8 +855,7 @@ impl Node {
             Ok(Self::create_result_void())
         } else {
             Err(Error::ServerError(format!(
-                "El keyspace {} no existe",
-                keyspace_name
+                "El keyspace {keyspace_name} no existe"
             )))
         }
     }
@@ -998,8 +971,7 @@ impl Node {
                 Some(partition_values) => partition_values.clone(),
                 None => {
                     return Err(Error::ServerError(format!(
-                        "La tabla llamada {} no existe",
-                        table_name
+                        "La tabla llamada {table_name} no existe"
                     )))
                 }
             };
@@ -1167,8 +1139,7 @@ impl Node {
         match self.keyspaces.get(keyspace_name) {
             Some(keyspace) => self.get_quantity_of_replicas_from_keyspace(keyspace),
             None => Err(Error::ServerError(format!(
-                "El keyspace llamado {} no existe",
-                keyspace_name
+                "El keyspace llamado {keyspace_name} no existe"
             ))),
         }
     }
@@ -1192,8 +1163,7 @@ impl Node {
             .is_err()
             {
                 println!(
-                    "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
-                    node_id, node_id,
+                    "El nodo {node_id} se encontró apagado cuando el nodo {node_id} intentó presentarse.",
                 );
             }
         }
@@ -1229,8 +1199,7 @@ impl Node {
         .is_err()
         {
             println!(
-                "El nodo {} se encontró apagado cuando el nodo {} intentó presentarse.",
-                node_id, id,
+                "El nodo {node_id} se encontró apagado cuando el nodo {id} intentó presentarse.",
             )
         }
     }
@@ -1288,7 +1257,6 @@ impl Node {
         self.tables_and_partitions_keys_values = tables_and_partitions_keys_values;
         self.default_keyspace_name = default_keyspace_name;
 
-        println!("Metadata del clúster recibida.");
         Ok(())
     }
 
@@ -1667,8 +1635,6 @@ impl Node {
         }
         // Una vez todo finalizado, el estado del nodo vuelve a ser normal.
         self.endpoint_state.set_appstate_status(AppStatus::Normal);
-        println!("El nodo {} finalizó la relocalización.", self.id);
-
         Ok(())
     }
 

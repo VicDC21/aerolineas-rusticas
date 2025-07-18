@@ -60,8 +60,8 @@ pub fn insert_flight(
 ///
 /// Se asume que en la conexión, uno ya se encuentra logueado.
 pub fn delete_flight_by_id(con_info: &mut ConnectionHolder, flight_id: Int) -> Result<()> {
-    let inc_delete = format!("DELETE FROM vuelos_entrantes WHERE id = {};", flight_id);
-    let dep_delete = format!("DELETE FROM vuelos_salientes WHERE id = {};", flight_id);
+    let inc_delete = format!("DELETE FROM vuelos_entrantes WHERE id = {flight_id};");
+    let dep_delete = format!("DELETE FROM vuelos_salientes WHERE id = {flight_id};");
 
     send_client_query(con_info, inc_delete.as_str())?;
     send_client_query(con_info, dep_delete.as_str())?;
