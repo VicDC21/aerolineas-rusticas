@@ -51,7 +51,7 @@ pub fn create_echo_nodes(nodes: u8, duration: Duration) -> HandlesVec {
     for i in 0..nodes {
         handles.push(Some(spawn(move || {
             if let Err(err) = Node::init_in_echo_mode(10 + i) {
-                println!("Error:\n{}", err);
+                println!("Error:\n{err}");
             };
         })));
         sleep(duration);
@@ -66,7 +66,7 @@ pub fn create_parsing_nodes(nodes: u8, duration: Duration) -> HandlesVec {
     for i in 0..nodes {
         handles.push(Some(spawn(move || {
             if let Err(err) = Node::init_in_parsing_mode(10 + i) {
-                println!("Error:\n{}", err);
+                println!("Error:\n{err}");
             };
         })));
         sleep(duration);
