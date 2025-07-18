@@ -279,7 +279,7 @@ mod tests {
             let handle = std::thread::spawn(move || {
                 for j in 0..10 {
                     logger_clone
-                        .info(&format!("Mensaje del hilo {} número {}", i, j))
+                        .info(&format!("Mensaje del hilo {i} número {j}"))
                         .expect("Error al registrar mensaje");
                 }
             });
