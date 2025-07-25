@@ -1925,7 +1925,7 @@ impl SessionHandler {
     fn is_bootstrap_done(&self) -> Result<()> {
         let node_reader = self.read()?;
         let node_status = node_reader.endpoint_state.get_appstate_status();
-        if node_reader.neighbours_states.len() == node_reader.get_actual_n_nodes()
+        if node_reader.get_metadata_n_neighbours() == node_reader.get_actual_n_nodes()
             // && (*node_status == AppStatus::Bootstrap || *node_status == AppStatus::Offline)
         && *node_status != AppStatus::Normal
         && *node_status != AppStatus::RelocationIsNeeded

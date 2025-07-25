@@ -529,10 +529,25 @@ impl Node {
 
     /// Devuelve la cantidad de nodos actual en el clúster, en base al archivo de IPs `node_ips.csv`.
     pub fn get_actual_n_nodes(&self) -> usize {
-        let mut actual_n_nodes = AddrLoader::default_loaded().get_ids().len();
-        for state in self.neighbours_states.values() {
-            if *state.get_appstate().get_status() == AppStatus::Left
-                || *state.get_appstate().get_status() == AppStatus::Remove
+        let nodes_ids = Node::get_all_nodes_ids();
+        let mut actual_n_nodes = nodes_ids.len();
+        for node_id in nodes_ids {
+            if let Some(node) = self.neighbours_states.get(&node_id) {
+                if *node.get_appstate().get_status() == AppStatus::Left
+                    || *node.get_appstate().get_status() == AppStatus::Remove
+                {
+                    actual_n_nodes -= 1;
+                }
+            }
+        }
+        actual_n_nodes
+    }
+
+    pub fn get_metadata_n_neighbours(&self) -> usize {
+        let mut actual_n_nodes = self.neighbours_states.len();
+        for nodes in self.neighbours_states.values() {
+            if *nodes.get_appstate().get_status() == AppStatus::Left
+                || *nodes.get_appstate().get_status() == AppStatus::Remove
             {
                 actual_n_nodes -= 1;
             }
@@ -691,6 +706,11 @@ impl Node {
                 if *old_state.get_appstate_status() == AppStatus::Remove {
                     continue;
                 }
+            }
+            if !Self::id_exists(&node_id)
+                && *endpoint_state.get_appstate().get_status() == AppStatus::Remove
+            {
+                continue;
             }
             self.neighbours_states.insert(node_id, endpoint_state);
         }
