@@ -55,7 +55,7 @@ use {
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
-        sync::mpsc::{channel, Sender},
+        sync::mpsc::{channel, Sender, Receiver},
         thread::JoinHandle,
     },
 };
@@ -231,13 +231,17 @@ impl Node {
         let mut nodes_weights: Vec<usize> = Vec::new();
         let (gossiper_stopper, gossiper_receiver) = channel::<bool>();
         let (beater_stopper, beater_receiver) = channel::<bool>();
+        let (cli_listener_stopper, cli_listener_receiver) = channel::<bool>();
+        let (priv_listener_stopper, priv_listener_receiver) = channel::<bool>();
 
         let handlers = Self::bootstrap(
             id,
             mode,
             &mut nodes_weights,
             is_new,
-            vec![gossiper_stopper, beater_stopper],
+            vec![gossiper_stopper, beater_stopper, cli_listener_stopper, priv_listener_stopper],
+            cli_listener_receiver,
+            priv_listener_receiver,
             ip,
         )?;
 
@@ -252,12 +256,15 @@ impl Node {
     }
 
     /// Inicia la metadata y los hilos necesarios para que el nodo se conecte al cluster.
+    #[allow(clippy::too_many_arguments)]
     fn bootstrap(
         id: NodeId,
         mode: ConnectionMode,
         nodes_weights: &mut Vec<usize>,
         is_new: bool,
         stoppers: Vec<Sender<bool>>,
+        cli_listener_receiver: Receiver<bool>,
+        priv_listener_receiver: Receiver<bool>,
         ip: Option<&str>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_all_nodes_ids();
@@ -291,7 +298,7 @@ impl Node {
         let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
         let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-        create_client_and_private_conexion(node, id, cli_socket, priv_socket, &mut node_listeners)?;
+        create_client_and_private_conexion(node, id, cli_socket, priv_socket, &mut node_listeners, cli_listener_receiver, priv_listener_receiver)?;
 
         handlers.append(&mut node_listeners);
 

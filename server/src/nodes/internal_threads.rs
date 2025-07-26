@@ -31,7 +31,7 @@ use {
         io::{BufRead, BufReader, Read, Write},
         net::{SocketAddr, TcpListener, TcpStream},
         sync::{
-            mpsc::{channel, Receiver, Sender},
+            mpsc::Receiver,
             Arc, Mutex,
         },
         thread::{sleep, spawn, Builder},
@@ -65,6 +65,8 @@ pub fn create_client_and_private_conexion(
     cli_socket: SocketAddr,
     priv_socket: SocketAddr,
     node_listeners: &mut Vec<Option<NodeHandle>>,
+    cli_listener_receiver: Receiver<bool>,
+    priv_listener_receiver: Receiver<bool>,
 ) -> Result<()> {
     let sendable_node = match SessionHandler::new(id, node) {
         Ok(handler) => handler,
@@ -78,7 +80,7 @@ pub fn create_client_and_private_conexion(
     let priv_node = sendable_node.clone();
 
     let cli_builder = Builder::new().name(format!("{id}_cli"));
-    let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node));
+    let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node, cli_listener_receiver));
     match cli_res {
         Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
         Err(err) => {
@@ -88,7 +90,7 @@ pub fn create_client_and_private_conexion(
         }
     }
     let priv_builder = Builder::new().name(format!("{id}_priv"));
-    let priv_res = priv_builder.spawn(move || priv_listen(priv_socket, priv_node));
+    let priv_res = priv_builder.spawn(move || priv_listen(priv_socket, priv_node, priv_listener_receiver));
     match priv_res {
         Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
         Err(err) => {
@@ -101,29 +103,31 @@ pub fn create_client_and_private_conexion(
 }
 
 /// Escucha por los eventos que recibe del cliente.
-pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
-    listen_cli_port(socket, session_handler)
+pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler, receiver: Receiver<bool>) -> Result<()> {
+    listen_cli_port(socket, session_handler, receiver)
 }
 
 /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
-    listen_priv_port(socket, session_handler)
+pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler, receiver: Receiver<bool>) -> Result<()> {
+    listen_priv_port(socket, session_handler, receiver)
 }
 
-fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
+fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler, receiver: Receiver<bool>) -> Result<()> {
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
 
-    let (shutdown_tx, shutdown_rx): (Sender<()>, Receiver<()>) = channel();
-    let shutdown_rx = Arc::new(Mutex::new(shutdown_rx));
+    //let (shutdown_tx, shutdown_rx): (Sender<()>, Receiver<()>) = channel();
+    let arc_receiver = Arc::new(Mutex::new(receiver));
 
     let mut thread_handles = Vec::new();
 
     for tcp_stream_res in listener.incoming() {
-        if let Ok(shutdown_rx) = shutdown_rx.try_lock() {
-            if shutdown_rx.try_recv().is_ok() {
-                break;
+        if let Ok(receiver) = arc_receiver.try_lock() {
+            if let Ok(stop) = receiver.try_recv() {
+                if stop {
+                    break;
+                }
             }
         }
 
@@ -132,11 +136,13 @@ fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Resul
             Ok(tcp_stream) => {
                 let config = Arc::clone(&server_config);
                 let session_handler = session_handler.clone();
-                let thread_shutdown_rx = Arc::clone(&shutdown_rx);
+                let thread_arc_receiver = Arc::clone(&arc_receiver);
                 let handle = spawn(move || loop {
-                    if let Ok(rx) = thread_shutdown_rx.lock() {
-                        if rx.try_recv().is_ok() {
-                            break;
+                    if let Ok(receiver) = thread_arc_receiver.lock() {
+                        if let Ok(stop) = receiver.try_recv() {
+                            if stop {
+                                break;
+                            }
                         }
                     }
 
@@ -161,7 +167,7 @@ fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Resul
         };
     }
 
-    drop(shutdown_tx);
+    //drop(shutdown_tx);
     for handle in thread_handles {
         if let Err(err) = handle.join() {
             eprintln!("Error en el join de los threads: {err:?}");
@@ -171,13 +177,19 @@ fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Resul
     Ok(())
 }
 
-fn listen_priv_port(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
+fn listen_priv_port(socket: SocketAddr, session_handler: SessionHandler, receiver: Receiver<bool>) -> Result<()> {
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
     for tcp_stream_res in listener.incoming() {
         match tcp_stream_res {
             Err(_) => return tcp_stream_error(&PortType::Priv, &socket, &addr_loader),
             Ok(mut tcp_stream) => {
+                if let Ok(stop) = receiver.try_recv() {
+                    if stop {
+                        break;
+                    }
+                }
+
                 let buffered_stream = clone_tcp_stream(&tcp_stream)?;
                 let mut bufreader = BufReader::new(buffered_stream);
                 let bytes_vec = write_bytes_in_buffer(&mut bufreader)?;
