@@ -21,7 +21,7 @@ services:
     # --network=host
     networks:
       between_nodes:
-        ipv4_address: 172.68.0.10
+        ipv4_address: 202.10.0.8
       client_side:
     ports:
       - "127.0.0.10:6174:6174/tcp"
@@ -38,7 +38,7 @@ services:
     tty: true
     networks:
       between_nodes:
-        ipv4_address: 172.68.0.11
+        ipv4_address: 203.80.44.23
       client_side:
     ports:
       - "127.0.0.11:6174:6174/tcp"
@@ -55,7 +55,7 @@ services:
     tty: true
     networks:
       between_nodes:
-        ipv4_address: 172.68.0.12
+        ipv4_address: 200.200.200.201
       client_side:
     ports:
       - "127.0.0.12:6174:6174/tcp"
@@ -73,7 +73,7 @@ services:
     tty: true
     networks:
       between_nodes:
-        ipv4_address: 172.68.0.13
+        ipv4_address: 199.200.201.202
       client_side:
     ports:
       - "127.0.0.13:6174:6174/tcp"
@@ -92,7 +92,7 @@ services:
     tty: true
     networks:
       between_nodes:
-        ipv4_address: 172.68.0.14
+        ipv4_address: 245.250.255.9
       client_side:
     ports:
       - "127.0.0.14:6174:6174/tcp"
@@ -105,7 +105,8 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: "172.68.0.0/24"
+        # 192.0.0.0 - 255.255.255.255
+        - subnet: "192.0.0.0/2"
 
   client_side:
 
