@@ -30,10 +30,7 @@ use {
         collections::HashSet,
         io::{BufRead, BufReader, Read, Write},
         net::{SocketAddr, TcpListener, TcpStream},
-        sync::{
-            mpsc::Receiver,
-            Arc, Mutex,
-        },
+        sync::{mpsc::Receiver, Arc, Mutex},
         thread::{sleep, spawn, Builder},
         time::Duration,
     },
@@ -80,7 +77,8 @@ pub fn create_client_and_private_conexion(
     let priv_node = sendable_node.clone();
 
     let cli_builder = Builder::new().name(format!("{id}_cli"));
-    let cli_res = cli_builder.spawn(move || cli_listen(cli_socket, cli_node, cli_listener_receiver));
+    let cli_res =
+        cli_builder.spawn(move || cli_listen(cli_socket, cli_node, cli_listener_receiver));
     match cli_res {
         Ok(cli_handler) => node_listeners.push(Some(cli_handler)),
         Err(err) => {
@@ -90,7 +88,8 @@ pub fn create_client_and_private_conexion(
         }
     }
     let priv_builder = Builder::new().name(format!("{id}_priv"));
-    let priv_res = priv_builder.spawn(move || priv_listen(priv_socket, priv_node, priv_listener_receiver));
+    let priv_res =
+        priv_builder.spawn(move || priv_listen(priv_socket, priv_node, priv_listener_receiver));
     match priv_res {
         Ok(priv_handler) => node_listeners.push(Some(priv_handler)),
         Err(err) => {
@@ -103,16 +102,28 @@ pub fn create_client_and_private_conexion(
 }
 
 /// Escucha por los eventos que recibe del cliente.
-pub fn cli_listen(socket: SocketAddr, session_handler: SessionHandler, receiver: Receiver<bool>) -> Result<()> {
+pub fn cli_listen(
+    socket: SocketAddr,
+    session_handler: SessionHandler,
+    receiver: Receiver<bool>,
+) -> Result<()> {
     listen_cli_port(socket, session_handler, receiver)
 }
 
 /// Escucha por los eventos que recibe de otros nodos o estructuras internas.
-pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler, receiver: Receiver<bool>) -> Result<()> {
+pub fn priv_listen(
+    socket: SocketAddr,
+    session_handler: SessionHandler,
+    receiver: Receiver<bool>,
+) -> Result<()> {
     listen_priv_port(socket, session_handler, receiver)
 }
 
-fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler, receiver: Receiver<bool>) -> Result<()> {
+fn listen_cli_port(
+    socket: SocketAddr,
+    session_handler: SessionHandler,
+    receiver: Receiver<bool>,
+) -> Result<()> {
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
@@ -177,7 +188,11 @@ fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler, receiver
     Ok(())
 }
 
-fn listen_priv_port(socket: SocketAddr, session_handler: SessionHandler, receiver: Receiver<bool>) -> Result<()> {
+fn listen_priv_port(
+    socket: SocketAddr,
+    session_handler: SessionHandler,
+    receiver: Receiver<bool>,
+) -> Result<()> {
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
     for tcp_stream_res in listener.incoming() {
