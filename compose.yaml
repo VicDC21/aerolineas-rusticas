@@ -19,7 +19,13 @@ services:
     # -t
     tty: true
     # --network=host
-    network_mode: "host"
+    networks:
+      between_nodes:
+        ipv4_address: 172.68.0.10
+      client_side:
+    ports:
+      - "127.0.0.10:6174:6174/tcp"
+      - "127.0.0.10:8080:8080/tcp"
     # Los argumentos que vienen después de invocar al binario
     command: "10"
 
@@ -30,7 +36,13 @@ services:
     image: nodos-slim
     stdin_open: true
     tty: true
-    network_mode: "host"
+    networks:
+      between_nodes:
+        ipv4_address: 172.68.0.11
+      client_side:
+    ports:
+      - "127.0.0.11:6174:6174/tcp"
+      - "127.0.0.11:8080:8080/tcp"
     command: "11"
 
   nodo_12:
@@ -41,7 +53,13 @@ services:
     image: nodos-slim
     stdin_open: true
     tty: true
-    network_mode: "host"
+    networks:
+      between_nodes:
+        ipv4_address: 172.68.0.12
+      client_side:
+    ports:
+      - "127.0.0.12:6174:6174/tcp"
+      - "127.0.0.12:8080:8080/tcp"
     command: "12"
 
   nodo_13:
@@ -53,7 +71,13 @@ services:
     image: nodos-slim
     stdin_open: true
     tty: true
-    network_mode: "host"
+    networks:
+      between_nodes:
+        ipv4_address: 172.68.0.13
+      client_side:
+    ports:
+      - "127.0.0.13:6174:6174/tcp"
+      - "127.0.0.13:8080:8080/tcp"
     command: "13"
 
   nodo_14:
@@ -66,5 +90,23 @@ services:
     image: nodos-slim
     stdin_open: true
     tty: true
-    network_mode: "host"
+    networks:
+      between_nodes:
+        ipv4_address: 172.68.0.14
+      client_side:
+    ports:
+      - "127.0.0.14:6174:6174/tcp"
+      - "127.0.0.14:8080:8080/tcp"
     command: "14"
+
+networks:
+  between_nodes:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.68.0.0/24"
+
+  client_side:
+
+    
