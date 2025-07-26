@@ -510,9 +510,8 @@ impl Node {
     pub fn get_nodes_ids(&self) -> Vec<NodeId> {
         let mut nodes_ids: Vec<NodeId> = AddrLoader::default_loaded().get_ids();
         for (id, state) in &self.neighbours_states {
-            if *state.get_appstate().get_status() == AppStatus::Left
-                || *state.get_appstate().get_status() == AppStatus::Remove
-            {
+            let status = state.get_appstate().get_status();
+            if *status == AppStatus::Left || *status == AppStatus::Remove {
                 nodes_ids.retain(|id_to_retain| id_to_retain != id);
             }
         }
@@ -532,10 +531,9 @@ impl Node {
         let nodes_ids = Node::get_all_nodes_ids();
         let mut actual_n_nodes = nodes_ids.len();
         for node_id in nodes_ids {
-            if let Some(node) = self.neighbours_states.get(&node_id) {
-                if *node.get_appstate().get_status() == AppStatus::Left
-                    || *node.get_appstate().get_status() == AppStatus::Remove
-                {
+            if let Some(state) = self.neighbours_states.get(&node_id) {
+                let status = state.get_appstate().get_status();
+                if *status == AppStatus::Left || *status == AppStatus::Remove {
                     actual_n_nodes -= 1;
                 }
             }
@@ -545,10 +543,9 @@ impl Node {
 
     pub fn get_metadata_n_neighbours(&self) -> usize {
         let mut actual_n_nodes = self.neighbours_states.len();
-        for nodes in self.neighbours_states.values() {
-            if *nodes.get_appstate().get_status() == AppStatus::Left
-                || *nodes.get_appstate().get_status() == AppStatus::Remove
-            {
+        for state in self.neighbours_states.values() {
+            let status = state.get_appstate().get_status();
+            if *status == AppStatus::Left || *status == AppStatus::Remove {
                 actual_n_nodes -= 1;
             }
         }
