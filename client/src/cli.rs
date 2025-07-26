@@ -707,7 +707,7 @@ fn print_initial_message() {
 
 impl Default for Client {
     fn default() -> Self {
-        Self::new(AddrLoader::default_loaded(), HashSet::<ShortInt>::new())
+        Self::new(AddrLoader::default_client(), HashSet::<ShortInt>::new())
     }
 }
 

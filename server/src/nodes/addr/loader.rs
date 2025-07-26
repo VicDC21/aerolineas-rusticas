@@ -15,7 +15,8 @@ use {
 /// El mapa de los IDs de nodos y sus IPs asociadas.
 pub type NodeIPs = HashMap<Option<NodeId>, IpAddr>;
 
-const ADDR_FILE: &str = "client_ips.csv";
+const NODES_ADDR: &str = "node_ips.csv";
+const CLIENT_ADDR: &str = "client_ips.csv";
 
 /// Un cargador que serializa o deserializa la información sobre  IPs de los nodos.
 ///
@@ -46,15 +47,25 @@ impl AddrLoader {
         unloaded
     }
 
+    /// Devuelve las IPs de entre nodos.
+    pub fn default_nodes() -> Self {
+        Self::default_loaded(NODES_ADDR)
+    }
+
+    /// Devuelve las IPs de cliente-nodos.
+    pub fn default_client() -> Self {
+        Self::default_loaded(CLIENT_ADDR)
+    }
+
     /// Crea una nueva instancia del cargador, tratando de cargar la info al menos una vez.
     ///
-    /// Utiliza la ruta predeterminada.
-    pub fn default_loaded() -> Self {
-        match get_root_path(ADDR_FILE) {
+    /// Utiliza la ruta dada.
+    fn default_loaded(def_path: &str) -> Self {
+        match get_root_path(def_path) {
             Ok(path) => Self::loaded(&path),
             Err(_) => Self::default(),
         }
-    }
+    } 
 
     /// Carga el mapa de IDs de nodos más las IPs.
     pub fn load(&self) -> Result<NodeIPs> {
@@ -252,6 +263,6 @@ impl AddrLoader {
 
 impl Default for AddrLoader {
     fn default() -> Self {
-        Self::new(ADDR_FILE, None)
+        Self::new(NODES_ADDR, None)
     }
 }

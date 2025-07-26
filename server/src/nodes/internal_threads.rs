@@ -113,7 +113,7 @@ pub fn priv_listen(socket: SocketAddr, session_handler: SessionHandler) -> Resul
 fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
     let server_config = configure_tls()?;
     let listener = bind_with_socket(socket)?;
-    let addr_loader = AddrLoader::default_loaded();
+    let addr_loader = AddrLoader::default_nodes();
 
     let (shutdown_tx, shutdown_rx): (Sender<()>, Receiver<()>) = channel();
     let shutdown_rx = Arc::new(Mutex::new(shutdown_rx));
@@ -173,7 +173,7 @@ fn listen_cli_port(socket: SocketAddr, session_handler: SessionHandler) -> Resul
 
 fn listen_priv_port(socket: SocketAddr, session_handler: SessionHandler) -> Result<()> {
     let listener = bind_with_socket(socket)?;
-    let addr_loader = AddrLoader::default_loaded();
+    let addr_loader = AddrLoader::default_nodes();
     for tcp_stream_res in listener.incoming() {
         match tcp_stream_res {
             Err(_) => return tcp_stream_error(&PortType::Priv, &socket, &addr_loader),
@@ -405,7 +405,7 @@ fn exec_gossip(receiver: Receiver<bool>, id: NodeId, weights: Vec<usize>) -> Res
             }
         };
 
-        let nodes_ids = AddrLoader::default_loaded().get_ids();
+        let nodes_ids = AddrLoader::default_nodes().get_ids();
         let mut rng = thread_rng();
         let selected_id = nodes_ids[dist.sample(&mut rng)];
         if selected_id != id {
