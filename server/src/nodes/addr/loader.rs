@@ -15,7 +15,7 @@ use {
 /// El mapa de los IDs de nodos y sus IPs asociadas.
 pub type NodeIPs = HashMap<Option<NodeId>, IpAddr>;
 
-const ADDR_FILE: &str = "node_ips.csv";
+const ADDR_FILE: &str = "client_ips.csv";
 
 /// Un cargador que serializa o deserializa la información sobre  IPs de los nodos.
 ///
