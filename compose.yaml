@@ -7,5 +7,3 @@ include:
   - ./docker/compose/nodo_12.yaml
   - ./docker/compose/nodo_13.yaml
   - ./docker/compose/nodo_14.yaml
-
-

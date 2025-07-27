@@ -11,4 +11,4 @@ services:
       - "127.0.0.10:6174:6174/tcp"
       - "127.0.0.10:8080:8080/tcp"
     # Los argumentos que vienen después de invocar al binario
-    command: "10"
+    command: ["10"]
