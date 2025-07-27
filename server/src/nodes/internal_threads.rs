@@ -30,7 +30,7 @@ use {
         collections::HashSet,
         io::{BufRead, BufReader, Read, Write},
         net::{SocketAddr, TcpListener, TcpStream},
-        sync::{mpsc::Receiver, Arc, Mutex},
+        sync::{mpsc::Receiver, Arc, Mutex, atomic::{AtomicBool, Ordering}},
         thread::{sleep, spawn, Builder},
         time::Duration,
     },
@@ -128,8 +128,8 @@ fn listen_cli_port(
     let listener = bind_with_socket(socket)?;
     let addr_loader = AddrLoader::default_loaded();
 
-    //let (shutdown_tx, shutdown_rx): (Sender<()>, Receiver<()>) = channel();
     let arc_receiver = Arc::new(Mutex::new(receiver));
+    let stop_flag = Arc::new(AtomicBool::new(false));
 
     let mut thread_handles = Vec::new();
 
@@ -137,6 +137,7 @@ fn listen_cli_port(
         if let Ok(receiver) = arc_receiver.try_lock() {
             if let Ok(stop) = receiver.try_recv() {
                 if stop {
+                    stop_flag.store(true, Ordering::SeqCst);
                     break;
                 }
             }
@@ -147,14 +148,10 @@ fn listen_cli_port(
             Ok(tcp_stream) => {
                 let config = Arc::clone(&server_config);
                 let session_handler = session_handler.clone();
-                let thread_arc_receiver = Arc::clone(&arc_receiver);
+                let thread_stop_flag = Arc::clone(&stop_flag);
                 let handle = spawn(move || loop {
-                    if let Ok(receiver) = thread_arc_receiver.lock() {
-                        if let Ok(stop) = receiver.try_recv() {
-                            if stop {
-                                break;
-                            }
-                        }
+                    if thread_stop_flag.load(Ordering::SeqCst) {
+                        break;
                     }
 
                     let tcp_stream = match tcp_stream.try_clone() {
@@ -178,7 +175,6 @@ fn listen_cli_port(
         };
     }
 
-    //drop(shutdown_tx);
     for handle in thread_handles {
         if let Err(err) = handle.join() {
             eprintln!("Error en el join de los threads: {err:?}");
