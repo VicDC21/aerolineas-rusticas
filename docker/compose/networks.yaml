@@ -1,0 +1,8 @@
+networks:
+  between_nodes:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        # 192.0.0.0 - 255.255.255.255
+        - subnet: "192.0.0.0/2"

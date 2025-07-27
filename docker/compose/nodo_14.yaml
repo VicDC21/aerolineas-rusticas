@@ -1,0 +1,18 @@
+services:
+  nodo_14:
+    container_name: nodo-14
+    depends_on:
+      - nodo_10
+      - nodo_11
+      - nodo_12
+      - nodo_13
+    extends:
+        file: ./nodo_base.yaml
+        service: nodo_base
+    networks:
+      between_nodes:
+        ipv4_address: 245.250.255.9
+    ports:
+      - "127.0.0.14:6174:6174/tcp"
+      - "127.0.0.14:8080:8080/tcp"
+    command: "14"
