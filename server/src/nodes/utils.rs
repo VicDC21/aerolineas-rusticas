@@ -92,7 +92,11 @@ pub fn n_th_node_in_the_cluster(
 
 /// Manda un mensaje a un nodo específico.
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
-    let addr = AddrLoader::default_nodes().get_socket(&id, &port_type)?;
+    let loader = match &port_type {
+        PortType::Cli => AddrLoader::default_client(),
+        PortType::Priv => AddrLoader::default_nodes()
+    };
+    let addr = loader.get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
         Err(err) => {
