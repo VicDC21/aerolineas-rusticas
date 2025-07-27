@@ -30,7 +30,11 @@ use {
         collections::HashSet,
         io::{BufRead, BufReader, Read, Write},
         net::{SocketAddr, TcpListener, TcpStream},
-        sync::{mpsc::Receiver, Arc, Mutex, atomic::{AtomicBool, Ordering}},
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc::Receiver,
+            Arc, Mutex,
+        },
         thread::{sleep, spawn, Builder},
         time::Duration,
     },
