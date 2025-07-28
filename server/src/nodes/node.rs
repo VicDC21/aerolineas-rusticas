@@ -255,8 +255,7 @@ impl Node {
 
         let _ = gossiper_handle.join();
         let _ = beater_handle.join();
-
-        Self::wait(handlers);
+        Self::wait(handlers, id)?;
         Ok(())
     }
 
@@ -1696,8 +1695,9 @@ impl Node {
     ///
     /// Esto idealmente sólo debería llamarse una vez, ya que consume los handlers y además
     /// bloquea el hilo actual.
-    fn wait(mut handlers: Vec<Option<NodeHandle>>) {
+    fn wait(mut handlers: Vec<Option<NodeHandle>>, id: NodeId) -> Result<()> {
         // long live the option dance
+        send_to_node(id, [0].to_vec(), PortType::Cli)?;
         for handler_opt in &mut handlers {
             if let Some(handler) = handler_opt.take() {
                 if handler.join().is_err() {
@@ -1706,6 +1706,7 @@ impl Node {
                 }
             }
         }
+        Ok(())
     }
 }
 

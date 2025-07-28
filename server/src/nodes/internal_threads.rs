@@ -184,7 +184,6 @@ fn listen_cli_port(
             eprintln!("Error en el join de los threads: {err:?}");
         }
     }
-
     Ok(())
 }
 
