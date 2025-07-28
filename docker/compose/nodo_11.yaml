@@ -4,8 +4,8 @@ services:
     depends_on:
       - nodo_10
     extends:
-        file: ./nodo_base.yaml
-        service: nodo_base
+      file: ./nodo_base.yaml
+      service: nodo_base
     networks:
       between_nodes:
         ipv4_address: 203.80.44.23

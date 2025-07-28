@@ -2,8 +2,8 @@ services:
   nodo_10:
     container_name: nodo-10
     extends:
-        file: ./nodo_base.yaml
-        service: nodo_base
+      file: ./nodo_base.yaml
+      service: nodo_base
     networks:
       between_nodes:
         ipv4_address: 202.10.0.8

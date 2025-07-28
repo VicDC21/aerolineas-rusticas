@@ -37,7 +37,7 @@ echo         file: ./nodo_base.yaml
 echo         service: nodo_base
 echo     networks:
 echo       between_nodes:
-echo         ipv4_address: %~2%
+echo         ipv4_address: %~2
 echo     ports:
 echo       - "127.0.0.%~1:6174:6174/tcp"
 echo       - "127.0.0.%~1:8080:8080/tcp"
@@ -56,11 +56,11 @@ GOTO:EOF
 
 @REM primero nos aseguramos de que los argumentos existan
 IF "%1"=="" (
-    echo No se especifico el ID del nodo
+    echo No se especifico el ID del nodo.
     GOTO:EOF
 )
 IF "%2"=="" (
-    echo No se especifico la IP para el nodo de ID %1
+    echo No se especifico la IP para el nodo de ID %1.
     GOTO:EOF
 )
 
@@ -72,13 +72,13 @@ CALL:compose_nodo %1 %2 1
 echo   - ./docker/compose/nodo_%1.yaml
 ) >> ./compose.yaml
 
-@REM y al CSV de IPs de cliente
+@REM al CSV de IPs de cliente
 (
 echo %1,127.0.0.%1
 ) >> ./client_ips.csv
 
 @REM y finalmente actualizamos el compose
-@REM docker compose up --detach --no-recreate
+docker compose up --detach --no-recreate
 
 @REM antes de que levanten/borren más nodos, sobreescribimos el archivo una vez más para
 @REM hacer pensar que no es nuevo ya

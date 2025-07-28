@@ -51,7 +51,7 @@ CALL:borrar_linea "./client_ips.csv" "%1,127.0.0.%1"
 @REM y lo sacamos del compose general
 CALL:borrar_linea "./compose.yaml" "  - ./docker/compose/nodo_%1.yaml"
 
-@REM y finalmente actualizamos los nodos
+@REM mandamos comando para parar el nodo
 cargo run ^
       --package=server ^
       --bin=nd ^
@@ -60,4 +60,5 @@ cargo run ^
 @REM un poco de tiempo para que se acostumbren los nodos
 timeout /t 10 /nobreak
 
+@REM y finalmente actualizamos los nodos
 docker compose up --detach --no-recreate
