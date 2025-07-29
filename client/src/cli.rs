@@ -638,17 +638,25 @@ impl Client {
         Ok(())
     }
 
-    /// Manda a cada nodo un mensaje para que se [apague](crate::actions::opcode::SvAction::Exit).
+    /// Manda a cada nodo un mensaje para que se [apague](server::nodes::actions::opcode::SvAction::Exit).
     pub fn send_shutdown(&self) -> Result<()> {
-        for addr in self.addr_loader.get_ips() {
+        // Este método es independiente del tipo de loader que tiene el cliente
+        let cli_loader = AddrLoader::default_client();
+        let priv_loader = AddrLoader::default_nodes();
+
+
+        for cli_addr in cli_loader.get_ips() {
             if let Err(err) = Self::send_message(
-                AddrLoader::ip_to_socket(&addr, &PortType::Cli),
+                AddrLoader::ip_to_socket(&cli_addr, &PortType::Cli),
                 &SvAction::Exit.as_bytes()[..],
             ) {
                 println!("{err}");
             }
+        }
+
+        for priv_addr in priv_loader.get_ips() {
             if let Err(err) = Self::send_message(
-                AddrLoader::ip_to_socket(&addr, &PortType::Priv),
+                AddrLoader::ip_to_socket(&priv_addr, &PortType::Priv),
                 &SvAction::Exit.as_bytes()[..],
             ) {
                 println!("{err}");
@@ -707,7 +715,7 @@ fn print_initial_message() {
 
 impl Default for Client {
     fn default() -> Self {
-        Self::new(AddrLoader::default_loaded(), HashSet::<ShortInt>::new())
+        Self::new(AddrLoader::default_client(), HashSet::<ShortInt>::new())
     }
 }
 

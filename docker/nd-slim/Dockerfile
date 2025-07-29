@@ -32,7 +32,7 @@ FROM scratch AS final
 COPY --from=builder /aerolineas_rusticas/target/x86_64-unknown-linux-musl/release/nd /bin/nd
 COPY ./datasets /datasets
 COPY ./scripts /scripts
-COPY cert.pem custom.csr custom.key node_ips.csv users.csv ./
+COPY cert.pem custom.csr custom.key node_ips.csv users.csv ./aerolineas_rusticas/
 
 # Cliente-Nodo
 EXPOSE 8080/tcp

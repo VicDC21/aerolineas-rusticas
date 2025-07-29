@@ -41,7 +41,7 @@ pub struct EndpointState {
 impl EndpointState {
     /// Genera un socket basado en un id dado.
     fn generate_ipaddr(id: NodeId) -> IpAddr {
-        match AddrLoader::default_loaded().get_ip(id) {
+        match AddrLoader::default_nodes().get_ip(id) {
             Ok(ip) => ip,
             Err(_) => IpAddr::V4(Ipv4Addr::new(127, 0, 0, id)),
         }

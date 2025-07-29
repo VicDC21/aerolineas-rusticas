@@ -1,0 +1,14 @@
+services:
+  nodo_10:
+    container_name: nodo-10
+    extends:
+      file: ./nodo_base.yaml
+      service: nodo_base
+    networks:
+      between_nodes:
+        ipv4_address: 202.10.0.8
+    ports:
+      - "127.0.0.10:6174:6174/tcp"
+      - "127.0.0.10:8080:8080/tcp"
+    # Los argumentos que vienen después de invocar al binario
+    command: ["10"]
