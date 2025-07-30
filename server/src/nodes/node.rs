@@ -55,7 +55,7 @@ use {
         collections::HashMap,
         net::{IpAddr, TcpStream},
         path::Path,
-        sync::mpsc::{channel, Sender},
+        sync::mpsc::{channel, Receiver, Sender},
         thread::JoinHandle,
     },
 };
@@ -231,13 +231,22 @@ impl Node {
         let mut nodes_weights: Vec<usize> = Vec::new();
         let (gossiper_stopper, gossiper_receiver) = channel::<bool>();
         let (beater_stopper, beater_receiver) = channel::<bool>();
+        let (cli_listener_stopper, cli_listener_receiver) = channel::<bool>();
+        let (priv_listener_stopper, priv_listener_receiver) = channel::<bool>();
 
         let handlers = Self::bootstrap(
             id,
             mode,
             &mut nodes_weights,
             is_new,
-            vec![gossiper_stopper, beater_stopper],
+            vec![
+                gossiper_stopper,
+                beater_stopper,
+                cli_listener_stopper,
+                priv_listener_stopper,
+            ],
+            cli_listener_receiver,
+            priv_listener_receiver,
             ip,
         )?;
 
@@ -246,18 +255,20 @@ impl Node {
 
         let _ = gossiper_handle.join();
         let _ = beater_handle.join();
-
-        Self::wait(handlers);
+        Self::wait(handlers, id)?;
         Ok(())
     }
 
     /// Inicia la metadata y los hilos necesarios para que el nodo se conecte al cluster.
+    #[allow(clippy::too_many_arguments)]
     fn bootstrap(
         id: NodeId,
         mode: ConnectionMode,
         nodes_weights: &mut Vec<usize>,
         is_new: bool,
         stoppers: Vec<Sender<bool>>,
+        cli_listener_receiver: Receiver<bool>,
+        priv_listener_receiver: Receiver<bool>,
         ip: Option<&str>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_all_nodes_ids();
@@ -291,7 +302,15 @@ impl Node {
         let cli_socket = node.get_endpoint_state().socket(&PortType::Cli);
         let priv_socket = node.get_endpoint_state().socket(&PortType::Priv);
 
-        create_client_and_private_conexion(node, id, cli_socket, priv_socket, &mut node_listeners)?;
+        create_client_and_private_conexion(
+            node,
+            id,
+            cli_socket,
+            priv_socket,
+            &mut node_listeners,
+            cli_listener_receiver,
+            priv_listener_receiver,
+        )?;
 
         handlers.append(&mut node_listeners);
 
@@ -510,9 +529,8 @@ impl Node {
     pub fn get_nodes_ids(&self) -> Vec<NodeId> {
         let mut nodes_ids: Vec<NodeId> = AddrLoader::default_nodes().get_ids();
         for (id, state) in &self.neighbours_states {
-            if *state.get_appstate().get_status() == AppStatus::Left
-                || *state.get_appstate().get_status() == AppStatus::Remove
-            {
+            let status = state.get_appstate().get_status();
+            if *status == AppStatus::Left || *status == AppStatus::Remove {
                 nodes_ids.retain(|id_to_retain| id_to_retain != id);
             }
         }
@@ -529,11 +547,24 @@ impl Node {
 
     /// Devuelve la cantidad de nodos actual en el clúster, en base al archivo de IPs `node_ips.csv`.
     pub fn get_actual_n_nodes(&self) -> usize {
-        let mut actual_n_nodes = AddrLoader::default_nodes().get_ids().len();
+        let nodes_ids = AddrLoader::default_nodes().get_ids();
+        let mut actual_n_nodes = nodes_ids.len();
+        for node_id in nodes_ids {
+            if let Some(state) = self.neighbours_states.get(&node_id) {
+                let status = state.get_appstate().get_status();
+                if *status == AppStatus::Left || *status == AppStatus::Remove {
+                    actual_n_nodes -= 1;
+                }
+            }
+        }
+        actual_n_nodes
+    }
+
+    pub fn get_metadata_n_neighbours(&self) -> usize {
+        let mut actual_n_nodes = self.neighbours_states.len();
         for state in self.neighbours_states.values() {
-            if *state.get_appstate().get_status() == AppStatus::Left
-                || *state.get_appstate().get_status() == AppStatus::Remove
-            {
+            let status = state.get_appstate().get_status();
+            if *status == AppStatus::Left || *status == AppStatus::Remove {
                 actual_n_nodes -= 1;
             }
         }
@@ -691,6 +722,11 @@ impl Node {
                 if *old_state.get_appstate_status() == AppStatus::Remove {
                     continue;
                 }
+            }
+            if !Self::id_exists(&node_id)
+                && *endpoint_state.get_appstate().get_status() == AppStatus::Remove
+            {
+                continue;
             }
             self.neighbours_states.insert(node_id, endpoint_state);
         }
@@ -1659,8 +1695,9 @@ impl Node {
     ///
     /// Esto idealmente sólo debería llamarse una vez, ya que consume los handlers y además
     /// bloquea el hilo actual.
-    fn wait(mut handlers: Vec<Option<NodeHandle>>) {
+    fn wait(mut handlers: Vec<Option<NodeHandle>>, id: NodeId) -> Result<()> {
         // long live the option dance
+        send_to_node(id, [0].to_vec(), PortType::Cli)?;
         for handler_opt in &mut handlers {
             if let Some(handler) = handler_opt.take() {
                 if handler.join().is_err() {
@@ -1669,6 +1706,7 @@ impl Node {
                 }
             }
         }
+        Ok(())
     }
 }
 
