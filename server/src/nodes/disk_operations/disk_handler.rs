@@ -1072,7 +1072,7 @@ impl DiskHandler {
         if statement
             .primary_key
             .as_ref()
-            .map_or(true, |pk| pk.clustering_columns.is_empty())
+            .is_none_or(|pk| pk.clustering_columns.is_empty())
         {
             return Ok(None);
         }
