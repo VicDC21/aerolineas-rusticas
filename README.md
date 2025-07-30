@@ -35,7 +35,8 @@ El proyecto se divide en 8 _crates_ que se comunican entre sí.
 En general, se usa la herramienta [`cargo`](https://doc.rust-lang.org/cargo/) para generar, correr y administrar el proyecto;
 además de _lintear_ y formatear el mismo.
 
-> **Nota:** _Se sobreentiende que los siguientes comandos se ejecutan en un entorno Linux/UNIX._
+> [!NOTE]
+> _Se sobreentiende que los siguientes comandos se ejecutan en un entorno Linux/UNIX._
 
 ## Compilación
 
@@ -88,11 +89,13 @@ un valor de los siguientes:
 * `client`
 * `data`
 * `interface`
+* `logger`
 * `parser`
 * `protocol`
 * `server`
 * `simulator`
 * `tokenizer`
+* `utils`
 
 <br/>
 
