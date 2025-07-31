@@ -315,8 +315,8 @@ impl FlightsLoader {
     }
 
     /// Sincroniza la información de logueo.
-    pub fn sync_login_info(&mut self, new_info: &LoginInfo) -> &mut Self {
-        if new_info != &self.login_info {
+    pub fn sync_login_info(&mut self, new_info: &LoginInfo, has_logged_once: &bool) -> &mut Self {
+        if (new_info != &self.login_info) && *has_logged_once {
             self.login_info = new_info.clone();
             self.relogin_fl = true;
             self.relogin_tr = true;
