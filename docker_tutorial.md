@@ -20,7 +20,8 @@ detener y/o destruir contenedores para los nodos.
     - [Ejecutar comandos en el contenedor (`docker exec`)](#ejecutar-comandos-en-el-contenedor)
 * [Utilizando `compose`](#usando-docker-compose)
     - [Levantando el clúster de nodos](#levantando-el-clúster)
-    - [Apagando nodos](#cerrando-el-clúster)
+    - [Deteniendo los nodos](#deteniendo-el-clúster)
+    - [Apagando los nodos](#cerrando-el-clúster)
     - [Modificar nodos de forma dinámica](#modificando-nodos-dinámicamente)
     - [Viendo el _output_](#viendo-el-output-de-los-nodos)
 
@@ -172,6 +173,14 @@ $ docker compose up
 > Si se planea agregar o sacar nodos posteriormente, se recomienda utilizar `docker compose -d` o `docker compose --detach` en su lugar para correrlo en segundo plano.
 > 
 > Posteriormente, se va a especificar una forma de ver los logs de igual manera.
+
+## Deteniendo el clúster
+
+Si se quiere detener (pero no borrar) el clúster de nodos, el comando es:
+
+```console
+$ docker compose stop
+```
 
 ## Cerrando el clúster
 
