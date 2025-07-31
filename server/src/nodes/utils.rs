@@ -94,7 +94,7 @@ pub fn n_th_node_in_the_cluster(
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
     let loader = match &port_type {
         PortType::Cli => AddrLoader::default_client(),
-        PortType::Priv => AddrLoader::default_nodes()
+        PortType::Priv => AddrLoader::default_runtime(),
     };
     let addr = loader.get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
@@ -124,7 +124,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
     wait_response: bool,
     timeout: Option<Ulong>,
 ) -> Result<Vec<Byte>> {
-    let addr = AddrLoader::default_nodes().get_socket(&id, &port_type)?;
+    let addr = AddrLoader::default_runtime().get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {
         Ok(tcpstream) => tcpstream,
         Err(_) => {

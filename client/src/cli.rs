@@ -644,7 +644,6 @@ impl Client {
         let cli_loader = AddrLoader::default_client();
         let priv_loader = AddrLoader::default_nodes();
 
-
         for cli_addr in cli_loader.get_ips() {
             if let Err(err) = Self::send_message(
                 AddrLoader::ip_to_socket(&cli_addr, &PortType::Cli),
