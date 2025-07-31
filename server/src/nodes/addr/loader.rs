@@ -8,6 +8,7 @@ use {
         fs::OpenOptions,
         io::{BufRead, BufReader, BufWriter, Result as IOResult, Write},
         net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+        path::Path,
     },
     utils::get_root_path::get_root_path,
 };
@@ -55,6 +56,20 @@ impl AddrLoader {
     /// Devuelve las IPs de cliente-nodos.
     pub fn default_client() -> Self {
         Self::default_loaded(CLIENT_ADDR)
+    }
+
+    /// Devuelve las IPs dependiendo del entorno.
+    ///
+    /// Si el programa se ejecuta dentro de Docker (se detecta si existe
+    /// `/.dockerenv`), utiliza las IPs de `node_ips.csv` correspondientes al
+    /// despliegue en contenedores.  Caso contrario, asume un entorno local y
+    /// utiliza `client_ips.csv`.
+    pub fn default_runtime() -> Self {
+        if Path::new("/.dockerenv").exists() {
+            Self::default_nodes()
+        } else {
+            Self::default_client()
+        }
     }
 
     /// Crea una nueva instancia del cargador, tratando de cargar la info al menos una vez.

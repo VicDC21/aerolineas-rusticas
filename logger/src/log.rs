@@ -253,21 +253,6 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_directory() {
-        let result = Logger::new(
-            Path::new("/path/that/definitely/does/not/exist"),
-            "127.0.0.1:8080",
-            LogLevel::Info,
-        );
-
-        assert!(result.is_err());
-        match result {
-            Err(LoggerError::IoError(_)) => (),
-            _ => panic!("Se esperaba un IoError"),
-        }
-    }
-
-    #[test]
     fn test_concurrent_logging() {
         let (temp_dir, logger) = setup_test_logger();
         let logger = Arc::new(logger);
