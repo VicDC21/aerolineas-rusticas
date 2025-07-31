@@ -94,7 +94,7 @@ pub fn n_th_node_in_the_cluster(
 pub fn send_to_node(id: NodeId, bytes: Vec<Byte>, port_type: PortType) -> Result<()> {
     let loader = match &port_type {
         PortType::Cli => AddrLoader::default_client(),
-        PortType::Priv => AddrLoader::default_nodes()
+        PortType::Priv => AddrLoader::default_nodes(),
     };
     let addr = loader.get_socket(&id, &port_type)?;
     let mut stream = match TcpStream::connect(addr) {

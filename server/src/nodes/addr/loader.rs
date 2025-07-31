@@ -65,7 +65,7 @@ impl AddrLoader {
             Ok(path) => Self::loaded(&path),
             Err(_) => Self::default(),
         }
-    } 
+    }
 
     /// Carga el mapa de IDs de nodos más las IPs.
     pub fn load(&self) -> Result<NodeIPs> {
