@@ -31,11 +31,8 @@ rechazar o invalidad un *Pull Request*/*issue*.</u>
         * [Cambios Hechos](#cambios-hechos)
         * [Lista de cambios](#lista-de-cambios)
         * [*Checklist*](#checklist)
-
     - [*Commits*](#commits)
-
     - [Ramas / *Branches*](#branches)
-
     - [*Issues*](#issues)
 
 <hr width="30%" align="left" />
