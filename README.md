@@ -209,20 +209,29 @@ $ cargo test --all-features
 # Docker
 
 Las instrucciones de cómo correr el proyecto usando [Docker](https://www.docker.com/)
-son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal para nuestro se explica igual a continuación.
+son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal para nuestro caso se explica igual a continuación.
 
-* Primero, hemos de asegurarnos de que cumplimos con los [prerequisitos](./docker_tutorial.md#prerequisitos) necesarios.
-* Luego corremos
-  ```console
-  $ docker compose up
-  ```
-  para automáticamente correr los primeros nodos iniciales.
-* A este punto, todavía se puede conectar a los nodos con el cliente GUI, localmente:
-  ```console
-  $ cargo run -p interface --bin gui
-  ```
+> [!IMPORTANT]
+> Primero, hemos de asegurarnos de que cumplimos con los [prerequisitos](./docker_tutorial.md#prerequisitos) necesarios.
 
-Siempre se puede cerrar los nodos con el [comando](./docker_tutorial.md#cerrando-nodos) correspondiente. Lo mismo con [modificar](./docker_tutorial.md#modificando-nodos-dinámicamente) dicha cantidad.
+## Levantando el clúster de nodos
+
+Los detalles se encuentran [aquí](./docker_tutorial.md#levantando-el-clúster), pero en resumen el comando resulta:
+
+```console
+$ docker compose up [-d|--detach]
+```
+
+## Conectar el cliente
+
+A este punto, se puede conectar a los nodos con el cliente GUI, localmente:
+```console
+$ cargo run -p interface --bin gui
+```
+
+## Modificar dinámicamente los nodos
+
+Siempre se puede cerrar los nodos con el [comando](./docker_tutorial.md#cerrando-el-clúster) correspondiente. Lo mismo con [modificar](./docker_tutorial.md#modificando-nodos-dinámicamente) la cantidad del clúster.
 
 # Cómo contribuir
 
