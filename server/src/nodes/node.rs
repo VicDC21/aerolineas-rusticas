@@ -527,7 +527,7 @@ impl Node {
 
     /// Devuelve los IDs de los nodos del cluster. Ordenados de menor a mayor.
     pub fn get_nodes_ids(&self) -> Vec<NodeId> {
-        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_nodes().get_ids();
+        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_runtime().get_ids();
         for (id, state) in &self.neighbours_states {
             let status = state.get_appstate().get_status();
             if *status == AppStatus::Left || *status == AppStatus::Remove {
@@ -540,14 +540,14 @@ impl Node {
 
     /// Devuelve los IDs de todos los nodos del cluster sin importar su Status. Ordenados de menor a mayor.
     pub fn get_all_nodes_ids() -> Vec<NodeId> {
-        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_nodes().get_ids();
+        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_runtime().get_ids();
         nodes_ids.sort();
         nodes_ids
     }
 
     /// Devuelve la cantidad de nodos actual en el clúster, en base al archivo de IPs `node_ips.csv`.
     pub fn get_actual_n_nodes(&self) -> usize {
-        let nodes_ids = AddrLoader::default_nodes().get_ids();
+        let nodes_ids = AddrLoader::default_runtime().get_ids();
         let mut actual_n_nodes = nodes_ids.len();
         for node_id in nodes_ids {
             if let Some(state) = self.neighbours_states.get(&node_id) {
@@ -573,17 +573,17 @@ impl Node {
 
     /// Devuelve la cantidad de todos los nodos en el cluster, sin importar su Status.
     pub fn get_all_n_nodes() -> usize {
-        AddrLoader::default_nodes().get_ids().len()
+        AddrLoader::default_runtime().get_ids().len()
     }
 
     /// Devuelve _true_ si el ID dado existe en el archivo de IPs `node_ips.csv`, _false_ en caso contrario.
     fn id_exists(id: &NodeId) -> bool {
-        AddrLoader::default_nodes().get_ids().contains(id)
+        AddrLoader::default_runtime().get_ids().contains(id)
     }
 
     /// Devuelve _true_ si la IP dada existe en el archivo de IPs `node_ips.csv`, _false_ en caso contrario.
     fn ip_exists(ip: &IpAddr) -> bool {
-        AddrLoader::default_nodes().get_ips().contains(ip)
+        AddrLoader::default_runtime().get_ips().contains(ip)
     }
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
@@ -628,7 +628,7 @@ impl Node {
     /// No compara los estados en profundidad, sólo verifica si se tiene un estado
     /// con la misma IP.
     fn _has_endpoint_state(&self, state: &EndpointState) -> bool {
-        let guessed_id = match AddrLoader::default_nodes().get_id(state.get_addr()) {
+        let guessed_id = match AddrLoader::default_runtime().get_id(state.get_addr()) {
             Ok(guessed_right) => guessed_right,
             Err(_) => return false,
         };

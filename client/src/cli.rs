@@ -642,7 +642,7 @@ impl Client {
     pub fn send_shutdown(&self) -> Result<()> {
         // Este método es independiente del tipo de loader que tiene el cliente
         let cli_loader = AddrLoader::default_client();
-        let priv_loader = AddrLoader::default_nodes();
+        let priv_loader = AddrLoader::default_runtime();
 
         for cli_addr in cli_loader.get_ips() {
             if let Err(err) = Self::send_message(
@@ -664,7 +664,6 @@ impl Client {
 
         Ok(())
     }
-
     /// Crea una request Startup para ser mandada
     pub fn prepare_startup_message() -> Result<Vec<Byte>> {
         let mut response = Vec::new();

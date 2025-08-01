@@ -1,10 +1,7 @@
 //! Módulo para funciones auxiliares relacionadas a nodos.
 
 use {
-    crate::{
-        nodes::{addr::loader::AddrLoader, node::NodeId, port_type::PortType},
-        utils::printable_bytes,
-    },
+    crate::nodes::{addr::loader::AddrLoader, node::NodeId, port_type::PortType},
     protocol::{
         aliases::{
             results::Result,
@@ -158,14 +155,7 @@ pub fn send_to_node_and_wait_response_with_timeout(
                 println!("Timeout alcanzado al esperar respuesta del nodo {id}");
             }
             Err(err) => println!("Error recibiendo response del nodo {id}:\n\n{err}"),
-            Ok(i) => {
-                println!(
-                    "Se recibió del nodo [{}] {} bytes: {}",
-                    id,
-                    i,
-                    printable_bytes(&buf)
-                );
-            }
+            Ok(_) => {}
         }
     }
 

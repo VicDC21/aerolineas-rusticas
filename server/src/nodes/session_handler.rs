@@ -486,7 +486,7 @@ impl SessionHandler {
             }
             None => {
                 logger
-                    .warning(
+                    .debug(
                         format!(
                             "No se encontraron nuevos valores de partición para la tabla {table_name}"
                         )
