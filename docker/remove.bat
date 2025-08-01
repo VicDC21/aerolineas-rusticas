@@ -61,4 +61,4 @@ cargo run ^
 timeout /t 10 /nobreak
 
 @REM y finalmente actualizamos los nodos
-docker compose up --detach --no-recreate
+docker compose up --detach --no-recreate --remove-orphans

@@ -43,4 +43,4 @@ echo Esperando a que se relocalicen los nodos...
 sleep 10s
 
 # y finalmente actualizamos los nodos
-docker compose up --detach --no-recreate
+docker compose up --detach --no-recreate --remove-orphans
