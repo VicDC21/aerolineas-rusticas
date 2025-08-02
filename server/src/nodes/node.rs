@@ -609,6 +609,9 @@ impl Node {
 
     /// Envia su endpoint state al nodo del ID correspondiente.
     pub fn send_endpoint_state(&self, id: NodeId, ip: String) {
+        if Self::id_exists(&id) {
+            return;
+        }
         let _ = DiskHandler::store_new_node_id_and_ip(id, &ip);
         let _ = send_to_node(
             id,
@@ -621,6 +624,30 @@ impl Node {
                 id, self.id
             )
         });
+        if !self.is_new_node {
+            self.send_new_neighbours(id, ip);
+        }
+    }
+
+    fn send_new_neighbours(&self, new_id: NodeId, new_ip: String) {
+        let mut new_nodes = NodesMap::new();
+        let original_nodes = AddrLoader::default_runtime().get_ids();
+        for (node_id, endpoint_state) in &self.neighbours_states {
+            if !original_nodes[..(N_NODES as usize)].contains(node_id) {
+                new_nodes.insert(*node_id, endpoint_state.clone());
+            }
+        }
+        for (node_id, _endpoint_state) in new_nodes {
+            let _ = send_to_node(
+                node_id,
+                SvAction::SendEndpointState(new_id, new_ip.clone()).as_bytes(),
+                PortType::Priv,
+            )
+            .inspect_err(|e| {
+                eprintln!(
+                    "El nodo {node_id} se encontró apagado cuando el nodo {new_id} intentó presentarse. Error: {e}")
+            });
+        }
     }
 
     /// Consulta si ya se tiene un [EndpointState].
@@ -1485,63 +1512,6 @@ impl Node {
         )?;
         Ok(())
     }
-
-    // /// TODO
-    // pub fn get_replicas_of_farthest_node(&mut self) -> Result<()> {
-    //     let mut nodes_ids = self.get_nodes_ids();
-    //     let mut distance = usize::MAX;
-    //     for i in 1..nodes_ids.len() {
-    //         if n_th_node_in_the_cluster(self.id, &nodes_ids, i, false) == self.id {
-    //             distance = i;
-    //         }
-    //     }
-    //     for table in self.tables.values() {
-    //         if (distance as Uint)
-    //             != self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?
-    //         {
-    //             continue;
-    //         }
-    //         let rows = DiskHandler::get_all_rows(
-    //             table.get_name(),
-    //             &self.storage_addr,
-    //             table.get_keyspace(),
-    //             table.get_keyspace(),
-    //             self.id,
-    //         )?;
-    //         if rows.is_empty() {
-    //             continue;
-    //         }
-    //         final_rows.insert(0, table.get_name().to_string());
-    //         final_rows.insert(0, table.get_keyspace().to_string());
-    //         for row in rows {
-    //             final_rows.push(row.join(","));
-    //         }
-    //         final_rows.push("\n".to_string());
-    //     }
-    //     Ok(())
-    // }
-
-    // /// TODO
-    // pub fn update_node_replicas_2_delete(&mut self, node_id: NodeId) -> Result<Vec<Byte>> {
-    //     // let nodes_ids = self.get_nodes_ids();
-    //     for table in self.tables.values() {
-    //         let quantity_of_replicas =
-    //             self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
-    //         let mut update_table_replica = false;
-    //         for pos in 1..quantity_of_replicas {
-    //             let replica_node_id =
-    //                 n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), pos as usize, true);
-    //             if replica_node_id == node_id {
-    //                 update_table_replica = true
-    //             }
-    //         }
-    //         if !update_table_replica {
-    //             continue;
-    //         }
-    //     }
-    //     // Devolvemos un mensaje de éxito.
-    //     Ok(vec![1])
-    // }
 
     /// Filtra las tablas que contiene para asegurarse de tener las filas que le
     /// corresponden luego de que el rango de particiones haya cambiado por el

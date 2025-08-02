@@ -2583,32 +2583,6 @@ impl SessionHandler {
             .collect::<Vec<String>>()
             .join("\n");
         Ok(rows_as_string)
-
-        // let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
-        // let mut newer_rows: Vec<Vec<String>> = Vec::new();
-
-        // for (i,rows) in ids_and_rows.iter().enumerate() {
-        //     for (j, row) in rows.iter().enumerate() {
-        //         if most_recent_timestamps.len() <= j {
-        //             most_recent_timestamps.push((i, row[row.len() - 1].clone()));
-        //         } else {
-        //             let actual_timestamp = row[row.len() - 1].clone();
-        //             if actual_timestamp > most_recent_timestamps[j].1 {
-        //                 most_recent_timestamps[j] = (i, actual_timestamp);
-        //             }
-        //         }
-        //     }
-        // }
-        // for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate() {
-        //     let new_row = &ids_and_rows[actual_timestamp.0][i];
-        //     newer_rows.push(new_row.clone());
-        // }
-        // let rows_as_string = newer_rows
-        //     .iter()
-        //     .map(|row| row.join(","))
-        //     .collect::<Vec<String>>()
-        //     .join("\n");
-        // rows_as_string
     }
 }
 
