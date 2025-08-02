@@ -17,6 +17,19 @@ borrar_linea() {
       sed -i "/$2/d" $1
 }
 
+# Lee de un archivo (se asume csv) y borra una línea dada si es que tiene coincidencia con el 2do arg pasado.
+# Acepta una ruta como 1er arg y un string que es el numero de id de un nodo como 2do arg.
+borrar_linea_segun_id() {
+    if [ -z "$1" ]; then
+        echo "No se especificó un ID de nodo. No se hace nada..."
+        return
+    fi
+
+    # Borra la línea que comienza con el ID seguido de una coma (ej: 10,)
+    sed -i "/^$2,/d" "$1"
+}
+
+
 if [ -z $1 ]
 then
       echo No se incluyo un ID de nodo.
@@ -28,6 +41,9 @@ rm -f ./docker/compose/nodo_$1.yaml
 
 # borramos la IP del CSV del cliente
 borrar_linea "./client_ips.csv" "$1,127.0.0.$1"
+
+# borramos la IP del CSV de los nodos
+borrar_linea_segun_id "./node_ips.csv" "$1"
 
 # y lo sacamos del compose general
 borrar_linea "./compose.yaml" "  - .\/docker\/compose\/nodo_$1.yaml"

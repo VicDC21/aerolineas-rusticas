@@ -2201,6 +2201,11 @@ impl SessionHandler {
                     .remove(&(node_deleted as u8));
             }
             self.write()?.finish_relocation()?;
+            self.logger
+                .read()
+                .map_err(|e| Error::ServerError(e.to_string()))?
+                .info("Se termino la relocalizacion")
+                .map_err(|e| Error::ServerError(e.to_string()))?;
         }
         Ok(())
     }
