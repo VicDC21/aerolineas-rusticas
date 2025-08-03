@@ -2496,7 +2496,17 @@ impl SessionHandler {
 
     /// Consulta si el nodo contenido puede recibir consultas.
     pub fn node_is_responsive(&self) -> Result<bool> {
-        Ok(self.read()?.is_responsive())
+        let logger = self
+            .logger
+            .read()
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let is_responsive = self.read()?.is_responsive();
+        if !is_responsive {
+            logger
+                .warning("Se recibio una query de un cliente mientras se cambiaba la estructura de los nodos.")
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+        }
+        Ok(is_responsive)
     }
 
     fn handle_result_from_node(
