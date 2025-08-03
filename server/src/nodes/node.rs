@@ -272,12 +272,6 @@ impl Node {
         ip: Option<&str>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_all_nodes_ids();
-        if nodes_ids.len() < N_NODES as usize {
-            return Err(Error::ServerError(format!(
-                "El archivo de IPs de los nodos no tiene la cantidad correcta de nodos. Se esperaban al menos {} nodos, se encontraron {}.",
-                N_NODES, nodes_ids.len()
-            )));
-        }
         if !nodes_ids.contains(&id) {
             return Err(Error::ServerError(format!(
                 "El ID {id} no está en el archivo de IPs de los nodos."
@@ -313,20 +307,7 @@ impl Node {
         )?;
 
         handlers.append(&mut node_listeners);
-
-        // Llenamos de información al nodo "seed". Arbitrariamente será el último.
-        // Cuando fue iniciado el último nodo (el de mayor ID), hacemos el envío de la información,
-        // pues asumimos que todos los demás ya fueron iniciados.
-        if id == nodes_ids[(N_NODES - 1) as usize] {
-            // Self::send_states_to_node(max_weight_id);
-            Self::notify_new_node(id, ip)
-        } else if is_new {
-            // Si es un nodo nuevo, debemos hacer que conozca al resto del clúster, para poder
-            // enviar su información a los demás mediante gossip, así sabrán de su existencia.
-            // Self::send_states_to_node(id);
-            Self::notify_new_node(id, ip)
-        }
-
+        Self::notify_new_node(id, ip);
         Ok(handlers)
     }
 
