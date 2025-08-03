@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_logger_creation() {
         let (temp_dir, _) = setup_test_logger();
-        let log_file = temp_dir.path().join("node_127.0.0.1_8080.log");
+        let log_file = temp_dir.path().join("node_8.log");
         assert!(log_file.exists(), "El archivo de log no fue creado");
     }
 
@@ -216,7 +216,7 @@ mod tests {
             .error("Mensaje error")
             .expect("Error en el log de mensaje de error");
 
-        let log_content = fs::read_to_string(temp_dir.path().join("node_127.0.0.1_8080.log"))
+        let log_content = fs::read_to_string(temp_dir.path().join("node_8.log"))
             .expect("Error al leer el archivo de log");
 
         assert!(log_content.contains("DEBUG"));
@@ -243,7 +243,7 @@ mod tests {
             .expect("Error en el log de mensaje de warning");
 
         // Leemos el contenido del archivo
-        let log_content = fs::read_to_string(temp_dir.path().join("node_127.0.0.1_8080.log"))
+        let log_content = fs::read_to_string(temp_dir.path().join("node_8.log"))
             .expect("Error al leer el archivo de log");
 
         // Verificamos el filtrado
@@ -277,7 +277,7 @@ mod tests {
         }
 
         // Verificamos que se hayan escrito todos los mensajes
-        let log_content = fs::read_to_string(temp_dir.path().join("node_127.0.0.1_8080.log"))
+        let log_content = fs::read_to_string(temp_dir.path().join("node_8.log"))
             .expect("Error al leer el archivo de log");
 
         // Deberían haber 100 mensajes en total (10 hilos * 10 mensajes)
