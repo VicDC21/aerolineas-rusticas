@@ -629,6 +629,17 @@ impl Node {
                 id, self.id
             )
         });
+        let _ = send_to_node(
+            id,
+            SvAction::UpdateIpsTable(AddrLoader::default_runtime().get_ips_table_content_as_string()).as_bytes(),
+            PortType::Priv,
+        )
+        .inspect_err(|e| {
+            eprintln!(
+                "El nodo {} se encontró apagado cuando el nodo {} intentó compartir su tabla de IPs. Error: {e}",
+                id, self.id
+            )
+        });
         if !self.is_new_node {
             self.send_new_neighbours(id, ip);
         }
@@ -653,6 +664,47 @@ impl Node {
                     "El nodo {node_id} se encontró apagado cuando el nodo {new_id} intentó presentarse. Error: {e}")
             });
         }
+    }
+
+    /// Actualiza la tabla de IPs del nodo con la tabla recibida.
+    /// La idea de esta función es revisar si el nodo receptor tiene la información de un nodo
+    /// que fue dado de baja y que este no se enteró ya que se creó después de esto.
+    /// Si el nodo receptor tiene un nodo que fue dado de baja (o sea, que no lo tiene la tabla
+    /// recibida de un vecino), se lo elimina de su tabla.
+    pub fn update_ips_table(&mut self, received_ips_table_string: String) -> Result<()> {
+        let self_ips_table_string = AddrLoader::default_runtime().get_ips_table_content_as_string();
+        let self_rows = self_ips_table_string.split('\n').collect::<Vec<&str>>();
+        let received_rows = received_ips_table_string.split('\n').collect::<Vec<&str>>();
+        for self_row in self_rows {
+            if self_row.is_empty() {
+                continue;
+            }
+            let mut found = false;
+            for received_row in &received_rows {
+                if received_row.is_empty() {
+                    continue;
+                }
+                if self_row == *received_row {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                // Si no se encontró el nodo en la tabla recibida, lo eliminamos de la nuestra.
+                let id_and_ip: Vec<&str> = self_row.split(',').collect();
+                if id_and_ip.len() == 2 {
+                    let node_id: NodeId = id_and_ip[0]
+                        .parse()
+                        .map_err(|e: std::num::ParseIntError| Error::ServerError(e.to_string()))?;
+                    DiskHandler::delete_node_id_and_ip(node_id)?;
+                    self.neighbours_states.remove(&node_id);
+                    if let Some(index) = self.nodes_weights.iter().position(|&x| x == 1) {
+                        self.nodes_weights.remove(index);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Consulta si ya se tiene un [EndpointState].
