@@ -226,6 +226,21 @@ impl AddrLoader {
         )))
     }
 
+    /// Devuelve una representación en _String_ del contenido de la tabla de IPs.
+    pub fn get_ips_table_content_as_string(&self) -> String {
+        let mut ips_table = String::new();
+
+        if let Some(node_ips) = &self.node_ips {
+            for (node_id, ip) in node_ips {
+                if let Some(node_id_str) = node_id {
+                    ips_table.push_str(&format!("{node_id_str},{ip}\n"));
+                }
+            }
+        }
+
+        ips_table
+    }
+
     /// Carga los _sockets_ con un tipo de puerto de [cliente](PortType::Cli).
     pub fn get_sockets_cli(&self) -> Vec<SocketAddr> {
         self.get_sockets(&PortType::Cli)

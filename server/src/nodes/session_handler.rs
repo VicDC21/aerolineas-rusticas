@@ -295,9 +295,28 @@ impl SessionHandler {
             SvAction::NodeToDelete(node_id) => {
                 self.sv_action_node_to_delete(logger, node_id)?;
             }
+            SvAction::UpdateIpsTable(ips_table) => {
+                self.sv_action_update_ips_table(&logger, ips_table)?;
+            }
         };
 
         Ok(stop)
+    }
+
+    fn sv_action_update_ips_table(
+        &self,
+        logger: &std::sync::RwLockReadGuard<'_, Logger>,
+        ips_table: String,
+    ) -> Result<()> {
+        let id = self.id;
+        logger
+            .debug(format!("Revisando tabla de IPs del nodo {id} y actualizando si corresponde").as_str())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        self.write()?.update_ips_table(ips_table)?;
+        logger
+            .info(format!("Tabla de IPs del {id} revisada y actualizada").as_str())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        Ok(())
     }
 
     fn sv_action_node_to_delete(
