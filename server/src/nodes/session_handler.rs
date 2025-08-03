@@ -2494,19 +2494,23 @@ impl SessionHandler {
         Ok(is_ready)
     }
 
-    /// Consulta si el nodo contenido puede recibir consultas.
-    pub fn node_is_responsive(&self) -> Result<bool> {
-        let logger = self
-            .logger
-            .read()
-            .map_err(|e| Error::ServerError(e.to_string()))?;
-        let is_responsive = self.read()?.is_responsive();
-        if !is_responsive {
-            logger
-                .warning("Se recibio una query de un cliente mientras se cambiaba la estructura de los nodos.")
-                .map_err(|e| Error::ServerError(e.to_string()))?;
+    /// Bloquea la ejecución hasta que el nodo pueda recibir _queries_.
+    pub fn wait_until_responsive(&self) -> Result<()> {
+        let mut first = true;
+        while !self.read()?.is_responsive() {
+            if first {
+                first = false;
+                self.logger
+                    .read()
+                    .map_err(|e| Error::ServerError(e.to_string()))?
+                    .warning(
+                        "Se recibio una query de un cliente mientras se cambiaba la estructura de los nodos.",
+                    )
+                    .map_err(|e| Error::ServerError(e.to_string()))?;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        Ok(is_responsive)
+        Ok(())
     }
 
     fn handle_result_from_node(
