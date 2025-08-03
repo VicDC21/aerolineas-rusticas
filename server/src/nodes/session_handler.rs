@@ -310,7 +310,10 @@ impl SessionHandler {
     ) -> Result<()> {
         let id = self.id;
         logger
-            .debug(format!("Revisando tabla de IPs del nodo {id} y actualizando si corresponde").as_str())
+            .debug(
+                format!("Revisando tabla de IPs del nodo {id} y actualizando si corresponde")
+                    .as_str(),
+            )
             .map_err(|e| Error::ServerError(e.to_string()))?;
         self.write()?.update_ips_table(ips_table)?;
         logger

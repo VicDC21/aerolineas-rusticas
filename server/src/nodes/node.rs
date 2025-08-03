@@ -688,7 +688,9 @@ impl Node {
                 // Si no se encontró el nodo en la tabla recibida, lo eliminamos de la nuestra.
                 let id_and_ip: Vec<&str> = self_row.split(',').collect();
                 if id_and_ip.len() == 2 {
-                    let node_id: NodeId = id_and_ip[0].parse().map_err(|e: std::num::ParseIntError| Error::ServerError(e.to_string()))?;
+                    let node_id: NodeId = id_and_ip[0]
+                        .parse()
+                        .map_err(|e: std::num::ParseIntError| Error::ServerError(e.to_string()))?;
                     DiskHandler::delete_node_id_and_ip(node_id)?;
                     self.neighbours_states.remove(&node_id);
                     if let Some(index) = self.nodes_weights.iter().position(|&x| x == 1) {
