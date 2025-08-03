@@ -34,13 +34,13 @@ for nodo in ./docker/compose/nodo_*.yaml; do
         num_nodo=${nombre_nodo#nodo_}
         num_nodo=${num_nodo%.yaml}
 
-        if [ $num_nodo -gt $1 ]
+        if [ $num_nodo -lt $1 ]
         then
             nodo_no_menor=1
         fi
     fi
 done
-if [ $nodo_no_menor -ne 0 ] then
+if [ $nodo_no_menor -ne 0 ]; then
     echo "    depends_on:" >> $compose_path
 fi
 for nodo in ./docker/compose/nodo_*.yaml; do
