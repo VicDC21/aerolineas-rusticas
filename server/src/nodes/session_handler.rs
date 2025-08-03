@@ -90,12 +90,8 @@ impl SessionHandler {
             ))
         })?;
         DiskHandler::create_directory(&logs_path)?;
-        let logger = Logger::new(
-            Path::new(&logs_path),
-            &node.endpoint_state.get_addr().to_string(),
-            LogLevel::Info,
-        )
-        .map_err(|e| Error::ServerError(e.to_string()))?;
+        let logger = Logger::new(Path::new(&logs_path), &id, LogLevel::Info)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
 
         logger
             .debug(format!("Creando un nuevo SessionHandler para el nodo con ID {id}").as_str())

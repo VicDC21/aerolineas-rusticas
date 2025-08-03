@@ -71,13 +71,13 @@ pub struct Logger {
 
 impl Logger {
     /// Crea una nueva instancia del logger con configuración personalizada
-    pub fn new(dir: &Path, ip: &str, min_level: LogLevel) -> Result<Self, LoggerError> {
+    pub fn new(dir: &Path, id: &u8, min_level: LogLevel) -> Result<Self, LoggerError> {
         // Nos aseguramos de que el directorio existe
         if !dir.is_dir() {
             fs::create_dir_all(dir).map_err(LoggerError::from)?;
         }
 
-        let log_file = dir.join(format!("node_{}.log", ip.replace(":", "_")));
+        let log_file = dir.join(format!("node_{id}.log"));
 
         // Creamos el archivo si no existe
         OpenOptions::new()
@@ -186,8 +186,8 @@ mod tests {
     // Función auxiliar para crear un directorio temporal y un logger para pruebas
     fn setup_test_logger() -> (TempDir, Logger) {
         let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
-        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Debug)
-            .expect("Error al crear el logger");
+        let logger =
+            Logger::new(temp_dir.path(), &8, LogLevel::Debug).expect("Error al crear el logger");
 
         (temp_dir, logger)
     }
@@ -229,8 +229,8 @@ mod tests {
     fn test_log_level_filtering() {
         let temp_dir = TempDir::new().expect("Error al crear directorio temporal");
 
-        let logger = Logger::new(temp_dir.path(), "127.0.0.1:8080", LogLevel::Info)
-            .expect("Error al crear el logger");
+        let logger =
+            Logger::new(temp_dir.path(), &8, LogLevel::Info).expect("Error al crear el logger");
 
         logger
             .debug("No debería aparecer")

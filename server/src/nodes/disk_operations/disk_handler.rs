@@ -195,7 +195,6 @@ impl DiskHandler {
             })?;
         let reader = BufReader::new(&file);
         let mut new_rows: Vec<String> = Vec::new();
-        let mut ip_removed: Option<String> = None;
         for line in reader.lines() {
             let line = line.map_err(|_| {
                 Error::ServerError(
@@ -210,8 +209,6 @@ impl DiskHandler {
             })?;
             if current_id != id.to_string() {
                 new_rows.push(line);
-            } else {
-                ip_removed = parts.next().map(|s| s.to_string());
             }
         }
         let mut new_content = new_rows.join("\n");
@@ -238,20 +235,17 @@ impl DiskHandler {
             ));
         }
 
-        // Remove metadata file
         if let Ok(metadata_path) = Self::get_node_metadata_path(id) {
             let _ = remove_file(metadata_path);
         }
-        // Remove storage directory
+
         if let Ok(storage_path) = Self::get_node_storage(id) {
             let _ = remove_dir_all(storage_path);
         }
-        // Remove log file if IP was found
-        if let Some(ip) = ip_removed {
-            if let Ok(logs_path) = get_root_path(LOGS_DIR_NAME) {
-                let log_file = format!("{}/node_{}.log", logs_path, ip.replace(":", "_"));
-                let _ = remove_file(log_file);
-            }
+
+        if let Ok(logs_path) = get_root_path(LOGS_DIR_NAME) {
+            let log_file = format!("{logs_path}/node_{id}.log");
+            let _ = remove_file(log_file);
         }
 
         Ok(())
