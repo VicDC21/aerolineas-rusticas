@@ -23,6 +23,16 @@ IF "%~3"=="" (
 echo services:
 echo   nodo_%~1:
 echo     container_name: nodo-%~1
+SET nodo_no_menor=0
+for %%H in (./docker/compose/nodo_*.yaml) do (
+    SET nodo=%%G
+    SET nodo=!nodo:~5,-5!
+    SET /A nodo=nodo
+    IF !nodo! NEQ 0 IF !nodo! LSS %~1 (
+        SET nodo_no_menor=1
+    )
+)
+IF !nodo_no_menor! NEQ 0 (
 echo     depends_on:
 for %%I in (./docker/compose/nodo_*.yaml) do (
     SET nodo=%%I
@@ -31,6 +41,7 @@ for %%I in (./docker/compose/nodo_*.yaml) do (
     IF !nodo! NEQ 0 IF !nodo! LSS %~1 (
 echo       - nodo_!nodo!
     )
+)
 )
 echo     extends:
 echo         file: ./nodo_base.yaml
