@@ -39,6 +39,21 @@ fi
 # borramos el compose del nodo
 rm -f ./docker/compose/nodo_$1.yaml
 
+# borramos el nodo de todo YAML de nodo con número más alto
+for nodo in ./docker/compose/nodo_*.yaml; do
+    con_numeros="nodo_[0-9]+.yaml"
+    nombre_nodo=$(basename $nodo)
+    if [[ $nombre_nodo =~ $con_numeros ]]; then
+        num_nodo=${nombre_nodo#nodo_}
+        num_nodo=${num_nodo%.yaml}
+
+        if [ $num_nodo -gt $1 ]
+        then
+            borrar_linea $nodo "      - nodo_$1"
+        fi
+    fi
+done
+
 # borramos la IP del CSV del cliente
 borrar_linea "./client_ips.csv" "$1,127.0.0.$1"
 
