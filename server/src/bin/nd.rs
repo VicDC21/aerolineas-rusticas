@@ -3,28 +3,49 @@
 use {
     protocol::aliases::{results::Result, types::Byte},
     server::nodes::node::Node,
-    std::{env::args, net::IpAddr},
+    std::{env::args, net::IpAddr, path::Path},
 };
 
 fn main() {
     let argv = args().collect::<Vec<String>>();
 
     if argv.len() >= 2 {
-        if argv[1] == "new" && argv.len() >= 4 {
-            // "target/debug/nd.exe" new <id> <ip> [echo]
+        if argv[1] == "new" && argv.len() >= 3 {
+            // "target/debug/nd.exe" new <id> [<ip>] [echo]
             match argv[2].parse::<Byte>() {
                 Ok(id) => {
-                    if argv[3].parse::<IpAddr>().is_ok() {
-                        println!("Nodo nuevo con id {} y dirección IP {}.", id, argv[3]);
-                        if argv.len() == 5 && argv[4].eq_ignore_ascii_case("echo") {
-                            // "target/debug/nd.exe" new <id> <ip> echo
-                            print_err(Node::init_new_in_echo_mode(id, &argv[3]))
+                    let (ip, echo_idx) = if argv.len() >= 4 && argv[3].parse::<IpAddr>().is_ok() {
+                        let ip_str = argv[3].clone();
+                        let ip_addr: IpAddr = match ip_str.parse() {
+                            Ok(ip) => ip,
+                            Err(_) => {
+                                println!("La IP no es válida para la ejecución local.");
+                                return;
+                            }
+                        };
+                        if running_in_docker() || ip_addr.is_loopback() {
+                            (ip_str, 4)
                         } else {
-                            // "target/debug/nd.exe" new <id> <ip>
-                            print_err(Node::init_new_in_parsing_mode(id, &argv[3]))
+                            println!("La IP no es válida para la ejecución local.");
+                            return;
                         }
                     } else {
-                        println!("La IP no es válida.");
+                        if argv.len() >= 4 && !argv[3].eq_ignore_ascii_case("echo") {
+                            println!("La IP no es válida.");
+                            return;
+                        }
+                        (format!("127.0.0.{id}"), 3)
+                    };
+                    println!("Nodo nuevo con id {id} y dirección IP {ip}.");
+                    if argv
+                        .get(echo_idx)
+                        .is_some_and(|s| s.eq_ignore_ascii_case("echo"))
+                    {
+                        // "target/debug/nd.exe" new <id> [<ip>] echo
+                        print_err(Node::init_new_in_echo_mode(id, &ip))
+                    } else {
+                        // "target/debug/nd.exe" new <id> [<ip>]
+                        print_err(Node::init_new_in_parsing_mode(id, &ip))
                     }
                 }
                 Err(_) => {
@@ -68,4 +89,8 @@ fn print_err(res: Result<()>) {
     if let Err(err) = res {
         println!("{err}");
     }
+}
+
+fn running_in_docker() -> bool {
+    Path::new("/.dockerenv").exists()
 }
