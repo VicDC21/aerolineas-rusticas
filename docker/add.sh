@@ -81,11 +81,11 @@ compose_nodo $1 $2 1
 # agregamos también el nodo al compose general
 echo "  - ./docker/compose/nodo_$1.yaml" >> ./compose.yaml
 
+# al CSV de IPs de nodos. Esto NO ES RELEVANTE salvo que se esté corriendo los nodos en localhost
+echo "$1,$2" >> ./node_ips.csv
+
 # al CSV de IPs de cliente
 echo "$1,127.0.0.$1" >> ./client_ips.csv
-
-# al CSV de IPs de los nodos
-echo "$1,$2" >> ./node_ips.csv
 
 # y finalmente actualizamos el compose
 docker compose up --detach --no-recreate

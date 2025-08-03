@@ -72,6 +72,11 @@ CALL:compose_nodo %1 %2 1
 echo   - ./docker/compose/nodo_%1.yaml
 ) >> ./compose.yaml
 
+@REM al CSV de IPs de nodos. Esto NO ES RELEVANTE salvo que se esté corriendo los nodos en localhost
+(
+    echo %1,%2
+) >> ./node_ips.csv
+
 @REM al CSV de IPs de cliente
 (
 echo %1,127.0.0.%1
