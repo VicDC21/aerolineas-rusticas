@@ -353,7 +353,9 @@ impl Node {
 
     fn inicialize_nodes_weights(&mut self, actual_n_nodes: usize) {
         self.nodes_weights = vec![1; actual_n_nodes];
-        self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo original tiene el triple de probabilidades de ser elegido.
+        if actual_n_nodes >= N_NODES as usize {
+            self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo original tiene el triple de probabilidades de ser elegido.
+        }
     }
 
     /// Decide cuál es el nodo con el mayor "peso". Es decir, el que tiene más probabilidades
@@ -403,6 +405,9 @@ impl Node {
     /// está dando de baja.
     pub fn node_to_deletion(&mut self) -> Result<()> {
         for node in self.get_nodes_ids() {
+            if node == self.id {
+                continue;
+            }
             send_to_node(
                 node,
                 SvAction::NodeIsLeaving(self.id).as_bytes(),
@@ -1649,6 +1654,10 @@ impl Node {
         if node_leaving_id != self.id {
             if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_leaving_id) {
                 endpoint_state.set_appstate_status(status.clone());
+            }
+            if status == AppStatus::Remove {
+                let actual_n_nodes = self.get_actual_n_nodes();
+                self.inicialize_nodes_weights(actual_n_nodes);
             }
         }
         Ok(())
