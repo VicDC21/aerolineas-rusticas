@@ -53,7 +53,7 @@ use {
     },
     std::{
         collections::HashSet,
-        fs::{create_dir, File, OpenOptions},
+        fs::{create_dir, remove_dir_all, remove_file, File, OpenOptions},
         io::{BufRead, BufReader, BufWriter, Write},
         path::Path,
         str::FromStr,
@@ -70,8 +70,20 @@ const STORAGE_NODE_PATH: &str = "storage_node";
 pub const NODES_METADATA_DIR_NAME: &str = "nodes_metadata";
 /// El nombre individual del directorio de metadatos de un nodo.
 const NODE_METADATA_PATH: &str = "metadata_node";
-/// La ruta para el almacenamiento de las IPs de los nodos.
-const NODES_IPS_PATH: &str = "node_ips.csv";
+/// El nombre del directorio para el almacenamiento de los logs.
+const LOGS_DIR_NAME: &str = "logs";
+/// Obtiene el nombre del archivo de IPs de nodos según el entorno.
+///
+/// Si el programa corre dentro de Docker, utiliza `node_ips.csv` para la
+/// comunicación entre contenedores.  De lo contrario, asume un entorno local y
+/// emplea `client_ips.csv`, que utiliza direcciones de `localhost`.
+fn nodes_ips_path() -> &'static str {
+    if Path::new("/.dockerenv").exists() {
+        "node_ips.csv"
+    } else {
+        "client_ips.csv"
+    }
+}
 
 /// Encargado de hacer todas las operaciones sobre archivos en disco.
 pub struct DiskHandler;
@@ -142,9 +154,9 @@ impl DiskHandler {
         store_json(&*node, &Self::get_node_metadata_path(node.get_id())?)
     }
 
-    /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs `node_ips.csv`.
+    /// Almacena el ID y la IP de un nuevo nodo en el archivo de IPs correspondiente.
     pub fn store_new_node_id_and_ip(id: NodeId, ip: &str) -> Result<()> {
-        let file = match get_root_path(NODES_IPS_PATH) {
+        let file = match get_root_path(nodes_ips_path()) {
             Ok(path) => OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -166,9 +178,9 @@ impl DiskHandler {
         Ok(())
     }
 
-    /// Borra el nodo según el ID dado del archivo de IPs de los nodos `node_ips.csv`.
+    /// Borra el nodo según el ID dado del archivo de IPs correspondiente.
     pub fn delete_node_id_and_ip(id: NodeId) -> Result<()> {
-        let path = get_root_path(NODES_IPS_PATH).map_err(|e| {
+        let path = get_root_path(nodes_ips_path()).map_err(|e| {
             Error::ServerError(format!(
                 "No se pudo obtener la ruta del archivo de IPs de nodos: {e}"
             ))
@@ -189,7 +201,8 @@ impl DiskHandler {
                     "No se pudo obtener una linea en el archivo de IPs de nodos".to_string(),
                 )
             })?;
-            let current_id = line.split(',').next().ok_or_else(|| {
+            let mut parts = line.split(',');
+            let current_id = parts.next().ok_or_else(|| {
                 Error::ServerError(
                     "No se pudo obtener el ID de un nodo en el archivo de IPs de nodos".to_string(),
                 )
@@ -201,7 +214,7 @@ impl DiskHandler {
         let mut new_content = new_rows.join("\n");
         new_content.push('\n');
 
-        let path = get_root_path(NODES_IPS_PATH).map_err(|e| {
+        let path = get_root_path(nodes_ips_path()).map_err(|e| {
             Error::ServerError(format!(
                 "No se pudo obtener la ruta del archivo de IPs de nodos: {e}"
             ))
@@ -220,6 +233,19 @@ impl DiskHandler {
             return Err(Error::ServerError(
                 "No se pudo escribir en el archivo de IPs de nodos".to_string(),
             ));
+        }
+
+        if let Ok(metadata_path) = Self::get_node_metadata_path(id) {
+            let _ = remove_file(metadata_path);
+        }
+
+        if let Ok(storage_path) = Self::get_node_storage(id) {
+            let _ = remove_dir_all(storage_path);
+        }
+
+        if let Ok(logs_path) = get_root_path(LOGS_DIR_NAME) {
+            let log_file = format!("{logs_path}/node_{id}.log");
+            let _ = remove_file(log_file);
         }
 
         Ok(())

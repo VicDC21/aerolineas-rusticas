@@ -121,6 +121,10 @@ pub enum SvAction {
 
     /// Le reenvia el mensaje al nodo correspondiente que tenga que ser borrado.
     NodeToDelete(NodeId),
+
+    /// Hace que el nodo receptor compare su tabla de IPs con la del nodo emisor y actualice
+    /// la suya si es necesario.
+    UpdateIpsTable(String),
 }
 
 impl SvAction {
@@ -305,6 +309,11 @@ impl Byteable for SvAction {
             Self::NodeIsLeaving(node_id) => vec![0xE4, *node_id],
             Self::NodeDeleted(node_id) => vec![0xE5, *node_id],
             Self::NodeToDelete(node_id) => vec![0xE6, *node_id],
+            Self::UpdateIpsTable(ips_table) => {
+                let mut bytes = vec![0xE7];
+                bytes.extend(encode_string_to_bytes(ips_table));
+                bytes
+            }
         }
     }
 }
@@ -432,6 +441,15 @@ impl TryFrom<&[Byte]> for SvAction {
             0xE4 => Ok(Self::NodeIsLeaving(bytes[1])),
             0xE5 => Ok(Self::NodeDeleted(bytes[1])),
             0xE6 => Ok(Self::NodeToDelete(bytes[1])),
+            0xE7 => {
+                if bytes.len() < 2 {
+                    return Err(Error::ServerError(
+                        "Conjunto de bytes demasiado chico para `UpdateIpsTable`.".to_string(),
+                    ));
+                }
+                let string_ips = parse_bytes_to_string(&bytes[1..], &mut i)?;
+                Ok(Self::UpdateIpsTable(string_ips))
+            }
             _ => Err(Error::ServerError(format!(
                 "'{first:#b}' no es un id de acción válida."
             ))),
@@ -486,6 +504,9 @@ impl std::fmt::Display for SvAction {
             Self::NodeIsLeaving(node_id) => write!(f, "NodeIsLeaving({node_id})"),
             Self::NodeDeleted(node_id) => write!(f, "NodeDeleted({node_id})"),
             Self::NodeToDelete(node_id) => write!(f, "NodeToDelete({node_id})"),
+            Self::UpdateIpsTable(ips_table) => {
+                write!(f, "UpdateIpsTable({ips_table})")
+            }
         }
     }
 }

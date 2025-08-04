@@ -159,7 +159,7 @@ impl App for AerolineasApp {
 
             self.flights_loader
                 .sync_date(self.datetime)
-                .sync_login_info(&login_info)
+                .sync_login_info(&login_info, &self.widget_details.has_logged_in)
                 .sync_selected_airport(self.airlines_details.get_selected_airport());
 
             let map = map
@@ -211,7 +211,7 @@ impl App for AerolineasApp {
                 airports_progress(ui, airps_start, airps_end);
             }
 
-            login_window(ui, &mut self.con_info, &mut self.widget_details.login_info);
+            login_window(ui, &mut self.con_info, &mut self.widget_details);
 
             if let Some(editor) = &mut self.widget_details.flight_editor {
                 let mut live_data = None;

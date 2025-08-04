@@ -25,8 +25,24 @@ cat > $compose_path << EOL
 services:
   nodo_$1:
     container_name: nodo-$1
-    depends_on:
 EOL
+nodo_no_menor=0
+for nodo in ./docker/compose/nodo_*.yaml; do
+    con_numeros="nodo_[0-9]+.yaml"
+    nombre_nodo=$(basename $nodo)
+    if [[ $nombre_nodo =~ $con_numeros ]]; then
+        num_nodo=${nombre_nodo#nodo_}
+        num_nodo=${num_nodo%.yaml}
+
+        if [ $num_nodo -lt $1 ]
+        then
+            nodo_no_menor=1
+        fi
+    fi
+done
+if [ $nodo_no_menor -ne 0 ]; then
+    echo "    depends_on:" >> $compose_path
+fi
 for nodo in ./docker/compose/nodo_*.yaml; do
     con_numeros="nodo_[0-9]+.yaml"
     nombre_nodo=$(basename $nodo)
@@ -38,7 +54,6 @@ for nodo in ./docker/compose/nodo_*.yaml; do
         then
             echo "      - nodo_$num_nodo" >> $compose_path
         fi
-
     fi
 done
 cat >> $compose_path << EOL
@@ -80,6 +95,9 @@ compose_nodo $1 $2 1
 
 # agregamos también el nodo al compose general
 echo "  - ./docker/compose/nodo_$1.yaml" >> ./compose.yaml
+
+# al CSV de IPs de nodos. Esto NO ES RELEVANTE salvo que se esté corriendo los nodos en localhost
+echo "$1,$2" >> ./node_ips.csv
 
 # al CSV de IPs de cliente
 echo "$1,127.0.0.$1" >> ./client_ips.csv

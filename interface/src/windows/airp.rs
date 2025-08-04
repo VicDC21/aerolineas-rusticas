@@ -1,9 +1,9 @@
 //! Módulo para ventanas de widgets de aeropuertos.
 
 use {
+    crate::data::widget_details::WidgetDetails,
     chrono::{DateTime, Local, NaiveDateTime, NaiveTime, Timelike},
     client::conn_holder::ConnectionHolder,
-    data::login_info::LoginInfo,
     eframe::egui::{Align2, ComboBox, ProgressBar, RichText, Ui, Window},
     egui_extras::DatePickerButton,
     protocol::aliases::types::Float,
@@ -97,7 +97,7 @@ pub fn airports_progress(ui: &Ui, start: usize, end: usize) {
 }
 
 /// Crea una ventanita de logueo.
-pub fn login_window(ui: &Ui, conn: &mut ConnectionHolder, login_info: &mut LoginInfo) {
+pub fn login_window(ui: &Ui, conn: &mut ConnectionHolder, widget_details: &mut WidgetDetails) {
     let ctx = ui.ctx();
 
     Window::new("Login")
@@ -107,14 +107,15 @@ pub fn login_window(ui: &Ui, conn: &mut ConnectionHolder, login_info: &mut Login
         .show(ctx, |win_ui| {
             win_ui.horizontal(|hor_ui| {
                 hor_ui.label(RichText::new(format!("{:<15}", "User:")).heading());
-                hor_ui.text_edit_singleline(&mut login_info.user);
+                hor_ui.text_edit_singleline(&mut widget_details.login_info.user);
             });
             win_ui.horizontal(|hor_ui| {
                 hor_ui.label(RichText::new(format!("{:<15}", "Password:")).heading());
-                hor_ui.text_edit_singleline(&mut login_info.pass);
+                hor_ui.text_edit_singleline(&mut widget_details.login_info.pass);
             });
             if win_ui.button(RichText::new("LOGIN").heading()).clicked() {
-                let _ = conn.login(login_info);
+                widget_details.has_logged();
+                let _ = conn.login(&widget_details.login_info);
             }
         });
 }

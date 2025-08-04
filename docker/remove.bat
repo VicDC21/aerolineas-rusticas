@@ -14,11 +14,20 @@ GOTO:cuerpo
         echo No se especifico una linea que eliminar en "%~1". No se hace nada...
         GOTO:EOF
     )
+    @REM Si %~3 NO es '0', entonces %~2 pasa a ser un substring con el que la línea debería empezar
 
     (
         FOR /F "tokens=* delims=" %%l in (%~1) DO (
-            IF "%%l" NEQ "%~2" (
-                echo %%l
+            IF "%~3" NEQ "0" (
+                SET starts=%%l
+                SET starts=!starts:~0,2!
+                IF "!starts!" NEQ "%~2" (
+                    echo %%l
+                )
+            ) ELSE (
+                IF "%%l" NEQ "%~2" (
+                    echo %%l
+                )
             )
         )
     ) > %~1_temp
@@ -45,8 +54,22 @@ IF "%1"=="" (
 @REM necesariamente con backslashes
 DEL ".\docker\compose\nodo_%1.yaml"
 
+@REM borramos el nodo de todo YAML de nodo con número más alto
+for %%I in (./docker/compose/nodo_*.yaml) do (
+    SET nodo=%%I
+    SET nodo=!nodo:~5,-5!
+    SET /A nodo=nodo
+    IF !nodo! NEQ 0 IF !nodo! GTR %1 (
+        @REM hay que reconstruir el string de nuevo, ya que %%I fue mangleado
+        CALL:borrar_linea "./docker/compose/nodo_!nodo!.yaml" "      - nodo_%1"
+    ) 
+)
+
 @REM borramos la IP del CSV del cliente
 CALL:borrar_linea "./client_ips.csv" "%1,127.0.0.%1"
+
+@REM y del CSV de nodos
+CALL:borrar_linea "./node_ips.csv" %1 1
 
 @REM y lo sacamos del compose general
 CALL:borrar_linea "./compose.yaml" "  - ./docker/compose/nodo_%1.yaml"
@@ -61,4 +84,4 @@ cargo run ^
 timeout /t 10 /nobreak
 
 @REM y finalmente actualizamos los nodos
-docker compose up --detach --no-recreate
+docker compose up --detach --no-recreate --remove-orphans

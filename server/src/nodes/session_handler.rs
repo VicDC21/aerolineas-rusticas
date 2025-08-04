@@ -90,12 +90,8 @@ impl SessionHandler {
             ))
         })?;
         DiskHandler::create_directory(&logs_path)?;
-        let logger = Logger::new(
-            Path::new(&logs_path),
-            &node.endpoint_state.get_addr().to_string(),
-            LogLevel::Info,
-        )
-        .map_err(|e| Error::ServerError(e.to_string()))?;
+        let logger = Logger::new(Path::new(&logs_path), &id, LogLevel::Info)
+            .map_err(|e| Error::ServerError(e.to_string()))?;
 
         logger
             .debug(format!("Creando un nuevo SessionHandler para el nodo con ID {id}").as_str())
@@ -295,9 +291,31 @@ impl SessionHandler {
             SvAction::NodeToDelete(node_id) => {
                 self.sv_action_node_to_delete(logger, node_id)?;
             }
+            SvAction::UpdateIpsTable(ips_table) => {
+                self.sv_action_update_ips_table(&logger, ips_table)?;
+            }
         };
 
         Ok(stop)
+    }
+
+    fn sv_action_update_ips_table(
+        &self,
+        logger: &std::sync::RwLockReadGuard<'_, Logger>,
+        ips_table: String,
+    ) -> Result<()> {
+        let id = self.id;
+        logger
+            .debug(
+                format!("Revisando tabla de IPs del nodo {id} y actualizando si corresponde")
+                    .as_str(),
+            )
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        self.write()?.update_ips_table(ips_table)?;
+        logger
+            .info(format!("Tabla de IPs del {id} revisada y actualizada").as_str())
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        Ok(())
     }
 
     fn sv_action_node_to_delete(
@@ -486,7 +504,7 @@ impl SessionHandler {
             }
             None => {
                 logger
-                    .warning(
+                    .debug(
                         format!(
                             "No se encontraron nuevos valores de partición para la tabla {table_name}"
                         )
@@ -590,9 +608,6 @@ impl SessionHandler {
                 &self.id, err
             )));
         }
-        logger
-            .info("Metadata guardada exitosamente")
-            .map_err(|e| Error::ServerError(e.to_string()))?;
         Ok(())
     }
 
@@ -729,9 +744,6 @@ impl SessionHandler {
             .debug("Procesando heartbeat")
             .map_err(|e| Error::ServerError(e.to_string()))?;
         self.write()?.beat();
-        logger
-            .info("Heartbeat procesado exitosamente")
-            .map_err(|e| Error::ServerError(e.to_string()))?;
         Ok(())
     }
 
@@ -2180,15 +2192,13 @@ impl SessionHandler {
             {
                 ready_nodes_counter += 1;
             }
-            if *endpoint_state.get_appstate_status() == AppStatus::Remove
-                || *endpoint_state.get_appstate_status() == AppStatus::Offline
-            {
+            if *endpoint_state.get_appstate_status() == AppStatus::Remove {
                 ready_nodes_counter += 1;
                 node_deleted = *node_id as i32;
             }
         }
         drop(node_reader);
-        if ready_nodes_counter == n_nodes {
+        if ready_nodes_counter >= n_nodes {
             if node_deleted != -1 {
                 self.logger
                     .read()
@@ -2201,6 +2211,11 @@ impl SessionHandler {
                     .remove(&(node_deleted as u8));
             }
             self.write()?.finish_relocation()?;
+            self.logger
+                .read()
+                .map_err(|e| Error::ServerError(e.to_string()))?
+                .info("Se termino la relocalizacion")
+                .map_err(|e| Error::ServerError(e.to_string()))?;
         }
         Ok(())
     }
@@ -2313,10 +2328,8 @@ impl SessionHandler {
                 .read()
                 .map_err(|e| Error::ServerError(e.to_string()))?;
             if let Err(log_err) = logger.error(
-                format!(
-                    "Ocurrió un error al mandar un mensaje ACK al nodo [{emissor_id}]:\n\n{err}"
-                )
-                .as_str(),
+                format!("Ocurrió un error al mandar un mensaje ACK al nodo [{emissor_id}]: {err}")
+                    .as_str(),
             ) {
                 println!("Error logging message: {log_err}");
             }
@@ -2337,8 +2350,11 @@ impl SessionHandler {
             match neighbours_states.get(node_id) {
                 Some(own_endpoint_state) => {
                     let own_heartbeat = own_endpoint_state.get_heartbeat();
+                    let mut offline_heartbeat = own_endpoint_state.get_heartbeat().clone();
+                    offline_heartbeat.beat();
                     if own_heartbeat > emissor_heartbeat
-                        || *own_endpoint_state.get_appstate_status() == AppStatus::Offline
+                        || (*own_endpoint_state.get_appstate_status() == AppStatus::Offline
+                            && &offline_heartbeat > emissor_heartbeat)
                     {
                         // El nodo propio tiene un heartbeat más nuevo que el que se recibió
                         // o
@@ -2363,7 +2379,7 @@ impl SessionHandler {
         &self,
         receptor_id: NodeId,
         receptor_gossip_info: GossipInfo,
-        response_nodes: NodesMap,
+        mut response_nodes: NodesMap,
     ) -> Result<()> {
         // Poblamos un mapa con los estados que pide el receptor
         let mut nodes_for_receptor = NodesMap::new();
@@ -2376,6 +2392,24 @@ impl SessionHandler {
                 nodes_for_receptor.insert(*node_id, own_endpoint_state.clone());
             }
         }
+
+        for (node_id, response_node_state) in &mut response_nodes {
+            if let Some(own_endpoint_state) = neighbours_states.get(node_id) {
+                let own_heartbeat = own_endpoint_state.get_heartbeat();
+                let mut offline_heartbeat = own_endpoint_state.get_heartbeat().clone();
+                offline_heartbeat.beat();
+                if own_heartbeat > response_node_state.get_heartbeat()
+                    || (*own_endpoint_state.get_appstate_status() == AppStatus::Offline
+                        && &offline_heartbeat > response_node_state.get_heartbeat())
+                {
+                    // El nodo propio tiene un heartbeat más nuevo que el que se recibió
+                    // o
+                    // El nodo propio no está listo para recibir queries
+                    *response_node_state = own_endpoint_state.clone();
+                }
+            }
+        }
+
         drop(node_reader);
         // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
         // Asumimos que es más nueva ya que fue previamente verificada
@@ -2484,14 +2518,25 @@ impl SessionHandler {
         let mut is_ready = false;
         let node_reader = self.read()?;
         if let Some(endpoint_state) = node_reader.neighbours_states.get(&node_id) {
-            is_ready = *endpoint_state.get_appstate_status() == AppStatus::Normal;
+            is_ready = *endpoint_state.get_appstate_status() == AppStatus::Normal
+                || *endpoint_state.get_appstate_status() == AppStatus::Ready;
         }
         Ok(is_ready)
     }
 
     /// Consulta si el nodo contenido puede recibir consultas.
     pub fn node_is_responsive(&self) -> Result<bool> {
-        Ok(self.read()?.is_responsive())
+        let logger = self
+            .logger
+            .read()
+            .map_err(|e| Error::ServerError(e.to_string()))?;
+        let is_responsive = self.read()?.is_responsive();
+        if !is_responsive {
+            logger
+                .warning("Se recibio una query de un cliente mientras se cambiaba la estructura de los nodos.")
+                .map_err(|e| Error::ServerError(e.to_string()))?;
+        }
+        Ok(is_responsive)
     }
 
     fn handle_result_from_node(
@@ -2578,32 +2623,6 @@ impl SessionHandler {
             .collect::<Vec<String>>()
             .join("\n");
         Ok(rows_as_string)
-
-        // let mut most_recent_timestamps: Vec<(usize, String)> = Vec::new();
-        // let mut newer_rows: Vec<Vec<String>> = Vec::new();
-
-        // for (i,rows) in ids_and_rows.iter().enumerate() {
-        //     for (j, row) in rows.iter().enumerate() {
-        //         if most_recent_timestamps.len() <= j {
-        //             most_recent_timestamps.push((i, row[row.len() - 1].clone()));
-        //         } else {
-        //             let actual_timestamp = row[row.len() - 1].clone();
-        //             if actual_timestamp > most_recent_timestamps[j].1 {
-        //                 most_recent_timestamps[j] = (i, actual_timestamp);
-        //             }
-        //         }
-        //     }
-        // }
-        // for (i, actual_timestamp) in most_recent_timestamps.iter().enumerate() {
-        //     let new_row = &ids_and_rows[actual_timestamp.0][i];
-        //     newer_rows.push(new_row.clone());
-        // }
-        // let rows_as_string = newer_rows
-        //     .iter()
-        //     .map(|row| row.join(","))
-        //     .collect::<Vec<String>>()
-        //     .join("\n");
-        // rows_as_string
     }
 }
 

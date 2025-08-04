@@ -3,15 +3,6 @@ services:
   nodo_base:
     # Para que use la imagen si ya fue construida antes
     image: nodos-slim
-    build:
-      # Como esto va a ser llamado desde dentro de docker/compose, necesitamos volver al
-      # directorio raíz
-      context: ../..
-      # -f
-      dockerfile: ./docker/nd-slim/Dockerfile
-      # las tags, como el nombre de la imagen
-      tags:
-        - "nodos-slim"
     # -i
     stdin_open: true
     # -t

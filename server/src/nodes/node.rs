@@ -272,12 +272,6 @@ impl Node {
         ip: Option<&str>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_all_nodes_ids();
-        if nodes_ids.len() < N_NODES as usize {
-            return Err(Error::ServerError(format!(
-                "El archivo de IPs de los nodos no tiene la cantidad correcta de nodos. Se esperaban al menos {} nodos, se encontraron {}.",
-                N_NODES, nodes_ids.len()
-            )));
-        }
         if !nodes_ids.contains(&id) {
             return Err(Error::ServerError(format!(
                 "El ID {id} no está en el archivo de IPs de los nodos."
@@ -313,20 +307,7 @@ impl Node {
         )?;
 
         handlers.append(&mut node_listeners);
-
-        // Llenamos de información al nodo "seed". Arbitrariamente será el último.
-        // Cuando fue iniciado el último nodo (el de mayor ID), hacemos el envío de la información,
-        // pues asumimos que todos los demás ya fueron iniciados.
-        if id == nodes_ids[(N_NODES - 1) as usize] {
-            // Self::send_states_to_node(max_weight_id);
-            Self::notify_new_node(id, ip)
-        } else if is_new {
-            // Si es un nodo nuevo, debemos hacer que conozca al resto del clúster, para poder
-            // enviar su información a los demás mediante gossip, así sabrán de su existencia.
-            // Self::send_states_to_node(id);
-            Self::notify_new_node(id, ip)
-        }
-
+        Self::notify_new_node(id, ip);
         Ok(handlers)
     }
 
@@ -344,7 +325,7 @@ impl Node {
                 .is_err()
                 {
                     println!(
-                        "El nodo {id} se encontró apagado cuando el nodo {node_id} intentó presentarse.",
+                        "El nodo {node_id} se encontró apagado cuando el nodo {id} intentó presentarse.",
                     );
                 }
             }
@@ -353,7 +334,9 @@ impl Node {
 
     fn inicialize_nodes_weights(&mut self, actual_n_nodes: usize) {
         self.nodes_weights = vec![1; actual_n_nodes];
-        self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo original tiene el triple de probabilidades de ser elegido.
+        if actual_n_nodes >= N_NODES as usize {
+            self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo original tiene el triple de probabilidades de ser elegido.
+        }
     }
 
     /// Decide cuál es el nodo con el mayor "peso". Es decir, el que tiene más probabilidades
@@ -403,6 +386,9 @@ impl Node {
     /// está dando de baja.
     pub fn node_to_deletion(&mut self) -> Result<()> {
         for node in self.get_nodes_ids() {
+            if node == self.id {
+                continue;
+            }
             send_to_node(
                 node,
                 SvAction::NodeIsLeaving(self.id).as_bytes(),
@@ -527,7 +513,7 @@ impl Node {
 
     /// Devuelve los IDs de los nodos del cluster. Ordenados de menor a mayor.
     pub fn get_nodes_ids(&self) -> Vec<NodeId> {
-        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_nodes().get_ids();
+        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_runtime().get_ids();
         for (id, state) in &self.neighbours_states {
             let status = state.get_appstate().get_status();
             if *status == AppStatus::Left || *status == AppStatus::Remove {
@@ -540,14 +526,14 @@ impl Node {
 
     /// Devuelve los IDs de todos los nodos del cluster sin importar su Status. Ordenados de menor a mayor.
     pub fn get_all_nodes_ids() -> Vec<NodeId> {
-        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_nodes().get_ids();
+        let mut nodes_ids: Vec<NodeId> = AddrLoader::default_runtime().get_ids();
         nodes_ids.sort();
         nodes_ids
     }
 
     /// Devuelve la cantidad de nodos actual en el clúster, en base al archivo de IPs `node_ips.csv`.
     pub fn get_actual_n_nodes(&self) -> usize {
-        let nodes_ids = AddrLoader::default_nodes().get_ids();
+        let nodes_ids = AddrLoader::default_runtime().get_ids();
         let mut actual_n_nodes = nodes_ids.len();
         for node_id in nodes_ids {
             if let Some(state) = self.neighbours_states.get(&node_id) {
@@ -573,17 +559,17 @@ impl Node {
 
     /// Devuelve la cantidad de todos los nodos en el cluster, sin importar su Status.
     pub fn get_all_n_nodes() -> usize {
-        AddrLoader::default_nodes().get_ids().len()
+        AddrLoader::default_runtime().get_ids().len()
     }
 
     /// Devuelve _true_ si el ID dado existe en el archivo de IPs `node_ips.csv`, _false_ en caso contrario.
     fn id_exists(id: &NodeId) -> bool {
-        AddrLoader::default_nodes().get_ids().contains(id)
+        AddrLoader::default_runtime().get_ids().contains(id)
     }
 
     /// Devuelve _true_ si la IP dada existe en el archivo de IPs `node_ips.csv`, _false_ en caso contrario.
     fn ip_exists(ip: &IpAddr) -> bool {
-        AddrLoader::default_nodes().get_ips().contains(ip)
+        AddrLoader::default_runtime().get_ips().contains(ip)
     }
 
     /// Selecciona un ID de nodo conforme al _hashing_ del valor del _partition key_ y los rangos de los nodos.
@@ -609,6 +595,9 @@ impl Node {
 
     /// Envia su endpoint state al nodo del ID correspondiente.
     pub fn send_endpoint_state(&self, id: NodeId, ip: String) {
+        if Self::id_exists(&id) {
+            return;
+        }
         let _ = DiskHandler::store_new_node_id_and_ip(id, &ip);
         let _ = send_to_node(
             id,
@@ -621,6 +610,82 @@ impl Node {
                 id, self.id
             )
         });
+        let _ = send_to_node(
+            id,
+            SvAction::UpdateIpsTable(AddrLoader::default_runtime().get_ips_table_content_as_string()).as_bytes(),
+            PortType::Priv,
+        )
+        .inspect_err(|e| {
+            eprintln!(
+                "El nodo {} se encontró apagado cuando el nodo {} intentó compartir su tabla de IPs. Error: {e}",
+                id, self.id
+            )
+        });
+        if !self.is_new_node {
+            self.send_new_neighbours(id, ip);
+        }
+    }
+
+    fn send_new_neighbours(&self, new_id: NodeId, new_ip: String) {
+        let mut new_nodes = NodesMap::new();
+        let original_nodes = AddrLoader::default_runtime().get_ids();
+        for (node_id, endpoint_state) in &self.neighbours_states {
+            if !original_nodes[..(N_NODES as usize)].contains(node_id) {
+                new_nodes.insert(*node_id, endpoint_state.clone());
+            }
+        }
+        for (node_id, _endpoint_state) in new_nodes {
+            let _ = send_to_node(
+                node_id,
+                SvAction::SendEndpointState(new_id, new_ip.clone()).as_bytes(),
+                PortType::Priv,
+            )
+            .inspect_err(|e| {
+                eprintln!(
+                    "El nodo {node_id} se encontró apagado cuando el nodo {new_id} intentó presentarse. Error: {e}")
+            });
+        }
+    }
+
+    /// Actualiza la tabla de IPs del nodo con la tabla recibida.
+    /// La idea de esta función es revisar si el nodo receptor tiene la información de un nodo
+    /// que fue dado de baja y que este no se enteró ya que se creó después de esto.
+    /// Si el nodo receptor tiene un nodo que fue dado de baja (o sea, que no lo tiene la tabla
+    /// recibida de un vecino), se lo elimina de su tabla.
+    pub fn update_ips_table(&mut self, received_ips_table_string: String) -> Result<()> {
+        let self_ips_table_string = AddrLoader::default_runtime().get_ips_table_content_as_string();
+        let self_rows = self_ips_table_string.split('\n').collect::<Vec<&str>>();
+        let received_rows = received_ips_table_string.split('\n').collect::<Vec<&str>>();
+        for self_row in self_rows {
+            if self_row.is_empty() {
+                continue;
+            }
+            let mut found = false;
+            for received_row in &received_rows {
+                if received_row.is_empty() {
+                    continue;
+                }
+                if self_row == *received_row {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                // Si no se encontró el nodo en la tabla recibida, lo eliminamos de la nuestra.
+                let id_and_ip: Vec<&str> = self_row.split(',').collect();
+                if id_and_ip.len() == 2 {
+                    let node_id: NodeId = id_and_ip[0]
+                        .parse()
+                        .map_err(|e: std::num::ParseIntError| Error::ServerError(e.to_string()))?;
+                    DiskHandler::delete_node_id_and_ip(node_id)?;
+                    self.neighbours_states.remove(&node_id);
+                    if let Some(index) = self.nodes_weights.iter().position(|&x| x == 1) {
+                        self.nodes_weights.remove(index);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Consulta si ya se tiene un [EndpointState].
@@ -628,7 +693,7 @@ impl Node {
     /// No compara los estados en profundidad, sólo verifica si se tiene un estado
     /// con la misma IP.
     fn _has_endpoint_state(&self, state: &EndpointState) -> bool {
-        let guessed_id = match AddrLoader::default_nodes().get_id(state.get_addr()) {
+        let guessed_id = match AddrLoader::default_runtime().get_id(state.get_addr()) {
             Ok(guessed_right) => guessed_right,
             Err(_) => return false,
         };
@@ -728,6 +793,7 @@ impl Node {
             {
                 continue;
             }
+
             self.neighbours_states.insert(node_id, endpoint_state);
         }
         Ok(())
@@ -736,7 +802,9 @@ impl Node {
     /// Actualiza el estado del nodo recibido a _Offline_.
     pub fn acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
         if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
-            endpoint_state.set_appstate_status(AppStatus::Offline);
+            if *endpoint_state.get_appstate_status() != AppStatus::Remove {
+                endpoint_state.set_appstate_status(AppStatus::Offline);
+            }
         }
     }
 
@@ -1486,63 +1554,6 @@ impl Node {
         Ok(())
     }
 
-    // /// TODO
-    // pub fn get_replicas_of_farthest_node(&mut self) -> Result<()> {
-    //     let mut nodes_ids = self.get_nodes_ids();
-    //     let mut distance = usize::MAX;
-    //     for i in 1..nodes_ids.len() {
-    //         if n_th_node_in_the_cluster(self.id, &nodes_ids, i, false) == self.id {
-    //             distance = i;
-    //         }
-    //     }
-    //     for table in self.tables.values() {
-    //         if (distance as Uint)
-    //             != self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)?
-    //         {
-    //             continue;
-    //         }
-    //         let rows = DiskHandler::get_all_rows(
-    //             table.get_name(),
-    //             &self.storage_addr,
-    //             table.get_keyspace(),
-    //             table.get_keyspace(),
-    //             self.id,
-    //         )?;
-    //         if rows.is_empty() {
-    //             continue;
-    //         }
-    //         final_rows.insert(0, table.get_name().to_string());
-    //         final_rows.insert(0, table.get_keyspace().to_string());
-    //         for row in rows {
-    //             final_rows.push(row.join(","));
-    //         }
-    //         final_rows.push("\n".to_string());
-    //     }
-    //     Ok(())
-    // }
-
-    // /// TODO
-    // pub fn update_node_replicas_2_delete(&mut self, node_id: NodeId) -> Result<Vec<Byte>> {
-    //     // let nodes_ids = self.get_nodes_ids();
-    //     for table in self.tables.values() {
-    //         let quantity_of_replicas =
-    //             self.get_quantity_of_replicas_from_keyspace_name(&table.keyspace)? as Byte;
-    //         let mut update_table_replica = false;
-    //         for pos in 1..quantity_of_replicas {
-    //             let replica_node_id =
-    //                 n_th_node_in_the_cluster(self.id, &self.get_nodes_ids(), pos as usize, true);
-    //             if replica_node_id == node_id {
-    //                 update_table_replica = true
-    //             }
-    //         }
-    //         if !update_table_replica {
-    //             continue;
-    //         }
-    //     }
-    //     // Devolvemos un mensaje de éxito.
-    //     Ok(vec![1])
-    // }
-
     /// Filtra las tablas que contiene para asegurarse de tener las filas que le
     /// corresponden luego de que el rango de particiones haya cambiado por el
     /// agregado de un nodo nuevo. Las filas que ya no le correspondan, se las envía al
@@ -1680,6 +1691,10 @@ impl Node {
             if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_leaving_id) {
                 endpoint_state.set_appstate_status(status.clone());
             }
+            if status == AppStatus::Remove {
+                let actual_n_nodes = self.get_actual_n_nodes();
+                self.inicialize_nodes_weights(actual_n_nodes);
+            }
         }
         Ok(())
     }
@@ -1697,7 +1712,7 @@ impl Node {
     /// bloquea el hilo actual.
     fn wait(mut handlers: Vec<Option<NodeHandle>>, id: NodeId) -> Result<()> {
         // long live the option dance
-        send_to_node(id, [0].to_vec(), PortType::Cli)?;
+        let _ = send_to_node(id, [0].to_vec(), PortType::Cli);
         for handler_opt in &mut handlers {
             if let Some(handler) = handler_opt.take() {
                 if handler.join().is_err() {

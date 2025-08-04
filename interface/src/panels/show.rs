@@ -318,12 +318,16 @@ fn show_flights(
                 }
             });
     }
+    let msg_type = match &flight_type {
+        FlightType::Incoming => "entrantes",
+        FlightType::Departing => "salientes",
+    };
     if button_response.clicked() {
         if *do_show {
-            println!("Ocultando vuelos salientes...");
+            println!("Ocultando vuelos {msg_type}...");
             must_show = false;
         } else {
-            println!("Mostrando vuelos salientes...");
+            println!("Mostrando vuelos {msg_type}...");
             must_show = true;
         }
     }

@@ -17,6 +17,19 @@ borrar_linea() {
       sed -i "/$2/d" $1
 }
 
+# Lee de un archivo (se asume csv) y borra una línea dada si es que tiene coincidencia con el 2do arg pasado.
+# Acepta una ruta como 1er arg y un string que es el numero de id de un nodo como 2do arg.
+borrar_linea_segun_id() {
+    if [ -z "$1" ]; then
+        echo "No se especificó un ID de nodo. No se hace nada..."
+        return
+    fi
+
+    # Borra la línea que comienza con el ID seguido de una coma (ej: 10,)
+    sed -i "/^$2,/d" "$1"
+}
+
+
 if [ -z $1 ]
 then
       echo No se incluyo un ID de nodo.
@@ -26,8 +39,26 @@ fi
 # borramos el compose del nodo
 rm -f ./docker/compose/nodo_$1.yaml
 
+# borramos el nodo de todo YAML de nodo con número más alto
+for nodo in ./docker/compose/nodo_*.yaml; do
+    con_numeros="nodo_[0-9]+.yaml"
+    nombre_nodo=$(basename $nodo)
+    if [[ $nombre_nodo =~ $con_numeros ]]; then
+        num_nodo=${nombre_nodo#nodo_}
+        num_nodo=${num_nodo%.yaml}
+
+        if [ $num_nodo -gt $1 ]
+        then
+            borrar_linea $nodo "      - nodo_$1"
+        fi
+    fi
+done
+
 # borramos la IP del CSV del cliente
 borrar_linea "./client_ips.csv" "$1,127.0.0.$1"
+
+# borramos la IP del CSV de los nodos
+borrar_linea_segun_id "./node_ips.csv" "$1"
 
 # y lo sacamos del compose general
 borrar_linea "./compose.yaml" "  - .\/docker\/compose\/nodo_$1.yaml"
@@ -43,4 +74,4 @@ echo Esperando a que se relocalicen los nodos...
 sleep 10s
 
 # y finalmente actualizamos los nodos
-docker compose up --detach --no-recreate
+docker compose up --detach --no-recreate --remove-orphans
