@@ -344,7 +344,7 @@ impl Node {
                 .is_err()
                 {
                     println!(
-                        "El nodo {id} se encontró apagado cuando el nodo {node_id} intentó presentarse.",
+                        "El nodo {node_id} se encontró apagado cuando el nodo {id} intentó presentarse.",
                     );
                 }
             }
@@ -807,6 +807,7 @@ impl Node {
             {
                 continue;
             }
+
             self.neighbours_states.insert(node_id, endpoint_state);
         }
         Ok(())
@@ -815,7 +816,9 @@ impl Node {
     /// Actualiza el estado del nodo recibido a _Offline_.
     pub fn acknowledge_offline_neighbour(&mut self, node_id: NodeId) {
         if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_id) {
-            endpoint_state.set_appstate_status(AppStatus::Offline);
+            if *endpoint_state.get_appstate_status() != AppStatus::Remove {
+                endpoint_state.set_appstate_status(AppStatus::Offline);
+            }
         }
     }
 

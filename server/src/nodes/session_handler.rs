@@ -2202,9 +2202,7 @@ impl SessionHandler {
             {
                 ready_nodes_counter += 1;
             }
-            if *endpoint_state.get_appstate_status() == AppStatus::Remove
-                || *endpoint_state.get_appstate_status() == AppStatus::Offline
-            {
+            if *endpoint_state.get_appstate_status() == AppStatus::Remove {
                 ready_nodes_counter += 1;
                 node_deleted = *node_id as i32;
             }
@@ -2364,8 +2362,11 @@ impl SessionHandler {
             match neighbours_states.get(node_id) {
                 Some(own_endpoint_state) => {
                     let own_heartbeat = own_endpoint_state.get_heartbeat();
+                    let mut offline_heartbeat = own_endpoint_state.get_heartbeat().clone();
+                    offline_heartbeat.beat();
                     if own_heartbeat > emissor_heartbeat
-                        || *own_endpoint_state.get_appstate_status() == AppStatus::Offline
+                        || (*own_endpoint_state.get_appstate_status() == AppStatus::Offline
+                            && &offline_heartbeat > emissor_heartbeat)
                     {
                         // El nodo propio tiene un heartbeat más nuevo que el que se recibió
                         // o
@@ -2390,7 +2391,7 @@ impl SessionHandler {
         &self,
         receptor_id: NodeId,
         receptor_gossip_info: GossipInfo,
-        response_nodes: NodesMap,
+        mut response_nodes: NodesMap,
     ) -> Result<()> {
         // Poblamos un mapa con los estados que pide el receptor
         let mut nodes_for_receptor = NodesMap::new();
@@ -2403,6 +2404,24 @@ impl SessionHandler {
                 nodes_for_receptor.insert(*node_id, own_endpoint_state.clone());
             }
         }
+
+        for (node_id, response_node_state) in &mut response_nodes {
+            if let Some(own_endpoint_state) = neighbours_states.get(node_id) {
+                let own_heartbeat = own_endpoint_state.get_heartbeat();
+                let mut offline_heartbeat = own_endpoint_state.get_heartbeat().clone();
+                offline_heartbeat.beat();
+                if own_heartbeat > response_node_state.get_heartbeat()
+                    || (*own_endpoint_state.get_appstate_status() == AppStatus::Offline
+                        && &offline_heartbeat > response_node_state.get_heartbeat())
+                {
+                    // El nodo propio tiene un heartbeat más nuevo que el que se recibió
+                    // o
+                    // El nodo propio no está listo para recibir queries
+                    *response_node_state = own_endpoint_state.clone();
+                }
+            }
+        }
+
         drop(node_reader);
         // Reemplazamos la información de nuestros vecinos por la más nueva que viene del nodo receptor
         // Asumimos que es más nueva ya que fue previamente verificada
@@ -2511,7 +2530,8 @@ impl SessionHandler {
         let mut is_ready = false;
         let node_reader = self.read()?;
         if let Some(endpoint_state) = node_reader.neighbours_states.get(&node_id) {
-            is_ready = *endpoint_state.get_appstate_status() == AppStatus::Normal;
+            is_ready = *endpoint_state.get_appstate_status() == AppStatus::Normal
+                || *endpoint_state.get_appstate_status() == AppStatus::Ready;
         }
         Ok(is_ready)
     }

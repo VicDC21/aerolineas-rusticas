@@ -433,14 +433,22 @@ fn exec_gossip(receiver: Receiver<bool>, id: NodeId, weights: Vec<usize>) -> Res
 
         let nodes_ids = AddrLoader::default_runtime().get_ids();
         let mut rng = thread_rng();
-        let selected_id = nodes_ids[dist.sample(&mut rng)];
+        let mut node_selected = dist.sample(&mut rng);
+        while node_selected >= nodes_ids.len() {
+            node_selected = dist.sample(&mut rng);
+        }
+        let selected_id = nodes_ids[node_selected];
         if selected_id != id {
             continue;
         }
 
         let mut neighbours: HashSet<NodeId> = HashSet::new();
         while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
-            let selected_neighbour = nodes_ids[dist.sample(&mut rng)];
+            let mut node_selected = dist.sample(&mut rng);
+            while node_selected >= nodes_ids.len() {
+                node_selected = dist.sample(&mut rng);
+            }
+            let selected_neighbour = nodes_ids[node_selected];
             if (selected_neighbour != selected_id) && !neighbours.contains(&selected_neighbour) {
                 neighbours.insert(selected_neighbour);
             }
