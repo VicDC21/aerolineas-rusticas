@@ -608,9 +608,6 @@ impl SessionHandler {
                 &self.id, err
             )));
         }
-        logger
-            .info("Metadata guardada exitosamente")
-            .map_err(|e| Error::ServerError(e.to_string()))?;
         Ok(())
     }
 
@@ -747,9 +744,6 @@ impl SessionHandler {
             .debug("Procesando heartbeat")
             .map_err(|e| Error::ServerError(e.to_string()))?;
         self.write()?.beat();
-        logger
-            .info("Heartbeat procesado exitosamente")
-            .map_err(|e| Error::ServerError(e.to_string()))?;
         Ok(())
     }
 
@@ -2334,10 +2328,8 @@ impl SessionHandler {
                 .read()
                 .map_err(|e| Error::ServerError(e.to_string()))?;
             if let Err(log_err) = logger.error(
-                format!(
-                    "Ocurrió un error al mandar un mensaje ACK al nodo [{emissor_id}]:\n\n{err}"
-                )
-                .as_str(),
+                format!("Ocurrió un error al mandar un mensaje ACK al nodo [{emissor_id}]")
+                    .as_str(),
             ) {
                 println!("Error logging message: {log_err}");
             }
