@@ -264,6 +264,7 @@ fn listen_single_client(
                 "Se esta cambiando la estructura de los nodos, vuelva luego.".to_string(),
             ));
             let _ = tls.write_all(&error);
+            break;
         } else {
             let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
             if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {

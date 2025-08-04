@@ -2328,7 +2328,7 @@ impl SessionHandler {
                 .read()
                 .map_err(|e| Error::ServerError(e.to_string()))?;
             if let Err(log_err) = logger.error(
-                format!("Ocurrió un error al mandar un mensaje ACK al nodo [{emissor_id}]")
+                format!("Ocurrió un error al mandar un mensaje ACK al nodo [{emissor_id}]: {err}")
                     .as_str(),
             ) {
                 println!("Error logging message: {log_err}");

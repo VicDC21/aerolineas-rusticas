@@ -1712,7 +1712,7 @@ impl Node {
     /// bloquea el hilo actual.
     fn wait(mut handlers: Vec<Option<NodeHandle>>, id: NodeId) -> Result<()> {
         // long live the option dance
-        send_to_node(id, [0].to_vec(), PortType::Cli)?;
+        let _ = send_to_node(id, [0].to_vec(), PortType::Cli);
         for handler_opt in &mut handlers {
             if let Some(handler) = handler_opt.take() {
                 if handler.join().is_err() {

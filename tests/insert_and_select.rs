@@ -50,7 +50,7 @@ fn test_simple_insert_and_select() {
             sleep(Duration::from_secs(1));
             assert!(table_res.is_ok());
 
-            let insert_query = "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES (123456, 'SABE', 'SADL', 12345678, 'in_course');";
+            let insert_query = "INSERT INTO vuelos_entrantes (id, orig, dest, llegada, estado) VALUES (123456, 'EZE', 'MAD', 12345678, 'in_course');";
             let insert_res = client.send_query(insert_query, &mut conn.tls_stream);
             sleep(Duration::from_secs(1));
             assert!(insert_res.is_ok());
@@ -78,8 +78,8 @@ fn test_simple_insert_and_select() {
                         let flight = &flights[0];
 
                         assert_eq!(flight.id, 123456);
-                        assert_eq!(flight.orig, "SABE".to_string());
-                        assert_eq!(flight.dest, "SADL".to_string());
+                        assert_eq!(flight.orig, "EZE".to_string());
+                        assert_eq!(flight.dest, "MAD".to_string());
                         assert_eq!(flight.arrival(), 12345678);
                         assert!(matches!(flight.state, FlightState::InCourse));
                         assert!(matches!(flight.flight_type, FlightType::Incoming));
