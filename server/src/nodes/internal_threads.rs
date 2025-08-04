@@ -5,9 +5,9 @@ use {
         nodes::{
             actions::opcode::SvAction,
             addr::loader::AddrLoader,
-            node::{Node, NodeHandle, NodeId},
+            node::{Node, NodeHandle, NodeId, N_NODES},
             port_type::PortType,
-            session_handler::{make_error_response, SessionHandler},
+            session_handler::SessionHandler,
             utils::send_to_node,
         },
         utils::handle_pem_file_iter,
@@ -28,7 +28,7 @@ use {
     },
     std::{
         collections::HashSet,
-        io::{BufRead, BufReader, Read, Write},
+        io::{BufRead, BufReader, Read},
         net::{SocketAddr, TcpListener, TcpStream},
         sync::{
             atomic::{AtomicBool, Ordering},
@@ -259,16 +259,10 @@ fn listen_single_client(
             break;
         }
 
-        if !session_handler.node_is_responsive()? {
-            let error = make_error_response(Error::ServerError(
-                "Se esta cambiando la estructura de los nodos, vuelva luego.".to_string(),
-            ));
-            let _ = tls.write_all(&error);
-        } else {
-            let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
-            if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
-                is_logged = true;
-            }
+        session_handler.wait_until_responsive()?;
+        let res = session_handler.process_stream(tls, buffer.to_vec(), is_logged)?;
+        if res.len() >= 9 && res[4] == Opcode::AuthSuccess.as_bytes()[0] {
+            is_logged = true;
         }
     }
     Ok(())
@@ -411,7 +405,7 @@ pub fn gossiper(
     }
 }
 
-fn exec_gossip(receiver: Receiver<bool>, id: NodeId, weights: Vec<usize>) -> Result<()> {
+fn exec_gossip(receiver: Receiver<bool>, id: NodeId, mut weights: Vec<usize>) -> Result<()> {
     loop {
         sleep(Duration::from_millis(GOSSIP_SLEEP_MILLIS));
         if let Ok(stop) = receiver.try_recv() {
@@ -421,6 +415,16 @@ fn exec_gossip(receiver: Receiver<bool>, id: NodeId, weights: Vec<usize>) -> Res
             }
         }
 
+        let nodes_ids = AddrLoader::default_runtime().get_ids();
+        if nodes_ids.len() != weights.len() {
+            weights = vec![1; nodes_ids.len()];
+            if weights.len() >= N_NODES as usize {
+                weights[(N_NODES - 1) as usize] *= 3;
+            }
+        }
+        if nodes_ids.is_empty() {
+            continue;
+        }
         let dist = match WeightedIndex::new(&weights) {
             Ok(dist) => dist,
             Err(_) => {
@@ -431,26 +435,34 @@ fn exec_gossip(receiver: Receiver<bool>, id: NodeId, weights: Vec<usize>) -> Res
             }
         };
 
-        let nodes_ids = AddrLoader::default_runtime().get_ids();
         let mut rng = thread_rng();
-        let mut node_selected = dist.sample(&mut rng);
-        while node_selected >= nodes_ids.len() {
-            node_selected = dist.sample(&mut rng);
-        }
-        let selected_id = nodes_ids[node_selected];
+        let selected_idx = dist.sample(&mut rng);
+        let Some(&selected_id) = nodes_ids.get(selected_idx) else {
+            weights = vec![1; AddrLoader::default_runtime().get_ids().len()];
+            if weights.len() >= N_NODES as usize {
+                weights[(N_NODES - 1) as usize] *= 3;
+            }
+            continue;
+        };
         if selected_id != id {
             continue;
         }
 
         let mut neighbours: HashSet<NodeId> = HashSet::new();
-        while neighbours.len() < HANDSHAKE_NEIGHBOURS as usize {
-            let mut node_selected = dist.sample(&mut rng);
-            while node_selected >= nodes_ids.len() {
-                node_selected = dist.sample(&mut rng);
-            }
-            let selected_neighbour = nodes_ids[node_selected];
-            if (selected_neighbour != selected_id) && !neighbours.contains(&selected_neighbour) {
-                neighbours.insert(selected_neighbour);
+        let max_neighbours = (nodes_ids.len().saturating_sub(1)).min(HANDSHAKE_NEIGHBOURS as usize);
+        while neighbours.len() < max_neighbours {
+            let neighbour_idx = dist.sample(&mut rng);
+            if let Some(&selected_neighbour) = nodes_ids.get(neighbour_idx) {
+                if (selected_neighbour != selected_id) && !neighbours.contains(&selected_neighbour)
+                {
+                    neighbours.insert(selected_neighbour);
+                }
+            } else {
+                weights = vec![1; AddrLoader::default_runtime().get_ids().len()];
+                if weights.len() >= N_NODES as usize {
+                    weights[(N_NODES - 1) as usize] *= 3;
+                }
+                break;
             }
         }
 

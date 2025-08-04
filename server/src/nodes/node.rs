@@ -272,12 +272,6 @@ impl Node {
         ip: Option<&str>,
     ) -> Result<Vec<Option<NodeHandle>>> {
         let nodes_ids = Self::get_all_nodes_ids();
-        if nodes_ids.len() < N_NODES as usize {
-            return Err(Error::ServerError(format!(
-                "El archivo de IPs de los nodos no tiene la cantidad correcta de nodos. Se esperaban al menos {} nodos, se encontraron {}.",
-                N_NODES, nodes_ids.len()
-            )));
-        }
         if !nodes_ids.contains(&id) {
             return Err(Error::ServerError(format!(
                 "El ID {id} no está en el archivo de IPs de los nodos."
@@ -313,20 +307,7 @@ impl Node {
         )?;
 
         handlers.append(&mut node_listeners);
-
-        // Llenamos de información al nodo "seed". Arbitrariamente será el último.
-        // Cuando fue iniciado el último nodo (el de mayor ID), hacemos el envío de la información,
-        // pues asumimos que todos los demás ya fueron iniciados.
-        if id == nodes_ids[(N_NODES - 1) as usize] {
-            // Self::send_states_to_node(max_weight_id);
-            Self::notify_new_node(id, ip)
-        } else if is_new {
-            // Si es un nodo nuevo, debemos hacer que conozca al resto del clúster, para poder
-            // enviar su información a los demás mediante gossip, así sabrán de su existencia.
-            // Self::send_states_to_node(id);
-            Self::notify_new_node(id, ip)
-        }
-
+        Self::notify_new_node(id, ip);
         Ok(handlers)
     }
 
@@ -353,7 +334,9 @@ impl Node {
 
     fn inicialize_nodes_weights(&mut self, actual_n_nodes: usize) {
         self.nodes_weights = vec![1; actual_n_nodes];
-        self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo original tiene el triple de probabilidades de ser elegido.
+        if actual_n_nodes >= N_NODES as usize {
+            self.nodes_weights[(N_NODES - 1) as usize] *= 3; // El último nodo original tiene el triple de probabilidades de ser elegido.
+        }
     }
 
     /// Decide cuál es el nodo con el mayor "peso". Es decir, el que tiene más probabilidades
@@ -403,6 +386,9 @@ impl Node {
     /// está dando de baja.
     pub fn node_to_deletion(&mut self) -> Result<()> {
         for node in self.get_nodes_ids() {
+            if node == self.id {
+                continue;
+            }
             send_to_node(
                 node,
                 SvAction::NodeIsLeaving(self.id).as_bytes(),
@@ -1704,6 +1690,10 @@ impl Node {
         if node_leaving_id != self.id {
             if let Some(endpoint_state) = self.neighbours_states.get_mut(&node_leaving_id) {
                 endpoint_state.set_appstate_status(status.clone());
+            }
+            if status == AppStatus::Remove {
+                let actual_n_nodes = self.get_actual_n_nodes();
+                self.inicialize_nodes_weights(actual_n_nodes);
             }
         }
         Ok(())
