@@ -216,9 +216,10 @@ y luego los levanta 5 nodos en orden.
 
 ## Levantando nodos iniciales
 
-Para construir y levantar los 5 contenedores iniciales, basta con hacer:
+Para construir y levantar los 5 contenedores iniciales, basta con levantar la imagen y luego el cluster:
 
 ```console
+$ docker build -f docker/nd-slim/Dockerfile -t nodos-slim .
 $ docker compose up
 ```
 
@@ -231,6 +232,8 @@ $ docker compose down
 ```
 
 para apagar todos los contenedores, **y luego eliminarlos,** todo de forma bonita.
+
+Ojo, si se actualiza la estructura del cluster antes de darlo de baja, será necesario reconstruir la imagen de vuelta antes de hacer docker compose up, o si no reestablecer en el repositorio local el estado de las tablas y los archivos compose, ya que la imagen vieja contará con los csvs originales y el orquestador tendrá nuevos archivos .yaml
 
 > **Nota:** Todavía se necesita [cerrar](#borrando) los nodos extra, si los hay, de manera manual.
 

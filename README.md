@@ -209,7 +209,13 @@ Las instrucciones de cómo correr el proyecto usando [Docker](https://www.docker
 son explicados [aquí](./docker_tutorial.md) en detalle, pero un flujo normal para nuestro se explica igual a continuación.
 
 * Primero, hemos de asegurarnos de que cumplimos con los [prerequisitos](./docker_tutorial.md#prerequisitos) necesarios.
-* Luego corremos
+
+* Luego creamos la imagen 
+  ```console
+  $ docker build -f docker/nd-slim/Dockerfile -t nodos-slim .
+  ```
+
+* Y después levantamos el cluster
   ```console
   $ docker compose up
   ```
