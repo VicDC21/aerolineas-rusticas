@@ -7,7 +7,7 @@ use {
         collections::HashMap,
         fs::OpenOptions,
         io::{BufRead, BufReader, BufWriter, Result as IOResult, Write},
-        net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+        net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
         path::Path,
     },
     utils::get_root_path::get_root_path,
@@ -276,7 +276,11 @@ impl AddrLoader {
                 }
             }
         }
-
+        // Es para que cuando el proyecto localmente borra un nodo y este pueda cerrarse a si mismo
+        if !Path::new("/.dockerenv").exists() {
+            let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, *node_id));
+            return Ok(Self::ip_to_socket(&ip, port_type));
+        }
         Err(Error::ServerError(format!(
             "No se encontró un socket de nodo que coincida con el ID de nodo {node_id}."
         )))

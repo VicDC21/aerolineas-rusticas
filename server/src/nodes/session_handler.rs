@@ -2204,7 +2204,7 @@ impl SessionHandler {
             }
         }
         drop(node_reader);
-        if ready_nodes_counter == n_nodes {
+        if ready_nodes_counter >= n_nodes {
             if node_deleted != -1 {
                 self.logger
                     .read()
