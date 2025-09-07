@@ -105,7 +105,7 @@ impl SessionHandler {
     }
 
     /// Accede al nodo para escritura mutable, es lockeado para otros.
-    fn write(&self) -> Result<std::sync::RwLockWriteGuard<Node>> {
+    fn write(&self) -> Result<std::sync::RwLockWriteGuard<'_, Node>> {
         match self.lock.write() {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
@@ -130,7 +130,7 @@ impl SessionHandler {
     }
 
     /// Accede al nodo para lectura inmutable, sigue siendo accesible para otros.
-    fn read(&self) -> Result<std::sync::RwLockReadGuard<Node>> {
+    fn read(&self) -> Result<std::sync::RwLockReadGuard<'_, Node>> {
         match self.lock.read() {
             Ok(guard) => Ok(guard),
             Err(poisoned) => {
